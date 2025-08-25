@@ -45,7 +45,7 @@ const swaggerOptions = {
     servers: [
       {
         url: process.env.NODE_ENV === 'production' 
-          ? 'https://your-domain.com/api/v1' 
+          ? 'https://hotel-management-xcsx.onrender.com/api/v1' 
           : 'http://localhost:4000/api/v1',
         description: 'API Server'
       }
