@@ -72,8 +72,8 @@ app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-frontend-domain.com']
-    : ['http://localhost:3000', 'http://localhost:3001'],
+    ? ['https://hotel-management-1-foq3.onrender.com']
+    : ['http://localhost:3002', 'http://localhost:3001'],
   credentials: true,
   optionsSuccessStatus: 200
 }));
