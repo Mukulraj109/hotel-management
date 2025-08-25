@@ -71,9 +71,7 @@ app.set('trust proxy', 1);
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://hotel-management-1-1lm3.onrender.com']
-    : ['http://localhost:3002', 'http://localhost:3001'],
+  origin:"*",
   credentials: true,
   optionsSuccessStatus: 200
 }));
