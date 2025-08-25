@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { IndianRupee } from "lucide-react";
 import { 
   Users, 
   Wifi, 
@@ -107,7 +108,7 @@ export default function RoomDetailPage() {
             </div>
             <div className="text-right">
               <div className="text-3xl font-bold text-blue-600">
-                ${room.currentRate}
+                ₹{room.currentRate}
               </div>
               <div className="text-sm text-gray-500">per night</div>
             </div>
@@ -191,8 +192,8 @@ export default function RoomDetailPage() {
                     <span>Floor {room.floor || 'N/A'}</span>
                   </div>
                   <div className="flex items-center space-x-3">
-                    <DollarSign className="h-5 w-5 text-gray-400" />
-                    <span>Base rate: ${room.baseRate}/night</span>
+                    <IndianRupee className="h-5 w-5 text-gray-400" />
+                    <span>Base rate: ₹{room.baseRate}/night</span>
                   </div>
                   <div className="flex items-center space-x-3">
                     <Star className="h-5 w-5 text-gray-400" />
@@ -225,12 +226,12 @@ export default function RoomDetailPage() {
             <Card className="sticky top-8">
               <div className="text-center mb-6">
                 <div className="text-4xl font-bold text-blue-600 mb-2">
-                  ${room.currentRate}
+                  ₹{room.currentRate}
                 </div>
                 <div className="text-gray-500">per night</div>
                 {room.currentRate !== room.baseRate && (
                   <div className="text-sm text-gray-400 line-through">
-                    ${room.baseRate}
+                    ₹{room.baseRate}
                   </div>
                 )}
               </div>

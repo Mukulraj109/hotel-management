@@ -9,7 +9,7 @@ export default function GuestHeader() {
   return (
     <header className="bg-white shadow-sm border-b border-gray-200 px-8 py-4">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-gray-900">Guest Portal</h1>
+        <h1 className="text-2xl font-bold text-gray-900">THE PENTOUZ Portal</h1>
         
         <div className="flex items-center space-x-4">
           <button className="p-2 rounded-md text-gray-500 hover:bg-gray-100">
