@@ -19,12 +19,29 @@ import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { useDashboardOverview, useOccupancyData, useRevenueData } from '../../hooks/useDashboard';
 import { formatCurrency, formatPercentage, formatRelativeTime } from '../../utils/dashboardUtils';
+import { useAuth } from '../../context/AuthContext';
 
 export default function AdminDashboard() {
-  // Default hotelId - using actual hotel ID from database
-  const [selectedHotelId, setSelectedHotelId] = useState<string>('68ad3f393ee2732df2b5efc6');
+  const { user } = useAuth();
+  // Use user's hotelId, fallback to new seeded hotel ID if not available
+  const [selectedHotelId, setSelectedHotelId] = useState<string>(user?.hotelId || '68ad53aabf854d3c206b8555');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Update selected hotel ID when user changes
+  React.useEffect(() => {
+    if (user?.hotelId && selectedHotelId !== user.hotelId) {
+      setSelectedHotelId(user.hotelId);
+    }
+  }, [user?.hotelId, selectedHotelId]);
+
+  // Force refetch when hotel ID changes to avoid cache issues
+  React.useEffect(() => {
+    if (selectedHotelId) {
+      occupancyQuery.refetch();
+      revenueQuery.refetch();
+    }
+  }, [selectedHotelId]);
 
   // Fetch dashboard data
   const {
@@ -36,8 +53,18 @@ export default function AdminDashboard() {
     error
   } = useDashboardOverview(selectedHotelId);
 
-  const occupancyQuery = useOccupancyData(selectedHotelId, { enabled: !!selectedHotelId });
-  const revenueQuery = useRevenueData(selectedHotelId, 'month', undefined, undefined, { enabled: !!selectedHotelId });
+  const occupancyQuery = useOccupancyData(selectedHotelId, undefined, undefined, { 
+    enabled: !!selectedHotelId,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    staleTime: 0 // Always consider data stale to force refresh
+  });
+  const revenueQuery = useRevenueData(selectedHotelId, 'month', undefined, undefined, { 
+    enabled: !!selectedHotelId,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    staleTime: 0 // Always consider data stale to force refresh
+  });
   console.log('Occupancy Query:', occupancyQuery);
   console.log('Occupancy Query Status:', {
     isLoading: occupancyQuery.isLoading,
@@ -48,6 +75,18 @@ export default function AdminDashboard() {
   console.log('Room Data Sample:', occupancyQuery.data?.data?.rooms?.slice(0, 5));
   console.log('Floor Metrics:', occupancyQuery.data?.data?.floorMetrics?.slice(0, 2));
   console.log('Room Statuses:', occupancyQuery.data?.data?.rooms?.map(r => ({ roomNumber: r.roomNumber, status: r.status })).slice(0, 10));
+  console.log('Room Type Distribution:', occupancyQuery.data?.data?.roomTypeDistribution);
+  console.log('Selected Hotel ID:', selectedHotelId);
+  console.log('User Hotel ID:', user?.hotelId);
+  console.log('Data fetch timestamp:', occupancyQuery.dataUpdatedAt);
+  console.log('Query key:', occupancyQuery);
+  
+  // Debug room type distribution specifically
+  React.useEffect(() => {
+    if (occupancyQuery.data?.data?.roomTypeDistribution) {
+      console.log('🎉 Room type distribution updated!', occupancyQuery.data.data.roomTypeDistribution);
+    }
+  }, [occupancyQuery.data?.data?.roomTypeDistribution]);
   console.log('Heatmap Data:', (() => {
     const rooms = occupancyQuery.data?.data?.rooms || [];
     const floors: { [key: number]: any[] } = {};
@@ -79,6 +118,9 @@ export default function AdminDashboard() {
   })());
   const handleRefresh = () => {
     setRefreshKey(prev => prev + 1);
+    // Force refetch all queries with fresh cache
+    occupancyQuery.refetch();
+    revenueQuery.refetch();
   };
 
   const handleFilterChange = (key: string, value: any) => {
@@ -133,8 +175,10 @@ export default function AdminDashboard() {
             key: 'hotelId',
             label: 'Hotel',
             type: 'select',
-            options: [
-              { value: '68ad3f393ee2732df2b5efc6', label: 'THE PENTOUZ' },
+            options: user?.hotelId ? [
+              { value: user.hotelId, label: 'THE PENTOUZ' },
+            ] : [
+              { value: '68ad53aabf854d3c206b8555', label: 'Grand Palace Hotel' },
             ],
             placeholder: 'Select hotel',
           },
@@ -269,8 +313,8 @@ export default function AdminDashboard() {
           <DonutChart
             data={occupancyQuery.data?.data?.roomTypeDistribution ? Object.entries(occupancyQuery.data.data.roomTypeDistribution).map(([roomType, data]: [string, any]) => ({
               name: roomType.charAt(0).toUpperCase() + roomType.slice(1),
-              value: data.total,
-              percentage: ((data.available / data.total) * 100)
+              value: data.occupied,
+              percentage: ((data.occupied / data.total) * 100)
             })) : []}
             height={300}
             centerContent={

@@ -6,7 +6,9 @@
       "Bash(timeout 10s npm start)",
       "Bash(timeout:*)",
       "Bash(npm run dev:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Read(/C:\\Users\\Mukul raj\\OneDrive\\Pictures\\Screenshots/**)",
+      "Bash(PORT=5000 npm run dev)"
     ],
     "deny": [],
     "ask": []

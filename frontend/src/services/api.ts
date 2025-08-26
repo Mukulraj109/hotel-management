@@ -1,7 +1,10 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 
+  (import.meta.env.MODE === 'production' 
+    ? 'https://hotel-management-xcsx.onrender.com/api/v1'  // Your deployed backend URL
+    : 'http://localhost:4000/api/v1');
 
 // Create axios instance
 const api = axios.create({
