@@ -215,7 +215,11 @@ const seedData = async () => {
       const room = createdRooms[Math.floor(Math.random() * createdRooms.length)];
       
       let checkIn, checkOut;
-      if (i < 10) {
+      if (i < 5) {
+        // Create current active bookings (checked in yesterday, checking out tomorrow)
+        checkIn = new Date(today.getTime() - 1 * 24 * 60 * 60 * 1000); // Yesterday
+        checkOut = new Date(today.getTime() + 2 * 24 * 60 * 60 * 1000); // Day after tomorrow
+      } else if (i < 10) {
         // Create current bookings (check-in 1-7 days ago, check-out 1-7 days from now)
         checkIn = new Date(today.getTime() - (1 + Math.random() * 6) * 24 * 60 * 60 * 1000);
         checkOut = new Date(today.getTime() + (1 + Math.random() * 6) * 24 * 60 * 60 * 1000);
@@ -225,6 +229,10 @@ const seedData = async () => {
         checkOut = new Date(checkIn.getTime() + (1 + Math.floor(Math.random() * 7)) * 24 * 60 * 60 * 1000);
       }
       const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
+      // Ensure first 5 bookings are confirmed/checked_in for current occupancy
+      const status = i < 5 ? 
+        ['confirmed', 'checked_in'][Math.floor(Math.random() * 2)] :
+        ['pending', 'confirmed', 'checked_in', 'checked_out'][Math.floor(Math.random() * 4)];
 
       bookings.push({
         hotelId: hotel._id,
@@ -236,7 +244,7 @@ const seedData = async () => {
         checkIn,
         checkOut,
         nights,
-        status: ['pending', 'confirmed', 'checked_in', 'checked_out'][Math.floor(Math.random() * 4)],
+        status,
         paymentStatus: ['pending', 'paid'][Math.floor(Math.random() * 2)],
         totalAmount: room.currentRate * nights,
         guestDetails: {
@@ -245,7 +253,8 @@ const seedData = async () => {
           specialRequests: Math.random() > 0.7 ? 'Late check-in requested' : null
         },
         bookingNumber: `BK${Date.now()}${i.toString().padStart(3, '0')}`,
-        idempotencyKey: `seed-${i}-${Date.now()}`
+        idempotencyKey: `seed-${i}-${Date.now()}`,
+        reservedUntil: ['confirmed', 'checked_in', 'checked_out'].includes(status) ? null : undefined
       });
     }
 
