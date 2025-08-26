@@ -229,4 +229,75 @@ router.get('/bookings', authenticate, authorize('admin', 'staff'), catchAsync(as
   });
 }));
 
+// Booking stats for admin dashboard
+router.get('/bookings/stats', authenticate, authorize('admin', 'staff'), catchAsync(async (req, res) => {
+  const {
+    startDate,
+    endDate,
+    hotelId
+  } = req.query;
+
+  const matchQuery = {};
+  
+  if (startDate && endDate) {
+    matchQuery.createdAt = {
+      $gte: new Date(startDate),
+      $lte: new Date(endDate)
+    };
+  }
+
+  if (req.user.role === 'staff' && req.user.hotelId) {
+    matchQuery.hotelId = req.user.hotelId;
+  } else if (hotelId) {
+    matchQuery.hotelId = hotelId;
+  }
+
+  const pipeline = [
+    { $match: matchQuery },
+    {
+      $group: {
+        _id: null,
+        total: { $sum: 1 },
+        totalRevenue: { $sum: '$totalAmount' },
+        averageBookingValue: { $avg: '$totalAmount' },
+        pending: {
+          $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
+        },
+        confirmed: {
+          $sum: { $cond: [{ $eq: ['$status', 'confirmed'] }, 1, 0] }
+        },
+        checkedIn: {
+          $sum: { $cond: [{ $eq: ['$status', 'checked_in'] }, 1, 0] }
+        },
+        checkedOut: {
+          $sum: { $cond: [{ $eq: ['$status', 'checked_out'] }, 1, 0] }
+        },
+        cancelled: {
+          $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] }
+        }
+      }
+    }
+  ];
+
+  const results = await Booking.aggregate(pipeline);
+
+  const stats = results.length > 0 ? results[0] : {
+    total: 0,
+    totalRevenue: 0,
+    averageBookingValue: 0,
+    pending: 0,
+    confirmed: 0,
+    checkedIn: 0,
+    checkedOut: 0,
+    cancelled: 0
+  };
+
+  res.json({
+    status: 'success',
+    data: {
+      stats
+    }
+  });
+}));
+
 export default router;

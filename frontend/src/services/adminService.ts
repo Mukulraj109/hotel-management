@@ -1,5 +1,5 @@
 import api from './api';
-import { HousekeepingTask, InventoryItem, RevenueData, OccupancyData } from '../types/admin';
+import { HousekeepingTask, InventoryItem, RevenueData, OccupancyData, AdminBooking, BookingFilters, BookingStats } from '../types/admin';
 
 interface ApiResponse<T> {
   status: string;
@@ -140,6 +140,46 @@ class AdminService {
     });
 
     const response = await api.get(`/ota/sync-history?${params.toString()}`);
+    return response.data;
+  }
+
+  // Booking Management
+  async getBookings(filters: BookingFilters = {}): Promise<ApiResponse<{ bookings: AdminBooking[] }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    const response = await api.get(`/bookings?${params.toString()}`);
+    return response.data;
+  }
+
+  async getBookingById(id: string): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const response = await api.get(`/bookings/${id}`);
+    return response.data;
+  }
+
+  async updateBooking(id: string, updates: Partial<AdminBooking>): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const response = await api.patch(`/bookings/${id}`, updates);
+    return response.data;
+  }
+
+  async cancelBooking(id: string, reason?: string): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const response = await api.patch(`/bookings/${id}/cancel`, { reason });
+    return response.data;
+  }
+
+  async getBookingStats(filters: { startDate?: string; endDate?: string; hotelId?: string } = {}): Promise<ApiResponse<{ stats: BookingStats }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    const response = await api.get(`/reports/bookings/stats?${params.toString()}`);
     return response.data;
   }
 }

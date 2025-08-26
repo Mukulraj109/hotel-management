@@ -5,7 +5,7 @@ import { cn } from '../../../utils/cn';
 interface BarChartProps {
   data: any[];
   xDataKey: string;
-  bars: {
+  bars?: {
     dataKey: string;
     name?: string;
     color?: string;
@@ -23,7 +23,7 @@ interface BarChartProps {
 export function BarChart({
   data,
   xDataKey,
-  bars,
+  bars = [],
   height = 300,
   showGrid = true,
   showLegend = true,
@@ -32,6 +32,14 @@ export function BarChart({
   className,
 }: BarChartProps) {
   const defaultColors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+  
+  if (!data || data.length === 0) {
+    return (
+      <div className={cn('flex items-center justify-center', className)} style={{ height }}>
+        <p className="text-gray-500">No data available</p>
+      </div>
+    );
+  }
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -102,7 +110,7 @@ export function BarChart({
               iconType="rect"
             />
           )}
-          {bars.map((bar, index) => (
+          {bars && bars.length > 0 ? bars.map((bar, index) => (
             <Bar
               key={bar.dataKey}
               dataKey={bar.dataKey}
@@ -111,7 +119,13 @@ export function BarChart({
               radius={bar.radius || [0, 2, 2, 0]}
               stackId={bar.stackId}
             />
-          ))}
+          )) : (
+            <Bar
+              dataKey="value"
+              fill={defaultColors[0]}
+              radius={[0, 2, 2, 0]}
+            />
+          )}
         </RechartsBarChart>
       </ResponsiveContainer>
     </div>

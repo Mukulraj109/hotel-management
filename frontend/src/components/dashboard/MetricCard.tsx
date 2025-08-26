@@ -5,17 +5,17 @@ import { formatNumber, formatCurrency, formatPercentage } from '../../utils/dash
 
 interface MetricCardProps {
   title: string;
-  value: number;
+  value: number | string | undefined | null;
   type?: 'number' | 'currency' | 'percentage';
   prefix?: string;
   suffix?: string;
   trend?: {
-    value: number;
+    value: number | string | undefined | null;
     direction: 'up' | 'down' | 'neutral';
     label?: string;
   };
   icon?: React.ReactNode;
-  color?: 'blue' | 'green' | 'yellow' | 'red' | 'purple' | 'gray';
+  color?: 'blue' | 'green' | 'yellow' | 'red' | 'purple' | 'gray' | 'orange';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
   className?: string;
@@ -78,6 +78,11 @@ export function MetricCard({
       bg: 'bg-gray-50',
       icon: 'text-gray-600',
       accent: 'border-gray-200',
+    },
+    orange: {
+      bg: 'bg-orange-50',
+      icon: 'text-orange-600',
+      accent: 'border-orange-200',
     },
   };
 

@@ -42,30 +42,75 @@ export const getDateRange = (period: 'today' | 'week' | 'month' | 'quarter' | 'y
 };
 
 // Format numbers with appropriate suffixes
-export const formatNumber = (num: number, decimals: number = 0): string => {
-  if (num >= 1000000000) {
-    return (num / 1000000000).toFixed(decimals) + 'B';
+export const formatNumber = (num: number | string | undefined | null, decimals: number = 0): string => {
+  // Handle null, undefined, or invalid values
+  if (num === null || num === undefined || num === '') {
+    return '0';
   }
-  if (num >= 1000000) {
-    return (num / 1000000).toFixed(decimals) + 'M';
+  
+  // Convert to number if it's a string
+  const numValue = typeof num === 'string' ? parseFloat(num) : num;
+  
+  // Check if it's a valid number
+  if (isNaN(numValue) || !isFinite(numValue)) {
+    return '0';
   }
-  if (num >= 1000) {
-    return (num / 1000).toFixed(decimals) + 'K';
+  
+  if (numValue >= 1000000000) {
+    return (numValue / 1000000000).toFixed(decimals) + 'B';
   }
-  return num.toFixed(decimals);
+  if (numValue >= 1000000) {
+    return (numValue / 1000000).toFixed(decimals) + 'M';
+  }
+  if (numValue >= 1000) {
+    return (numValue / 1000).toFixed(decimals) + 'K';
+  }
+  return numValue.toFixed(decimals);
 };
 
 // Format currency
-export const formatCurrency = (amount: number, currency: string = 'USD'): string => {
-  return new Intl.NumberFormat('en-US', {
+export const formatCurrency = (amount: number | string | undefined | null, currency: string = 'INR'): string => {
+  // Handle null, undefined, or invalid values
+  if (amount === null || amount === undefined || amount === '') {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: currency || 'INR',
+    }).format(0);
+  }
+  
+  // Convert to number if it's a string
+  const numValue = typeof amount === 'string' ? parseFloat(amount) : amount;
+  
+  // Check if it's a valid number
+  if (isNaN(numValue) || !isFinite(numValue)) {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: currency || 'INR',
+    }).format(0);
+  }
+  
+  return new Intl.NumberFormat('en-IN', {
     style: 'currency',
-    currency,
-  }).format(amount);
+    currency: currency || 'INR',
+  }).format(numValue);
 };
 
 // Format percentage
-export const formatPercentage = (value: number, decimals: number = 1): string => {
-  return `${value.toFixed(decimals)}%`;
+export const formatPercentage = (value: number | string | undefined | null, decimals: number = 1): string => {
+  // Handle null, undefined, or invalid values
+  if (value === null || value === undefined || value === '') {
+    return '0.0%';
+  }
+  
+  // Convert to number if it's a string
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+  
+  // Check if it's a valid number
+  if (isNaN(numValue) || !isFinite(numValue)) {
+    return '0.0%';
+  }
+  
+  return `${numValue.toFixed(decimals)}%`;
 };
 
 // Calculate percentage change
@@ -97,6 +142,12 @@ export const getStatusColor = (status: string): string => {
     cancelled: '#ef4444',
     checked_in: '#3b82f6',
     checked_out: '#6b7280',
+    no_show: '#ef4444',
+    
+    // Payment statuses
+    paid: '#10b981',
+    refunded: '#6b7280',
+    failed: '#ef4444',
     
     // Task statuses
     completed: '#10b981',

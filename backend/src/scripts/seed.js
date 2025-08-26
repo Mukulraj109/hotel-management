@@ -229,10 +229,22 @@ const seedData = async () => {
         checkOut = new Date(checkIn.getTime() + (1 + Math.floor(Math.random() * 7)) * 24 * 60 * 60 * 1000);
       }
       const nights = Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
-      // Ensure first 5 bookings are confirmed/checked_in for current occupancy
-      const status = i < 5 ? 
-        ['confirmed', 'checked_in'][Math.floor(Math.random() * 2)] :
-        ['pending', 'confirmed', 'checked_in', 'checked_out'][Math.floor(Math.random() * 4)];
+      
+      // Create a better distribution of statuses
+      let status;
+      if (i < 5) {
+        // First 5: confirmed or checked_in for current occupancy
+        status = ['confirmed', 'checked_in'][Math.floor(Math.random() * 2)];
+      } else if (i < 10) {
+        // Next 5: mostly pending with some confirmed
+        status = ['pending', 'pending', 'pending', 'confirmed'][Math.floor(Math.random() * 4)];
+      } else if (i < 15) {
+        // Next 5: mix of all statuses
+        status = ['pending', 'confirmed', 'checked_in', 'checked_out'][Math.floor(Math.random() * 4)];
+      } else {
+        // Last 5: mostly pending and confirmed
+        status = ['pending', 'pending', 'confirmed', 'checked_out'][Math.floor(Math.random() * 4)];
+      }
 
       bookings.push({
         hotelId: hotel._id,

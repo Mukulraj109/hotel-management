@@ -114,13 +114,52 @@ router.get('/', optionalAuth, catchAsync(async (req, res) => {
   res.json({
     status: 'success',
     results: rooms.length,
-    pagination: {
-      current: parseInt(page),
-      pages: Math.ceil(total / parseInt(limit)),
-      total
-    },
     data: {
-      rooms
+      rooms,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    }
+  });
+}));
+
+// Get room metrics for admin dashboard
+router.get('/metrics', authenticate, catchAsync(async (req, res) => {
+  const { hotelId } = req.query;
+  
+  if (!hotelId) {
+    throw new AppError('Hotel ID is required', 400);
+  }
+
+  const rooms = await Room.find({ 
+    hotelId: hotelId,
+    isActive: true 
+  }).select('status type currentRate');
+
+  const totalRooms = rooms.length;
+  const occupiedRooms = rooms.filter(r => r.status === 'occupied').length;
+  const availableRooms = rooms.filter(r => r.status === 'vacant').length;
+  const maintenanceRooms = rooms.filter(r => r.status === 'maintenance').length;
+  const outOfOrderRooms = rooms.filter(r => r.status === 'out_of_order').length;
+  const dirtyRooms = rooms.filter(r => r.status === 'dirty').length;
+
+  const occupancyRate = totalRooms > 0 ? (occupiedRooms / totalRooms) * 100 : 0;
+  const availabilityRate = totalRooms > 0 ? (availableRooms / totalRooms) * 100 : 0;
+
+  res.json({
+    status: 'success',
+    data: {
+      totalRooms,
+      occupiedRooms,
+      availableRooms,
+      maintenanceRooms,
+      outOfOrderRooms,
+      dirtyRooms,
+      occupancyRate: Math.round(occupancyRate * 100) / 100,
+      availabilityRate: Math.round(availabilityRate * 100) / 100,
     }
   });
 }));

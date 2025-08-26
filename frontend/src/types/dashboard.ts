@@ -85,7 +85,8 @@ export interface Alert {
   severity: 'low' | 'medium' | 'high' | 'critical' | 'urgent';
   title: string;
   message: string;
-  timestamp: string;
+  timestamp?: string; // Keep for backward compatibility
+  createdAt?: string; // Backend sends this
   hotel?: string;
   guest?: string;
   action?: string;

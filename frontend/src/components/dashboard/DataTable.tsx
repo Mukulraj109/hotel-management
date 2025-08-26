@@ -143,10 +143,10 @@ export function DataTable<T extends Record<string, any>>({
         </CardHeader>
       )}
 
-      <CardContent className="p-0">
-        <div className="overflow-x-auto">
+      <CardContent className="p-0 flex-1 flex flex-col min-h-0">
+        <div className="overflow-x-auto scrollbar-thin flex-1">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
+            <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
               <tr>
                 {columns.map((column, index) => (
                   <th

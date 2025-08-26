@@ -83,7 +83,7 @@ export function AlertCard({
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-900 truncate">{alert.title}</p>
-          <p className="text-xs text-gray-500">{formatRelativeTime(alert.timestamp)}</p>
+          <p className="text-xs text-gray-500">{formatRelativeTime(alert.createdAt || alert.timestamp)}</p>
         </div>
         {showActions && onViewDetails && (
           <Button
@@ -126,7 +126,7 @@ export function AlertCard({
                 <span>Type: {alert.type}</span>
                 {alert.hotel && <span>Hotel: {alert.hotel}</span>}
                 {alert.guest && <span>Guest: {alert.guest}</span>}
-                <span>{formatRelativeTime(alert.timestamp)}</span>
+                <span>{formatRelativeTime(alert.createdAt || alert.timestamp)}</span>
               </div>
             </div>
           </div>
