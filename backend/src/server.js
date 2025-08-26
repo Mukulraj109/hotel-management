@@ -25,6 +25,16 @@ import guestRoutes from './routes/guests.js';
 import reportRoutes from './routes/reports.js';
 import otaRoutes from './routes/ota.js';
 import webhookRoutes from './routes/webhooks.js';
+import adminRoutes from './routes/admin.js';
+import adminDashboardRoutes from './routes/adminDashboard.js';
+import guestServiceRoutes from './routes/guestServices.js';
+import reviewRoutes from './routes/reviews.js';
+import maintenanceRoutes from './routes/maintenance.js';
+import incidentRoutes from './routes/incidents.js';
+import invoiceRoutes from './routes/invoices.js';
+import supplyRequestRoutes from './routes/supplyRequests.js';
+import communicationRoutes from './routes/communications.js';
+import messageTemplateRoutes from './routes/messageTemplates.js';
 
 const app = express();
 
@@ -123,6 +133,16 @@ app.use('/api/v1/guests', guestRoutes);
 app.use('/api/v1/reports', reportRoutes);
 app.use('/api/v1/ota', otaRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
+app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/admin-dashboard', adminDashboardRoutes);
+app.use('/api/v1/guest-services', guestServiceRoutes);
+app.use('/api/v1/reviews', reviewRoutes);
+app.use('/api/v1/maintenance', maintenanceRoutes);
+app.use('/api/v1/incidents', incidentRoutes);
+app.use('/api/v1/invoices', invoiceRoutes);
+app.use('/api/v1/supply-requests', supplyRequestRoutes);
+app.use('/api/v1/communications', communicationRoutes);
+app.use('/api/v1/message-templates', messageTemplateRoutes);
 
 // 404 handler
 app.all('*', (req, res) => {
