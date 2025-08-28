@@ -1,5 +1,5 @@
 import api from './api';
-import { HousekeepingTask, InventoryItem, RevenueData, OccupancyData } from '../types/admin';
+import { HousekeepingTask, InventoryItem, RevenueData, OccupancyData, AdminBooking, BookingFilters, BookingStats } from '../types/admin';
 
 interface ApiResponse<T> {
   status: string;
@@ -27,6 +27,7 @@ class AdminService {
   }
 
   async createHousekeepingTask(taskData: Partial<HousekeepingTask>): Promise<ApiResponse<{ task: HousekeepingTask }>> {
+    console.log('Sending task data to API:', taskData);
     const response = await api.post('/housekeeping', taskData);
     return response.data;
   }
@@ -140,6 +141,116 @@ class AdminService {
     });
 
     const response = await api.get(`/ota/sync-history?${params.toString()}`);
+    return response.data;
+  }
+
+  async getOTAConfig(hotelId: string): Promise<any> {
+    const response = await api.get(`/ota/config/${hotelId}`);
+    return response.data;
+  }
+
+  async updateOTAConfig(hotelId: string, provider: string, config: any): Promise<any> {
+    const response = await api.patch(`/ota/config/${hotelId}`, { provider, config });
+    return response.data;
+  }
+
+  async getOTAStats(hotelId: string): Promise<any> {
+    const response = await api.get(`/ota/stats/${hotelId}`);
+    return response.data;
+  }
+
+  async setupOTADemo(hotelId: string): Promise<any> {
+    const response = await api.post(`/ota/setup/${hotelId}`);
+    return response.data;
+  }
+
+  // Booking Management
+  async getBookings(filters: BookingFilters = {}): Promise<ApiResponse<{ bookings: AdminBooking[] }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    const response = await api.get(`/bookings?${params.toString()}`);
+    return response.data;
+  }
+
+  async getBookingById(id: string): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const response = await api.get(`/bookings/${id}`);
+    return response.data;
+  }
+
+  async updateBooking(id: string, updates: Partial<AdminBooking>): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const response = await api.patch(`/bookings/${id}`, updates);
+    return response.data;
+  }
+
+  async cancelBooking(id: string, reason?: string): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const response = await api.patch(`/bookings/${id}/cancel`, { reason });
+    return response.data;
+  }
+
+  async createBooking(bookingData: {
+    hotelId: string;
+    userId: string;
+    roomIds: string[];
+    checkIn: string;
+    checkOut: string;
+    guestDetails: {
+      adults: number;
+      children: number;
+      specialRequests?: string;
+    };
+    totalAmount: number;
+    currency?: string;
+    paymentStatus?: 'pending' | 'paid';
+    status?: 'pending' | 'confirmed';
+  }): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const payload = {
+      ...bookingData,
+      idempotencyKey: `admin-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      currency: bookingData.currency || 'INR',
+      paymentStatus: bookingData.paymentStatus || 'pending',
+      status: bookingData.status || 'pending'
+    };
+    
+    const response = await api.post('/bookings', payload);
+    return response.data;
+  }
+
+  async getAvailableRooms(hotelId: string, checkIn?: string, checkOut?: string): Promise<ApiResponse<{ rooms: any[] }>> {
+    const params = new URLSearchParams();
+    params.append('hotelId', hotelId);
+    if (checkIn) params.append('checkIn', checkIn);
+    if (checkOut) params.append('checkOut', checkOut);
+    
+    const response = await api.get(`/rooms?${params.toString()}`);
+    return response.data;
+  }
+
+  async getUsers(filters: { search?: string; role?: string } = {}): Promise<ApiResponse<{ users: any[] }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+    
+    const response = await api.get(`/admin/users?${params.toString()}`);
+    return response.data;
+  }
+
+  async getBookingStats(filters: { startDate?: string; endDate?: string; hotelId?: string } = {}): Promise<ApiResponse<{ stats: BookingStats }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    const response = await api.get(`/reports/bookings/stats?${params.toString()}`);
     return response.data;
   }
 }

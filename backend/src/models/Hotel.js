@@ -67,7 +67,7 @@ const hotelSchema = new mongoose.Schema({
   settings: {
     currency: {
       type: String,
-      default: 'USD'
+      default: 'INR'
     },
     timezone: {
       type: String,

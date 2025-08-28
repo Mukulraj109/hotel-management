@@ -5,6 +5,7 @@ import { AppError } from '../utils/appError.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { authenticate } from '../middleware/auth.js';
+import emailService from '../services/emailService.js';
 
 const router = express.Router();
 
@@ -78,6 +79,11 @@ router.post('/register', validate(schemas.register), catchAsync(async (req, res)
     process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_EXPIRES_IN }
   );
+
+  // Send welcome email (don't wait for it to complete)
+  emailService.sendWelcomeEmail(user).catch(error => {
+    console.error('Failed to send welcome email:', error);
+  });
 
   res.status(201).json({
     status: 'success',
@@ -184,6 +190,106 @@ router.get('/me', authenticate, catchAsync(async (req, res) => {
   res.json({
     status: 'success',
     user: req.user
+  });
+}));
+
+/**
+ * @swagger
+ * /auth/profile:
+ *   patch:
+ *     summary: Update user profile
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *               preferences:
+ *                 type: object
+ *                 properties:
+ *                   bedType:
+ *                     type: string
+ *                     enum: [single, double, queen, king]
+ *                   floor:
+ *                     type: string
+ *                   smokingAllowed:
+ *                     type: boolean
+ *                   other:
+ *                     type: string
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ */
+router.patch('/profile', authenticate, validate(schemas.updateProfile), catchAsync(async (req, res) => {
+  const { name, phone, preferences } = req.body;
+  
+  const updateData = {};
+  if (name) updateData.name = name;
+  if (phone) updateData.phone = phone;
+  if (preferences) updateData.preferences = preferences;
+
+  const user = await User.findByIdAndUpdate(
+    req.user._id,
+    updateData,
+    { new: true, runValidators: true }
+  );
+
+  res.json({
+    status: 'success',
+    user
+  });
+}));
+
+/**
+ * @swagger
+ * /auth/change-password:
+ *   patch:
+ *     summary: Change user password
+ *     tags: [Authentication]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *               - newPassword
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *                 minLength: 6
+ *     responses:
+ *       200:
+ *         description: Password changed successfully
+ */
+router.patch('/change-password', authenticate, validate(schemas.changePassword), catchAsync(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  const user = await User.findById(req.user._id).select('+password');
+  
+  if (!(await user.comparePassword(currentPassword))) {
+    throw new AppError('Current password is incorrect', 401);
+  }
+
+  user.password = newPassword;
+  await user.save();
+
+  res.json({
+    status: 'success',
+    message: 'Password updated successfully'
   });
 }));
 

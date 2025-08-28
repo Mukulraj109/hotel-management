@@ -82,3 +82,73 @@ export interface OccupancyData {
   totalRooms: number;
   periodDays: number;
 }
+
+export interface AdminBooking {
+  _id: string;
+  hotelId: {
+    _id: string;
+    name: string;
+    address?: string;
+  };
+  userId: {
+    _id: string;
+    name: string;
+    email: string;
+    phone?: string;
+  };
+  bookingNumber: string;
+  rooms: {
+    roomId: {
+      _id: string;
+      roomNumber: string;
+      type: string;
+    };
+    rate: number;
+  }[];
+  checkIn: string;
+  checkOut: string;
+  nights: number;
+  status: 'pending' | 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show';
+  paymentStatus: 'pending' | 'paid' | 'refunded' | 'failed';
+  totalAmount: number;
+  currency: string;
+  stripePaymentId?: string;
+  guestDetails: {
+    adults: number;
+    children: number;
+    specialRequests?: string;
+  };
+  extras?: {
+    name: string;
+    price: number;
+    quantity: number;
+  }[];
+  source: 'direct' | 'booking_com' | 'expedia' | 'airbnb';
+  cancellationReason?: string;
+  checkInTime?: string;
+  checkOutTime?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BookingFilters {
+  status?: string;
+  paymentStatus?: string;
+  checkIn?: string;
+  checkOut?: string;
+  source?: string;
+  hotelId?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface BookingStats {
+  total: number;
+  totalRevenue: number;
+  averageBookingValue: number;
+  pending: number;
+  confirmed: number;
+  checkedIn: number;
+  checkedOut: number;
+  cancelled: number;
+}

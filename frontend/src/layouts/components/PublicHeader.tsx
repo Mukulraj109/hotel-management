@@ -32,7 +32,7 @@ export default function PublicHeader() {
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">
             <Hotel className="h-8 w-8 text-blue-600" />
-            <span className="text-xl font-bold text-gray-900">Grand Palace</span>
+            <span className="text-xl font-bold text-gray-900">THE PENTOUZ</span>
           </Link>
 
           {/* Navigation - Desktop */}

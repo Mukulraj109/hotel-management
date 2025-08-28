@@ -5,7 +5,6 @@ import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import mongoSanitize from 'express-mongo-sanitize';
-import xss from 'xss';
 import hpp from 'hpp';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
@@ -26,6 +25,17 @@ import guestRoutes from './routes/guests.js';
 import reportRoutes from './routes/reports.js';
 import otaRoutes from './routes/ota.js';
 import webhookRoutes from './routes/webhooks.js';
+import adminRoutes from './routes/admin.js';
+import adminDashboardRoutes from './routes/adminDashboard.js';
+import guestServiceRoutes from './routes/guestServices.js';
+import reviewRoutes from './routes/reviews.js';
+import maintenanceRoutes from './routes/maintenance.js';
+import incidentRoutes from './routes/incidents.js';
+import invoiceRoutes from './routes/invoices.js';
+import supplyRequestRoutes from './routes/supplyRequests.js';
+import communicationRoutes from './routes/communications.js';
+import messageTemplateRoutes from './routes/messageTemplates.js';
+import contactRoutes from './routes/contact.js';
 
 const app = express();
 
@@ -45,7 +55,7 @@ const swaggerOptions = {
     servers: [
       {
         url: process.env.NODE_ENV === 'production' 
-          ? 'https://your-domain.com/api/v1' 
+          ? 'https://hotel-management-xcsx.onrender.com/api/v1' 
           : 'http://localhost:4000/api/v1',
         description: 'API Server'
       }
@@ -71,9 +81,7 @@ app.set('trust proxy', 1);
 // Security middleware
 app.use(helmet());
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://hotel-management-1-1lm3.onrender.com']
-    : ['http://localhost:3002', 'http://localhost:3001'],
+  origin: "*",
   credentials: true,
   optionsSuccessStatus: 200
 }));
@@ -126,6 +134,17 @@ app.use('/api/v1/guests', guestRoutes);
 app.use('/api/v1/reports', reportRoutes);
 app.use('/api/v1/ota', otaRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
+app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/admin-dashboard', adminDashboardRoutes);
+app.use('/api/v1/guest-services', guestServiceRoutes);
+app.use('/api/v1/reviews', reviewRoutes);
+app.use('/api/v1/maintenance', maintenanceRoutes);
+app.use('/api/v1/incidents', incidentRoutes);
+app.use('/api/v1/invoices', invoiceRoutes);
+app.use('/api/v1/supply-requests', supplyRequestRoutes);
+app.use('/api/v1/communications', communicationRoutes);
+app.use('/api/v1/message-templates', messageTemplateRoutes);
+app.use('/api/v1/contact', contactRoutes);
 
 // 404 handler
 app.all('*', (req, res) => {

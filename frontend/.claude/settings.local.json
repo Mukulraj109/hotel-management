@@ -15,7 +15,8 @@
       "Read(/C:\\Users\\Mukul raj\\Downloads\\project-bolt-sb1-vhvvuqkj\\project\\backend/**)",
       "Bash(npm run seed:*)",
       "Bash(taskkill:*)",
-      "Bash(rs)"
+      "Bash(rs)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": [],
     "ask": []

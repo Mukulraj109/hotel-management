@@ -42,7 +42,7 @@ router.post('/intent',
   authenticate, 
   validate(schemas.createPaymentIntent), 
   catchAsync(async (req, res) => {
-    const { bookingId, amount, currency = 'USD' } = req.body;
+    const { bookingId, amount, currency = 'INR' } = req.body;
 
     // Get booking
     const booking = await Booking.findById(bookingId);

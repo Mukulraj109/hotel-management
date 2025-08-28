@@ -44,6 +44,7 @@ export const schemas = {
 
   createBooking: Joi.object({
     hotelId: Joi.string().required(),
+    userId: Joi.string().optional(), // Allow admin to specify userId for manual bookings
     roomIds: Joi.array().items(Joi.string()).min(1).required(),
     checkIn: Joi.date().iso().min('now').required(),
     checkOut: Joi.date().iso().greater(Joi.ref('checkIn')).required(),
@@ -52,12 +53,32 @@ export const schemas = {
       children: Joi.number().min(0).default(0),
       specialRequests: Joi.string()
     }),
+    totalAmount: Joi.number().optional(), // Allow admin to specify total amount
+    currency: Joi.string().optional(),
+    paymentStatus: Joi.string().valid('pending', 'paid').optional(),
+    status: Joi.string().valid('pending', 'confirmed').optional(),
     idempotencyKey: Joi.string().required()
   }),
 
   createPaymentIntent: Joi.object({
     bookingId: Joi.string().required(),
     amount: Joi.number().min(1).required(),
-    currency: Joi.string().length(3).uppercase().default('USD')
+    currency: Joi.string().length(3).uppercase().default('INR')
+  }),
+
+  updateProfile: Joi.object({
+    name: Joi.string().min(2).max(100),
+    phone: Joi.string().pattern(/^\+?[\d\s-()]+$/),
+    preferences: Joi.object({
+      bedType: Joi.string().valid('single', 'double', 'queen', 'king'),
+      floor: Joi.string(),
+      smokingAllowed: Joi.boolean(),
+      other: Joi.string().max(500)
+    })
+  }),
+
+  changePassword: Joi.object({
+    currentPassword: Joi.string().required(),
+    newPassword: Joi.string().min(6).required()
   })
 };

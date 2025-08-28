@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Housekeeping from '../models/Housekeeping.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { AppError } from '../utils/appError.js';
@@ -53,14 +54,32 @@ router.get('/', authenticate, authorize('admin', 'staff'), catchAsync(async (req
 
 // Create housekeeping task
 router.post('/', authenticate, authorize('admin', 'staff'), catchAsync(async (req, res) => {
+  console.log('Received housekeeping task data:', req.body);
+  console.log('User hotelId:', req.user.hotelId);
+  
   const taskData = {
     ...req.body,
     hotelId: req.user.hotelId
   };
 
+  console.log('Final task data:', taskData);
+
+  // Validate required fields
+  if (!taskData.title) {
+    throw new AppError('Task title is required', 400);
+  }
+  if (!taskData.roomId) {
+    throw new AppError('Room ID is required', 400);
+  }
+  if (!taskData.taskType) {
+    throw new AppError('Task type is required', 400);
+  }
+
   const task = await Housekeeping.create(taskData);
   
   await task.populate('roomId', 'roomNumber type');
+
+  console.log('Created task:', task);
 
   res.status(201).json({
     status: 'success',
@@ -72,6 +91,14 @@ router.post('/', authenticate, authorize('admin', 'staff'), catchAsync(async (re
 router.patch('/:id', authenticate, authorize('admin', 'staff'), catchAsync(async (req, res) => {
   const { id } = req.params;
   const updateData = req.body;
+
+  console.log('Updating housekeeping task:', { id, updateData });
+
+  // Validate ObjectId format
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    console.log('Invalid ObjectId format:', id);
+    throw new AppError('Invalid task ID format', 400);
+  }
 
   // If task is being started, set startedAt
   if (updateData.status === 'in_progress' && !updateData.startedAt) {
@@ -90,8 +117,11 @@ router.patch('/:id', authenticate, authorize('admin', 'staff'), catchAsync(async
   ).populate('roomId assignedToUserId');
 
   if (!task) {
+    console.log('Task not found with ID:', id);
     throw new AppError('Housekeeping task not found', 404);
   }
+
+  console.log('Updated task:', task);
 
   res.json({
     status: 'success',

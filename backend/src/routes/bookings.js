@@ -83,7 +83,7 @@ router.get('/', authenticate, catchAsync(async (req, res) => {
   const bookings = await Booking.find(query)
     .populate('userId', 'name email phone')
     .populate('rooms.roomId', 'roomNumber type')
-    .populate('hotelId', 'name')
+    .populate('hotelId', 'name address contact')
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(parseInt(limit));
@@ -98,9 +98,7 @@ router.get('/', authenticate, catchAsync(async (req, res) => {
       pages: Math.ceil(total / parseInt(limit)),
       total
     },
-    data: {
-      bookings
-    }
+    data: bookings
   });
 }));
 
@@ -197,10 +195,15 @@ router.post('/',
   catchAsync(async (req, res) => {
     const {
       hotelId,
+      userId,
       roomIds,
       checkIn,
       checkOut,
       guestDetails,
+      totalAmount,
+      currency,
+      paymentStatus,
+      status,
       idempotencyKey
     } = req.body;
 
@@ -246,21 +249,22 @@ router.post('/',
         }));
 
         const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
-        const totalAmount = roomsWithRates.reduce((total, room) => total + room.rate, 0) * nights;
+        const calculatedTotal = roomsWithRates.reduce((total, room) => total + room.rate, 0) * nights;
 
-        // Create booking
+        // Create booking - use admin-provided values when available
         const booking = await Booking.create([{
           hotelId,
-          userId: req.user._id,
+          userId: userId || req.user._id, // Use provided userId for admin bookings, fallback to current user
           rooms: roomsWithRates,
           checkIn: checkInDate,
           checkOut: checkOutDate,
           nights,
           guestDetails,
-          totalAmount,
+          totalAmount: totalAmount || calculatedTotal, // Use provided total or calculated total
+          currency: currency || 'INR',
           idempotencyKey,
-          status: 'pending',
-          paymentStatus: 'pending'
+          status: status || 'pending',
+          paymentStatus: paymentStatus || 'pending'
         }], { session });
 
         res.status(201).json({

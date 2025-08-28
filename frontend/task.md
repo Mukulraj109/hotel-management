@@ -1,0 +1,1 @@
+in the admin-dashboard the rooms section in the sidebar the in this page check everything is working properly becz it saying all room are vacant so when i booked from a user account the it the room section is not auto updating check what i am doing wrong

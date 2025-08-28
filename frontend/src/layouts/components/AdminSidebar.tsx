@@ -8,10 +8,12 @@ import {
   Package, 
   BarChart3, 
   Wifi,
-  ClipboardList
+  ClipboardList,
+  Globe
 } from 'lucide-react';
 
 const navigation = [
+  { name: 'Home', href: '/', icon: Globe },
   { name: 'Dashboard', href: '/admin', icon: Home },
   { name: 'Rooms', href: '/admin/rooms', icon: Bed },
   { name: 'Bookings', href: '/admin/bookings', icon: Calendar },

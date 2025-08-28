@@ -171,7 +171,7 @@ roomSchema.methods.isAvailable = async function(checkIn, checkOut) {
 };
 
 // Static method to find available rooms
-roomSchema.statics.findAvailable = async function(hotelId, checkIn, checkOut, roomType = null) {
+roomSchema.statics.findAvailable = async function(hotelId, checkInDate, checkOutDate, roomType = null) {
   const Booking = mongoose.model('Booking');
   
   // Find all bookings that conflict with the date range
@@ -179,9 +179,9 @@ roomSchema.statics.findAvailable = async function(hotelId, checkIn, checkOut, ro
     hotelId,
     status: { $in: ['confirmed', 'checked_in'] },
     $or: [
-      { checkIn: { $lt: checkOut, $gte: checkIn } },
-      { checkOut: { $gt: checkIn, $lte: checkOut } },
-      { checkIn: { $lte: checkIn }, checkOut: { $gte: checkOut } }
+      { checkIn: { $lt: checkOutDate, $gte: checkInDate } },
+      { checkOut: { $gt: checkInDate, $lte: checkOutDate } },
+      { checkIn: { $lte: checkInDate }, checkOut: { $gte: checkOutDate } }
     ]
   }).select('rooms.roomId');
 
@@ -189,6 +189,10 @@ roomSchema.statics.findAvailable = async function(hotelId, checkIn, checkOut, ro
   const occupiedRoomIds = conflictingBookings.flatMap(booking => 
     booking.rooms.map(room => room.roomId.toString())
   );
+
+  // Debug logging
+  console.log('Conflicting bookings found:', conflictingBookings.length);
+  console.log('Occupied room IDs:', occupiedRoomIds);
 
   // Build query for available rooms
   const query = {
@@ -202,7 +206,139 @@ roomSchema.statics.findAvailable = async function(hotelId, checkIn, checkOut, ro
     query.type = roomType;
   }
 
-  return await this.find(query).sort({ roomNumber: 1 });
+  // Debug logging
+  console.log('Room query:', JSON.stringify(query, null, 2));
+
+  // Return the executed query results, not a query object
+  const availableRooms = await this.find(query).sort({ roomNumber: 1 });
+  
+  // Debug logging
+  console.log('Available rooms query result:', availableRooms.length);
+  
+  return availableRooms;
+};
+
+// Method to get room status based on current bookings
+roomSchema.statics.getRoomsWithRealTimeStatus = async function(hotelId, options = {}) {
+  const Booking = mongoose.model('Booking');
+  
+  const {
+    type,
+    floor,
+    page = 1,
+    limit = 100
+  } = options;
+  
+  // Build base query
+  const query = {
+    hotelId,
+    isActive: true
+  };
+  
+  if (type) query.type = type;
+  if (floor) query.floor = floor;
+  
+  // Get all rooms for the hotel
+  const rooms = await this.find(query)
+    .sort({ floor: 1, roomNumber: 1 })
+    .skip((page - 1) * limit)
+    .limit(limit);
+  
+  if (!rooms.length) return { rooms: [], total: 0 };
+  
+  // Get current date
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+  
+  // Find all current bookings that affect these rooms
+  const currentBookings = await Booking.find({
+    hotelId,
+    status: { $in: ['confirmed', 'checked_in'] },
+    checkOut: { $gte: today }, // Haven't checked out yet
+    checkIn: { $lte: tomorrow } // Started or starting soon
+  }).select('rooms.roomId status checkIn checkOut');
+  
+  console.log('Real-time status calculation:', {
+    hotelId,
+    today: today.toISOString(),
+    tomorrow: tomorrow.toISOString(),
+    totalRooms: rooms.length,
+    currentBookings: currentBookings.length,
+    bookings: currentBookings.map(b => ({
+      id: b._id,
+      status: b.status,
+      checkIn: b.checkIn,
+      checkOut: b.checkOut,
+      roomIds: b.rooms.map(r => r.roomId)
+    }))
+  });
+  
+  // Create a map of room occupancy
+  const roomOccupancyMap = new Map();
+  
+  currentBookings.forEach(booking => {
+    booking.rooms.forEach(roomBooking => {
+      const roomId = roomBooking.roomId.toString();
+      const checkIn = new Date(booking.checkIn);
+      const checkOut = new Date(booking.checkOut);
+      
+      let computedStatus = 'occupied';
+      
+      // More granular status based on dates and booking status
+      if (booking.status === 'checked_in') {
+        computedStatus = 'occupied';
+      } else if (booking.status === 'confirmed') {
+        if (checkIn <= today) {
+          computedStatus = 'occupied'; // Should be checked in
+        } else {
+          computedStatus = 'reserved'; // Reserved for future
+        }
+      }
+      
+      roomOccupancyMap.set(roomId, {
+        status: computedStatus,
+        bookingId: booking._id,
+        checkIn: booking.checkIn,
+        checkOut: booking.checkOut,
+        bookingStatus: booking.status
+      });
+    });
+  });
+  
+  // Add computed status to each room
+  const roomsWithStatus = rooms.map(room => {
+    const roomObj = room.toObject();
+    const occupancy = roomOccupancyMap.get(room._id.toString());
+    
+    if (occupancy) {
+      roomObj.computedStatus = occupancy.status;
+      roomObj.currentBooking = {
+        bookingId: occupancy.bookingId,
+        checkIn: occupancy.checkIn,
+        checkOut: occupancy.checkOut,
+        status: occupancy.bookingStatus
+      };
+    } else {
+      // Check if room has any other status (maintenance, dirty, etc.)
+      roomObj.computedStatus = room.status === 'vacant' ? 'vacant' : room.status;
+    }
+    
+    return roomObj;
+  });
+  
+  // Get total count for pagination
+  const total = await this.countDocuments(query);
+  
+  return {
+    rooms: roomsWithStatus,
+    total,
+    pagination: {
+      page,
+      limit,
+      pages: Math.ceil(total / limit)
+    }
+  };
 };
 
 export default mongoose.model('Room', roomSchema);
