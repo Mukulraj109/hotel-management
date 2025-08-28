@@ -39,6 +39,8 @@ services:
       - NODE_ENV=development
       - MONGO_URI=mongodb://admin:password@mongodb:27017/hotel_dev?authSource=admin
       - REDIS_URL=redis://redis:6379
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
     depends_on:
       - mongodb
       - redis
@@ -58,6 +60,7 @@ services:
       - '3000:3000'
     environment:
       - VITE_API_URL=http://localhost:4000/api/v1
+      - VITE_STRIPE_PUBLIC_KEY=${VITE_STRIPE_PUBLIC_KEY}
     depends_on:
       - backend
     volumes:
