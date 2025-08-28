@@ -265,7 +265,7 @@ reviewSchema.statics.getHotelRatingSummary = async function(hotelId) {
   const pipeline = [
     {
       $match: {
-        hotelId: mongoose.Types.ObjectId(hotelId),
+        hotelId: new mongoose.Types.ObjectId(hotelId),
         isPublished: true,
         moderationStatus: 'approved'
       }
@@ -327,7 +327,7 @@ reviewSchema.statics.getHotelRatingSummary = async function(hotelId) {
 // Static method to get recent reviews
 reviewSchema.statics.getRecentReviews = async function(hotelId, limit = 10) {
   return await this.find({
-    hotelId: mongoose.Types.ObjectId(hotelId),
+    hotelId: new mongoose.Types.ObjectId(hotelId),
     isPublished: true,
     moderationStatus: 'approved'
   })

@@ -612,7 +612,7 @@ invoiceSchema.methods.markSplitPaid = function(splitIndex, amount, method, trans
 // Static method to get revenue statistics
 invoiceSchema.statics.getRevenueStats = async function(hotelId, startDate, endDate) {
   const matchQuery = {
-    hotelId: mongoose.Types.ObjectId(hotelId),
+    hotelId: new mongoose.Types.ObjectId(hotelId),
     status: { $in: ['paid', 'partially_paid'] }
   };
   

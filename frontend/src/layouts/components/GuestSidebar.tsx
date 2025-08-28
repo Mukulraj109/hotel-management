@@ -1,8 +1,9 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Calendar, User, MessageSquare } from 'lucide-react';
+import { Home, Calendar, User, MessageSquare, Globe } from 'lucide-react';
 
 const navigation = [
+  { name: 'Home', href: '/', icon: Globe },
   { name: 'Dashboard', href: '/app', icon: Home },
   { name: 'My Bookings', href: '/app/bookings', icon: Calendar },
   { name: 'Profile', href: '/app/profile', icon: User },

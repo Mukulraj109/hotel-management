@@ -35,7 +35,7 @@ import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
 
 // Initialize Stripe
-const stripePromise = loadStripe((import.meta as any).env?.VITE_STRIPE_PUBLIC_KEY || 'pk_test_xxx');
+const stripePromise = loadStripe((import.meta as any).env?.VITE_STRIPE_PUBLIC_KEY || 'pk_test_51ABC123DEF456GHI789JKL012MNO345PQR678STU901VWX234YZA567BCD890EFG');
 
 // Payment Form Component
 interface PaymentFormProps {
@@ -271,23 +271,63 @@ export default function BookingPage() {
     setStep('details');
   };
 
-  // Create payment intent
-  const createPaymentIntent = async () => {
+  // Create booking and payment intent
+  const createBookingAndPaymentIntent = async () => {
     if (!bookingDetails) return;
     
     try {
-      const response = await paymentService.createPaymentIntent({
-        bookingId: 'temp-booking-id',
+      // Debug logging
+      console.log('Selected room:', selectedRoom);
+      console.log('Selected room ID:', selectedRoomId);
+      console.log('Watched values:', watchedValues);
+      
+      // Get hotelId from selected room or first available room
+      let hotelId: any = selectedRoom?.hotelId;
+      if (!hotelId && rooms.length > 0) {
+        hotelId = rooms[0].hotelId;
+      }
+      if (!hotelId) {
+        throw new Error('No hotel ID available');
+      }
+
+      // First create the booking
+      const bookingRequest: CreateBookingRequest = {
+        hotelId: typeof hotelId === 'object' ? hotelId._id : hotelId,
+        roomIds: [selectedRoomId!],
+        checkIn: new Date(watchedValues.checkIn).toISOString(),
+        checkOut: new Date(watchedValues.checkOut).toISOString(),
+        guestDetails: {
+          adults: watchedValues.adults,
+          children: watchedValues.children,
+          specialRequests: watchedValues.specialRequests || undefined,
+        },
+        idempotencyKey: `booking-${Date.now()}-${user?._id}`,
+      };
+
+      console.log('Booking request:', bookingRequest);
+
+      const bookingResponse = await bookingService.createBooking(bookingRequest);
+      
+      if (bookingResponse.status !== 'success') {
+        throw new Error('Failed to create booking');
+      }
+
+      const bookingId = bookingResponse.data.booking._id;
+
+      // Then create payment intent with the real booking ID
+      const paymentResponse = await paymentService.createPaymentIntent({
+        bookingId: bookingId,
         amount: Math.round(bookingDetails.total * 100), // Convert to cents
-        currency: 'inr'
+        currency: 'INR'
       });
       
-      setClientSecret(response.data.clientSecret);
-      setPaymentIntentId(response.data.paymentIntentId);
+      setClientSecret(paymentResponse.data.clientSecret);
+      setPaymentIntentId(paymentResponse.data.paymentIntentId);
       setStep('payment');
-    } catch (error) {
-      console.error('Failed to create payment intent:', error);
-      toast.error('Failed to initialize payment');
+    } catch (error: any) {
+      console.error('Failed to create booking or payment intent:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to initialize booking and payment';
+      toast.error(errorMessage);
     }
   };
 
@@ -304,7 +344,7 @@ export default function BookingPage() {
       return;
     }
 
-    await createPaymentIntent();
+    await createBookingAndPaymentIntent();
   };
 
   // Handle final booking submission after payment
@@ -316,28 +356,13 @@ export default function BookingPage() {
 
     setIsSubmitting(true);
     try {
-      const bookingRequest: CreateBookingRequest = {
-        hotelId: selectedRoom!.hotelId || 'default-hotel-id',
-        roomIds: [selectedRoomId!],
-        checkIn: watchedValues.checkIn,
-        checkOut: watchedValues.checkOut,
-        guestDetails: {
-          adults: watchedValues.adults,
-          children: watchedValues.children,
-          specialRequests: watchedValues.specialRequests || undefined,
-        },
-        idempotencyKey: `booking-${Date.now()}-${user?._id}`,
-      };
-
-      const response = await bookingService.createBooking(bookingRequest);
-      
-      if (response.status === 'success') {
-        setStep('confirmation');
-        toast.success('Booking created successfully!');
-      }
+      // The booking and payment are already completed
+      // Just show confirmation
+      setStep('confirmation');
+      toast.success('Booking and payment completed successfully!');
     } catch (error: any) {
-      console.error('Booking error:', error);
-      toast.error(error.response?.data?.message || 'Failed to create booking');
+      console.error('Error:', error);
+      toast.error('An error occurred');
     } finally {
       setIsSubmitting(false);
     }
@@ -593,12 +618,12 @@ export default function BookingPage() {
                                 </h3>
                                 <p className="text-gray-600">Room {room.roomNumber}</p>
                               </div>
-                              <div className="text-right">
-                                <div className="text-2xl font-bold text-blue-600">
-                                  ${room.currentRate}
-                                </div>
-                                <div className="text-sm text-gray-500">per night</div>
-                              </div>
+                                                             <div className="text-right">
+                                 <div className="text-2xl font-bold text-blue-600">
+                                   ₹{room.currentRate}
+                                 </div>
+                                 <div className="text-sm text-gray-500">per night</div>
+                               </div>
                             </div>
                             
                             {room.description && (
@@ -762,25 +787,25 @@ export default function BookingPage() {
                           {bookingDetails.checkOut.toLocaleDateString()}
                         </span>
                       </div>
-                      <div className="flex justify-between mb-2">
-                        <span>{bookingDetails.nights} nights</span>
-                        <span className="font-medium">
-                          ${bookingDetails.roomTotal.toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between mb-2">
-                        <span>Taxes & fees</span>
-                        <span className="font-medium">
-                          ${bookingDetails.taxes.toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <div className="border-t pt-4">
-                      <div className="flex justify-between text-lg font-bold">
-                        <span>Total</span>
-                        <span>${bookingDetails.total.toFixed(2)}</span>
-                      </div>
+                                             <div className="flex justify-between mb-2">
+                         <span>{bookingDetails.nights} nights</span>
+                         <span className="font-medium">
+                           ₹{bookingDetails.roomTotal.toFixed(2)}
+                         </span>
+                       </div>
+                       <div className="flex justify-between mb-2">
+                         <span>Taxes & fees</span>
+                         <span className="font-medium">
+                           ₹{bookingDetails.taxes.toFixed(2)}
+                         </span>
+                       </div>
+                     </div>
+                     
+                     <div className="border-t pt-4">
+                       <div className="flex justify-between text-lg font-bold">
+                         <span>Total</span>
+                         <span>₹{bookingDetails.total.toFixed(2)}</span>
+                       </div>
                     </div>
                   </div>
                   

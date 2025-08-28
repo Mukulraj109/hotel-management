@@ -35,6 +35,7 @@ import invoiceRoutes from './routes/invoices.js';
 import supplyRequestRoutes from './routes/supplyRequests.js';
 import communicationRoutes from './routes/communications.js';
 import messageTemplateRoutes from './routes/messageTemplates.js';
+import contactRoutes from './routes/contact.js';
 
 const app = express();
 
@@ -143,6 +144,7 @@ app.use('/api/v1/invoices', invoiceRoutes);
 app.use('/api/v1/supply-requests', supplyRequestRoutes);
 app.use('/api/v1/communications', communicationRoutes);
 app.use('/api/v1/message-templates', messageTemplateRoutes);
+app.use('/api/v1/contact', contactRoutes);
 
 // 404 handler
 app.all('*', (req, res) => {

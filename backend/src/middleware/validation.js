@@ -59,5 +59,29 @@ export const schemas = {
     bookingId: Joi.string().required(),
     amount: Joi.number().min(1).required(),
     currency: Joi.string().length(3).uppercase().default('USD')
+  }),
+
+  updateProfile: Joi.object({
+    name: Joi.string().min(2).max(100),
+    phone: Joi.string().pattern(/^\+?[\d\s-()]+$/),
+    preferences: Joi.object({
+      bedType: Joi.string().valid('single', 'double', 'queen', 'king'),
+      floor: Joi.string(),
+      smokingAllowed: Joi.boolean(),
+      other: Joi.string().max(500)
+    })
+  }),
+
+  changePassword: Joi.object({
+    currentPassword: Joi.string().required(),
+    newPassword: Joi.string().min(6).required()
+  }),
+
+  contact: Joi.object({
+    name: Joi.string().required().min(2).max(100),
+    email: Joi.string().email().required(),
+    phone: Joi.string().pattern(/^\+?[\d\s-()]+$/),
+    subject: Joi.string().required().min(5).max(200),
+    message: Joi.string().required().min(10).max(1000)
   })
 };

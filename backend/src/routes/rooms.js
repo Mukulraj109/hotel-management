@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Room from '../models/Room.js';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth.js';
 import { validate, schemas } from '../middleware/validation.js';
@@ -54,23 +55,34 @@ const router = express.Router();
  *         description: List of rooms
  */
 router.get('/', optionalAuth, catchAsync(async (req, res) => {
-  const {
-    hotelId,
-    checkIn,
-    checkOut,
-    type,
-    page = 1,
-    limit = 10,
-    minPrice,
-    maxPrice
-  } = req.query;
+    const {
+      hotelId,
+      checkIn,
+      checkOut,
+      type,
+      page = 1,
+      limit = 10,
+      minPrice,
+      maxPrice
+    } = req.query;
+
+    console.log('GET /rooms query params:', req.query);
 
   // Build query
   const query = { isActive: true };
   
-  if (hotelId) {
-    query.hotelId = hotelId;
+  // If no hotelId provided, get the first available hotel
+  let targetHotelId = hotelId;
+  if (!targetHotelId) {
+    const Hotel = mongoose.model('Hotel');
+    const firstHotel = await Hotel.findOne({ isActive: true }).select('_id');
+    if (!firstHotel) {
+      throw new AppError('No hotels available', 404);
+    }
+    targetHotelId = firstHotel._id;
   }
+  
+  query.hotelId = targetHotelId;
   
   if (type) {
     query.type = type;
@@ -96,7 +108,22 @@ router.get('/', optionalAuth, catchAsync(async (req, res) => {
       throw new AppError('Check-out date must be after check-in date', 400);
     }
 
-    rooms = await Room.findAvailable(hotelId, checkInDate, checkOutDate, type)
+    // If no hotelId provided, get the first available hotel
+    let targetHotelId = hotelId;
+    if (!targetHotelId) {
+      const Hotel = mongoose.model('Hotel');
+      const firstHotel = await Hotel.findOne({ isActive: true }).select('_id');
+      if (!firstHotel) {
+        throw new AppError('No hotels available', 404);
+      }
+      targetHotelId = firstHotel._id;
+    }
+
+    // Debug logging
+    console.log('findAvailable params:', { targetHotelId, checkInDate, checkOutDate, type });
+
+    const availableRoomsQuery = await Room.findAvailable(targetHotelId, checkInDate, checkOutDate, type);
+    rooms = await availableRoomsQuery
       .skip(skip)
       .limit(parseInt(limit))
       .populate('hotelId', 'name address');
@@ -111,19 +138,19 @@ router.get('/', optionalAuth, catchAsync(async (req, res) => {
   // Get total count for pagination
   const total = await Room.countDocuments(query);
 
-  res.json({
-    status: 'success',
-    results: rooms.length,
-    data: {
-      rooms,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / parseInt(limit))
+    res.json({
+      status: 'success',
+      results: rooms.length,
+      data: {
+        rooms,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          pages: Math.ceil(total / parseInt(limit))
+        }
       }
-    }
-  });
+    });
 }));
 
 // Get room metrics for admin dashboard

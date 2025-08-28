@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Star, Wifi, Car, Coffee, Utensils, Waves, Dumbbell, Shield, MapPin, Award, Heart, Sparkles } from 'lucide-react';
+import { Star, Wifi, Car, Coffee, Utensils, Waves, Dumbbell, Shield, MapPin, Award, Heart, Sparkles, Phone, Mail, Clock } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 
 export default function HomePage() {
@@ -203,6 +203,141 @@ export default function HomePage() {
               Book Your Stay
             </Button>
           </Link>
+        </div>
+      </section>
+
+      {/* Contact Section */}
+      <section className="py-20 bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
+              <span className="text-yellow-400">Get In Touch</span>
+            </h2>
+            <p className="text-xl text-blue-100 max-w-3xl mx-auto">
+              Have questions about our services? Ready to transform your hotel operations? 
+              Contact Pentouz Hotel Management today.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 max-w-6xl mx-auto">
+            {/* Contact Information */}
+            <div className="space-y-8">
+              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20">
+                <h3 className="text-2xl font-bold text-white mb-8">Contact Information</h3>
+                
+                <div className="space-y-6">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex-shrink-0 w-12 h-12 bg-yellow-400 rounded-full flex items-center justify-center">
+                      <MapPin className="w-6 h-6 text-black" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-semibold text-white">Address</h4>
+                      <p className="text-blue-100">
+                        Pentouz Hotel Management<br />
+                        123 Business District, Mumbai, Maharashtra 400001
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-4">
+                    <div className="flex-shrink-0 w-12 h-12 bg-yellow-400 rounded-full flex items-center justify-center">
+                      <Phone className="w-6 h-6 text-black" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-semibold text-white">Phone</h4>
+                      <p className="text-blue-100">+91 98765 43210</p>
+                      <p className="text-blue-100">+91 98765 43211</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-4">
+                    <div className="flex-shrink-0 w-12 h-12 bg-yellow-400 rounded-full flex items-center justify-center">
+                      <Mail className="w-6 h-6 text-black" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-semibold text-white">Email</h4>
+                      <p className="text-blue-100">info@pentouz.com</p>
+                      <p className="text-blue-100">support@pentouz.com</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-4">
+                    <div className="flex-shrink-0 w-12 h-12 bg-yellow-400 rounded-full flex items-center justify-center">
+                      <Clock className="w-6 h-6 text-black" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-semibold text-white">Business Hours</h4>
+                      <p className="text-blue-100">Monday - Friday: 9:00 AM - 6:00 PM</p>
+                      <p className="text-blue-100">Saturday: 10:00 AM - 4:00 PM</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-r from-yellow-400 to-yellow-600 rounded-2xl p-8 text-black">
+                <h3 className="text-2xl font-bold mb-4">Why Choose Pentouz?</h3>
+                <ul className="space-y-2">
+                  <li className="flex items-center space-x-2">
+                    <Award className="w-5 h-5" />
+                    <span>Industry-leading hotel management solutions</span>
+                  </li>
+                  <li className="flex items-center space-x-2">
+                    <Heart className="w-5 h-5" />
+                    <span>Enhanced guest experiences & satisfaction</span>
+                  </li>
+                  <li className="flex items-center space-x-2">
+                    <Shield className="w-5 h-5" />
+                    <span>Secure, reliable, and scalable technology</span>
+                  </li>
+                  <li className="flex items-center space-x-2">
+                    <Star className="w-5 h-5" />
+                    <span>24/7 expert support and guidance</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* CTA Section */}
+            <div className="flex flex-col justify-center">
+              <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-8 border border-white/20 text-center">
+                <Sparkles className="w-16 h-16 text-yellow-400 mx-auto mb-6" />
+                <h3 className="text-3xl font-bold text-white mb-4">
+                  Ready to Transform Your Hotel?
+                </h3>
+                <p className="text-blue-100 mb-8 text-lg">
+                  Join hundreds of hotels that have revolutionized their operations with 
+                  Pentouz Hotel Management System. Get started today!
+                </p>
+                
+                <div className="space-y-4">
+                  <Link to="/contact">
+                    <Button size="lg" className="w-full bg-gradient-to-r from-yellow-400 to-yellow-600 hover:from-yellow-500 hover:to-yellow-700 text-black font-bold px-8 py-4 text-xl transform hover:scale-105 transition-all duration-300 shadow-2xl">
+                      Contact Us Today
+                    </Button>
+                  </Link>
+                  
+                  <p className="text-sm text-blue-200">
+                    Free consultation • No commitment required • Instant response
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-8 grid grid-cols-3 gap-4 text-center">
+                <div className="bg-white/5 rounded-xl p-4">
+                  <div className="text-2xl font-bold text-yellow-400">500+</div>
+                  <div className="text-sm text-blue-100">Hotels Served</div>
+                </div>
+                <div className="bg-white/5 rounded-xl p-4">
+                  <div className="text-2xl font-bold text-yellow-400">24/7</div>
+                  <div className="text-sm text-blue-100">Support</div>
+                </div>
+                <div className="bg-white/5 rounded-xl p-4">
+                  <div className="text-2xl font-bold text-yellow-400">99%</div>
+                  <div className="text-sm text-blue-100">Uptime</div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </div>

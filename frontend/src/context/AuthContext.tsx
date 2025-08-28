@@ -9,6 +9,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (userData: RegisterData) => Promise<void>;
   logout: () => void;
+  updateUser: (userData: User) => void;
   isAuthenticated: boolean;
   hasRole: (roles: string[]) => boolean;
 }
@@ -88,12 +89,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return user ? roles.includes(user.role) : false;
   };
 
+  const updateUser = (userData: User) => {
+    setUser(userData);
+  };
+
   const value = {
     user,
     isLoading,
     login,
     register,
     logout,
+    updateUser,
     isAuthenticated,
     hasRole,
   };

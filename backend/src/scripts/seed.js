@@ -349,16 +349,24 @@ const seedData = async () => {
         rating,
         categories: {
           cleanliness: rating,
-          comfort: Math.max(1, Math.min(5, rating + Math.floor(Math.random() * 3) - 1)),
-          location: rating,
           service: Math.max(1, Math.min(5, rating + Math.floor(Math.random() * 3) - 1)),
-          value: rating
+          location: rating,
+          value: Math.max(1, Math.min(5, rating + Math.floor(Math.random() * 3) - 1)),
+          amenities: Math.max(1, Math.min(5, rating + Math.floor(Math.random() * 3) - 1))
         },
         title: ['Great stay!', 'Good experience', 'Average hotel', 'Could be better', 'Excellent service'][rating - 1],
         content: ['Amazing experience, would definitely stay again!', 'Nice hotel with good amenities', 'Decent stay for the price', 'Room was okay but service could improve', 'Outstanding service and facilities'][rating - 1],
-        photos: rating >= 4 ? ['https://images.pexels.com/photos/271618/pexels-photo-271618.jpeg'] : [],
-        helpful: Math.floor(Math.random() * 15),
-        reviewDate: new Date(Date.now() - Math.random() * 90 * 24 * 60 * 60 * 1000)
+        images: rating >= 4 ? ['https://images.pexels.com/photos/271618/pexels-photo-271618.jpeg'] : [],
+        helpfulVotes: Math.floor(Math.random() * 15),
+        helpfulCount: Math.floor(Math.random() * 15),
+        reportCount: 0,
+        isVerified: booking ? true : Math.random() > 0.3,
+        isPublished: true,
+        status: 'approved',
+        moderationStatus: 'approved',
+        visitType: ['business', 'leisure', 'family', 'couple', 'solo'][Math.floor(Math.random() * 5)],
+        stayDate: new Date(Date.now() - Math.random() * 90 * 24 * 60 * 60 * 1000),
+        guestName: guest.name
       });
     }
     const createdReviews = await Review.create(reviewsData);

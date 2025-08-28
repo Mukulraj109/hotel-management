@@ -187,4 +187,60 @@ router.get('/me', authenticate, catchAsync(async (req, res) => {
   });
 }));
 
+// Update user profile
+router.patch('/profile', authenticate, validate(schemas.updateProfile), catchAsync(async (req, res) => {
+  const { name, phone, preferences } = req.body;
+  
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    throw new AppError('User not found', 404);
+  }
+
+  // Update fields if provided
+  if (name !== undefined) user.name = name;
+  if (phone !== undefined) user.phone = phone;
+  if (preferences !== undefined) user.preferences = { ...user.preferences, ...preferences };
+
+  await user.save();
+
+  res.json({
+    status: 'success',
+    user: {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      preferences: user.preferences,
+      loyalty: user.loyalty,
+      createdAt: user.createdAt
+    }
+  });
+}));
+
+// Change password
+router.patch('/change-password', authenticate, validate(schemas.changePassword), catchAsync(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  
+  const user = await User.findById(req.user._id).select('+password');
+  if (!user) {
+    throw new AppError('User not found', 404);
+  }
+
+  // Verify current password
+  const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+  if (!isCurrentPasswordValid) {
+    throw new AppError('Current password is incorrect', 400);
+  }
+
+  // Update password
+  user.password = newPassword;
+  await user.save();
+
+  res.json({
+    status: 'success',
+    message: 'Password changed successfully'
+  });
+}));
+
 export default router;

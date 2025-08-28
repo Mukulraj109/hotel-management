@@ -171,11 +171,11 @@ roomSchema.methods.isAvailable = async function(checkIn, checkOut) {
 };
 
 // Static method to find available rooms
-roomSchema.statics.findAvailable = async function(hotelId, checkIn, checkOut, roomType = null) {
+roomSchema.statics.findAvailable = function(hotelId, checkIn, checkOut, roomType = null) {
   const Booking = mongoose.model('Booking');
   
   // Find all bookings that conflict with the date range
-  const conflictingBookings = await Booking.find({
+  const conflictingBookingsPromise = Booking.find({
     hotelId,
     status: { $in: ['confirmed', 'checked_in'] },
     $or: [
@@ -185,15 +185,9 @@ roomSchema.statics.findAvailable = async function(hotelId, checkIn, checkOut, ro
     ]
   }).select('rooms.roomId');
 
-  // Extract room IDs from conflicting bookings
-  const occupiedRoomIds = conflictingBookings.flatMap(booking => 
-    booking.rooms.map(room => room.roomId.toString())
-  );
-
   // Build query for available rooms
   const query = {
     hotelId,
-    _id: { $nin: occupiedRoomIds },
     status: 'vacant',
     isActive: true
   };
@@ -202,7 +196,16 @@ roomSchema.statics.findAvailable = async function(hotelId, checkIn, checkOut, ro
     query.type = roomType;
   }
 
-  return await this.find(query).sort({ roomNumber: 1 });
+  // Return a promise that resolves to the query with the occupied rooms excluded
+  return conflictingBookingsPromise.then(conflictingBookings => {
+    const occupiedRoomIds = conflictingBookings.flatMap(booking => 
+      booking.rooms.map(room => room.roomId.toString())
+    );
+    
+    query._id = { $nin: occupiedRoomIds };
+    
+    return this.find(query).sort({ roomNumber: 1 });
+  });
 };
 
 export default mongoose.model('Room', roomSchema);
