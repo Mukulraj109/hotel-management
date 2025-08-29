@@ -9,6 +9,7 @@ import { adminService } from '../../services/adminService';
 import { AdminBooking, BookingFilters, BookingStats } from '../../types/admin';
 import { formatCurrency, formatNumber, getStatusColor } from '../../utils/dashboardUtils';
 import { format, parseISO } from 'date-fns';
+import WalkInBooking from './WalkInBooking';
 import { 
   Calendar, 
   Coins, 
@@ -25,7 +26,9 @@ import {
   Plus,
   Search,
   Home,
-  User
+  User,
+  UserPlus,
+  Building
 } from 'lucide-react';
 
 export default function AdminBookings() {
@@ -48,6 +51,7 @@ export default function AdminBookings() {
   
   // Manual booking form state
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showWalkInModal, setShowWalkInModal] = useState(false);
   const [availableRooms, setAvailableRooms] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [userSearch, setUserSearch] = useState('');
@@ -381,14 +385,21 @@ export default function AdminBookings() {
         </div>
         <div className="flex items-center space-x-3">
           <Button
+            onClick={() => setShowWalkInModal(true)}
+            className="bg-green-600 hover:bg-green-700 text-white"
+          >
+            <UserPlus className="h-4 w-4 mr-2" />
+            Walk-in Booking
+          </Button>
+          <Button
             onClick={() => setShowCreateModal(true)}
             className="bg-blue-600 hover:bg-blue-700 text-white"
           >
             <Plus className="h-4 w-4 mr-2" />
-            Create New Booking
+            Create Booking
           </Button>
           <Button
-            variant="outline"
+            variant="ghost"
             onClick={() => setShowFilters(!showFilters)}
           >
             <Filter className="h-4 w-4 mr-2" />
@@ -594,7 +605,7 @@ export default function AdminBookings() {
               <div>
                 <h3 className="text-sm font-medium text-gray-500">Hotel</h3>
                 <p className="text-sm text-gray-900">{selectedBooking.hotelId.name}</p>
-                {selectedBooking.hotelId.address && (
+                {selectedBooking.hotelId.address && typeof selectedBooking.hotelId.address === 'object' && (
                   <p className="text-sm text-gray-600">
                     {selectedBooking.hotelId.address.street}, {selectedBooking.hotelId.address.city}, {selectedBooking.hotelId.address.state}
                   </p>
@@ -722,7 +733,7 @@ export default function AdminBookings() {
                         Confirm
                       </Button>
                       <Button
-                        variant="outline"
+                        variant="ghost"
                         size="sm"
                         onClick={() => {
                           handleCancelBooking(selectedBooking._id);
@@ -1053,6 +1064,16 @@ export default function AdminBookings() {
           </div>
         </div>
       </Modal>
+
+      {/* Walk-in Booking Modal */}
+      <WalkInBooking
+        isOpen={showWalkInModal}
+        onClose={() => setShowWalkInModal(false)}
+        onSuccess={() => {
+          fetchBookings();
+          fetchStats();
+        }}
+      />
     </div>
   );
 }

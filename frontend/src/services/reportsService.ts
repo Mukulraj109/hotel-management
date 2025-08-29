@@ -76,6 +76,159 @@ export interface BookingStatsData {
   };
 }
 
+export interface RevenueComponent {
+  amount: number;
+  percentage: string;
+  label: string;
+}
+
+export interface RevenueByType {
+  type: string;
+  amount: number;
+  percentage: string;
+}
+
+export interface RevenueByWeek {
+  week: number;
+  amount: number;
+  percentage: string;
+}
+
+export interface RevenueByStatus {
+  status: string;
+  amount: number;
+  percentage: string;
+}
+
+export interface RevenueBreakdown {
+  total: number;
+  components: {
+    roomRevenue: RevenueComponent;
+    taxRevenue: RevenueComponent;
+    serviceRevenue: RevenueComponent;
+    extraCharges: RevenueComponent;
+  };
+  byRoomType: RevenueByType[];
+  byWeek: RevenueByWeek[];
+  byStatus: RevenueByStatus[];
+  metrics: {
+    totalBookings: number;
+    averageBookingValue: number;
+    refunds: number;
+    netRevenue: number;
+  };
+  period: {
+    month: number;
+    year: number;
+    monthName: string;
+  };
+}
+
+export interface OccupancyBreakdown {
+  overall: {
+    rate: number;
+    totalRooms: number;
+    occupiedRooms: number;
+    availableRooms: number;
+  };
+  byRoomType: Array<{
+    type: string;
+    rate: number;
+    occupiedRooms: number;
+    totalRooms: number;
+    percentage: string;
+  }>;
+  dailyOccupancy: Array<{
+    date: string;
+    rate: number;
+    occupiedRooms: number;
+    totalRooms: number;
+  }>;
+  peakDays: Array<{
+    date: string;
+    rate: number;
+    dayOfWeek: string;
+  }>;
+  metrics: {
+    averageRate: number;
+    peakOccupancy: number;
+    lowestOccupancy: number;
+    roomNights: number;
+  };
+  period: {
+    month: number;
+    year: number;
+    monthName: string;
+  };
+}
+
+export interface BookingsBreakdown {
+  total: number;
+  byStatus: Array<{
+    status: string;
+    count: number;
+    percentage: string;
+    revenue: number;
+  }>;
+  bySource: Array<{
+    source: string;
+    count: number;
+    percentage: string;
+    averageValue: number;
+  }>;
+  weekly: Array<{
+    week: number;
+    count: number;
+    revenue: number;
+    averageValue: number;
+  }>;
+  metrics: {
+    totalRevenue: number;
+    averageBookingValue: number;
+    confirmationRate: number;
+    cancellationRate: number;
+  };
+  period: {
+    month: number;
+    year: number;
+    monthName: string;
+  };
+}
+
+export interface SatisfactionBreakdown {
+  overall: {
+    rating: number;
+    totalReviews: number;
+    responseRate: number;
+  };
+  byRating: Array<{
+    rating: number;
+    count: number;
+    percentage: string;
+  }>;
+  byCategory: Array<{
+    category: string;
+    rating: number;
+    count: number;
+  }>;
+  trends: Array<{
+    week: number;
+    rating: number;
+    reviewCount: number;
+  }>;
+  metrics: {
+    promoterScore: number;
+    detractorScore: number;
+    neutralScore: number;
+    improvement: number;
+  };
+  period: {
+    month: number;
+    year: number;
+    monthName: string;
+  };
+}
+
 class ReportsService {
   private baseUrl = '/reports';
 
@@ -127,6 +280,90 @@ class ReportsService {
     console.log('Making booking stats API call:', `${this.baseUrl}/bookings/stats?${params.toString()}`);
     const response = await api.get(`${this.baseUrl}/bookings/stats?${params.toString()}`);
     console.log('Booking stats response:', response.data);
+    return response.data.data;
+  }
+
+  async getRevenueBreakdown(params?: {
+    month?: number;
+    year?: number;
+    hotelId?: string;
+  }): Promise<RevenueBreakdown> {
+    const searchParams = new URLSearchParams();
+    
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          searchParams.append(key, value.toString());
+        }
+      });
+    }
+
+    console.log('Making revenue breakdown API call:', `${this.baseUrl}/revenue-breakdown?${searchParams.toString()}`);
+    const response = await api.get(`${this.baseUrl}/revenue-breakdown?${searchParams.toString()}`);
+    console.log('Revenue breakdown response:', response.data);
+    return response.data.data;
+  }
+
+  async getOccupancyBreakdown(params?: {
+    month?: number;
+    year?: number;
+    hotelId?: string;
+  }): Promise<OccupancyBreakdown> {
+    const searchParams = new URLSearchParams();
+    
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          searchParams.append(key, value.toString());
+        }
+      });
+    }
+
+    console.log('Making occupancy breakdown API call:', `${this.baseUrl}/occupancy-breakdown?${searchParams.toString()}`);
+    const response = await api.get(`${this.baseUrl}/occupancy-breakdown?${searchParams.toString()}`);
+    console.log('Occupancy breakdown response:', response.data);
+    return response.data.data;
+  }
+
+  async getBookingsBreakdown(params?: {
+    month?: number;
+    year?: number;
+    hotelId?: string;
+  }): Promise<BookingsBreakdown> {
+    const searchParams = new URLSearchParams();
+    
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          searchParams.append(key, value.toString());
+        }
+      });
+    }
+
+    console.log('Making bookings breakdown API call:', `${this.baseUrl}/bookings-breakdown?${searchParams.toString()}`);
+    const response = await api.get(`${this.baseUrl}/bookings-breakdown?${searchParams.toString()}`);
+    console.log('Bookings breakdown response:', response.data);
+    return response.data.data;
+  }
+
+  async getSatisfactionBreakdown(params?: {
+    month?: number;
+    year?: number;
+    hotelId?: string;
+  }): Promise<SatisfactionBreakdown> {
+    const searchParams = new URLSearchParams();
+    
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          searchParams.append(key, value.toString());
+        }
+      });
+    }
+
+    console.log('Making satisfaction breakdown API call:', `${this.baseUrl}/satisfaction-breakdown?${searchParams.toString()}`);
+    const response = await api.get(`${this.baseUrl}/satisfaction-breakdown?${searchParams.toString()}`);
+    console.log('Satisfaction breakdown response:', response.data);
     return response.data.data;
   }
 

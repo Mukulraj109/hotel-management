@@ -223,8 +223,11 @@ class AdminService {
   async getAvailableRooms(hotelId: string, checkIn?: string, checkOut?: string): Promise<ApiResponse<{ rooms: any[] }>> {
     const params = new URLSearchParams();
     params.append('hotelId', hotelId);
+    params.append('limit', '100'); // Get up to 100 rooms instead of default 10
     if (checkIn) params.append('checkIn', checkIn);
     if (checkOut) params.append('checkOut', checkOut);
+    
+    console.log('Admin service - getAvailableRooms URL:', `/rooms?${params.toString()}`);
     
     const response = await api.get(`/rooms?${params.toString()}`);
     return response.data;
@@ -251,6 +254,42 @@ class AdminService {
     });
 
     const response = await api.get(`/reports/bookings/stats?${params.toString()}`);
+    return response.data;
+  }
+
+  // Hotel Management
+  async getHotels(filters: any = {}): Promise<ApiResponse<{ hotels: any[] }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    const response = await api.get(`/admin/hotels?${params.toString()}`);
+    return response.data;
+  }
+
+  // User Management
+  async createUser(userData: {
+    name: string;
+    email: string;
+    phone: string;
+    role: string;
+    password: string;
+    preferences?: any;
+  }): Promise<ApiResponse<{ user: any }>> {
+    const response = await api.post('/admin/users', userData);
+    return response.data;
+  }
+
+  async updateUser(id: string, updates: any): Promise<ApiResponse<{ user: any }>> {
+    const response = await api.patch(`/admin/users/${id}`, updates);
+    return response.data;
+  }
+
+  async deleteUser(id: string): Promise<ApiResponse<{ message: string }>> {
+    const response = await api.delete(`/admin/users/${id}`);
     return response.data;
   }
 }

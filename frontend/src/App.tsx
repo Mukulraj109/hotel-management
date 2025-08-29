@@ -28,6 +28,8 @@ import GuestRequests from './pages/guest/GuestRequests';
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminRooms from './pages/admin/AdminRooms';
+import RoomDetailsPage from './pages/admin/RoomDetailsPage';
+import RoomBookingsPage from './pages/admin/RoomBookingsPage';
 import AdminBookings from './pages/admin/AdminBookings';
 import AdminHousekeeping from './pages/admin/AdminHousekeeping';
 import AdminInventory from './pages/admin/AdminInventory';
@@ -91,6 +93,8 @@ function App() {
               }>
                 <Route index element={<AdminDashboard />} />
                 <Route path="rooms" element={<AdminRooms />} />
+                <Route path="rooms/:roomId" element={<RoomDetailsPage />} />
+                <Route path="rooms/:roomId/bookings" element={<RoomBookingsPage />} />
                 <Route path="bookings" element={<AdminBookings />} />
                 <Route path="housekeeping" element={<AdminHousekeeping />} />
                 <Route path="inventory" element={<AdminInventory />} />

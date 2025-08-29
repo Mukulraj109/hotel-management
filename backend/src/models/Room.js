@@ -174,14 +174,18 @@ roomSchema.methods.isAvailable = async function(checkIn, checkOut) {
 roomSchema.statics.findAvailable = async function(hotelId, checkInDate, checkOutDate, roomType = null) {
   const Booking = mongoose.model('Booking');
   
+  // Ensure dates are properly formatted
+  const checkIn = new Date(checkInDate);
+  const checkOut = new Date(checkOutDate);
+  
   // Find all bookings that conflict with the date range
   const conflictingBookings = await Booking.find({
     hotelId,
     status: { $in: ['confirmed', 'checked_in'] },
     $or: [
-      { checkIn: { $lt: checkOutDate, $gte: checkInDate } },
-      { checkOut: { $gt: checkInDate, $lte: checkOutDate } },
-      { checkIn: { $lte: checkInDate }, checkOut: { $gte: checkOutDate } }
+      { checkIn: { $lt: checkOut, $gte: checkIn } },
+      { checkOut: { $gt: checkIn, $lte: checkOut } },
+      { checkIn: { $lte: checkIn }, checkOut: { $gte: checkOut } }
     ]
   }).select('rooms.roomId');
 

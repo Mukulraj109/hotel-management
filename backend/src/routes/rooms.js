@@ -91,10 +91,10 @@ router.get('/', optionalAuth, catchAsync(async (req, res) => {
   
   // If dates provided, check availability
   if (checkIn && checkOut) {
-    const checkInDate = new Date(checkIn);
-    const checkOutDate = new Date(checkOut);
+    const checkInDate = new Date(checkIn + 'T00:00:00.000Z');
+    const checkOutDate = new Date(checkOut + 'T00:00:00.000Z');
     
-    if (checkInDate >= checkOutDate) {
+    if (checkInDate > checkOutDate) {
       throw new AppError('Check-out date must be after check-in date', 400);
     }
 

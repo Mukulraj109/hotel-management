@@ -88,7 +88,12 @@ export interface AdminBooking {
   hotelId: {
     _id: string;
     name: string;
-    address?: string;
+    address?: {
+      street?: string;
+      city?: string;
+      state?: string;
+      country?: string;
+    } | string;
   };
   userId: {
     _id: string;

@@ -446,6 +446,7 @@ router.get('/kpis', catchAsync(async (req, res) => {
   
   // Calculate date range based on period
   const now = new Date();
+  const currentDate = new Date(); // For current occupancy calculation
   let startDate, endDate = now;
   
   switch (period) {
@@ -472,8 +473,8 @@ router.get('/kpis', catchAsync(async (req, res) => {
   };
 
   // Calculate KPIs
-  const [occupancyKPI, revenueKPIs, operationalKPIs, guestKPIs] = await Promise.all([
-    // Occupancy KPIs
+  const [occupancyKPI, currentOccupancyKPI, revenueKPIs, operationalKPIs, guestKPIs] = await Promise.all([
+    // Historical Occupancy KPIs
     Room.aggregate([
       { $match: buildMatchQuery({ isActive: true }) },
       {
@@ -525,6 +526,47 @@ router.get('/kpis', catchAsync(async (req, res) => {
               $divide: [
                 { $subtract: [endDate, startDate] },
                 86400000
+              ]
+            }
+          }
+        }
+      }
+    ]),
+    
+    // Current Real-time Occupancy
+    Room.aggregate([
+      { $match: buildMatchQuery({ isActive: true }) },
+      {
+        $lookup: {
+          from: 'bookings',
+          let: { roomId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $in: ['$$roomId', '$rooms.roomId'] },
+                    { $in: ['$status', ['confirmed', 'checked_in']] },
+                    { $lte: ['$checkIn', currentDate] },
+                    { $gt: ['$checkOut', currentDate] }
+                  ]
+                }
+              }
+            }
+          ],
+          as: 'currentBookings'
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalRooms: { $sum: 1 },
+          occupiedRooms: {
+            $sum: {
+              $cond: [
+                { $gt: [{ $size: '$currentBookings' }, 0] },
+                1,
+                0
               ]
             }
           }
@@ -614,6 +656,7 @@ router.get('/kpis', catchAsync(async (req, res) => {
 
   // Process KPI data
   const occupancy = occupancyKPI[0] || {};
+  const currentOccupancy = currentOccupancyKPI[0] || {};
   const revenue = revenueKPIs[0][0] || {};
   const bookings = revenueKPIs[1][0] || {};
   const services = operationalKPIs[0][0] || {};
@@ -661,6 +704,26 @@ router.get('/kpis', catchAsync(async (req, res) => {
       totalReviews: reviews.totalReviews || 0,
       responseRate: 85 // Placeholder - would calculate from actual response data
     },
+    
+    // Current occupancy rate for dashboard display
+    averageOccupancy: currentOccupancy.totalRooms > 0 
+      ? Math.round((currentOccupancy.occupiedRooms / currentOccupancy.totalRooms) * 100) 
+      : 0,
+    
+    // Additional KPI fields for dashboard
+    totalRevenue: revenue.totalRevenue || 0,
+    totalBookings: bookings.totalBookings || 0,
+    guestSatisfaction: Math.round((reviews.avgRating || 0) * 10) / 10,
+    totalRooms: currentOccupancy.totalRooms || 0,
+    activeGuests: currentOccupancy.occupiedRooms || 0,
+    todayCheckIns: bookings.totalBookings || 0, // Simplified for now
+    todayCheckOuts: 0, // Would need separate calculation
+    pendingMaintenance: maintenance.totalTasks - maintenance.completedTasks || 0,
+    activeIncidents: 0, // Would need separate calculation
+    revenueGrowth: 0, // Would need previous period comparison
+    bookingGrowth: 0, // Would need previous period comparison
+    occupancyGrowth: 0, // Would need previous period comparison
+    satisfactionGrowth: 0, // Would need previous period comparison
     
     period,
     dateRange: {

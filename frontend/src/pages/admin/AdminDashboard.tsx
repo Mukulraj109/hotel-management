@@ -14,6 +14,10 @@ import {
   AreaChart,
   HeatmapChart,
 } from '../../components/dashboard';
+import { RevenueBreakdownPopup } from '../../components/dashboard/RevenueBreakdownPopup';
+import { OccupancyBreakdownPopup } from '../../components/dashboard/OccupancyBreakdownPopup';
+import { BookingsBreakdownPopup } from '../../components/dashboard/BookingsBreakdownPopup';
+import { SatisfactionBreakdownPopup } from '../../components/dashboard/SatisfactionBreakdownPopup';
 import { StatusBadge } from '../../components/dashboard/StatusBadge';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -29,6 +33,10 @@ export default function AdminDashboard() {
   const [selectedHotelId, setSelectedHotelId] = useState<string>(user?.hotelId || '68afe8080c02fcbe30092b8e');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [refreshKey, setRefreshKey] = useState(0);
+  const [showRevenueBreakdown, setShowRevenueBreakdown] = useState(false);
+  const [showOccupancyBreakdown, setShowOccupancyBreakdown] = useState(false);
+  const [showBookingsBreakdown, setShowBookingsBreakdown] = useState(false);
+  const [showSatisfactionBreakdown, setShowSatisfactionBreakdown] = useState(false);
 
   // Update selected hotel ID when user changes
   React.useEffect(() => {
@@ -208,79 +216,131 @@ export default function AdminDashboard() {
 
       {/* KPI Cards Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <MetricCard
-          title="Monthly Revenue"
-          value={realTimeData.data?.data?.monthly?.revenue || 0}
-          type="currency"
-          trend={{
-            value: 12.5,
-            direction: 'up',
-            label: 'vs last month'
-          }}
-          icon={
-            <div className="w-6 h-6 flex items-center justify-center text-lg font-bold">
-              ₹
-            </div>
-          }
-          color="green"
-          loading={isLoading}
-        />
+        <div 
+          className="relative"
+          onMouseEnter={() => setShowRevenueBreakdown(true)}
+          onMouseLeave={() => setShowRevenueBreakdown(false)}
+        >
+          <MetricCard
+            title="Monthly Revenue"
+            value={realTimeData.data?.data?.monthly?.revenue || 0}
+            type="currency"
+            trend={{
+              value: 12.5,
+              direction: 'up',
+              label: 'vs last month'
+            }}
+            icon={
+              <div className="w-6 h-6 flex items-center justify-center text-lg font-bold">
+                ₹
+              </div>
+            }
+            color="green"
+            loading={isLoading}
+            className="transition-all duration-200 hover:shadow-lg hover:scale-[1.02] cursor-pointer"
+          />
+          <RevenueBreakdownPopup 
+            isVisible={showRevenueBreakdown}
+            hotelId={selectedHotelId}
+            onClose={() => setShowRevenueBreakdown(false)}
+            position="right"
+          />
+        </div>
 
-        <MetricCard
-          title="Occupancy Rate"
-          value={kpis.data?.data?.averageOccupancy || 0}
-          type="percentage"
-          trend={{
-            value: kpis.data?.data?.occupancyGrowth || 0,
-            direction: (kpis.data?.data?.occupancyGrowth || 0) > 0 ? 'up' : 'down',
-            label: 'vs last week'
-          }}
-          icon={
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-          }
-          color="blue"
-          loading={isLoading}
-        />
+        <div 
+          className="relative"
+          onMouseEnter={() => setShowOccupancyBreakdown(true)}
+          onMouseLeave={() => setShowOccupancyBreakdown(false)}
+        >
+          <MetricCard
+            title="Occupancy Rate"
+            value={kpis.data?.data?.averageOccupancy || 0}
+            type="percentage"
+            trend={{
+              value: kpis.data?.data?.occupancyGrowth || 0,
+              direction: (kpis.data?.data?.occupancyGrowth || 0) > 0 ? 'up' : 'down',
+              label: 'vs last week'
+            }}
+            icon={
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+            }
+            color="blue"
+            loading={isLoading}
+            className="transition-all duration-200 hover:shadow-lg hover:scale-[1.02] cursor-pointer"
+          />
+          <OccupancyBreakdownPopup 
+            isVisible={showOccupancyBreakdown}
+            hotelId={selectedHotelId}
+            onClose={() => setShowOccupancyBreakdown(false)}
+            position="right"
+          />
+        </div>
 
-        <MetricCard
-          title="Total Bookings"
-          value={realTimeData.data?.data?.overview?.totalBookings || 0}
-          trend={{
-            value: 8.3,
-            direction: 'up',
-            label: 'vs last month'
-          }}
-          icon={
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-            </svg>
-          }
-          color="purple"
-          loading={isLoading}
-        />
+        <div 
+          className="relative"
+          onMouseEnter={() => setShowBookingsBreakdown(true)}
+          onMouseLeave={() => setShowBookingsBreakdown(false)}
+        >
+          <MetricCard
+            title="Total Bookings"
+            value={realTimeData.data?.data?.overview?.totalBookings || 0}
+            trend={{
+              value: 8.3,
+              direction: 'up',
+              label: 'vs last month'
+            }}
+            icon={
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                  d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+              </svg>
+            }
+            color="purple"
+            loading={isLoading}
+            className="transition-all duration-200 hover:shadow-lg hover:scale-[1.02] cursor-pointer"
+          />
+          <BookingsBreakdownPopup 
+            isVisible={showBookingsBreakdown}
+            hotelId={selectedHotelId}
+            onClose={() => setShowBookingsBreakdown(false)}
+            position="right"
+          />
+        </div>
 
-        <MetricCard
-          title="Guest Satisfaction"
-          value={realTimeData.data?.data?.guestSatisfaction?.averageRating || 0}
-          suffix="/5"
-          trend={{
-            value: kpis.data?.data?.satisfactionGrowth || 0,
-            direction: (kpis.data?.data?.satisfactionGrowth || 0) > 0 ? 'up' : 'down',
-            label: 'vs last month'
-          }}
-          icon={
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
-                d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-            </svg>
-          }
-          color="yellow"
-          loading={isLoading}
-        />
+        <div 
+          className="relative"
+          onMouseEnter={() => setShowSatisfactionBreakdown(true)}
+          onMouseLeave={() => setShowSatisfactionBreakdown(false)}
+        >
+          <MetricCard
+            title="Guest Satisfaction"
+            value={realTimeData.data?.data?.guestSatisfaction?.averageRating || 0}
+            suffix="/5"
+            trend={{
+              value: kpis.data?.data?.satisfactionGrowth || 0,
+              direction: (kpis.data?.data?.satisfactionGrowth || 0) > 0 ? 'up' : 'down',
+              label: 'vs last month'
+            }}
+            icon={
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                  d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+              </svg>
+            }
+            color="yellow"
+            loading={isLoading}
+            className="transition-all duration-200 hover:shadow-lg hover:scale-[1.02] cursor-pointer"
+          />
+          <SatisfactionBreakdownPopup 
+            isVisible={showSatisfactionBreakdown}
+            hotelId={selectedHotelId}
+            onClose={() => setShowSatisfactionBreakdown(false)}
+            position="bottom"
+          />
+        </div>
       </div>
 
       {/* Charts Section */}
@@ -385,7 +445,16 @@ export default function AdminDashboard() {
               console.log('Final heatmap data:', result);
               return result;
             })()}
-            onRoomClick={(room) => console.log('Room clicked:', room)}
+            onRoomClick={(room) => {
+              console.log('Room clicked:', room);
+              // Find the full room data to get the room ID
+              const fullRoomData = occupancyQuery.data?.data?.rooms?.find(r => r.roomNumber === room.roomNumber);
+              if (fullRoomData?._id) {
+                navigate(`/admin/rooms/${fullRoomData._id}`);
+              } else {
+                console.warn('Room ID not found for room:', room.roomNumber);
+              }
+            }}
             height={350}
           />
         ) : (

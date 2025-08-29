@@ -124,3 +124,24 @@ export const useBulkUpdateStatus = () => {
     },
   });
 };
+
+// Hook to get bookings for a specific room
+export const useRoomBookings = (roomId: string, params?: {
+  status?: string;
+  timeFilter?: 'past' | 'future' | 'current' | 'all';
+  page?: number;
+  limit?: number;
+  enabled?: boolean;
+}) => {
+  const { enabled = true, ...filters } = params || {};
+  
+  return useQuery({
+    queryKey: ['room-bookings', roomId, filters],
+    queryFn: async () => {
+      const { bookingService } = await import('../services/bookingService');
+      return bookingService.getRoomBookings(roomId, filters);
+    },
+    enabled: enabled && !!roomId,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  });
+};

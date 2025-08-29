@@ -104,6 +104,121 @@ router.get('/', authenticate, catchAsync(async (req, res) => {
 
 /**
  * @swagger
+ * /bookings/room/{roomId}:
+ *   get:
+ *     summary: Get bookings for a specific room
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: roomId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Room ID
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [pending, confirmed, checked_in, checked_out, cancelled, no_show]
+ *       - in: query
+ *         name: timeFilter
+ *         schema:
+ *           type: string
+ *           enum: [past, future, current, all]
+ *         default: all
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: List of bookings for the room
+ */
+router.get('/room/:roomId', authenticate, authorize('admin', 'staff'), catchAsync(async (req, res) => {
+  const { roomId } = req.params;
+  const { 
+    status,
+    timeFilter = 'all',
+    page = 1,
+    limit = 10
+  } = req.query;
+  
+  // Validate room exists and user has access
+  const room = await Room.findById(roomId);
+  if (!room) {
+    throw new AppError('Room not found', 404);
+  }
+  
+  // Check if user has access to this hotel
+  if (req.user.role === 'staff' && req.user.hotelId.toString() !== room.hotelId.toString()) {
+    throw new AppError('You do not have access to this room', 403);
+  }
+  
+  // Build query
+  const query = {
+    'rooms.roomId': roomId
+  };
+  
+  if (status) {
+    query.status = status;
+  }
+  
+  // Add time-based filters
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  switch (timeFilter) {
+    case 'past':
+      query.checkOut = { $lt: today };
+      break;
+    case 'future':
+      query.checkIn = { $gt: today };
+      break;
+    case 'current':
+      query.$and = [
+        { checkIn: { $lte: today } },
+        { checkOut: { $gte: today } }
+      ];
+      break;
+    // 'all' case - no additional filter needed
+  }
+  
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+  
+  const bookings = await Booking.find(query)
+    .populate('userId', 'name email phone')
+    .populate('rooms.roomId', 'roomNumber type')
+    .populate('hotelId', 'name')
+    .sort({ checkIn: -1 })
+    .skip(skip)
+    .limit(parseInt(limit));
+  
+  const total = await Booking.countDocuments(query);
+  
+  res.json({
+    status: 'success',
+    data: {
+      bookings,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    }
+  });
+}));
+
+/**
+ * @swagger
  * /bookings/{id}:
  *   get:
  *     summary: Get booking by ID

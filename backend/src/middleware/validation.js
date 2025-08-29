@@ -46,12 +46,19 @@ export const schemas = {
     hotelId: Joi.string().required(),
     userId: Joi.string().optional(), // Allow admin to specify userId for manual bookings
     roomIds: Joi.array().items(Joi.string()).min(1).required(),
-    checkIn: Joi.date().iso().min('now').required(),
+    checkIn: Joi.date().iso().custom((value, helpers) => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (new Date(value) < today) {
+        return helpers.error('date.min', { limit: 'today' });
+      }
+      return value;
+    }).required(),
     checkOut: Joi.date().iso().greater(Joi.ref('checkIn')).required(),
     guestDetails: Joi.object({
       adults: Joi.number().min(1).required(),
       children: Joi.number().min(0).default(0),
-      specialRequests: Joi.string()
+      specialRequests: Joi.string().allow('')
     }),
     totalAmount: Joi.number().optional(), // Allow admin to specify total amount
     currency: Joi.string().optional(),

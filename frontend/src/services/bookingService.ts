@@ -99,6 +99,33 @@ class BookingService {
     const response = await api.get(`/bookings/stats?period=${period}`);
     return response.data;
   }
+
+  // Get bookings for a specific room
+  async getRoomBookings(roomId: string, filters: {
+    status?: string;
+    timeFilter?: 'past' | 'future' | 'current' | 'all';
+    page?: number;
+    limit?: number;
+  } = {}): Promise<ApiResponse<{
+    bookings: Booking[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      pages: number;
+    };
+  }>> {
+    const params = new URLSearchParams();
+    
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    const response = await api.get(`/bookings/room/${roomId}?${params.toString()}`);
+    return response.data;
+  }
 }
 
 export const bookingService = new BookingService();

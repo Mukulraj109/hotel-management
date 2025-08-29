@@ -187,6 +187,72 @@ router.get('/users', catchAsync(async (req, res) => {
 
 /**
  * @swagger
+ * /admin/users:
+ *   post:
+ *     summary: Create a new user
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - email
+ *               - password
+ *               - role
+ *             properties:
+ *               name:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               phone:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [guest, staff, admin]
+ *               preferences:
+ *                 type: object
+ *     responses:
+ *       201:
+ *         description: User created successfully
+ */
+router.post('/users', catchAsync(async (req, res) => {
+  const { name, email, phone, password, role, preferences } = req.body;
+
+  // Check if user already exists
+  const existingUser = await User.findOne({ email });
+  if (existingUser) {
+    throw new AppError('User with this email already exists', 409);
+  }
+
+  const userData = {
+    name,
+    email,
+    phone,
+    password,
+    role: role || 'guest',
+    preferences
+  };
+
+  const user = await User.create(userData);
+
+  res.status(201).json({
+    status: 'success',
+    data: {
+      user: user.toJSON()
+    }
+  });
+}));
+
+/**
+ * @swagger
  * /admin/users/{id}:
  *   patch:
  *     summary: Update user status or role
@@ -239,6 +305,40 @@ router.patch('/users/:id', catchAsync(async (req, res) => {
   res.json({
     status: 'success',
     data: { user }
+  });
+}));
+
+/**
+ * @swagger
+ * /admin/users/{id}:
+ *   delete:
+ *     summary: Delete user
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: User deleted successfully
+ */
+router.delete('/users/:id', catchAsync(async (req, res) => {
+  const { id } = req.params;
+
+  const user = await User.findByIdAndDelete(id);
+  if (!user) {
+    throw new AppError('User not found', 404);
+  }
+
+  res.json({
+    status: 'success',
+    data: {
+      message: 'User deleted successfully'
+    }
   });
 }));
 
