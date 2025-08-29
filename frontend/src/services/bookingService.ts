@@ -1,4 +1,4 @@
-import api from './api';
+import { api } from './api';
 import { Room, Booking, BookingFilters, CreateBookingRequest } from '../types/booking';
 
 interface ApiResponse<T> {

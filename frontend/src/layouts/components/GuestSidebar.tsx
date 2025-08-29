@@ -1,11 +1,17 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Home, Calendar, User, MessageSquare, Globe } from 'lucide-react';
+import { Home, Calendar, User, MessageSquare, Globe, Star, ConciergeBell, Bell, Key, Users, CreditCard } from 'lucide-react';
 
 const navigation = [
   { name: 'Home', href: '/', icon: Globe },
   { name: 'Dashboard', href: '/app', icon: Home },
   { name: 'My Bookings', href: '/app/bookings', icon: Calendar },
+  { name: 'Billing & Payments', href: '/app/billing', icon: CreditCard },
+  { name: 'Loyalty', href: '/app/loyalty', icon: Star },
+  { name: 'Hotel Services', href: '/app/services', icon: ConciergeBell },
+  { name: 'Notifications', href: '/app/notifications', icon: Bell },
+  { name: 'Digital Keys', href: '/app/keys', icon: Key },
+  { name: 'Meet-Ups', href: '/app/meet-ups', icon: Users },
   { name: 'Profile', href: '/app/profile', icon: User },
   { name: 'Requests', href: '/app/requests', icon: MessageSquare },
 ];

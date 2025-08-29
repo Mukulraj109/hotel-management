@@ -206,7 +206,7 @@ export default function AdminReviewsManagement() {
   const [filterRating, setFilterRating] = useState<number | undefined>();
 
   // Default hotel ID - in real app, this would come from user context
-  const hotelId = user?.hotelId || '68afe8080c02fcbe30092b8e';
+  const hotelId = user?.hotelId || '68b19648e35a38ee7b1d1828';
 
   const loadReviews = async () => {
     try {

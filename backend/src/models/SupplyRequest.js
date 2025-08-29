@@ -400,9 +400,9 @@ supplyRequestSchema.index({ approvedBy: 1, approvedAt: -1 });
 // Generate request number before saving
 supplyRequestSchema.pre('save', function(next) {
   if (!this.requestNumber) {
-    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    this.requestNumber = `SR${date}${random}`;
+    const timestamp = Date.now().toString().slice(-8); // Last 8 digits of timestamp
+    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    this.requestNumber = `SR${timestamp}${random}`;
   }
   
   // Calculate total estimated cost

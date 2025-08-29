@@ -11,7 +11,7 @@ async function createSampleData() {
     let hotel = await mongoose.connection.db.collection('hotels').findOne({});
     if (!hotel) {
       const hotelData = {
-        _id: new mongoose.Types.ObjectId('68afe8080c02fcbe30092b8e'),
+        _id: new mongoose.Types.ObjectId('68b19648e35a38ee7b1d1828'),
         name: 'The Pentouz',
         description: 'Luxury hotel in the heart of the city',
         address: {

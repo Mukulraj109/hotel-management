@@ -22,7 +22,13 @@
       "Bash(git add:*)",
       "Read(C:\\Users\\Mukul raj\\OneDrive\\Pictures\\Screenshots/**)",
       "Bash(npm run type-check:*)",
-      "Read(C:\\Users\\Mukul raj\\OneDrive\\Pictures\\Screenshots/**)"
+      "Read(C:\\Users\\Mukul raj\\OneDrive\\Pictures\\Screenshots/**)",
+      "Read(C:\\Users\\Mukul raj\\OneDrive\\Pictures\\Screenshots/**)",
+      "Bash(sed:*)",
+      "Read(C:\\Users\\Mukul raj\\OneDrive\\Pictures\\Screenshots/**)",
+      "Read(C:\\Users\\Mukul raj\\OneDrive\\Pictures\\Screenshots/**)",
+      "Read(C:\\Users\\Mukul raj\\OneDrive\\Pictures\\Screenshots/**)",
+      "Bash(pgrep:*)"
     ],
     "deny": [],
     "ask": []

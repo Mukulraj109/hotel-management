@@ -23,6 +23,12 @@ import GuestBookings from './pages/guest/GuestBookings';
 import GuestBookingDetail from './pages/guest/GuestBookingDetail';
 import GuestProfile from './pages/guest/GuestProfile';
 import GuestRequests from './pages/guest/GuestRequests';
+import LoyaltyDashboard from './pages/guest/LoyaltyDashboard';
+import HotelServicesDashboard from './pages/guest/HotelServicesDashboard';
+import NotificationsDashboard from './pages/guest/NotificationsDashboard';
+import DigitalKeysDashboard from './pages/guest/DigitalKeysDashboard';
+import MeetUpRequestsDashboard from './pages/guest/MeetUpRequestsDashboard';
+import GuestBillingHistory from './pages/guest/GuestBillingHistory';
 
 // Admin Pages
 import AdminLogin from './pages/admin/AdminLogin';
@@ -35,6 +41,7 @@ import AdminHousekeeping from './pages/admin/AdminHousekeeping';
 import AdminInventory from './pages/admin/AdminInventory';
 import AdminReports from './pages/admin/AdminReports';
 import AdminOTA from './pages/admin/AdminOTA';
+import BillingHistory from './pages/admin/BillingHistory';
 
 // Layout Components
 import PublicLayout from './layouts/PublicLayout';
@@ -79,9 +86,15 @@ function App() {
               }>
                 <Route index element={<GuestDashboard />} />
                 <Route path="bookings" element={<GuestBookings />} />
-                <Route path="bookings/:id" element={<GuestBookingDetail />} />
-                <Route path="profile" element={<GuestProfile />} />
-                <Route path="requests" element={<GuestRequests />} />
+                            <Route path="bookings/:id" element={<GuestBookingDetail />} />
+            <Route path="billing" element={<GuestBillingHistory />} />
+            <Route path="loyalty" element={<LoyaltyDashboard />} />
+            <Route path="services" element={<HotelServicesDashboard />} />
+            <Route path="notifications" element={<NotificationsDashboard />} />
+            <Route path="keys" element={<DigitalKeysDashboard />} />
+            <Route path="meet-ups" element={<MeetUpRequestsDashboard />} />
+            <Route path="profile" element={<GuestProfile />} />
+            <Route path="requests" element={<GuestRequests />} />
               </Route>
 
               {/* Admin Routes */}
@@ -100,6 +113,7 @@ function App() {
                 <Route path="inventory" element={<AdminInventory />} />
                 <Route path="reports" element={<AdminReports />} />
                 <Route path="ota" element={<AdminOTA />} />
+                <Route path="billing" element={<BillingHistory />} />
               </Route>
 
               {/* Catch all route */}

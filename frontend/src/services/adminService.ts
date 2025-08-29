@@ -1,4 +1,4 @@
-import api from './api';
+import { api } from './api';
 import { HousekeepingTask, InventoryItem, RevenueData, OccupancyData, AdminBooking, BookingFilters, BookingStats } from '../types/admin';
 
 interface ApiResponse<T> {

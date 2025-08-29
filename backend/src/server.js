@@ -36,6 +36,12 @@ import supplyRequestRoutes from './routes/supplyRequests.js';
 import communicationRoutes from './routes/communications.js';
 import messageTemplateRoutes from './routes/messageTemplates.js';
 import contactRoutes from './routes/contact.js';
+import billingHistoryRoutes from './routes/billingHistory.js';
+import loyaltyRoutes from './routes/loyalty.js';
+import hotelServicesRoutes from './routes/hotelServices.js';
+import notificationRoutes from './routes/notifications.js';
+import digitalKeyRoutes from './routes/digitalKeys.js';
+import meetUpRequestRoutes from './routes/meetUpRequests.js';
 
 const app = express();
 
@@ -145,6 +151,12 @@ app.use('/api/v1/supply-requests', supplyRequestRoutes);
 app.use('/api/v1/communications', communicationRoutes);
 app.use('/api/v1/message-templates', messageTemplateRoutes);
 app.use('/api/v1/contact', contactRoutes);
+app.use('/api/v1/billing-history', billingHistoryRoutes);
+app.use('/api/v1/loyalty', loyaltyRoutes);
+app.use('/api/v1/hotel-services', hotelServicesRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
+app.use('/api/v1/digital-keys', digitalKeyRoutes);
+app.use('/api/v1/meet-up-requests', meetUpRequestRoutes);
 
 // 404 handler
 app.all('*', (req, res) => {
