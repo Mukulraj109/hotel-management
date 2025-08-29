@@ -1,7 +1,9 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Review from '../models/Review.js';
 import Booking from '../models/Booking.js';
 import Hotel from '../models/Hotel.js';
+import User from '../models/User.js';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth.js';
 import { AppError } from '../utils/appError.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -184,11 +186,17 @@ router.get('/hotel/:hotelId', optionalAuth, catchAsync(async (req, res) => {
     sortBy = 'newest'
   } = req.query;
 
+  console.log('=== REVIEWS API DEBUG ===');
+  console.log('Hotel ID from params:', hotelId);
+  console.log('Query params:', { page, limit, rating, sortBy });
+
   const query = {
-    hotelId,
+    hotelId: new mongoose.Types.ObjectId(hotelId),
     isPublished: true,
     moderationStatus: 'approved'
   };
+
+  console.log('MongoDB query:', query);
 
   if (rating) {
     query.rating = parseInt(rating);
@@ -211,18 +219,30 @@ router.get('/hotel/:hotelId', optionalAuth, catchAsync(async (req, res) => {
       break;
   }
 
+  console.log('Sort option:', sortOption);
+
   const skip = (page - 1) * limit;
+  console.log('Skip:', skip, 'Limit:', limit);
+
+  // Test raw query first
+  console.log('Testing raw Review.find query...');
+  const testReviews = await Review.find({ hotelId: new mongoose.Types.ObjectId(hotelId) });
+  console.log('Raw hotel query found:', testReviews.length, 'reviews');
 
   const [reviews, total, summary] = await Promise.all([
     Review.find(query)
-      .populate('userId', 'name')
-      .populate('response.respondedBy', 'name')
       .sort(sortOption)
       .skip(skip)
       .limit(parseInt(limit)),
     Review.countDocuments(query),
     Review.getHotelRatingSummary(hotelId)
   ]);
+
+  console.log('Query results:');
+  console.log('- Reviews found:', reviews.length);
+  console.log('- Total count:', total);
+  console.log('- Summary:', summary);
+  console.log('=== END DEBUG ===');
 
   res.json({
     status: 'success',

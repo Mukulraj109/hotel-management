@@ -57,7 +57,6 @@ export default function AdminRooms() {
   // Disable separate metrics query to reduce API calls since we calculate from rooms data
   const metricsQuery = useRoomMetrics(hotelId, { 
     enabled: false, // Disabled - we calculate metrics from rooms data
-    staleTime: 10 * 60 * 1000, // 10 minutes if ever needed
   });
   
   // Mutation hooks
@@ -321,7 +320,7 @@ export default function AdminRooms() {
 
   // Monitor for rate limit errors and auto-disable real-time updates
   useEffect(() => {
-    if (roomsQuery.error?.message?.includes('429') || roomsQuery.error?.message?.includes('Too Many Requests')) {
+    if ((roomsQuery.error as any)?.message?.includes('429') || (roomsQuery.error as any)?.message?.includes('Too Many Requests')) {
       setRealTimeEnabled(false);
       setConnectionStatus('disconnected');
       console.warn('Rate limit detected - automatically disabled real-time updates');
@@ -469,7 +468,7 @@ export default function AdminRooms() {
           </div>
 
           {/* Rate Limit Warning */}
-          {(roomsQuery.error?.message?.includes('429') || roomsQuery.error?.message?.includes('Too Many Requests')) && (
+          {((roomsQuery.error as any)?.message?.includes('429') || (roomsQuery.error as any)?.message?.includes('Too Many Requests')) && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
               <div className="flex items-start">
                 <div className="flex-shrink-0">
@@ -773,11 +772,12 @@ export default function AdminRooms() {
       {/* Phase 2: Floor-wise Distribution Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Floor Distribution Bar Chart */}
+        
         <ChartCard
           title="Rooms by Floor"
           subtitle="Total room count per floor"
           loading={isLoading}
-          error={roomsQuery.error?.message}
+          error={(roomsQuery.error as any )?.message|| undefined}
           onRefresh={() => roomsQuery.refetch()}
           height="400px"
         >
@@ -806,10 +806,12 @@ export default function AdminRooms() {
           title="Floor Status Breakdown"
           subtitle={selectedFloor ? `Floor ${selectedFloor} details` : 'Select a floor to view details'}
           loading={isLoading}
-          error={roomsQuery.error?.message}
+          error={(roomsQuery.error as any)?.message}
+        
           onRefresh={() => roomsQuery.refetch()}
           height="400px"
         >
+          
           {selectedFloor ? (
             <div className="p-4">
               {(() => {
@@ -919,7 +921,7 @@ export default function AdminRooms() {
           {/* Average Daily Rate (ADR) */}
           <MetricCard
             title="Average Daily Rate"
-            subtitle="ADR"
+           type='currency'
             value={formatCurrency(
               roomsQuery.data?.rooms && roomsQuery.data.rooms.length > 0
                 ? roomsQuery.data.rooms.reduce((sum, room) => sum + (room.currentRate || 0), 0) / roomsQuery.data.rooms.length
@@ -942,7 +944,7 @@ export default function AdminRooms() {
           {/* Revenue Per Available Room (RevPAR) */}
           <MetricCard
             title="Revenue Per Available Room"
-            subtitle="RevPAR"
+            type='currency'
             value={formatCurrency(
               roomsQuery.data?.rooms && roomsQuery.data.rooms.length > 0 && metrics
                 ? (roomsQuery.data.rooms.reduce((sum, room) => sum + (room.currentRate || 0), 0) / roomsQuery.data.rooms.length) * 
@@ -967,7 +969,7 @@ export default function AdminRooms() {
           {/* Occupancy Rate */}
           <MetricCard
             title="Occupancy Rate"
-            subtitle="Current Period"
+            type='currency'
             value={formatPercentage(metrics?.occupancyRate || 0)}
             icon={
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -987,7 +989,7 @@ export default function AdminRooms() {
           {/* Total Revenue Potential */}
           <MetricCard
             title="Daily Revenue Potential"
-            subtitle="If 100% occupied"
+            type="percentage"
             value={formatCurrency(
               roomsQuery.data?.rooms && roomsQuery.data.rooms.length > 0
                 ? roomsQuery.data.rooms.reduce((sum, room) => sum + (room.currentRate || 0), 0)
@@ -1468,16 +1470,7 @@ export default function AdminRooms() {
       )}
 
       {/* Debug Information (temporary) */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="bg-gray-50 p-4 rounded-lg">
-          <h3 className="font-medium mb-2">Debug Info:</h3>
-          <p className="text-sm text-gray-600">
-            Hotel ID: {hotelId} | 
-            Rooms loaded: {roomsQuery.data?.rooms?.length || 0} | 
-            Metrics: {metrics ? 'Available' : 'Calculating from rooms'}
-          </p>
-        </div>
-      )}
+      
 
       {/* Room Status Change Modal */}
       {showStatusModal && selectedRoomForStatus && (

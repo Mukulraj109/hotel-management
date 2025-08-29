@@ -21,7 +21,7 @@ dotenv.config();
 
 const connectDB = async () => {
   try {
-    await mongoose.connect(process.env.MONGO_URI);
+    await mongoose.connect(process.env.DATABASE_URL || process.env.MONGO_URI);
     logger.info('Database connected for seeding');
   } catch (error) {
     logger.error('Database connection failed:', error);

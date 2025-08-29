@@ -219,7 +219,7 @@ const reviewSchema = new mongoose.Schema({
   moderationStatus: {
     type: String,
     enum: ['pending', 'approved', 'rejected'],
-    default: 'pending'
+    default: 'approved'
   },
   moderationNotes: String
 }, {

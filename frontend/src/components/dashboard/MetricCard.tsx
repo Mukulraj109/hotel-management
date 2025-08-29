@@ -185,7 +185,7 @@ export function MetricCard({
               getTrendColor(trend.direction)
             )}>
               <span className="font-medium">
-                {getTrendIcon(trend.direction)} {Math.abs(trend.value)}%
+                {getTrendIcon(trend.direction)} {Math.abs(Number(trend.value) || 0)}%
               </span>
               {trend.label && (
                 <span className="text-gray-500 ml-1">{trend.label}</span>
