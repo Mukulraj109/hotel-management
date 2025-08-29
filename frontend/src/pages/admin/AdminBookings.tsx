@@ -37,7 +37,7 @@ export default function AdminBookings() {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<BookingFilters>({
     page: 1,
-    limit: 10
+    limit: 50 // Increased from 10 to 50 to show more bookings
   });
   const [pagination, setPagination] = useState({
     current: 1,
@@ -539,46 +539,139 @@ export default function AdminBookings() {
         </Card>
       )}
 
+      {/* Search and Controls */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex-1 max-w-md">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  type="text"
+                  placeholder="Search bookings by guest name, email, or booking number..."
+                  value={filters.search || ''}
+                  onChange={(e) => setFilters({ ...filters, search: e.target.value || undefined, page: 1 })}
+                  className="pl-10 pr-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200"
+                />
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              {/* Results per page */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600 whitespace-nowrap">Show:</span>
+                <select
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200"
+                  value={filters.limit || 50}
+                  onChange={(e) => setFilters({ ...filters, limit: parseInt(e.target.value), page: 1 })}
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+              
+              {/* Export button */}
+              <Button
+                variant="outline"
+                className="whitespace-nowrap border-2 hover:border-blue-500 hover:bg-blue-50"
+              >
+                Export
+              </Button>
+            </div>
+          </div>
+          
+          {/* Results info */}
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="text-sm text-gray-600">
+                Showing <span className="font-medium text-gray-900">
+                  {((pagination.current - 1) * (filters.limit || 50)) + 1}
+                </span> to <span className="font-medium text-gray-900">
+                  {Math.min(pagination.current * (filters.limit || 50), pagination.total)}
+                </span> of <span className="font-medium text-gray-900">{pagination.total}</span> bookings
+              </div>
+              
+              {/* Modern Pagination */}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilters({ ...filters, page: Math.max(1, (filters.page || 1) - 1) })}
+                  disabled={pagination.current === 1}
+                  className="border-2 hover:border-blue-500 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="sr-only">Previous page</span>
+                  ←
+                </Button>
+                
+                {/* Page numbers */}
+                <div className="flex items-center gap-1">
+                  {[...Array(Math.min(5, pagination.pages))].map((_, i) => {
+                    const pageNum = Math.max(1, pagination.current - 2) + i;
+                    if (pageNum > pagination.pages) return null;
+                    
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={pageNum === pagination.current ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setFilters({ ...filters, page: pageNum })}
+                        className={pageNum === pagination.current 
+                          ? "bg-blue-600 text-white border-blue-600 hover:bg-blue-700" 
+                          : "border-2 hover:border-blue-500 hover:bg-blue-50"
+                        }
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                  
+                  {pagination.pages > 5 && pagination.current < pagination.pages - 2 && (
+                    <>
+                      <span className="text-gray-400 px-1">…</span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setFilters({ ...filters, page: pagination.pages })}
+                        className="border-2 hover:border-blue-500 hover:bg-blue-50"
+                      >
+                        {pagination.pages}
+                      </Button>
+                    </>
+                  )}
+                </div>
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilters({ ...filters, page: Math.min(pagination.pages, (filters.page || 1) + 1) })}
+                  disabled={pagination.current === pagination.pages}
+                  className="border-2 hover:border-blue-500 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="sr-only">Next page</span>
+                  →
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Bookings Table */}
       <DataTable
         title="All Bookings"
         data={bookings}
         columns={columns}
         loading={loading}
-        searchable={true}
-        searchPlaceholder="Search bookings..."
-        pagination={true}
-        pageSize={filters.limit || 10}
+        searchable={false}
+        pagination={false}
         emptyMessage="No bookings found"
         onRowClick={(booking) => {
           setSelectedBooking(booking);
           setShowDetailsModal(true);
         }}
-        actions={
-          <div className="flex items-center space-x-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setFilters({ ...filters, page: Math.max(1, (filters.page || 1) - 1) });
-              }}
-              disabled={pagination.current === 1}
-            >
-              Previous
-            </Button>
-            <span className="text-sm text-gray-600">
-              Page {pagination.current} of {pagination.pages}
-            </span>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setFilters({ ...filters, page: Math.min(pagination.pages, (filters.page || 1) + 1) });
-              }}
-              disabled={pagination.current === pagination.pages}
-            >
-              Next
-            </Button>
-          </div>
-        }
       />
 
       {/* Booking Details Modal */}

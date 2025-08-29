@@ -63,7 +63,7 @@ export const schemas = {
     totalAmount: Joi.number().optional(), // Allow admin to specify total amount
     currency: Joi.string().optional(),
     paymentStatus: Joi.string().valid('pending', 'paid').optional(),
-    status: Joi.string().valid('pending', 'confirmed').optional(),
+    status: Joi.string().valid('pending', 'confirmed', 'checked_in').optional(),
     idempotencyKey: Joi.string().required()
   }),
 

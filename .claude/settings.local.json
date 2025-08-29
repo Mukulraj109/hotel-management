@@ -21,7 +21,8 @@
       "Bash(git filter-branch:*)",
       "Bash(git add:*)",
       "Read(C:\\Users\\Mukul raj\\OneDrive\\Pictures\\Screenshots/**)",
-      "Bash(npm run type-check:*)"
+      "Bash(npm run type-check:*)",
+      "Read(C:\\Users\\Mukul raj\\OneDrive\\Pictures\\Screenshots/**)"
     ],
     "deny": [],
     "ask": []

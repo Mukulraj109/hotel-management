@@ -53,7 +53,7 @@ interface BookingForm {
   totalAmount: number;
   currency: string;
   paymentStatus: 'pending' | 'paid';
-  status: 'confirmed';
+  status: 'checked_in';
   paymentMethod: 'cash' | 'card' | 'upi' | 'bank_transfer';
   advanceAmount: number;
 }
@@ -91,7 +91,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
     totalAmount: 0,
     currency: 'INR',
     paymentStatus: 'pending',
-    status: 'confirmed',
+    status: 'checked_in',
     paymentMethod: 'cash',
     advanceAmount: 0
   });
@@ -359,7 +359,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
       totalAmount: 0,
       currency: 'INR',
       paymentStatus: 'pending',
-      status: 'confirmed',
+      status: 'checked_in',
       paymentMethod: 'cash',
       advanceAmount: 0
     });
