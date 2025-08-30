@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<{ user: User }>;
   register: (userData: RegisterData) => Promise<void>;
   logout: () => void;
   updateUser: (userData: User) => void;
@@ -56,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authService.setToken(token);
       setUser(userData);
       toast.success('Login successful!');
+      return { user: userData };
     } catch (error: any) {
       const message = error.response?.data?.message || 'Login failed';
       toast.error(message);

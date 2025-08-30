@@ -25,10 +25,23 @@ export function ProtectedRoute({ children, allowedRoles = [] }: ProtectedRoutePr
   }
 
   if (allowedRoles.length > 0 && user && !allowedRoles.includes(user.role)) {
-    // Redirect based on user role
-    const redirectPath = user.role === 'admin' || user.role === 'staff' 
-      ? '/admin' 
-      : '/app';
+    // Redirect based on user role to their appropriate dashboard
+    let redirectPath = '/';
+    
+    switch (user.role) {
+      case 'admin':
+        redirectPath = '/admin';
+        break;
+      case 'staff':
+        redirectPath = '/staff';
+        break;
+      case 'guest':
+        redirectPath = '/app';
+        break;
+      default:
+        redirectPath = '/';
+    }
+    
     return <Navigate to={redirectPath} replace />;
   }
 

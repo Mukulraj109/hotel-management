@@ -38,6 +38,19 @@ export default function LoginPage() {
     return Object.keys(newErrors).length === 0;
   };
 
+  const getRedirectPath = (userRole: string) => {
+    switch (userRole) {
+      case 'admin':
+        return '/admin';
+      case 'staff':
+        return '/staff';
+      case 'guest':
+        return '/app';
+      default:
+        return '/';
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -45,26 +58,34 @@ export default function LoginPage() {
 
     try {
       setLoading(true);
-      await login(formData.email, formData.password);
+      const { user } = await login(formData.email, formData.password);
       
-      // Get user data and redirect based on role
-      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      // Determine redirect path based on user role
       let redirectPath = from;
       
-      if (from === '/') {
-        // Default redirect based on role
-        switch (userData.role) {
-          case 'admin':
-            redirectPath = '/admin';
-            break;
-          case 'staff':
-            redirectPath = '/staff';
-            break;
-          case 'guest':
-            redirectPath = '/app';
-            break;
-          default:
-            redirectPath = '/';
+      // If coming from home page or login page, redirect based on role
+      if (from === '/' || from === '/login') {
+        redirectPath = getRedirectPath(user.role);
+      } else {
+        // If coming from a specific page, check if user has access
+        const pathSegments = from.split('/');
+        const firstSegment = pathSegments[1];
+        
+        // If trying to access admin area but not admin, redirect to appropriate dashboard
+        if (firstSegment === 'admin' && user.role !== 'admin') {
+          redirectPath = getRedirectPath(user.role);
+        }
+        // If trying to access staff area but not staff, redirect to appropriate dashboard
+        else if (firstSegment === 'staff' && user.role !== 'staff') {
+          redirectPath = getRedirectPath(user.role);
+        }
+        // If trying to access guest area but not guest, redirect to appropriate dashboard
+        else if (firstSegment === 'app' && user.role !== 'guest') {
+          redirectPath = getRedirectPath(user.role);
+        }
+        // Otherwise, allow access to the intended page
+        else {
+          redirectPath = from;
         }
       }
       
