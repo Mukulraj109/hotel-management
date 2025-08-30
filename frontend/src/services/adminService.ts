@@ -173,8 +173,18 @@ class AdminService {
       }
     });
 
-    const response = await api.get(`/bookings?${params.toString()}`);
-    return response.data;
+    try {
+      const response = await api.get(`/bookings?${params.toString()}`);
+      return response.data;
+    } catch (error: any) {
+      if (error.response?.status === 429) {
+        // Wait a bit and retry once for rate limit errors
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const retryResponse = await api.get(`/bookings?${params.toString()}`);
+        return retryResponse.data;
+      }
+      throw error;
+    }
   }
 
   async getBookingById(id: string): Promise<ApiResponse<{ booking: AdminBooking }>> {
@@ -227,10 +237,44 @@ class AdminService {
     if (checkIn) params.append('checkIn', checkIn);
     if (checkOut) params.append('checkOut', checkOut);
     
-    console.log('Admin service - getAvailableRooms URL:', `/rooms?${params.toString()}`);
+    const url = `/rooms?${params.toString()}`;
+    console.log('Admin service - getAvailableRooms URL:', url);
+    console.log('Admin service - Full URL:', `${api.defaults.baseURL}${url}`);
+    console.log('Admin service - Headers:', { 'x-admin-request': 'true' });
     
-    const response = await api.get(`/rooms?${params.toString()}`);
-    return response.data;
+    try {
+      console.log('Making API request...');
+      const response = await api.get(url, {
+        headers: {
+          'x-admin-request': 'true'
+        }
+      });
+      console.log('API response received:', response);
+      console.log('Response data:', response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('API request failed:', error);
+      console.error('Error details:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        config: error.config
+      });
+      
+      if (error.response?.status === 429) {
+        console.log('Rate limit exceeded, retrying...');
+        // Wait a bit and retry once for rate limit errors
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const retryResponse = await api.get(url, {
+          headers: {
+            'x-admin-request': 'true'
+          }
+        });
+        console.log('Retry response:', retryResponse);
+        return retryResponse.data;
+      }
+      throw error;
+    }
   }
 
   async getUsers(filters: { search?: string; role?: string } = {}): Promise<ApiResponse<{ users: any[] }>> {

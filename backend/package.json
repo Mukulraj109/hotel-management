@@ -35,6 +35,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.3",
     "multer": "^2.0.2",
+    "node-cron": "^4.2.1",
     "nodemailer": "^7.0.5",
     "qrcode": "^1.5.4",
     "redis": "^4.6.11",
@@ -44,6 +45,7 @@
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.0",
     "winston": "^3.11.0",
+    "ws": "^8.18.3",
     "xss": "^1.0.14"
   },
   "devDependencies": {

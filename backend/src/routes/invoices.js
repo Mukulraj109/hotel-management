@@ -693,7 +693,7 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
 
   // Get overall summary
   const matchQuery = {
-    hotelId: mongoose.Types.ObjectId(hotelId),
+    hotelId: new mongoose.Types.ObjectId(hotelId),
     ...(startDate && endDate ? {
       issueDate: {
         $gte: new Date(startDate),

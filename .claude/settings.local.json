@@ -28,7 +28,9 @@
       "Read(C:\\Users\\Mukul raj\\OneDrive\\Pictures\\Screenshots/**)",
       "Read(C:\\Users\\Mukul raj\\OneDrive\\Pictures\\Screenshots/**)",
       "Read(C:\\Users\\Mukul raj\\OneDrive\\Pictures\\Screenshots/**)",
-      "Bash(pgrep:*)"
+      "Bash(pgrep:*)",
+      "Bash(npm run lint:*)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": [],
     "ask": []

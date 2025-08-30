@@ -108,7 +108,7 @@ const seedData = async () => {
     // Create admin user with hotel ID
     const adminUser = await User.create({
       name: 'Admin User',
-      email: 'admin@thepentouz.com',
+      email: 'admin@hotel.com',
       password: 'admin123',
       role: 'admin',
       hotelId: hotel._id
@@ -122,7 +122,7 @@ const seedData = async () => {
     // Create staff user
     const staffUser = await User.create({
       name: 'Staff User',
-      email: 'staff@thepentouz.com',
+      email: 'staff@hotel.com',
       password: 'staff123',
       role: 'staff',
       hotelId: hotel._id

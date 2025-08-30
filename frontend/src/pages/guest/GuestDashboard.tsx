@@ -15,6 +15,7 @@ import {
 import { Card } from '../../components/ui/Card';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency, formatDate } from '../../utils/formatters';
+import { RoomServiceWidget } from '../../components/guest/RoomServiceWidget';
 
 interface BookingStats {
   totalBookings: number;
@@ -51,8 +52,9 @@ export default function GuestDashboard() {
       // Calculate stats from bookings
       const totalBookings = bookings.length;
       const upcomingBookings = bookings.filter(b => 
-        ['confirmed', 'pending'].includes(b.status) && 
-        new Date(b.checkIn) > new Date()
+        ['confirmed', 'pending', 'checked_in'].includes(b.status) && 
+        (new Date(b.checkIn) > new Date() || 
+         (new Date(b.checkIn) <= new Date() && new Date(b.checkOut) > new Date()))
       ).length;
       const totalSpent = bookings
         .filter(b => b.paymentStatus === 'paid')
@@ -275,6 +277,23 @@ export default function GuestDashboard() {
           </div>
         </Card>
       </div>
+
+      {/* Room Service Section - Only show if user has an active booking */}
+      {stats.upcomingBookings > 0 && (
+        <div className="mt-8">
+          <RoomServiceWidget 
+            guestId={user?._id}
+            bookingId={stats.recentBookings.find(b => 
+              ['confirmed', 'pending', 'checked_in'].includes(b.status) && 
+              new Date(b.checkOut) > new Date()
+            )?._id}
+            onRequestService={(serviceType, items) => {
+              console.log('Service requested:', serviceType, items);
+              // Handle service request here - could integrate with booking system
+            }}
+          />
+        </div>
+      )}
 
       {/* Quick Actions */}
       <div className="mt-8">

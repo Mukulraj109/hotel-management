@@ -77,7 +77,14 @@ export const useOccupancyData = (
     queryKey: dashboardKeys.occupancy(hotelId, floor, roomType),
     queryFn: () => dashboardService.getOccupancyData(hotelId, floor, roomType),
     enabled: (options?.enabled ?? true) && !!hotelId,
-    staleTime: 2 * 60 * 1000, // 2 minutes
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)
+    retry: (failureCount, error: any) => {
+      // Don't retry on 429 errors to avoid making the rate limiting worse
+      if (error?.response?.status === 429) return false;
+      return failureCount < 3;
+    },
+    retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 };
 
@@ -94,6 +101,13 @@ export const useRevenueData = (
     queryFn: () => dashboardService.getRevenueData(hotelId, period, startDate, endDate),
     enabled: (options?.enabled ?? true) && !!hotelId,
     staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    retry: (failureCount, error: any) => {
+      // Don't retry on 429 errors to avoid making the rate limiting worse
+      if (error?.response?.status === 429) return false;
+      return failureCount < 3;
+    },
+    retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 };
 

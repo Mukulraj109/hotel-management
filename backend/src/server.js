@@ -13,6 +13,8 @@ import { connectRedis } from './config/redis.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/logger.js';
 import logger from './utils/logger.js';
+import websocketService from './services/websocketService.js';
+import inventoryScheduler from './services/inventoryScheduler.js';
 
 // Route imports
 import authRoutes from './routes/auth.js';
@@ -27,6 +29,9 @@ import otaRoutes from './routes/ota.js';
 import webhookRoutes from './routes/webhooks.js';
 import adminRoutes from './routes/admin.js';
 import adminDashboardRoutes from './routes/adminDashboard.js';
+import staffDashboardRoutes from './routes/staffDashboard.js';
+import dailyInventoryCheckRoutes from './routes/dailyInventoryCheck.js';
+import inventoryNotificationRoutes from './routes/inventoryNotifications.js';
 import guestServiceRoutes from './routes/guestServices.js';
 import reviewRoutes from './routes/reviews.js';
 import maintenanceRoutes from './routes/maintenance.js';
@@ -42,6 +47,10 @@ import hotelServicesRoutes from './routes/hotelServices.js';
 import notificationRoutes from './routes/notifications.js';
 import digitalKeyRoutes from './routes/digitalKeys.js';
 import meetUpRequestRoutes from './routes/meetUpRequests.js';
+import dashboardUpdatesRoutes from './routes/dashboardUpdates.js';
+import roomInventoryRoutes from './routes/roomInventory.js';
+import photoUploadRoutes from './routes/photoUpload.js';
+import staffTaskRoutes from './routes/staffTasks.js';
 
 const app = express();
 
@@ -92,13 +101,17 @@ app.use(cors({
   optionsSuccessStatus: 200
 }));
 
-// Rate limiting
+// Rate limiting - more lenient for development
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || (process.env.NODE_ENV === 'production' ? 100 : 1000),
   message: 'Too many requests from this IP, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    // Skip rate limiting for health checks and static files
+    return req.path === '/health' || req.path.startsWith('/uploads/');
+  }
 });
 app.use('/api/', limiter);
 
@@ -116,6 +129,9 @@ app.use(compression());
 
 // Logging
 app.use(requestLogger);
+
+// Serve static files for uploaded photos
+app.use('/uploads', express.static('uploads'));
 
 // API Documentation
 app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
@@ -142,6 +158,9 @@ app.use('/api/v1/ota', otaRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
 app.use('/api/v1/admin', adminRoutes);
 app.use('/api/v1/admin-dashboard', adminDashboardRoutes);
+app.use('/api/v1/staff-dashboard', staffDashboardRoutes);
+app.use('/api/v1/daily-inventory-checks', dailyInventoryCheckRoutes);
+app.use('/api/v1/inventory-notifications', inventoryNotificationRoutes);
 app.use('/api/v1/guest-services', guestServiceRoutes);
 app.use('/api/v1/reviews', reviewRoutes);
 app.use('/api/v1/maintenance', maintenanceRoutes);
@@ -157,6 +176,10 @@ app.use('/api/v1/hotel-services', hotelServicesRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/digital-keys', digitalKeyRoutes);
 app.use('/api/v1/meet-up-requests', meetUpRequestRoutes);
+app.use('/api/v1/dashboard-updates', dashboardUpdatesRoutes);
+app.use('/api/v1/room-inventory', roomInventoryRoutes);
+app.use('/api/v1/photos', photoUploadRoutes);
+app.use('/api/v1/staff-tasks', staffTaskRoutes);
 
 // 404 handler
 app.all('*', (req, res) => {
@@ -171,9 +194,34 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 4000;
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`Server running on port ${PORT}`);
   logger.info(`API Documentation available at http://localhost:${PORT}/docs`);
+});
+
+// Initialize WebSocket server
+websocketService.initialize(server);
+
+// Start inventory scheduler
+inventoryScheduler.start();
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, shutting down gracefully');
+  inventoryScheduler.stop();
+  server.close(() => {
+    logger.info('Process terminated');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  logger.info('SIGINT received, shutting down gracefully');
+  inventoryScheduler.stop();
+  server.close(() => {
+    logger.info('Process terminated');
+    process.exit(0);
+  });
 });
 
 export default app;

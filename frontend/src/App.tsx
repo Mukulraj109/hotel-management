@@ -23,6 +23,7 @@ import GuestBookings from './pages/guest/GuestBookings';
 import GuestBookingDetail from './pages/guest/GuestBookingDetail';
 import GuestProfile from './pages/guest/GuestProfile';
 import GuestRequests from './pages/guest/GuestRequests';
+import InventoryRequests from './pages/guest/InventoryRequests';
 import LoyaltyDashboard from './pages/guest/LoyaltyDashboard';
 import HotelServicesDashboard from './pages/guest/HotelServicesDashboard';
 import NotificationsDashboard from './pages/guest/NotificationsDashboard';
@@ -42,11 +43,24 @@ import AdminInventory from './pages/admin/AdminInventory';
 import AdminReports from './pages/admin/AdminReports';
 import AdminOTA from './pages/admin/AdminOTA';
 import BillingHistory from './pages/admin/BillingHistory';
+import { InventoryTemplateManagement } from './components/admin/InventoryTemplateManagement';
+
+// Staff Pages
+import StaffDashboard from './pages/staff/StaffDashboard';
+import StaffTasks from './pages/staff/StaffTasks';
+import StaffHousekeeping from './pages/staff/StaffHousekeeping';
+import StaffMaintenance from './pages/staff/StaffMaintenance';
+import StaffGuestServices from './pages/staff/StaffGuestServices';
+import StaffRooms from './pages/staff/StaffRooms';
+import StaffInventory from './pages/staff/StaffInventory';
+import StaffReports from './pages/staff/StaffReports';
+import { DailyInventoryCheckForm } from './components/staff/DailyInventoryCheckForm';
 
 // Layout Components
 import PublicLayout from './layouts/PublicLayout';
 import GuestLayout from './layouts/GuestLayout';
 import AdminLayout from './layouts/AdminLayout';
+import StaffLayout from './layouts/StaffLayout';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -64,7 +78,7 @@ function App() {
         <AuthProvider>
           <div className="min-h-screen bg-gray-50">
             <Routes>
-              {/* Public Routes */}
+              {/* Public Routes - Accessible to all users */}
               <Route path="/" element={<PublicLayout />}>
                 <Route index element={<HomePage />} />
                 <Route path="rooms" element={<RoomsPage />} />
@@ -94,13 +108,14 @@ function App() {
             <Route path="keys" element={<DigitalKeysDashboard />} />
             <Route path="meet-ups" element={<MeetUpRequestsDashboard />} />
             <Route path="profile" element={<GuestProfile />} />
-            <Route path="requests" element={<GuestRequests />} />
-              </Route>
+                        <Route path="requests" element={<GuestRequests />} />
+            <Route path="inventory-requests" element={<InventoryRequests />} />
+          </Route>
 
               {/* Admin Routes */}
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route path="/admin" element={
-                <ProtectedRoute allowedRoles={['admin', 'staff']}>
+                <ProtectedRoute allowedRoles={['admin']}>
                   <AdminLayout />
                 </ProtectedRoute>
               }>
@@ -111,9 +126,28 @@ function App() {
                 <Route path="bookings" element={<AdminBookings />} />
                 <Route path="housekeeping" element={<AdminHousekeeping />} />
                 <Route path="inventory" element={<AdminInventory />} />
+                <Route path="inventory/templates" element={<InventoryTemplateManagement />} />
                 <Route path="reports" element={<AdminReports />} />
                 <Route path="ota" element={<AdminOTA />} />
                 <Route path="billing" element={<BillingHistory />} />
+              </Route>
+
+              {/* Staff Routes */}
+              <Route path="/staff" element={
+                <ProtectedRoute allowedRoles={['staff']}>
+                  <StaffLayout />
+                </ProtectedRoute>
+              }>
+                <Route index element={<StaffDashboard />} />
+                <Route path="tasks" element={<StaffTasks />} />
+                <Route path="inventory-check/:roomId" element={<DailyInventoryCheckForm />} />
+                <Route path="inventory-check" element={<DailyInventoryCheckForm />} />
+                <Route path="housekeeping" element={<StaffHousekeeping />} />
+                <Route path="maintenance" element={<StaffMaintenance />} />
+                <Route path="guest-services" element={<StaffGuestServices />} />
+                <Route path="rooms" element={<StaffRooms />} />
+                <Route path="inventory" element={<StaffInventory />} />
+                <Route path="reports" element={<StaffReports />} />
               </Route>
 
               {/* Catch all route */}

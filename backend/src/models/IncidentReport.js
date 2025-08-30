@@ -533,7 +533,7 @@ incidentReportSchema.statics.getIncidentTrends = async function(hotelId, days = 
   return await this.aggregate([
     {
       $match: {
-        hotelId: mongoose.Types.ObjectId(hotelId),
+        hotelId: new mongoose.Types.ObjectId(hotelId),
         timeOccurred: { $gte: startDate }
       }
     },

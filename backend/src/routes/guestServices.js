@@ -431,7 +431,7 @@ router.get('/stats', authenticate, authorize('staff', 'admin'), catchAsync(async
   const overallStats = await GuestService.aggregate([
     { 
       $match: {
-        hotelId: mongoose.Types.ObjectId(hotelId),
+        hotelId: new mongoose.Types.ObjectId(hotelId),
         ...(startDate && endDate ? {
           createdAt: {
             $gte: new Date(startDate),

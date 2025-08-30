@@ -1,4 +1,5 @@
 import { api } from './api';
+import { withRateLimit } from '../utils/requestThrottle';
 import { 
   ApiResponse,
   RealTimeDashboard,
@@ -85,8 +86,11 @@ class DashboardService {
     if (floor) params.append('floor', floor);
     if (roomType) params.append('roomType', roomType);
 
-    const response = await api.get(`${this.baseUrl}/occupancy?${params.toString()}`);
-    return response.data;
+    const endpoint = `${this.baseUrl}/occupancy`;
+    return withRateLimit(endpoint, async () => {
+      const response = await api.get(`${endpoint}?${params.toString()}`);
+      return response.data;
+    });
   }
 
   /**
@@ -104,8 +108,11 @@ class DashboardService {
     if (startDate) params.append('startDate', startDate);
     if (endDate) params.append('endDate', endDate);
 
-    const response = await api.get(`${this.baseUrl}/revenue?${params.toString()}`);
-    return response.data;
+    const endpoint = `${this.baseUrl}/revenue`;
+    return withRateLimit(endpoint, async () => {
+      const response = await api.get(`${endpoint}?${params.toString()}`);
+      return response.data;
+    });
   }
 
   /**

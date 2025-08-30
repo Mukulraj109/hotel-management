@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { cn } from '../../utils/cn';
 import {
-  DashboardCard,
   MetricCard,
   ChartCard,
   AlertCard,
@@ -9,9 +8,7 @@ import {
   FilterBar,
   RefreshButton,
   LineChart,
-  BarChart,
   DonutChart,
-  AreaChart,
   HeatmapChart,
 } from '../../components/dashboard';
 import { RevenueBreakdownPopup } from '../../components/dashboard/RevenueBreakdownPopup';
@@ -25,6 +22,8 @@ import { useDashboardOverview, useOccupancyData, useRevenueData } from '../../ho
 import { formatCurrency, formatPercentage, formatRelativeTime } from '../../utils/dashboardUtils';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { InventoryDashboardWidget } from '../../components/admin/InventoryDashboardWidget';
+import { InventoryNotifications } from '../../components/admin/InventoryNotifications';
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -32,7 +31,6 @@ export default function AdminDashboard() {
   // Use user's hotelId, fallback to new seeded hotel ID if not available
   const [selectedHotelId, setSelectedHotelId] = useState<string>(user?.hotelId || '68b19648e35a38ee7b1d1828');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const [refreshKey, setRefreshKey] = useState(0);
   const [showRevenueBreakdown, setShowRevenueBreakdown] = useState(false);
   const [showOccupancyBreakdown, setShowOccupancyBreakdown] = useState(false);
   const [showBookingsBreakdown, setShowBookingsBreakdown] = useState(false);
@@ -45,14 +43,6 @@ export default function AdminDashboard() {
     }
   }, [user?.hotelId, selectedHotelId]);
 
-  // Force refetch when hotel ID changes to avoid cache issues
-  React.useEffect(() => {
-    if (selectedHotelId) {
-      occupancyQuery.refetch();
-      revenueQuery.refetch();
-    }
-  }, [selectedHotelId]);
-
   // Fetch dashboard data
   const {
     realTimeData,
@@ -64,17 +54,14 @@ export default function AdminDashboard() {
   } = useDashboardOverview(selectedHotelId);
 
   const occupancyQuery = useOccupancyData(selectedHotelId, undefined, undefined, { 
-    enabled: !!selectedHotelId,
-    refetchOnMount: true,
-    refetchOnWindowFocus: false,
-    staleTime: 0 // Always consider data stale to force refresh
+    enabled: !!selectedHotelId
   });
   const revenueQuery = useRevenueData(selectedHotelId, 'month', undefined, undefined, { 
-    enabled: !!selectedHotelId,
-    refetchOnMount: true,
-    refetchOnWindowFocus: false,
-    staleTime: 0 // Always consider data stale to force refresh
+    enabled: !!selectedHotelId
   });
+
+  // React Query will automatically refetch when selectedHotelId changes due to enabled condition
+  // No manual refetch needed to avoid excessive API calls
   console.log('Occupancy Query:', occupancyQuery);
   console.log('Occupancy Query Status:', {
     isLoading: occupancyQuery.isLoading,
@@ -127,7 +114,6 @@ export default function AdminDashboard() {
     }));
   })());
   const handleRefresh = () => {
-    setRefreshKey(prev => prev + 1);
     // Force refetch all queries with fresh cache
     occupancyQuery.refetch();
     revenueQuery.refetch();
@@ -355,7 +341,7 @@ export default function AdminDashboard() {
           height="350px"
         >
           <LineChart
-            data={revenueQuery.data?.data?.charts?.dailyRevenue || []}
+            data={(revenueQuery.data?.data?.timeSeries || []) as any}
             xDataKey="date"
             lines={[
               {
@@ -410,7 +396,7 @@ export default function AdminDashboard() {
         onRefresh={() => occupancyQuery.refetch()}
         height="400px"
       >
-        {occupancyQuery.data?.data?.rooms?.length > 0 ? (
+        {(occupancyQuery.data?.data?.rooms?.length || 0) > 0 ? (
           <HeatmapChart
             data={(() => {
               const rooms = occupancyQuery.data?.data?.rooms || [];
@@ -470,6 +456,17 @@ export default function AdminDashboard() {
         )}
       </ChartCard>
 
+      {/* Inventory Dashboard Section */}
+      <InventoryDashboardWidget 
+        hotelId={selectedHotelId} 
+        onNavigate={(path) => navigate(path)}
+      />
+
+      {/* Inventory Notifications Section */}
+      <div className="mb-8">
+        <InventoryNotifications />
+      </div>
+
       {/* Bottom Section - Tables and Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Bookings */}
@@ -517,7 +514,7 @@ export default function AdminDashboard() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-medium text-gray-900">Active Alerts</h3>
-            <Badge variant="secondary">
+            <Badge variant="default">
               {alerts.data?.data.alerts.length || 0}
             </Badge>
           </div>

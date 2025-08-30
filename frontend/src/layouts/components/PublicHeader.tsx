@@ -55,10 +55,10 @@ export default function PublicHeader() {
           <div className="hidden md:flex items-center space-x-4">
             {isAuthenticated ? (
               <>
-                <Button variant="ghost" size="sm" onClick={handleDashboard}>
-                  <User className="h-4 w-4 mr-2" />
-                  Dashboard
-                </Button>
+                                  <Button variant="ghost" size="sm" onClick={handleDashboard}>
+                    <User className="h-4 w-4 mr-2" />
+                    Dashboard
+                  </Button>
                 <Button variant="secondary" size="sm" onClick={handleAuthAction}>
                   Logout
                 </Button>

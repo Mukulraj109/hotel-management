@@ -84,8 +84,11 @@ export default function AdminBookings() {
       if (response.pagination) {
         setPagination(response.pagination);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching bookings:', error);
+      if (error.response?.status === 429) {
+        console.log('Rate limit exceeded, will retry automatically');
+      }
       setBookings([]);
     } finally {
       setLoading(false);

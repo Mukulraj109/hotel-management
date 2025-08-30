@@ -96,9 +96,22 @@ export default function AdminHousekeeping() {
       const response = await adminService.getHousekeepingTasks(filters);
       console.log('Full response from getHousekeepingTasks:', response);
       
-      // If no tasks are returned, use mock data for testing
-      if (!response.data.tasks || response.data.tasks.length === 0) {
-        console.log('No tasks found, using mock data for testing');
+      setTasks(response.data.tasks || []);
+      
+      if (response.pagination) {
+        setPagination(response.pagination);
+      }
+    } catch (error) {
+      console.error('Error fetching housekeeping tasks:', error);
+      console.error('Error details:', error.response?.data);
+      
+      // Show error to user
+      const errorMessage = error.response?.data?.message || 'Failed to fetch housekeeping tasks';
+      console.error('Housekeeping API error:', errorMessage);
+      
+      // Only use mock data in development for testing
+      if (import.meta.env.MODE === 'development') {
+        console.log('Using mock data for development testing');
         const mockTasks = [
           {
             _id: 'mock-task-1',
@@ -121,7 +134,7 @@ export default function AdminHousekeeping() {
             priority: 'high',
             status: 'assigned',
             roomId: { _id: '507f1f77bcf86cd799439013', roomNumber: '201', type: 'Deluxe' },
-            assignedToUserId: '507f1f77bcf86cd799439021', // John Smith
+            assignedToUserId: '507f1f77bcf86cd799439021',
             estimatedDuration: 45,
             createdAt: new Date().toISOString(),
             supplies: [{ name: 'Tool kit', quantity: 1, unit: 'set' }]
@@ -129,20 +142,8 @@ export default function AdminHousekeeping() {
         ];
         setTasks(mockTasks as any);
       } else {
-        setTasks(response.data.tasks);
+        setTasks([]);
       }
-      const tasksToLog = response.data.tasks || [];
-      console.log('Available tasks:', tasksToLog.map((task: any) => ({ 
-        id: task._id, 
-        title: task.title, 
-        status: task.status,
-        assignedToUserId: task.assignedToUserId 
-      })));
-      if (response.pagination) {
-        setPagination(response.pagination);
-      }
-    } catch (error) {
-      console.error('Error fetching tasks:', error);
     } finally {
       setLoading(false);
     }
@@ -165,33 +166,47 @@ export default function AdminHousekeeping() {
         avgDuration: 0
       };
 
-      statsData.forEach((stat: any) => {
-        transformedStats.total += stat.count;
-        switch (stat._id) {
-          case 'pending':
-            transformedStats.pending = stat.count;
-            break;
-          case 'assigned':
-            transformedStats.assigned = stat.count;
-            break;
-          case 'in_progress':
-            transformedStats.inProgress = stat.count;
-            break;
-          case 'completed':
-            transformedStats.completed = stat.count;
-            break;
-          case 'cancelled':
-            transformedStats.cancelled = stat.count;
-            break;
-        }
-        if (stat.avgDuration) {
-          transformedStats.avgDuration = stat.avgDuration;
-        }
-      });
+      if (Array.isArray(statsData)) {
+        statsData.forEach((stat: any) => {
+          transformedStats.total += stat.count;
+          switch (stat._id) {
+            case 'pending':
+              transformedStats.pending = stat.count;
+              break;
+            case 'assigned':
+              transformedStats.assigned = stat.count;
+              break;
+            case 'in_progress':
+              transformedStats.inProgress = stat.count;
+              break;
+            case 'completed':
+              transformedStats.completed = stat.count;
+              break;
+            case 'cancelled':
+              transformedStats.cancelled = stat.count;
+              break;
+          }
+          if (stat.avgDuration) {
+            transformedStats.avgDuration = stat.avgDuration;
+          }
+        });
+      }
 
       setStats(transformedStats);
     } catch (error) {
-      console.error('Error fetching stats:', error);
+      console.error('Error fetching housekeeping stats:', error);
+      console.error('Stats error details:', error.response?.data);
+      
+      // Set empty stats on error
+      setStats({
+        total: 0,
+        pending: 0,
+        assigned: 0,
+        inProgress: 0,
+        completed: 0,
+        cancelled: 0,
+        avgDuration: 0
+      });
     }
   };
 
@@ -295,7 +310,8 @@ export default function AdminHousekeeping() {
       
       const updateData = { 
         status: 'assigned' as const,
-        assignedToUserId: staffId
+        assignedToUserId: staffId,
+        assignedTo: staffId
       } as any;
       console.log('Update data:', updateData);
       
@@ -459,28 +475,31 @@ export default function AdminHousekeeping() {
       )
     },
          {
-       key: 'assignedToUserId',
+       key: 'assignedTo',
        header: 'Assigned To',
        render: (value: any, row: HousekeepingTask) => {
-         console.log('Rendering assignedToUserId:', { value, type: typeof value, staffMembers });
+         console.log('Rendering assignedTo:', { value, assignedToUserId: row.assignedToUserId, staffMembers });
+         
+         // Check both assignedTo and assignedToUserId for backward compatibility
+         const assignedValue = value || row.assignedToUserId;
          
          let staffName = 'Unassigned';
-         if (value) {
-           if (typeof value === 'string') {
+         if (assignedValue) {
+           if (typeof assignedValue === 'string') {
              // If it's just a string (user ID), find the staff member
-             const staff = staffMembers.find(staff => staff._id === value);
+             const staff = staffMembers.find(staff => staff._id === assignedValue);
              staffName = staff ? staff.name : 'Unknown Staff';
-             console.log('Found staff for ID:', value, staff);
-           } else if (value.name) {
+             console.log('Found staff for ID:', assignedValue, staff);
+           } else if (assignedValue.name) {
              // If it's a populated object, use the name
-             staffName = value.name;
+             staffName = assignedValue.name;
            }
          }
          
          return (
            <div className="flex items-center">
              <User className="h-4 w-4 text-gray-400 mr-1" />
-             <span className={value ? 'text-gray-900' : 'text-gray-500'}>
+             <span className={assignedValue ? 'text-gray-900' : 'text-gray-500'}>
                {staffName}
              </span>
            </div>
@@ -1063,13 +1082,12 @@ export default function AdminHousekeeping() {
                    <label className="block text-sm font-medium text-gray-700">Assigned To</label>
                    <div className="flex items-center mt-1">
                      <User className="h-4 w-4 text-gray-400 mr-2" />
-                     <span className={selectedTask.assignedToUserId ? 'text-gray-900' : 'text-gray-500'}>
+                     <span className={selectedTask.assignedTo || selectedTask.assignedToUserId ? 'text-gray-900' : 'text-gray-500'}>
                        {(() => {
-                         console.log('Task details - assignedToUserId:', selectedTask.assignedToUserId, 'type:', typeof selectedTask.assignedToUserId);
+                         const assignedValue = selectedTask.assignedTo || selectedTask.assignedToUserId;
+                         console.log('Task details - assignedValue:', assignedValue, 'type:', typeof assignedValue);
                          
-                         if (!selectedTask.assignedToUserId) return 'Unassigned';
-                         
-                         const assignedValue = selectedTask.assignedToUserId as any;
+                         if (!assignedValue) return 'Unassigned';
                          if (typeof assignedValue === 'string') {
                            const staff = staffMembers.find(staff => staff._id === assignedValue);
                            console.log('Found staff in details:', staff);

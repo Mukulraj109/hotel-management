@@ -668,7 +668,7 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
   const overallStats = await MessageTemplate.aggregate([
     {
       $match: {
-        hotelId: mongoose.Types.ObjectId(hotelId),
+        hotelId: new mongoose.Types.ObjectId(hotelId),
         ...(startDate && endDate ? {
           lastUsed: {
             $gte: new Date(startDate),

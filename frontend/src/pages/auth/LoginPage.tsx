@@ -46,7 +46,29 @@ export default function LoginPage() {
     try {
       setLoading(true);
       await login(formData.email, formData.password);
-      navigate(from, { replace: true });
+      
+      // Get user data and redirect based on role
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      let redirectPath = from;
+      
+      if (from === '/') {
+        // Default redirect based on role
+        switch (userData.role) {
+          case 'admin':
+            redirectPath = '/admin';
+            break;
+          case 'staff':
+            redirectPath = '/staff';
+            break;
+          case 'guest':
+            redirectPath = '/app';
+            break;
+          default:
+            redirectPath = '/';
+        }
+      }
+      
+      navigate(redirectPath, { replace: true });
     } catch (error) {
       // Error is handled by the auth context
     } finally {

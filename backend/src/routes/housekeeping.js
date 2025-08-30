@@ -26,7 +26,13 @@ router.get('/', authenticate, authorize('admin', 'staff'), catchAsync(async (req
   
   if (status) query.status = status;
   if (roomId) query.roomId = roomId;
-  if (assignedToUserId) query.assignedToUserId = assignedToUserId;
+  if (assignedToUserId) {
+    // Check both field names for backward compatibility
+    query.$or = [
+      { assignedToUserId: assignedToUserId },
+      { assignedTo: assignedToUserId }
+    ];
+  }
   if (taskType) query.taskType = taskType;
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -34,6 +40,7 @@ router.get('/', authenticate, authorize('admin', 'staff'), catchAsync(async (req
   const tasks = await Housekeeping.find(query)
     .populate('roomId', 'roomNumber type floor')
     .populate('assignedToUserId', 'name')
+    .populate('assignedTo', 'name')
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(parseInt(limit));
@@ -114,7 +121,7 @@ router.patch('/:id', authenticate, authorize('admin', 'staff'), catchAsync(async
     id,
     updateData,
     { new: true, runValidators: true }
-  ).populate('roomId assignedToUserId');
+  ).populate('roomId assignedToUserId assignedTo');
 
   if (!task) {
     console.log('Task not found with ID:', id);

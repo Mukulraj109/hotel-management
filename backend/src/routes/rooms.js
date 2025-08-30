@@ -109,25 +109,74 @@ router.get('/', optionalAuth, catchAsync(async (req, res) => {
       }
     }
 
-    const availableRooms = await Room.findAvailable(targetHotelId, checkInDate, checkOutDate, type);
-    
-    // Debug logging
-    console.log('Available rooms found:', availableRooms.length);
-    console.log('Check-in date:', checkInDate);
-    console.log('Check-out date:', checkOutDate);
-    console.log('Hotel ID:', targetHotelId);
-    
-    // Apply pagination manually since findAvailable returns results, not a query
-    const startIndex = skip;
-    const endIndex = skip + parseInt(limit);
-    rooms = availableRooms.slice(startIndex, endIndex);
-    
-    // Set total count
-    total = availableRooms.length;
-    
-    // Populate hotel info if rooms exist
-    if (rooms.length > 0) {
-      rooms = await Room.populate(rooms, { path: 'hotelId', select: 'name address' });
+    // For admin requests, show all rooms but mark availability
+    if (req.headers['x-admin-request'] || req.user?.role === 'admin') {
+      console.log('Admin request detected - showing all rooms with availability status');
+      
+      // Get all rooms for the hotel
+      const allRooms = await Room.find({
+        hotelId: targetHotelId,
+        isActive: true,
+        ...(type && { type })
+      }).sort({ roomNumber: 1 });
+      
+      // Get conflicting bookings for the date range
+      const conflictingBookings = await Booking.find({
+        hotelId: targetHotelId,
+        status: { $in: ['confirmed', 'checked_in'] },
+        $or: [
+          { checkIn: { $lt: checkOutDate, $gte: checkInDate } },
+          { checkOut: { $gt: checkInDate, $lte: checkOutDate } },
+          { checkIn: { $lte: checkInDate }, checkOut: { $gte: checkOutDate } }
+        ]
+      }).select('rooms.roomId');
+      
+      // Extract occupied room IDs
+      const occupiedRoomIds = conflictingBookings.flatMap(booking => 
+        booking.rooms.map(room => room.roomId.toString())
+      );
+      
+             // For admin requests, show all rooms but mark availability based on booking conflicts only
+       // Don't restrict by room status for admin walk-in bookings
+       rooms = allRooms.map(room => ({
+         ...room.toObject(),
+         isAvailable: !occupiedRoomIds.includes(room._id.toString()),
+         currentStatus: room.status // Include current status for admin reference
+       }));
+      
+      total = rooms.length;
+      
+      // Apply pagination
+      const startIndex = skip;
+      const endIndex = skip + parseInt(limit);
+      rooms = rooms.slice(startIndex, endIndex);
+      
+      // Populate hotel info if rooms exist
+      if (rooms.length > 0) {
+        rooms = await Room.populate(rooms, { path: 'hotelId', select: 'name address' });
+      }
+    } else {
+      // For regular users, use strict availability filtering
+      const availableRooms = await Room.findAvailable(targetHotelId, checkInDate, checkOutDate, type);
+      
+      // Debug logging
+      console.log('Available rooms found:', availableRooms.length);
+      console.log('Check-in date:', checkInDate);
+      console.log('Check-out date:', checkOutDate);
+      console.log('Hotel ID:', targetHotelId);
+      
+      // Apply pagination manually since findAvailable returns results, not a query
+      const startIndex = skip;
+      const endIndex = skip + parseInt(limit);
+      rooms = availableRooms.slice(startIndex, endIndex);
+      
+      // Set total count
+      total = availableRooms.length;
+      
+      // Populate hotel info if rooms exist
+      if (rooms.length > 0) {
+        rooms = await Room.populate(rooms, { path: 'hotelId', select: 'name address' });
+      }
     }
   } else {
     // For admin requests without dates, use real-time status

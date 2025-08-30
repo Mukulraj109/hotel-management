@@ -43,6 +43,12 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
     
+    if (response?.status === 429) {
+      // Rate limit exceeded
+      toast.error('Too many requests. Please wait a moment and try again.');
+      return Promise.reject(error);
+    }
+    
     if (response?.status >= 500) {
       toast.error('Server error. Please try again later.');
     } else if (response?.data?.message) {

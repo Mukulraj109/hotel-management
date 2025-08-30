@@ -52,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { token, user: userData } = await authService.login({ email, password });
       localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(userData));
       authService.setToken(token);
       setUser(userData);
       toast.success('Login successful!');
@@ -78,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('user');
     authService.removeToken();
     setUser(null);
     toast.success('Logged out successfully');

@@ -15,7 +15,14 @@ const notificationSchema = new mongoose.Schema({
   },
   type: { 
     type: String, 
-    enum: ['booking_confirmation', 'booking_reminder', 'booking_cancellation', 'payment_success', 'payment_failed', 'loyalty_points', 'service_booking', 'service_reminder', 'promotional', 'system_alert', 'welcome', 'check_in', 'check_out', 'review_request', 'special_offer'], 
+    enum: [
+      // Original types
+      'booking_confirmation', 'booking_reminder', 'booking_cancellation', 'payment_success', 'payment_failed', 'loyalty_points', 'service_booking', 'service_reminder', 'promotional', 'system_alert', 'welcome', 'check_in', 'check_out', 'review_request', 'special_offer',
+      // New admin dashboard types
+      'booking_created', 'payment_update', 'booking_cancelled', 'user_registration', 'service_request', 'review_created', 'user_activity', 'data_refresh',
+      // Inventory notification types
+      'inventory_damage', 'inventory_missing', 'inventory_replacement_needed', 'inventory_guest_charged', 'inventory_low_stock', 'checkout_inspection_failed', 'inventory_theft'
+    ], 
     required: [true, 'Notification type is required'] 
   },
   title: { 

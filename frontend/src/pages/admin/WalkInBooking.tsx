@@ -79,7 +79,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
   });
 
   const [bookingForm, setBookingForm] = useState<BookingForm>({
-    hotelId: '68b0a113b4661005f95554ff', // Default hotel - THE PENTOUZ
+    hotelId: '68b19648e35a38ee7b1d1828', // Default hotel ID
     roomIds: [],
     checkIn: new Date().toISOString().split('T')[0],
     checkOut: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Set to 2 days later
@@ -129,21 +129,38 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
         checkOut: bookingForm.checkOut
       });
       
+      console.log('Making API call to getAvailableRooms...');
       const response = await adminService.getAvailableRooms(
         bookingForm.hotelId,
         bookingForm.checkIn,
         bookingForm.checkOut
       );
       console.log('Available rooms response:', response);
-      setAvailableRooms(response.data.rooms || []);
-    } catch (error) {
+      console.log('Response data:', response.data);
+      console.log('Rooms array:', response.data.rooms);
+      console.log('Number of rooms:', response.data.rooms?.length || 0);
+      
+      const rooms = response.data.rooms || [];
+      console.log('Setting available rooms:', rooms);
+      setAvailableRooms(rooms);
+    } catch (error: any) {
       console.error('Error fetching available rooms:', error);
-      if (error.response) {
+      console.error('Error details:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        config: error.config
+      });
+      if (error.response?.status === 429) {
+        console.log('Rate limit exceeded, will retry automatically');
+      } else if (error.response) {
         console.error('Error response:', error.response.data);
       }
       setAvailableRooms([]);
     }
   };
+
+
 
   const validateGuestForm = () => {
     const newErrors: Record<string, string> = {};
@@ -206,7 +223,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
     const checkOutDate = new Date(bookingForm.checkOut);
     const nights = Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24));
     
-    const selectedRooms = availableRooms.filter(room => bookingForm.roomIds.includes(room._id));
+    const selectedRooms = availableRooms.filter(room => bookingForm.roomIds.includes(room._id) && room.isAvailable);
     const roomsTotal = selectedRooms.reduce((total, room) => total + (room.currentRate || 0), 0);
     
     return roomsTotal * nights;
@@ -275,18 +292,18 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
 
       // Create booking
       try {
-        const bookingData = {
-          hotelId: bookingForm.hotelId,
-          userId: userId,
-          roomIds: bookingForm.roomIds,
-          checkIn: bookingForm.checkIn,
-          checkOut: bookingForm.checkOut,
-          guestDetails: bookingForm.guestDetails,
-          totalAmount: calculateTotalAmount(),
-          currency: bookingForm.currency,
-          paymentStatus: bookingForm.paymentStatus,
-          status: bookingForm.status
-        };
+                 const bookingData = {
+           hotelId: bookingForm.hotelId,
+           userId: userId,
+           roomIds: bookingForm.roomIds,
+           checkIn: bookingForm.checkIn,
+           checkOut: bookingForm.checkOut,
+           guestDetails: bookingForm.guestDetails,
+           totalAmount: calculateTotalAmount(),
+           currency: bookingForm.currency,
+           paymentStatus: bookingForm.paymentStatus,
+           status: 'confirmed' as const
+         };
 
         await adminService.createBooking(bookingData);
         
@@ -347,7 +364,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
       idNumber: ''
     });
     setBookingForm({
-      hotelId: '68b0a113b4661005f95554ff', // Default hotel - THE PENTOUZ
+      hotelId: '68b19648e35a38ee7b1d1828', // Default hotel ID
       roomIds: [],
       checkIn: new Date().toISOString().split('T')[0],
       checkOut: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Set to 2 days later
@@ -650,59 +667,59 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
               </div>
             </div>
 
-            {/* Available Rooms */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                Available Rooms * ({availableRooms.length} rooms found)
-              </label>
-              {availableRooms.length > 0 ? (
-                <div className="space-y-2 max-h-80 overflow-y-auto border border-gray-200 rounded-lg p-2">
-                  {availableRooms.map((room) => (
-                    <div
-                      key={room._id}
-                      className={`p-3 border rounded-lg cursor-pointer ${
-                        bookingForm.roomIds.includes(room._id)
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-300 hover:border-gray-400'
-                      }`}
-                      onClick={() => {
-                        setBookingForm(prev => ({
-                          ...prev,
-                          roomIds: prev.roomIds.includes(room._id)
-                            ? prev.roomIds.filter(id => id !== room._id)
-                            : [...prev.roomIds, room._id]
-                        }));
-                      }}
-                    >
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <div className="flex items-center">
-                            <Home className="h-4 w-4 text-gray-400 mr-2" />
-                            <span className="font-medium">Room {room.roomNumber}</span>
-                          </div>
-                          <div className="text-sm text-gray-600">
-                            {room.type} • Floor {room.floor}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="font-medium">
-                            {formatCurrency(room.currentRate || 0, 'INR')}/night
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="p-4 border border-gray-300 rounded-lg bg-gray-50">
-                  <p className="text-gray-600 text-center">
-                    {bookingForm.checkIn && bookingForm.checkOut 
-                      ? 'No rooms available for the selected dates. Please try different dates.'
-                      : 'Please select check-in and check-out dates to see available rooms.'
-                    }
-                  </p>
-                </div>
-              )}
+                         {/* Available Rooms */}
+             <div>
+               <label className="block text-sm font-medium text-gray-700 mb-3">
+                 Available Rooms * ({availableRooms.filter(room => room.isAvailable).length} rooms found)
+               </label>
+               {availableRooms.filter(room => room.isAvailable).length > 0 ? (
+                 <div className="space-y-2 max-h-80 overflow-y-auto border border-gray-200 rounded-lg p-2">
+                   {availableRooms.filter(room => room.isAvailable).map((room) => (
+                     <div
+                       key={room._id}
+                       className={`p-3 border rounded-lg cursor-pointer ${
+                         bookingForm.roomIds.includes(room._id)
+                           ? 'border-blue-500 bg-blue-50'
+                           : 'border-gray-300 hover:border-gray-400'
+                       }`}
+                       onClick={() => {
+                         setBookingForm(prev => ({
+                           ...prev,
+                           roomIds: prev.roomIds.includes(room._id)
+                             ? prev.roomIds.filter(id => id !== room._id)
+                             : [...prev.roomIds, room._id]
+                         }));
+                       }}
+                     >
+                       <div className="flex justify-between items-center">
+                         <div>
+                           <div className="flex items-center">
+                             <Home className="h-4 w-4 text-gray-400 mr-2" />
+                             <span className="font-medium">Room {room.roomNumber}</span>
+                           </div>
+                           <div className="text-sm text-gray-600">
+                             {room.type} • Floor {room.floor}
+                           </div>
+                         </div>
+                         <div className="text-right">
+                           <div className="font-medium">
+                             {formatCurrency(room.currentRate || 0, 'INR')}/night
+                           </div>
+                         </div>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+                             ) : (
+                 <div className="p-4 border border-gray-300 rounded-lg bg-gray-50">
+                   <p className="text-gray-600 text-center">
+                     {bookingForm.checkIn && bookingForm.checkOut 
+                       ? `No rooms available for the selected dates (${availableRooms.length} total rooms found, ${availableRooms.filter(room => room.isAvailable).length} available). Please try different dates.`
+                       : 'Please select check-in and check-out dates to see available rooms.'
+                     }
+                   </p>
+                 </div>
+               )}
               {errors.rooms && (
                 <p className="text-red-500 text-sm mt-1">{errors.rooms}</p>
               )}
@@ -815,21 +832,21 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
                     </div>
                   </div>
 
-                  <div>
-                    <p className="text-sm text-gray-600 mb-2">Selected Rooms</p>
-                    <div className="space-y-2">
-                      {availableRooms
-                        .filter(room => bookingForm.roomIds.includes(room._id))
-                        .map(room => (
-                          <div key={room._id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                            <span>Room {room.roomNumber} ({room.type})</span>
-                            <span className="font-medium">
-                              {formatCurrency(room.currentRate || 0, 'INR')}/night
-                            </span>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
+                                     <div>
+                     <p className="text-sm text-gray-600 mb-2">Selected Rooms</p>
+                     <div className="space-y-2">
+                       {availableRooms
+                         .filter(room => bookingForm.roomIds.includes(room._id) && room.isAvailable)
+                         .map(room => (
+                           <div key={room._id} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                             <span>Room {room.roomNumber} ({room.type})</span>
+                             <span className="font-medium">
+                               {formatCurrency(room.currentRate || 0, 'INR')}/night
+                             </span>
+                           </div>
+                         ))}
+                     </div>
+                   </div>
                 </div>
               </CardContent>
             </Card>
@@ -912,11 +929,11 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
 
         {/* Action Buttons */}
         <div className="flex justify-between pt-6 border-t">
-          <Button
-            variant="outline"
-            onClick={step === 1 ? handleClose : handlePrevious}
-            disabled={loading}
-          >
+                     <Button
+             variant="ghost"
+             onClick={step === 1 ? handleClose : handlePrevious}
+             disabled={loading}
+           >
             {step === 1 ? 'Cancel' : 'Previous'}
           </Button>
 

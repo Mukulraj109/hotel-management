@@ -2,10 +2,12 @@ import express from 'express';
 import mongoose from 'mongoose';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
+import Invoice from '../models/Invoice.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { AppError } from '../utils/appError.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import { dashboardUpdateService } from '../services/dashboardUpdateService.js';
 
 const router = express.Router();
 
@@ -382,10 +384,64 @@ router.post('/',
           paymentStatus: paymentStatus || 'pending'
         }], { session });
 
+        // Create corresponding invoice for billing history
+        const finalAmount = totalAmount || calculatedTotal;
+        const bookingCurrency = currency || 'INR';
+        
+        // Calculate due date (typically 30 days from issue date)
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + 30);
+        
+        // Create invoice items from room charges
+        const invoiceItems = roomsWithRates.map(room => {
+          const roomDetails = rooms.find(r => r._id.toString() === room.roomId.toString());
+          return {
+            description: `Room ${roomDetails?.roomNumber || 'N/A'} - ${roomDetails?.type || 'Standard'} (${nights} nights)`,
+            category: 'accommodation',
+            quantity: nights,
+            unitPrice: room.rate,
+            totalPrice: room.rate * nights,
+            taxRate: 10, // Standard 10% tax rate
+            taxAmount: (room.rate * nights * 10) / 100
+          };
+        });
+        
+        // Calculate subtotal and tax
+        const subtotal = invoiceItems.reduce((sum, item) => sum + item.totalPrice, 0);
+        const taxAmount = invoiceItems.reduce((sum, item) => sum + item.taxAmount, 0);
+        const totalWithTax = subtotal + taxAmount;
+        
+        const invoice = await Invoice.create([{
+          hotelId,
+          bookingId: booking[0]._id,
+          guestId: userId || req.user._id,
+          type: 'accommodation',
+          status: paymentStatus === 'paid' ? 'paid' : 'issued',
+          items: invoiceItems,
+          subtotal,
+          taxAmount,
+          totalAmount: totalWithTax,
+          currency: bookingCurrency,
+          dueDate,
+          paidDate: paymentStatus === 'paid' ? new Date() : null,
+          payments: paymentStatus === 'paid' ? [{
+            amount: totalWithTax,
+            method: 'credit_card', // Default method, can be updated later
+            paidBy: userId || req.user._id,
+            paidAt: new Date(),
+            notes: 'Booking payment'
+          }] : []
+        }], { session });
+
+        // Notify admin dashboard of new booking
+        await dashboardUpdateService.notifyNewBooking(booking[0], req.user);
+        await dashboardUpdateService.triggerDashboardRefresh(hotelId, 'bookings');
+
         res.status(201).json({
           status: 'success',
           data: {
-            booking: booking[0]
+            booking: booking[0],
+            invoice: invoice[0]
           }
         });
       });
@@ -446,11 +502,51 @@ router.patch('/:id',
       }
     });
 
+    const originalBooking = await Booking.findById(req.params.id);
+    const oldPaymentStatus = originalBooking?.paymentStatus;
+
     const updatedBooking = await Booking.findByIdAndUpdate(
       req.params.id,
       updateData,
       { new: true, runValidators: true }
     ).populate('rooms.roomId userId hotelId');
+
+    // Update corresponding invoice if payment status changed
+    if (updateData.paymentStatus && ['admin', 'staff'].includes(req.user.role)) {
+      const invoice = await Invoice.findOne({ bookingId: req.params.id });
+      if (invoice) {
+        if (updateData.paymentStatus === 'paid' && invoice.status !== 'paid') {
+          // Mark invoice as paid
+          invoice.status = 'paid';
+          invoice.paidDate = new Date();
+          
+          // Add payment record if not exists
+          const totalPaid = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
+          if (totalPaid < invoice.totalAmount) {
+            invoice.payments.push({
+              amount: invoice.totalAmount - totalPaid,
+              method: 'credit_card', // Default method
+              paidBy: updatedBooking.userId,
+              paidAt: new Date(),
+              notes: 'Payment status updated via booking'
+            });
+          }
+        } else if (updateData.paymentStatus === 'pending' && invoice.status === 'paid') {
+          // Revert invoice to issued status
+          invoice.status = 'issued';
+          invoice.paidDate = null;
+          invoice.payments = []; // Clear payments
+        }
+        
+        await invoice.save();
+      }
+
+      // Notify admin dashboard if payment status changed
+      if (oldPaymentStatus !== updateData.paymentStatus) {
+        await dashboardUpdateService.notifyPaymentUpdate(updatedBooking, oldPaymentStatus, updateData.paymentStatus, updatedBooking.userId);
+        await dashboardUpdateService.triggerDashboardRefresh(updatedBooking.hotelId, 'payments');
+      }
+    }
 
     res.json({
       status: 'success',
@@ -501,6 +597,10 @@ router.patch('/:id/cancel',
     booking.status = 'cancelled';
     booking.cancellationReason = req.body.reason || 'Cancelled by user';
     await booking.save();
+
+    // Notify admin dashboard of booking cancellation
+    await dashboardUpdateService.notifyBookingCancellation(booking, req.user, req.body.reason);
+    await dashboardUpdateService.triggerDashboardRefresh(booking.hotelId, 'bookings');
 
     res.json({
       status: 'success',
