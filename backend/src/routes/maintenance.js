@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import MaintenanceTask from '../models/MaintenanceTask.js';
 import Room from '../models/Room.js';
 import { authenticate, authorize } from '../middleware/auth.js';
@@ -178,6 +179,8 @@ router.get('/', catchAsync(async (req, res) => {
   // Role-based filtering
   if (req.user.role === 'staff') {
     query.hotelId = req.user.hotelId;
+    // Staff users should only see tasks assigned to them
+    query.assignedTo = req.user._id;
   } else if (req.user.role === 'admin' && req.query.hotelId) {
     query.hotelId = req.query.hotelId;
   }
@@ -220,6 +223,174 @@ router.get('/', catchAsync(async (req, res) => {
         pages: Math.ceil(total / limit)
       }
     }
+  });
+}));
+
+/**
+ * @swagger
+ * /maintenance/stats:
+ *   get:
+ *     summary: Get maintenance statistics
+ *     tags: [Maintenance]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: hotelId
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *     responses:
+ *       200:
+ *         description: Maintenance statistics
+ */
+router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+  const { startDate, endDate } = req.query;
+  
+  const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
+  
+  if (!hotelId) {
+    throw new AppError('Hotel ID is required', 400);
+  }
+
+  const [stats, overdueTasks, upcomingRecurring] = await Promise.all([
+    MaintenanceTask.getMaintenanceStats(hotelId, startDate, endDate),
+    MaintenanceTask.getOverdueTasks(hotelId),
+    MaintenanceTask.getUpcomingRecurringTasks(hotelId, 30)
+  ]);
+
+  // Get overall summary
+  const matchQuery = {
+    hotelId: new mongoose.Types.ObjectId(hotelId),
+    ...(startDate && endDate ? {
+      createdAt: {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      }
+    } : {})
+  };
+
+  const overallStats = await MaintenanceTask.aggregate([
+    { $match: matchQuery },
+    {
+      $group: {
+        _id: null,
+        totalTasks: { $sum: 1 },
+        averageDuration: { $avg: '$actualDuration' },
+        totalCost: { $sum: '$actualCost' },
+        pendingTasks: {
+          $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
+        },
+        inProgressTasks: {
+          $sum: { $cond: [{ $eq: ['$status', 'in_progress'] }, 1, 0] }
+        },
+        completedTasks: {
+          $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+        },
+        emergencyTasks: {
+          $sum: { $cond: [{ $eq: ['$priority', 'emergency'] }, 1, 0] }
+        }
+      }
+    }
+  ]);
+
+  res.json({
+    status: 'success',
+    data: {
+      overall: overallStats[0] || {},
+      byType: stats,
+      overdueTasks: overdueTasks.length,
+      upcomingRecurring: upcomingRecurring.length,
+      overdueDetails: overdueTasks.slice(0, 10), // First 10 overdue tasks
+      upcomingDetails: upcomingRecurring.slice(0, 10) // First 10 upcoming tasks
+    }
+  });
+}));
+
+/**
+ * @swagger
+ * /maintenance/available-staff:
+ *   get:
+ *     summary: Get available staff members for task assignment
+ *     tags: [Maintenance]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: hotelId
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Available staff members
+ */
+router.get('/available-staff', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+  const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
+  
+  if (!hotelId) {
+    throw new AppError('Hotel ID is required', 400);
+  }
+
+  // Get staff members from the same hotel
+  const User = mongoose.model('User');
+  const staffMembers = await User.find({
+    hotelId: hotelId,
+    role: 'staff',
+    isActive: true
+  }).select('_id name email department');
+
+  res.json({
+    status: 'success',
+    data: staffMembers
+  });
+}));
+
+/**
+ * @swagger
+ * /maintenance/available-rooms:
+ *   get:
+ *     summary: Get available rooms for maintenance tasks
+ *     tags: [Maintenance]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: hotelId
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Available rooms
+ */
+router.get('/available-rooms', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+  const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
+  
+  if (!hotelId) {
+    throw new AppError('Hotel ID is required', 400);
+  }
+
+  // Get rooms from the same hotel
+  const Room = mongoose.model('Room');
+  console.log('Looking for rooms with hotelId:', hotelId);
+  const rooms = await Room.find({
+    hotelId: hotelId,
+    status: { $ne: 'out_of_order' } // Exclude out of order rooms
+  }).select('_id roomNumber type floor');
+  console.log('Query result - rooms found:', rooms.length);
+
+  console.log('Fetched rooms from backend:', rooms); // Add this line for debugging
+  res.json({
+    status: 'success',
+    data: rooms
   });
 }));
 
@@ -534,7 +705,9 @@ router.get('/overdue', authorize('staff', 'admin'), catchAsync(async (req, res) 
     throw new AppError('Hotel ID is required', 400);
   }
 
-  const overdueTasks = await MaintenanceTask.getOverdueTasks(hotelId);
+  // For staff users, only show overdue tasks assigned to them
+  const staffFilter = req.user.role === 'staff' ? { assignedTo: req.user._id } : {};
+  const overdueTasks = await MaintenanceTask.getOverdueTasks(hotelId, staffFilter);
 
   res.json({
     status: 'success',
@@ -575,7 +748,9 @@ router.get('/recurring/upcoming', authorize('staff', 'admin'), catchAsync(async 
     throw new AppError('Hotel ID is required', 400);
   }
 
-  const upcomingTasks = await MaintenanceTask.getUpcomingRecurringTasks(hotelId, parseInt(days));
+  // For staff users, only show upcoming tasks assigned to them
+  const staffFilter = req.user.role === 'staff' ? { assignedTo: req.user._id } : {};
+  const upcomingTasks = await MaintenanceTask.getUpcomingRecurringTasks(hotelId, parseInt(days), staffFilter);
 
   res.json({
     status: 'success',

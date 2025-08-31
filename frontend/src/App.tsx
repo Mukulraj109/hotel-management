@@ -40,6 +40,9 @@ import RoomBookingsPage from './pages/admin/RoomBookingsPage';
 import AdminBookings from './pages/admin/AdminBookings';
 import AdminHousekeeping from './pages/admin/AdminHousekeeping';
 import AdminInventory from './pages/admin/AdminInventory';
+import AdminMaintenance from './pages/admin/AdminMaintenance';
+import AdminGuestServices from './pages/admin/AdminGuestServices';
+import AdminSupplyRequests from './pages/admin/AdminSupplyRequests';
 import AdminReports from './pages/admin/AdminReports';
 import AdminOTA from './pages/admin/AdminOTA';
 import BillingHistory from './pages/admin/BillingHistory';
@@ -47,13 +50,14 @@ import { InventoryTemplateManagement } from './components/admin/InventoryTemplat
 
 // Staff Pages
 import StaffDashboard from './pages/staff/StaffDashboard';
-import StaffTasks from './pages/staff/StaffTasks';
+
 import StaffHousekeeping from './pages/staff/StaffHousekeeping';
 import StaffMaintenance from './pages/staff/StaffMaintenance';
 import StaffGuestServices from './pages/staff/StaffGuestServices';
 import StaffRooms from './pages/staff/StaffRooms';
 import StaffInventory from './pages/staff/StaffInventory';
 import StaffReports from './pages/staff/StaffReports';
+import CheckoutInventory from './pages/staff/CheckoutInventory';
 import { DailyInventoryCheckForm } from './components/staff/DailyInventoryCheckForm';
 
 // Layout Components
@@ -125,6 +129,9 @@ function App() {
                 <Route path="rooms/:roomId/bookings" element={<RoomBookingsPage />} />
                 <Route path="bookings" element={<AdminBookings />} />
                 <Route path="housekeeping" element={<AdminHousekeeping />} />
+                <Route path="maintenance" element={<AdminMaintenance />} />
+                <Route path="guest-services" element={<AdminGuestServices />} />
+                <Route path="supply-requests" element={<AdminSupplyRequests />} />
                 <Route path="inventory" element={<AdminInventory />} />
                 <Route path="inventory/templates" element={<InventoryTemplateManagement />} />
                 <Route path="reports" element={<AdminReports />} />
@@ -139,15 +146,16 @@ function App() {
                 </ProtectedRoute>
               }>
                 <Route index element={<StaffDashboard />} />
-                <Route path="tasks" element={<StaffTasks />} />
+
                 <Route path="inventory-check/:roomId" element={<DailyInventoryCheckForm />} />
                 <Route path="inventory-check" element={<DailyInventoryCheckForm />} />
                 <Route path="housekeeping" element={<StaffHousekeeping />} />
                 <Route path="maintenance" element={<StaffMaintenance />} />
                 <Route path="guest-services" element={<StaffGuestServices />} />
                 <Route path="rooms" element={<StaffRooms />} />
-                <Route path="inventory" element={<StaffInventory />} />
-                <Route path="reports" element={<StaffReports />} />
+                                  <Route path="inventory" element={<StaffInventory />} />
+                  <Route path="checkout-inventory" element={<CheckoutInventory />} />
+                  <Route path="reports" element={<StaffReports />} />
               </Route>
 
               {/* Catch all route */}

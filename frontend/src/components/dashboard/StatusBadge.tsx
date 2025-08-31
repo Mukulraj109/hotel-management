@@ -3,7 +3,7 @@ import { cn } from '../../utils/cn';
 import { getStatusColor } from '../../utils/dashboardUtils';
 
 interface StatusBadgeProps {
-  status: string;
+  status: string | undefined | null;
   variant?: 'default' | 'dot' | 'pill';
   size?: 'sm' | 'md' | 'lg';
   showIcon?: boolean;
@@ -17,16 +17,19 @@ export function StatusBadge({
   showIcon = false,
   className,
 }: StatusBadgeProps) {
-  const baseColor = getStatusColor(status);
+  const baseColor = getStatusColor(status || '');
   
-  const getStatusDisplay = (status: string) => {
+  const getStatusDisplay = (status: string | undefined | null) => {
+    if (!status) {
+      return 'Unknown';
+    }
     return status
       .split('_')
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ');
   };
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status: string | undefined | null) => {
     const icons = {
       // Room statuses
       occupied: (
@@ -94,7 +97,7 @@ export function StatusBadge({
         </svg>
       ),
     };
-    return icons[status as keyof typeof icons];
+    return status ? icons[status as keyof typeof icons] : null;
   };
 
   const sizeClasses = {
@@ -147,7 +150,7 @@ export function StatusBadge({
           border: `1px solid ${baseColor}40`
         }}
       >
-        {showIcon && getStatusIcon(status) && (
+        {showIcon && status && getStatusIcon(status) && (
           <span className="mr-1">{getStatusIcon(status)}</span>
         )}
         {getStatusDisplay(status)}
@@ -162,7 +165,7 @@ export function StatusBadge({
       getBadgeColor(baseColor),
       className
     )}>
-      {showIcon && getStatusIcon(status) && (
+      {showIcon && status && getStatusIcon(status) && (
         <span className="mr-1">{getStatusIcon(status)}</span>
       )}
       {getStatusDisplay(status)}

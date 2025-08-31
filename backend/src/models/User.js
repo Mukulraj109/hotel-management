@@ -118,6 +118,64 @@ const userSchema = new mongoose.Schema({
       default: 'bronze'
     }
   },
+  billingHistory: [{
+    type: {
+      type: String,
+      enum: ['checkout_charges', 'booking_payment', 'service_charge', 'refund'],
+      required: true
+    },
+    bookingId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'Booking'
+    },
+    roomId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'Room'
+    },
+    description: {
+      type: String,
+      required: true
+    },
+    items: [{
+      name: String,
+      category: String,
+      status: String,
+      quantity: Number,
+      unitPrice: Number,
+      totalPrice: Number,
+      notes: String
+    }],
+    subtotal: {
+      type: Number,
+      default: 0
+    },
+    tax: {
+      type: Number,
+      default: 0
+    },
+    totalAmount: {
+      type: Number,
+      required: true
+    },
+    paymentMethod: {
+      type: String,
+      enum: ['cash', 'card', 'upi', 'bank_transfer']
+    },
+    paymentStatus: {
+      type: String,
+      enum: ['pending', 'paid', 'failed'],
+      default: 'pending'
+    },
+    paidAt: Date,
+    checkoutInventoryId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'CheckoutInventory'
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   isActive: {
     type: Boolean,
     default: true

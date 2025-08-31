@@ -12,6 +12,7 @@ import Review from '../models/Review.js';
 import Communication from '../models/Communication.js';
 import SupplyRequest from '../models/SupplyRequest.js';
 import Housekeeping from '../models/Housekeeping.js';
+import CheckoutInventory from '../models/CheckoutInventory.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { AppError } from '../utils/appError.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -98,9 +99,20 @@ router.get('/real-time', catchAsync(async (req, res) => {
     // Today's statistics
     Promise.all([
       Booking.countDocuments(buildMatchQuery({ createdAt: { $gte: startOfDay } })),
-      Booking.countDocuments(buildMatchQuery({ checkIn: { $gte: startOfDay, $lt: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000) } })),
-      Booking.countDocuments(buildMatchQuery({ checkOut: { $gte: startOfDay, $lt: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000) } })),
-      GuestService.countDocuments(buildMatchQuery({ createdAt: { $gte: startOfDay } }))
+      Booking.countDocuments(buildMatchQuery({ checkIn: { $gte: startOfDay, $lt: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000) }, status: { $in: ['confirmed', 'checked_in'] } })),
+      // Count actual checkout inventory records created today (with hotel filtering)
+      hotelId 
+        ? CheckoutInventory.aggregate([
+            { $match: { createdAt: { $gte: startOfDay, $lt: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000) } } },
+            { $lookup: { from: 'bookings', localField: 'bookingId', foreignField: '_id', as: 'booking' } },
+            { $match: { 'booking.hotelId': new mongoose.Types.ObjectId(hotelId) } },
+            { $count: 'total' }
+          ]).then(result => result[0]?.total || 0)
+        : CheckoutInventory.countDocuments({ createdAt: { $gte: startOfDay, $lt: new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000) } }),
+      GuestService.countDocuments(buildMatchQuery({ status: { $in: ['pending', 'assigned'] } })),
+      Housekeeping.countDocuments(buildMatchQuery({ status: 'pending' })),
+      MaintenanceTask.countDocuments(buildMatchQuery({ status: 'pending' })),
+      SupplyRequest.countDocuments(buildMatchQuery({ status: 'ordered' }))
     ]),
     
     // Monthly statistics
@@ -329,6 +341,9 @@ router.get('/real-time', catchAsync(async (req, res) => {
       checkIns: todayStats[1],
       checkOuts: todayStats[2],
       serviceRequests: todayStats[3],
+      pendingHousekeeping: todayStats[4],
+      pendingMaintenance: todayStats[5],
+      pendingOrders: todayStats[6],
       revenue: revenueToday
     },
     

@@ -1,4 +1,5 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import GuestService from '../models/GuestService.js';
 import Booking from '../models/Booking.js';
 import { authenticate, authorize } from '../middleware/auth.js';
@@ -159,6 +160,12 @@ router.get('/', authenticate, catchAsync(async (req, res) => {
     query.userId = req.user._id;
   } else if (req.user.role === 'staff' && req.user.hotelId) {
     query.hotelId = req.user.hotelId;
+  } else if (req.user.role === 'admin') {
+    // Admin users can filter by hotelId from query parameter
+    const hotelId = req.query.hotelId;
+    if (hotelId) {
+      query.hotelId = hotelId;
+    }
   }
 
   // Apply filters
@@ -173,7 +180,14 @@ router.get('/', authenticate, catchAsync(async (req, res) => {
     GuestService.find(query)
       .populate('hotelId', 'name')
       .populate('userId', 'name email')
-      .populate('bookingId', 'bookingNumber rooms')
+      .populate({
+        path: 'bookingId',
+        select: 'bookingNumber rooms',
+        populate: {
+          path: 'rooms.roomId',
+          select: 'roomNumber'
+        }
+      })
       .populate('assignedTo', 'name')
       .sort('-createdAt')
       .skip(skip)
@@ -193,6 +207,117 @@ router.get('/', authenticate, catchAsync(async (req, res) => {
       }
     }
   });
+}));
+
+/**
+ * @swagger
+ * /guest-services/stats:
+ *   get:
+ *     summary: Get service statistics (staff/admin only)
+ *     tags: [Guest Services]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *     responses:
+ *       200:
+ *         description: Service statistics
+ */
+router.get('/stats', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
+  const { startDate, endDate } = req.query;
+  
+  let hotelId;
+  if (req.user.role === 'staff') {
+    hotelId = req.user.hotelId;
+  } else if (req.user.role === 'admin') {
+    hotelId = req.query.hotelId || req.user.hotelId;
+  }
+  
+  if (!hotelId) {
+    throw new AppError('Hotel ID is required. Admin users should provide hotelId as query parameter.', 400);
+  }
+
+  const stats = await GuestService.getServiceStats(hotelId, startDate, endDate);
+
+  // Get overall stats
+  const overallStats = await GuestService.aggregate([
+    { 
+      $match: {
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        ...(startDate && endDate ? {
+          createdAt: {
+            $gte: new Date(startDate),
+            $lte: new Date(endDate)
+          }
+        } : {})
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        totalRequests: { $sum: 1 },
+        avgRating: { $avg: '$rating' },
+        totalRevenue: { $sum: '$actualCost' },
+        pendingCount: {
+          $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
+        },
+        completedCount: {
+          $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+        }
+      }
+    }
+  ]);
+
+  res.json({
+    status: 'success',
+    data: {
+      overall: overallStats[0] || {},
+      byServiceType: stats
+    }
+  });
+}));
+
+/**
+ * @swagger
+ * /guest-services/available-staff:
+ *   get:
+ *     summary: Get available staff for guest services (staff/admin only)
+ *     tags: [Guest Services]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Available staff list
+ */
+router.get('/available-staff', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
+  let hotelId;
+  if (req.user.role === 'staff') {
+    hotelId = req.user.hotelId;
+  } else if (req.user.role === 'admin') {
+    hotelId = req.query.hotelId || req.user.hotelId;
+  }
+  
+  if (!hotelId) { 
+    throw new AppError('Hotel ID is required. Admin users should provide hotelId as query parameter.', 400); 
+  }
+  
+  const User = mongoose.model('User');
+  const staffMembers = await User.find({
+    hotelId: hotelId,
+    role: 'staff',
+    isActive: true
+  }).select('_id name email department');
+  
+  res.json({ status: 'success', data: staffMembers });
 }));
 
 /**
@@ -217,7 +342,14 @@ router.get('/:id', authenticate, catchAsync(async (req, res) => {
   const serviceRequest = await GuestService.findById(req.params.id)
     .populate('hotelId', 'name contact')
     .populate('userId', 'name email phone')
-    .populate('bookingId', 'bookingNumber rooms checkIn checkOut')
+    .populate({
+      path: 'bookingId',
+      select: 'bookingNumber rooms checkIn checkOut',
+      populate: {
+        path: 'rooms.roomId',
+        select: 'roomNumber'
+      }
+    })
     .populate('assignedTo', 'name email');
 
   if (!serviceRequest) {
@@ -393,76 +525,6 @@ router.post('/:id/feedback', authenticate, authorize('guest'), catchAsync(async 
   });
 }));
 
-/**
- * @swagger
- * /guest-services/stats:
- *   get:
- *     summary: Get service statistics (staff/admin only)
- *     tags: [Guest Services]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: startDate
- *         schema:
- *           type: string
- *           format: date
- *       - in: query
- *         name: endDate
- *         schema:
- *           type: string
- *           format: date
- *     responses:
- *       200:
- *         description: Service statistics
- */
-router.get('/stats', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
-  const { startDate, endDate } = req.query;
-  
-  const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
-  
-  if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
-  }
 
-  const stats = await GuestService.getServiceStats(hotelId, startDate, endDate);
-
-  // Get overall stats
-  const overallStats = await GuestService.aggregate([
-    { 
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        ...(startDate && endDate ? {
-          createdAt: {
-            $gte: new Date(startDate),
-            $lte: new Date(endDate)
-          }
-        } : {})
-      }
-    },
-    {
-      $group: {
-        _id: null,
-        totalRequests: { $sum: 1 },
-        avgRating: { $avg: '$rating' },
-        totalRevenue: { $sum: '$actualCost' },
-        pendingCount: {
-          $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
-        },
-        completedCount: {
-          $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
-        }
-      }
-    }
-  ]);
-
-  res.json({
-    status: 'success',
-    data: {
-      overall: overallStats[0] || {},
-      byServiceType: stats
-    }
-  });
-}));
 
 export default router;

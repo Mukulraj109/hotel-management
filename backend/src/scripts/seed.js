@@ -420,7 +420,6 @@ const seedData = async () => {
         hotelId: hotel._id,
         userId: guest._id,
         bookingId: booking._id,
-        roomId: room._id,
         serviceType,
         title: `${serviceType.replace('_', ' ')} request`,
         description: `Customer requested ${serviceType.replace('_', ' ')} service`,

@@ -128,6 +128,11 @@ export const getTrendDirection = (change: number): 'up' | 'down' | 'neutral' => 
 
 // Color utilities for charts and status
 export const getStatusColor = (status: string): string => {
+  // Handle undefined or null status
+  if (!status) {
+    return '#6b7280'; // Default gray color
+  }
+  
   const colors: Record<string, string> = {
     // General status colors
     healthy: '#10b981',

@@ -6,34 +6,8 @@ export interface StaffTodayData {
   pendingHousekeeping: number;
   pendingMaintenance: number;
   pendingGuestServices: number;
+  pendingOrders: number;
   occupancyRate: number;
-}
-
-export interface StaffTask {
-  _id: string;
-  task?: string;
-  issue?: string;
-  serviceType?: string;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  status: string;
-  assignedTo: string;
-  createdAt: string;
-  roomId?: {
-    _id: string;
-    roomNumber: string;
-    type: string;
-  };
-  userId?: {
-    _id: string;
-    name: string;
-  };
-}
-
-export interface StaffTasksData {
-  housekeeping: StaffTask[];
-  maintenance: StaffTask[];
-  guestServices: StaffTask[];
-  totalTasks: number;
 }
 
 export interface RoomStatusData {
@@ -57,6 +31,7 @@ export interface StaffInventoryData {
   lowStockAlert: {
     count: number;
     items: Array<{
+      _id: string;
       name: string;
       currentStock: number;
       threshold: number;
@@ -66,6 +41,7 @@ export interface StaffInventoryData {
   inspectionsDue: {
     count: number;
     rooms: Array<{
+      _id: string;
       roomNumber: string;
       daysPastDue: number;
     }>;
@@ -95,7 +71,11 @@ export interface StaffActivityData {
     status: string;
     createdAt: string;
     userId: { name: string };
-    roomId: { roomNumber: string };
+    bookingId: {
+      rooms: Array<{
+        roomId: { roomNumber: string };
+      }>;
+    };
   }>;
 }
 
@@ -129,11 +109,9 @@ class StaffDashboardService {
   }
 
   async getTodayOverview(): Promise<ApiResponse<{ today: StaffTodayData; lastUpdated: string }>> {
-    return this.fetchWithAuth('/today');
-  }
-
-  async getMyTasks(): Promise<ApiResponse<StaffTasksData>> {
-    return this.fetchWithAuth('/my-tasks');
+    // Add timestamp to prevent caching issues
+    const timestamp = new Date().getTime();
+    return this.fetchWithAuth(`/today?t=${timestamp}`);
   }
 
   async getRoomStatus(): Promise<ApiResponse<RoomStatusData>> {
@@ -146,35 +124,6 @@ class StaffDashboardService {
 
   async getRecentActivity(): Promise<ApiResponse<StaffActivityData>> {
     return this.fetchWithAuth('/activity');
-  }
-
-  // Task management methods
-  async updateTaskStatus(taskId: string, status: string, taskType: 'housekeeping' | 'maintenance' | 'guest-service'): Promise<ApiResponse<any>> {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-
-    const endpoints = {
-      'housekeeping': '/api/v1/housekeeping',
-      'maintenance': '/api/v1/maintenance',
-      'guest-service': '/api/v1/guest-services'
-    };
-
-    const response = await fetch(`${endpoints[taskType]}/${taskId}`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ status }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to update ${taskType} task`);
-    }
-
-    return response.json();
   }
 
   // Room status update
@@ -195,6 +144,51 @@ class StaffDashboardService {
 
     if (!response.ok) {
       throw new Error('Failed to update room status');
+    }
+
+    return response.json();
+  }
+
+  // Mark room as inspected
+  async markRoomInspected(roomId: string): Promise<ApiResponse<any>> {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const response = await fetch(`${this.baseURL}/rooms/${roomId}/inspect`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to mark room as inspected');
+    }
+
+    return response.json();
+  }
+
+  // Order inventory item
+  async orderInventoryItem(itemId: string, quantity: number = 50): Promise<ApiResponse<any>> {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      throw new Error('No authentication token found');
+    }
+
+    const response = await fetch(`${this.baseURL}/inventory/${itemId}/order`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ quantity }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to order inventory item');
     }
 
     return response.json();

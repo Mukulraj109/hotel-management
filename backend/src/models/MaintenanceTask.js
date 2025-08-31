@@ -392,8 +392,8 @@ maintenanceTaskSchema.methods.calculateTotalCost = function() {
 };
 
 // Static method to get maintenance statistics
-maintenanceTaskSchema.statics.getMaintenanceStats = async function(hotelId, startDate, endDate) {
-  const matchQuery = { hotelId };
+maintenanceTaskSchema.statics.getMaintenanceStats = async function(hotelId, startDate, endDate, staffFilter = {}) {
+  const matchQuery = { hotelId, ...staffFilter };
   
   if (startDate && endDate) {
     matchQuery.createdAt = {
@@ -435,9 +435,10 @@ maintenanceTaskSchema.statics.getMaintenanceStats = async function(hotelId, star
 };
 
 // Static method to get overdue tasks
-maintenanceTaskSchema.statics.getOverdueTasks = async function(hotelId) {
+maintenanceTaskSchema.statics.getOverdueTasks = async function(hotelId, staffFilter = {}) {
   return await this.find({
     hotelId,
+    ...staffFilter,
     dueDate: { $lt: new Date() },
     status: { $in: ['pending', 'assigned', 'in_progress'] }
   })
@@ -447,12 +448,13 @@ maintenanceTaskSchema.statics.getOverdueTasks = async function(hotelId) {
 };
 
 // Static method to get upcoming recurring tasks
-maintenanceTaskSchema.statics.getUpcomingRecurringTasks = async function(hotelId, days = 7) {
+maintenanceTaskSchema.statics.getUpcomingRecurringTasks = async function(hotelId, days = 7, staffFilter = {}) {
   const futureDate = new Date();
   futureDate.setDate(futureDate.getDate() + days);
 
   return await this.find({
     hotelId,
+    ...staffFilter,
     isRecurring: true,
     'recurringSchedule.nextDue': { $lte: futureDate }
   })

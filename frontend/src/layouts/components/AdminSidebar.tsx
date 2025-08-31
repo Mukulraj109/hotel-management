@@ -10,7 +10,10 @@ import {
   Wifi,
   ClipboardList,
   Globe,
-  CreditCard
+  CreditCard,
+  Wrench,
+  Headphones,
+  FileText
 } from 'lucide-react';
 
 const navigation = [
@@ -20,6 +23,9 @@ const navigation = [
   { name: 'Bookings', href: '/admin/bookings', icon: Calendar },
   { name: 'Billing & Payments', href: '/admin/billing', icon: CreditCard },
   { name: 'Housekeeping', href: '/admin/housekeeping', icon: ClipboardList },
+  { name: 'Maintenance', href: '/admin/maintenance', icon: Wrench },
+  { name: 'Guest Services', href: '/admin/guest-services', icon: Headphones },
+  { name: 'Supply Requests', href: '/admin/supply-requests', icon: FileText },
   { name: 'Inventory', href: '/admin/inventory', icon: Package },
   { name: 'Reports', href: '/admin/reports', icon: BarChart3 },
   { name: 'OTA Sync', href: '/admin/ota', icon: Wifi },

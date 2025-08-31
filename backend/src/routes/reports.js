@@ -3,11 +3,116 @@ import mongoose from 'mongoose';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
 import Payment from '../models/Payment.js';
+import CheckoutInventory from '../models/CheckoutInventory.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { AppError } from '../utils/appError.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
+
+// Checkout Inventory Analytics Report
+router.get('/checkout-inventory', authenticate, authorize('admin', 'staff'), catchAsync(async (req, res) => {
+  const {
+    startDate,
+    endDate,
+    groupBy = 'day', // day, month, year
+    hotelId
+  } = req.query;
+
+  if (!startDate || !endDate) {
+    throw new AppError('Start date and end date are required', 400);
+  }
+
+  const matchQuery = {
+    createdAt: {
+      $gte: new Date(startDate),
+      $lte: new Date(endDate)
+    }
+  };
+
+  // Build aggregation pipeline to filter by hotel through booking relationship
+  const pipeline = [
+    { $match: matchQuery },
+    {
+      $lookup: {
+        from: 'bookings',
+        localField: 'bookingId',
+        foreignField: '_id',
+        as: 'booking'
+      }
+    }
+  ];
+
+  // Add hotel filtering if needed
+  if (req.user.role === 'staff' && req.user.hotelId) {
+    pipeline.push({ $match: { 'booking.hotelId': new mongoose.Types.ObjectId(req.user.hotelId) } });
+  } else if (hotelId) {
+    pipeline.push({ $match: { 'booking.hotelId': new mongoose.Types.ObjectId(hotelId) } });
+  }
+
+  // Group by date format
+  let dateFormat;
+  switch (groupBy) {
+    case 'month':
+      dateFormat = '%Y-%m';
+      break;
+    case 'year':
+      dateFormat = '%Y';
+      break;
+    default:
+      dateFormat = '%Y-%m-%d';
+  }
+
+  pipeline.push({
+    $group: {
+      _id: {
+        date: { $dateToString: { format: dateFormat, date: '$createdAt' } }
+      },
+      totalCheckouts: { $sum: 1 },
+      totalRevenue: { $sum: '$totalAmount' },
+      avgAmount: { $avg: '$totalAmount' },
+      roomsCheckedOut: { $addToSet: '$roomId' }
+    }
+  });
+
+  pipeline.push({ $sort: { '_id.date': 1 } });
+
+  const checkoutData = await CheckoutInventory.aggregate(pipeline);
+
+  // Get summary statistics
+  const summaryPipeline = [...pipeline.slice(0, -2)]; // Remove grouping and sorting
+  summaryPipeline.push({
+    $group: {
+      _id: null,
+      totalCheckouts: { $sum: 1 },
+      totalRevenue: { $sum: '$totalAmount' },
+      avgAmount: { $avg: '$totalAmount' },
+      uniqueRooms: { $addToSet: '$roomId' }
+    }
+  });
+
+  const [summary] = await CheckoutInventory.aggregate(summaryPipeline);
+
+  res.json({
+    status: 'success',
+    data: {
+      checkoutData: checkoutData.map(item => ({
+        date: item._id.date,
+        checkouts: item.totalCheckouts,
+        revenue: Math.round(item.totalRevenue || 0),
+        avgAmount: Math.round(item.avgAmount || 0),
+        uniqueRooms: item.roomsCheckedOut.length
+      })),
+      summary: {
+        totalCheckouts: summary?.totalCheckouts || 0,
+        totalRevenue: Math.round(summary?.totalRevenue || 0),
+        avgAmount: Math.round(summary?.avgAmount || 0),
+        uniqueRooms: summary?.uniqueRooms?.length || 0
+      },
+      period: { startDate, endDate }
+    }
+  });
+}));
 
 // Revenue report
 router.get('/revenue', authenticate, authorize('admin', 'staff'), catchAsync(async (req, res) => {

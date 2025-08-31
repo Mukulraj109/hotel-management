@@ -48,6 +48,7 @@ export default function StaffHousekeeping() {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<HousekeepingTask[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
@@ -57,6 +58,7 @@ export default function StaffHousekeeping() {
   const fetchTasks = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await fetch('/api/v1/housekeeping?assignedToUserId=' + user?._id, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -69,51 +71,12 @@ export default function StaffHousekeeping() {
         setTasks(data.data.tasks || []);
       } else {
         console.error('Failed to fetch housekeeping tasks:', response.statusText);
-        // Use mock data for demonstration
-        setTasks([
-          {
-            _id: 'task-1',
-            title: 'Clean Room 101',
-            description: 'Standard cleaning after checkout',
-            taskType: 'cleaning',
-            priority: 'high',
-            status: 'assigned',
-            roomId: { _id: '1', roomNumber: '101', type: 'Standard' },
-            estimatedDuration: 30,
-            createdAt: new Date().toISOString(),
-            supplies: [{ name: 'Cleaning supplies', quantity: 1, unit: 'set' }]
-          },
-          {
-            _id: 'task-2', 
-            title: 'Maintenance Check Room 205',
-            description: 'Check HVAC and lighting',
-            taskType: 'maintenance',
-            priority: 'medium',
-            status: 'in_progress',
-            roomId: { _id: '2', roomNumber: '205', type: 'Deluxe' },
-            estimatedDuration: 45,
-            startedAt: new Date().toISOString(),
-            createdAt: new Date().toISOString(),
-            supplies: [{ name: 'Tool kit', quantity: 1, unit: 'set' }]
-          },
-          {
-            _id: 'task-3',
-            title: 'Deep Clean Room 301',
-            description: 'Weekly deep cleaning service',
-            taskType: 'deep_clean',
-            priority: 'medium',
-            status: 'completed',
-            roomId: { _id: '3', roomNumber: '301', type: 'Suite' },
-            estimatedDuration: 60,
-            completedAt: new Date().toISOString(),
-            actualDuration: 55,
-            createdAt: new Date().toISOString(),
-            supplies: [{ name: 'Deep clean kit', quantity: 1, unit: 'set' }]
-          }
-        ]);
+        setError(`Failed to load tasks: ${response.status} ${response.statusText}`);
+        setTasks([]);
       }
     } catch (error) {
       console.error('Error fetching tasks:', error);
+      setError('Unable to connect to server. Please check your internet connection.');
       setTasks([]);
     } finally {
       setLoading(false);
@@ -169,6 +132,22 @@ export default function StaffHousekeeping() {
     return (
       <div className="flex items-center justify-center h-64">
         <LoadingSpinner />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="text-center py-12">
+          <AlertTriangle className="mx-auto h-8 w-8 text-red-500 mb-3" />
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Unable to Load Tasks</h3>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <Button onClick={fetchTasks} className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4" />
+            Try Again
+          </Button>
+        </div>
       </div>
     );
   }

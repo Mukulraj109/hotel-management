@@ -396,7 +396,7 @@ export default function AdminBookings() {
           </Button>
           <Button
             onClick={() => setShowCreateModal(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
+            className="bg-blue-600 hover:bg-blue-700 text-white hidden"
           >
             <Plus className="h-4 w-4 mr-2" />
             Create Booking

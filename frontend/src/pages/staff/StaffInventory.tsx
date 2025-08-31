@@ -4,10 +4,12 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Package, Clock, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
-import { staffDashboardService, StaffInventoryData } from '../../services/staffDashboardService';
+import { staffDashboardService, StaffInventoryData, StaffTodayData } from '../../services/staffDashboardService';
+import toast from 'react-hot-toast';
 
 export default function StaffInventory() {
   const [inventoryData, setInventoryData] = useState<StaffInventoryData | null>(null);
+  const [todayData, setTodayData] = useState<StaffTodayData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,14 +21,43 @@ export default function StaffInventory() {
     try {
       setLoading(true);
       setError(null);
-      const response = await staffDashboardService.getInventorySummary();
-      setInventoryData(response.data);
-      console.log('Inventory data fetched:', response.data);
+      const [inventoryResponse, todayResponse] = await Promise.all([
+        staffDashboardService.getInventorySummary(),
+        staffDashboardService.getTodayOverview()
+      ]);
+      setInventoryData(inventoryResponse.data);
+      setTodayData(todayResponse.data.today);
+      console.log('Inventory data fetched:', inventoryResponse.data);
+      console.log('Today data fetched:', todayResponse.data.today);
     } catch (err) {
       console.error('Failed to fetch inventory data:', err);
       setError('Failed to load inventory data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleInspectRoom = async (roomId: string, roomNumber: string) => {
+    try {
+      await staffDashboardService.markRoomInspected(roomId);
+      toast.success(`Room ${roomNumber} marked as inspected!`);
+      // Refresh the data to update the UI
+      fetchInventoryData();
+    } catch (err) {
+      console.error('Failed to mark room as inspected:', err);
+      toast.error('Failed to mark room as inspected');
+    }
+  };
+
+  const handleOrderItem = async (itemId: string, itemName: string) => {
+    try {
+      await staffDashboardService.orderInventoryItem(itemId);
+      toast.success(`Order placed for ${itemName}! Stock will be replenished.`);
+      // Refresh the data to update the UI
+      fetchInventoryData();
+    } catch (err) {
+      console.error('Failed to order item:', err);
+      toast.error('Failed to place order');
     }
   };
 
@@ -38,7 +69,7 @@ export default function StaffInventory() {
     );
   }
 
-  if (error || !inventoryData) {
+  if (error || !inventoryData || !todayData) {
     return (
       <div className="p-6 max-w-7xl mx-auto">
         <div className="text-center py-12">
@@ -83,7 +114,12 @@ export default function StaffInventory() {
                       </p>
                       <p className="text-xs text-red-600">Category: {item.category}</p>
                     </div>
-                    <Button size="sm">Order</Button>
+                    <Button 
+                      size="sm" 
+                      onClick={() => handleOrderItem(item._id, item.name)}
+                    >
+                      Order
+                    </Button>
                   </div>
                 ))
               ) : (
@@ -115,7 +151,12 @@ export default function StaffInventory() {
                         {room.daysPastDue} days past due
                       </p>
                     </div>
-                    <Button size="sm">Inspect</Button>
+                    <Button 
+                      size="sm" 
+                      onClick={() => handleInspectRoom(room._id, room.roomNumber)}
+                    >
+                      Inspect
+                    </Button>
                   </div>
                 ))
               ) : (
@@ -157,7 +198,7 @@ export default function StaffInventory() {
                 <div className="text-sm text-gray-600">Inspections Due</div>
               </div>
               <div className="text-center p-4 bg-blue-50 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600">0</div>
+                <div className="text-2xl font-bold text-blue-600">{todayData.pendingOrders}</div>
                 <div className="text-sm text-gray-600">Pending Orders</div>
               </div>
             </div>

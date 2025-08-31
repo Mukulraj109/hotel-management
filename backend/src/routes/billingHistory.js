@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import Invoice from '../models/Invoice.js';
 import Payment from '../models/Payment.js';
 import Booking from '../models/Booking.js';
+import User from '../models/User.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { AppError } from '../utils/appError.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -23,6 +24,81 @@ router.get('/test', (req, res) => {
     }
   });
 });
+
+/**
+ * @swagger
+ * /billing-history/user:
+ *   get:
+ *     summary: Get user's checkout inventory billing history
+ *     tags: [Billing History]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: User's checkout inventory billing history
+ */
+router.get('/user', catchAsync(async (req, res) => {
+  const { page = 1, limit = 10 } = req.query;
+  const skip = (page - 1) * limit;
+  
+  // Get user with billing history
+  const user = await User.findById(req.user._id)
+    .select('billingHistory')
+    .populate({
+      path: 'billingHistory.bookingId',
+      select: 'bookingNumber checkIn checkOut'
+    })
+    .populate({
+      path: 'billingHistory.roomId', 
+      select: 'roomNumber type'
+    });
+
+  if (!user) {
+    throw new AppError('User not found', 404);
+  }
+
+  // Sort billing history by date (newest first)
+  const sortedHistory = user.billingHistory.sort((a, b) => 
+    new Date(b.createdAt) - new Date(a.createdAt)
+  );
+
+  // Apply pagination
+  const total = sortedHistory.length;
+  const paginatedHistory = sortedHistory.slice(skip, skip + parseInt(limit));
+
+  // Calculate summary
+  const summary = {
+    totalCharges: sortedHistory.length,
+    totalAmount: sortedHistory.reduce((sum, item) => sum + item.totalAmount, 0),
+    totalPaid: sortedHistory.filter(item => item.paymentStatus === 'paid').length,
+    totalPending: sortedHistory.filter(item => item.paymentStatus === 'pending').length
+  };
+
+  res.json({
+    status: 'success',
+    data: {
+      billingHistory: paginatedHistory,
+      summary,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    }
+  });
+}));
 
 /**
  * @swagger

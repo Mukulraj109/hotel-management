@@ -51,6 +51,8 @@ import dashboardUpdatesRoutes from './routes/dashboardUpdates.js';
 import roomInventoryRoutes from './routes/roomInventory.js';
 import photoUploadRoutes from './routes/photoUpload.js';
 import staffTaskRoutes from './routes/staffTasks.js';
+import checkoutInventoryRoutes from './routes/checkoutInventory.js';
+import testCheckoutsRoutes from './routes/testCheckouts.js';
 
 const app = express();
 
@@ -101,10 +103,10 @@ app.use(cors({
   optionsSuccessStatus: 200
 }));
 
-// Rate limiting - more lenient for development
+// Rate limiting - very lenient for development
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || (process.env.NODE_ENV === 'production' ? 100 : 1000),
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 1 * 60 * 1000, // 1 minute window
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || (process.env.NODE_ENV === 'production' ? 1000 : 10000), // 10k requests per minute in dev
   message: 'Too many requests from this IP, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
@@ -113,7 +115,7 @@ const limiter = rateLimit({
     return req.path === '/health' || req.path.startsWith('/uploads/');
   }
 });
-app.use('/api/', limiter);
+// app.use('/api/', limiter); // Temporarily disabled for development
 
 // Body parsing middleware
 app.use('/api/v1/webhooks', express.raw({ type: 'application/json' }));
@@ -180,6 +182,8 @@ app.use('/api/v1/dashboard-updates', dashboardUpdatesRoutes);
 app.use('/api/v1/room-inventory', roomInventoryRoutes);
 app.use('/api/v1/photos', photoUploadRoutes);
 app.use('/api/v1/staff-tasks', staffTaskRoutes);
+app.use('/api/v1/checkout-inventory', checkoutInventoryRoutes);
+app.use('/api/v1/test', testCheckoutsRoutes);
 
 // 404 handler
 app.all('*', (req, res) => {

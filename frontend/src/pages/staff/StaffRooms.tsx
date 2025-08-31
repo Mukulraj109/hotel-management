@@ -4,10 +4,11 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Users, Home, Clock, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
-import { staffDashboardService, RoomStatusData } from '../../services/staffDashboardService';
+import { staffDashboardService, RoomStatusData, StaffActivityData } from '../../services/staffDashboardService';
 
 export default function StaffRooms() {
   const [roomData, setRoomData] = useState<RoomStatusData | null>(null);
+  const [activityData, setActivityData] = useState<StaffActivityData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,12 +20,17 @@ export default function StaffRooms() {
     try {
       setLoading(true);
       setError(null);
-      const response = await staffDashboardService.getRoomStatus();
-      setRoomData(response.data);
-      console.log('Room data fetched:', response.data);
+      const [roomResponse, activityResponse] = await Promise.all([
+        staffDashboardService.getRoomStatus(),
+        staffDashboardService.getRecentActivity()
+      ]);
+      setRoomData(roomResponse.data);
+      setActivityData(activityResponse.data);
+      console.log('Room data fetched:', roomResponse.data);
+      console.log('Activity data fetched:', activityResponse.data);
     } catch (err) {
-      console.error('Failed to fetch room data:', err);
-      setError('Failed to load room data');
+      console.error('Failed to fetch data:', err);
+      setError('Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -72,7 +78,7 @@ export default function StaffRooms() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div className="text-center p-4 bg-green-50 rounded-lg">
                 <div className="text-2xl font-bold text-green-600">{summary.occupied}</div>
                 <div className="text-sm text-gray-600">Occupied</div>
@@ -88,6 +94,10 @@ export default function StaffRooms() {
               <div className="text-center p-4 bg-red-50 rounded-lg">
                 <div className="text-2xl font-bold text-red-600">{summary.maintenance}</div>
                 <div className="text-sm text-gray-600">Maintenance</div>
+              </div>
+              <div className="text-center p-4 bg-gray-50 rounded-lg">
+                <div className="text-2xl font-bold text-gray-600">{summary.out_of_order}</div>
+                <div className="text-sm text-gray-600">Out of Order</div>
               </div>
             </div>
           </CardContent>
@@ -133,10 +143,29 @@ export default function StaffRooms() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="text-center py-8 text-gray-500">
-                <Clock className="mx-auto h-8 w-8 text-gray-400 mb-2" />
-                <p>No recent check-ins to display</p>
-              </div>
+              {activityData?.checkIns && activityData.checkIns.length > 0 ? (
+                activityData.checkIns.map((checkIn) => (
+                  <div key={checkIn._id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
+                    <div>
+                      <p className="font-medium">{checkIn.bookingNumber}</p>
+                      <p className="text-sm text-gray-600">
+                        {checkIn.userId?.name || 'Guest'} - Room {checkIn.rooms?.map(r => r.roomId?.roomNumber).join(', ')}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Check-in: {new Date(checkIn.checkIn).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <Badge variant="default" className="bg-green-100 text-green-800">
+                      Checked In
+                    </Badge>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Clock className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                  <p>No recent check-ins to display</p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -151,10 +180,29 @@ export default function StaffRooms() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="text-center py-8 text-gray-500">
-                <Clock className="mx-auto h-8 w-8 text-gray-400 mb-2" />
-                <p>No upcoming check-outs to display</p>
-              </div>
+              {activityData?.checkOuts && activityData.checkOuts.length > 0 ? (
+                activityData.checkOuts.map((checkOut) => (
+                  <div key={checkOut._id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200">
+                    <div>
+                      <p className="font-medium">{checkOut.bookingNumber}</p>
+                      <p className="text-sm text-gray-600">
+                        {checkOut.userId?.name || 'Guest'} - Room {checkOut.rooms?.map(r => r.roomId?.roomNumber).join(', ')}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Check-out: {new Date(checkOut.checkOut).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <Badge variant="default" className="bg-orange-100 text-orange-800">
+                      {checkOut.status === 'checked_in' ? 'Checked In' : 'Confirmed'}
+                    </Badge>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Clock className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                  <p>No upcoming check-outs to display</p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

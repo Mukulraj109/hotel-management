@@ -76,6 +76,29 @@ export interface BookingStatsData {
   };
 }
 
+export interface CheckoutInventoryData {
+  summary: {
+    totalCheckouts: number;
+    totalValue: number;
+    averageValue: number;
+    uniqueRooms: number;
+    uniqueGuests: number;
+  };
+  breakdown: Array<{
+    _id: {
+      date: string;
+      hotelId: string;
+    };
+    count: number;
+    totalValue: number;
+    averageValue: number;
+  }>;
+  period: {
+    startDate: string;
+    endDate: string;
+  };
+}
+
 export interface RevenueComponent {
   amount: number;
   percentage: string;
@@ -283,6 +306,20 @@ class ReportsService {
     return response.data.data;
   }
 
+  async getCheckoutInventoryReport(filters: ReportFilters): Promise<CheckoutInventoryData> {
+    const params = new URLSearchParams();
+    
+    if (filters.startDate) params.append('startDate', filters.startDate);
+    if (filters.endDate) params.append('endDate', filters.endDate);
+    if (filters.groupBy) params.append('groupBy', filters.groupBy);
+    if (filters.hotelId) params.append('hotelId', filters.hotelId);
+
+    console.log('Making checkout inventory report API call:', `${this.baseUrl}/checkout-inventory?${params.toString()}`);
+    const response = await api.get(`${this.baseUrl}/checkout-inventory?${params.toString()}`);
+    console.log('Checkout inventory report response:', response.data);
+    return response.data.data;
+  }
+
   async getRevenueBreakdown(params?: {
     month?: number;
     year?: number;
@@ -383,11 +420,12 @@ class ReportsService {
         
       case 'comprehensive':
         // Get all report types for comprehensive view
-        const [revenue, occupancy, bookings, stats] = await Promise.all([
+        const [revenue, occupancy, bookings, stats, checkoutInventory] = await Promise.all([
           this.getRevenueReport(filters),
           this.getOccupancyReport(filters),
           this.getBookingsReport(filters),
-          this.getBookingStats(filters)
+          this.getBookingStats(filters),
+          this.getCheckoutInventoryReport(filters)
         ]);
         
         return {
@@ -405,6 +443,8 @@ class ReportsService {
               totalBookings: revenue.summary.totalBookings,
               occupancyRate: occupancy.summary.occupancyRate,
               averageBookingValue: revenue.summary.averageBookingValue,
+              totalCheckouts: checkoutInventory.summary.totalCheckouts,
+              checkoutValue: checkoutInventory.summary.totalValue,
             },
           },
           data: {
@@ -412,6 +452,7 @@ class ReportsService {
             occupancy,
             bookings,
             stats,
+            checkoutInventory,
           },
           charts: [
             {
@@ -440,6 +481,15 @@ class ReportsService {
                 y: item.count,
               })),
               config: { nameKey: 'x', valueKey: 'y' },
+            },
+            {
+              type: 'bar',
+              title: 'Checkout Inventory Activity',
+              data: checkoutInventory.breakdown.map(item => ({
+                x: item._id.date,
+                y: item.count,
+              })),
+              config: { xKey: 'x', yKey: 'y', color: '#f59e0b' },
             },
           ],
         };

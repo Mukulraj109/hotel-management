@@ -10,33 +10,33 @@ import {
   Clock,
   Package,
   TrendingUp,
-  RefreshCw
+  RefreshCw,
+  Receipt
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
-import { StaffTaskDashboard } from '../../components/staff/StaffTaskDashboard';
 import { 
   staffDashboardService,
   StaffTodayData, 
-  StaffTasksData, 
   RoomStatusData, 
   StaffInventoryData 
 } from '../../services/staffDashboardService';
+import { checkoutInventoryService, CheckoutInventory } from '../../services/checkoutInventoryService';
 
 interface StaffDashboardData {
   today: StaffTodayData;
-  myTasks: StaffTasksData;
   roomStatus: RoomStatusData;
   inventory: StaffInventoryData;
+  checkoutInventories: CheckoutInventory[];
 }
 
 export default function StaffDashboard() {
   const { user } = useAuth();
   const [data, setData] = useState<StaffDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'tasks' | 'rooms' | 'inventory'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'rooms' | 'inventory' | 'checkout'>('overview');
 
   useEffect(() => {
     fetchDashboardData();
@@ -49,18 +49,18 @@ export default function StaffDashboard() {
       console.log('Fetching real staff dashboard data from API');
       
       // Fetch real data from the backend API using the service
-      const [todayRes, tasksRes, roomsRes, inventoryRes] = await Promise.all([
+      const [todayRes, roomsRes, inventoryRes, checkoutRes] = await Promise.all([
         staffDashboardService.getTodayOverview(),
-        staffDashboardService.getMyTasks(),
         staffDashboardService.getRoomStatus(),
-        staffDashboardService.getInventorySummary()
+        staffDashboardService.getInventorySummary(),
+        checkoutInventoryService.getCheckoutInventories({ status: 'completed', limit: 10 })
       ]);
 
       const realData: StaffDashboardData = {
         today: todayRes.data.today,
-        myTasks: tasksRes.data,
         roomStatus: roomsRes.data,
-        inventory: inventoryRes.data
+        inventory: inventoryRes.data,
+        checkoutInventories: checkoutRes.data.checkoutInventories
       };
 
       setData(realData);
@@ -78,12 +78,6 @@ export default function StaffDashboard() {
           pendingMaintenance: 0,
           pendingGuestServices: 0,
           occupancyRate: 0
-        },
-        myTasks: {
-          housekeeping: [],
-          maintenance: [],
-          guestServices: [],
-          totalTasks: 0
         },
         roomStatus: {
           summary: {
@@ -105,38 +99,13 @@ export default function StaffDashboard() {
             count: 0,
             rooms: []
           }
-        }
+        },
+        checkoutInventories: []
       };
       
       setData(mockData);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const getTaskTypeIcon = (type: string) => {
-    switch (type) {
-      case 'housekeeping':
-        return <ClipboardCheck className="w-4 h-4" />;
-      case 'maintenance':
-        return <Wrench className="w-4 h-4" />;
-      case 'guest_service':
-        return <Users className="w-4 h-4" />;
-      default:
-        return <Clock className="w-4 h-4" />;
-    }
-  };
-
-  const getTaskPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'urgent':
-        return 'bg-red-100 text-red-800';
-      case 'high':
-        return 'bg-orange-100 text-orange-800';
-      case 'medium':
-        return 'bg-yellow-100 text-yellow-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -175,9 +144,9 @@ export default function StaffDashboard() {
         <nav className="-mb-px flex space-x-8">
           {[
             { id: 'overview', label: 'Overview', icon: TrendingUp },
-            { id: 'tasks', label: 'My Tasks', icon: ClipboardCheck },
             { id: 'rooms', label: 'Room Status', icon: Users },
-            { id: 'inventory', label: 'Inventory', icon: Package }
+            { id: 'inventory', label: 'Inventory', icon: Package },
+            { id: 'checkout', label: 'Checkout Queue', icon: Receipt }
           ].map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -276,21 +245,21 @@ export default function StaffDashboard() {
           {/* Quick Actions */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <Button
-                onClick={() => setActiveTab('tasks')}
-                className="flex items-center justify-center space-x-2"
-              >
-                <ClipboardCheck className="w-4 h-4" />
-                <span>View My Tasks</span>
-              </Button>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
               <Button
                 onClick={() => setActiveTab('rooms')}
-                variant="secondary"
                 className="flex items-center justify-center space-x-2"
               >
                 <Users className="w-4 h-4" />
                 <span>Room Status</span>
+              </Button>
+              <Button
+                onClick={() => setActiveTab('checkout')}
+                variant="secondary"
+                className="flex items-center justify-center space-x-2"
+              >
+                <Receipt className="w-4 h-4" />
+                <span>Checkout Queue</span>
               </Button>
               <Button
                 onClick={() => window.location.href = '/staff/housekeeping'}
@@ -308,14 +277,17 @@ export default function StaffDashboard() {
                 <Wrench className="w-4 h-4" />
                 <span>Maintenance</span>
               </Button>
+              <Button
+                onClick={() => setActiveTab('inventory')}
+                variant="secondary"
+                className="flex items-center justify-center space-x-2"
+              >
+                <Package className="w-4 h-4" />
+                <span>Inventory</span>
+              </Button>
             </div>
           </Card>
         </div>
-      )}
-
-      {/* My Tasks Tab */}
-      {activeTab === 'tasks' && (
-        <StaffTaskDashboard />
       )}
 
       {/* Room Status Tab */}
@@ -423,6 +395,133 @@ export default function StaffDashboard() {
                 ))}
               </div>
             </Card>
+          </div>
+        </div>
+      )}
+
+      {/* Checkout Queue Tab */}
+      {activeTab === 'checkout' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-gray-900">Checkout Queue</h2>
+            <Badge variant="default" className="bg-blue-100 text-blue-800">
+              {data.checkoutInventories.filter(c => c.status === 'completed' && c.paymentStatus === 'pending').length} Ready for Payment
+            </Badge>
+          </div>
+
+          {/* Checkout Inventories List */}
+          <div className="space-y-4">
+            {data.checkoutInventories.length > 0 ? (
+              data.checkoutInventories.map((checkout) => (
+                <Card key={checkout._id} className="p-6">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-3">
+                        <h3 className="text-lg font-semibold text-gray-900">
+                          Booking #{checkout.bookingId.bookingNumber}
+                        </h3>
+                        <Badge
+                          variant="default"
+                          className={
+                            checkout.status === 'completed' ? 'bg-blue-100 text-blue-800' :
+                            checkout.status === 'paid' ? 'bg-green-100 text-green-800' :
+                            'bg-orange-100 text-orange-800'
+                          }
+                        >
+                          {checkout.status}
+                        </Badge>
+                        <Badge
+                          variant="default"
+                          className={
+                            checkout.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' :
+                            'bg-yellow-100 text-yellow-800'
+                          }
+                        >
+                          Payment: {checkout.paymentStatus}
+                        </Badge>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                        <div>
+                          <p className="text-sm text-gray-600">Customer</p>
+                          <p className="font-medium">
+                            {checkout.bookingId.userId?.name || 'Guest'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Room</p>
+                          <p className="font-medium">
+                            {checkout.roomId.roomNumber} ({checkout.roomId.type})
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Items Used</p>
+                          <p className="font-medium">
+                            {checkout.items.filter(item => item.status !== 'intact').length} of {checkout.items.length}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-600">Total Amount</p>
+                          <p className="font-medium text-green-600">
+                            ₹{checkout.totalAmount.toLocaleString('en-IN')}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mb-3">
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Items with Charges:</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          {checkout.items
+                            .filter(item => item.status !== 'intact' && item.totalPrice > 0)
+                            .map((item, index) => (
+                              <div key={index} className="flex justify-between items-center p-2 bg-red-50 rounded">
+                                <div>
+                                  <span className="text-sm font-medium">{item.itemName}</span>
+                                  <span className="text-xs text-gray-500 ml-2 capitalize">({item.status})</span>
+                                </div>
+                                <span className="text-sm font-semibold text-red-700">
+                                  ₹{item.totalPrice.toLocaleString('en-IN')}
+                                </span>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4 text-sm text-gray-500">
+                        <span>Checked by: {checkout.checkedBy.name}</span>
+                        <span>Checked: {new Date(checkout.checkedAt).toLocaleDateString()}</span>
+                        {checkout.paidAt && (
+                          <span>Paid: {new Date(checkout.paidAt).toLocaleDateString()}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2 ml-4">
+                      {checkout.status === 'completed' && checkout.paymentStatus === 'pending' && (
+                        <Button
+                          onClick={() => window.location.href = '/staff/checkout-inventory'}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          Process Payment
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        onClick={() => window.location.href = '/staff/checkout-inventory'}
+                      >
+                        View Details
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              ))
+            ) : (
+              <div className="text-center py-12">
+                <Receipt className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No checkouts in queue</h3>
+                <p className="text-gray-500">All checkout inventories have been processed</p>
+              </div>
+            )}
           </div>
         </div>
       )}

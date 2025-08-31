@@ -1,0 +1,797 @@
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { format, parseISO } from 'date-fns';
+import { 
+  Package, 
+  Clock, 
+  CheckCircle, 
+  AlertTriangle, 
+  Filter,
+  Eye,
+  User,
+  DollarSign,
+  Calendar,
+  RefreshCw,
+  CheckSquare,
+  XCircle,
+  Truck,
+  FileText
+} from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
+import { Modal } from '../../components/ui/Modal';
+import { DataTable } from '../../components/dashboard/DataTable';
+import { StatusBadge } from '../../components/dashboard/StatusBadge';
+import { LoadingSpinner } from '../../components/LoadingSpinner';
+import ErrorBoundary from '../../components/ErrorBoundary';
+import { formatNumber } from '../../utils/dashboardUtils';
+import toast from 'react-hot-toast';
+import { adminSupplyRequestsService, SupplyRequest, SupplyRequestStats, SupplyRequestFilters, SupplyRequestItem } from '../../services/adminSupplyRequestsService';
+import { useRealTime } from '../../services/realTimeService';
+
+
+export default function AdminSupplyRequests() {
+  const [requests, setRequests] = useState<SupplyRequest[]>([]);
+  const [stats, setStats] = useState<SupplyRequestStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
+  const [filters, setFilters] = useState<SupplyRequestFilters>({ page: 1, limit: 20 });
+  const [pagination, setPagination] = useState({ total: 0, pages: 0 });
+  
+  // Real-time connection
+  const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
+  
+  // Modal states
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<SupplyRequest | null>(null);
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [approvalData, setApprovalData] = useState({
+    action: '' as 'approve' | 'reject',
+    notes: '',
+    rejectedReason: ''
+  });
+
+  // Mock data for development (replace with real API calls)
+  const fetchRequests = async () => {
+    try {
+      setLoading(true);
+      const response = await adminSupplyRequestsService.getRequests(filters);
+      setRequests(response.data.requests || []);
+      setPagination({ 
+        total: response.data.pagination?.total || 0, 
+        pages: response.data.pagination?.pages || 1 
+      });
+    } catch (error) {
+      console.error('Error fetching supply requests:', error);
+      toast.error('Failed to load supply requests');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const response = await adminSupplyRequestsService.getStats();
+      setStats(response.data);
+    } catch (error) {
+      console.error('Error fetching supply request stats:', error);
+      toast.error('Failed to load supply request statistics');
+    }
+  };
+
+  useEffect(() => {
+    fetchRequests();
+    fetchStats();
+    
+    // Connect to real-time updates
+    connect().catch(console.error);
+    
+    return () => {
+      disconnect();
+    };
+  }, [filters]);
+  
+  // Set up real-time event listeners
+  useEffect(() => {
+    if (!isConnected) return;
+    
+    const handleSupplyRequestUpdate = (data: any) => {
+      console.log('Real-time supply request update:', data);
+      fetchRequests();
+      fetchStats();
+      toast.success('Supply request data updated in real-time');
+    };
+    
+    const handleSupplyRequestCreate = (data: any) => {
+      console.log('Real-time supply request create:', data);
+      fetchRequests();
+      fetchStats();
+      toast.success('New supply request created');
+    };
+    
+    // Subscribe to supply request events
+    on('supply-requests:created', handleSupplyRequestCreate);
+    on('supply-requests:updated', handleSupplyRequestUpdate);
+    on('supply-requests:status_changed', handleSupplyRequestUpdate);
+    
+    return () => {
+      off('supply-requests:created', handleSupplyRequestCreate);
+      off('supply-requests:updated', handleSupplyRequestUpdate);
+      off('supply-requests:status_changed', handleSupplyRequestUpdate);
+    };
+  }, [isConnected, on, off]);
+
+  // Handle approval/rejection
+  const handleApprovalAction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRequest) return;
+
+    try {
+      setUpdating(true);
+      
+      if (approvalData.action === 'approve') {
+        await adminSupplyRequestsService.approveRequest(
+          selectedRequest._id, 
+          approvalData.notes
+        );
+      } else {
+        await adminSupplyRequestsService.rejectRequest(
+          selectedRequest._id, 
+          approvalData.rejectedReason, 
+          approvalData.notes
+        );
+      }
+      
+      await fetchRequests();
+      await fetchStats();
+      setShowApprovalModal(false);
+      setApprovalData({ action: '' as any, notes: '', rejectedReason: '' });
+      toast.success(`Request ${approvalData.action}d successfully`);
+    } catch (error) {
+      console.error('Error processing request:', error);
+      toast.error(`Failed to ${approvalData.action} request`);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleViewRequest = (request: SupplyRequest) => {
+    setSelectedRequest(request);
+    setShowViewModal(true);
+  };
+
+  const openApprovalModal = (request: SupplyRequest, action: 'approve' | 'reject') => {
+    setSelectedRequest(request);
+    setApprovalData({ action, notes: '', rejectedReason: '' });
+    setShowApprovalModal(true);
+  };
+
+  const getDepartmentColor = (department: string) => {
+    const colors: Record<string, string> = {
+      housekeeping: 'bg-green-100 text-green-800',
+      maintenance: 'bg-orange-100 text-orange-800',
+      front_desk: 'bg-blue-100 text-blue-800',
+      food_beverage: 'bg-purple-100 text-purple-800',
+      spa: 'bg-pink-100 text-pink-800',
+      other: 'bg-gray-100 text-gray-800'
+    };
+    return colors[department] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getPriorityColor = (priority: string) => {
+    const colors: Record<string, string> = {
+      low: 'bg-gray-100 text-gray-800',
+      medium: 'bg-yellow-100 text-yellow-800',
+      high: 'bg-orange-100 text-orange-800',
+      urgent: 'bg-red-100 text-red-800',
+      emergency: 'bg-red-200 text-red-900'
+    };
+    return colors[priority] || 'bg-gray-100 text-gray-800';
+  };
+
+  const isOverdue = (request: SupplyRequest) => {
+    return new Date(request.neededBy) < new Date() && 
+           !['received', 'cancelled'].includes(request.status);
+  };
+
+  const columns = [
+    {
+      key: 'requestNumber',
+      header: 'Request',
+      render: (value: any, request: SupplyRequest) => (
+        <div>
+          <div className="font-medium text-gray-900">{request.requestNumber}</div>
+          <div className="text-sm text-gray-500">{request.title}</div>
+          {isOverdue(request) && (
+            <div className="text-xs text-red-600 font-medium">OVERDUE</div>
+          )}
+        </div>
+      )
+    },
+    {
+      key: 'requestedBy',
+      header: 'Requested By',
+      render: (value: any, request: SupplyRequest) => (
+        <div className="text-sm">
+          <div className="font-medium">{request.requestedBy.name}</div>
+          <div className="text-gray-500">{request.requestedBy.email}</div>
+        </div>
+      )
+    },
+    {
+      key: 'department',
+      header: 'Department',
+      render: (value: any, request: SupplyRequest) => (
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getDepartmentColor(request.department)}`}>
+          {request.department.replace('_', ' ')}
+        </span>
+      )
+    },
+    {
+      key: 'priority',
+      header: 'Priority',
+      render: (value: any, request: SupplyRequest) => (
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(request.priority)}`}>
+          {request.priority}
+        </span>
+      )
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (value: any, request: SupplyRequest) => (
+        <StatusBadge 
+          status={request.status} 
+          colorMap={{
+            pending: 'yellow',
+            approved: 'blue',
+            rejected: 'red',
+            ordered: 'purple',
+            partial_received: 'orange',
+            received: 'green',
+            cancelled: 'gray'
+          }}
+        />
+      )
+    },
+    {
+      key: 'totalEstimatedCost',
+      header: 'Cost',
+      render: (value: any, request: SupplyRequest) => (
+        <div className="text-sm">
+          {request.totalActualCost > 0 ? (
+            <div>
+              <div className="font-medium">${request.totalActualCost.toFixed(2)}</div>
+              {request.totalActualCost !== request.totalEstimatedCost && (
+                <div className="text-gray-500">Est: ${request.totalEstimatedCost.toFixed(2)}</div>
+              )}
+            </div>
+          ) : (
+            <div className="text-gray-600">${request.totalEstimatedCost.toFixed(2)}</div>
+          )}
+        </div>
+      )
+    },
+    {
+      key: 'neededBy',
+      header: 'Needed By',
+      render: (value: any, request: SupplyRequest) => (
+        <div className={`text-sm ${isOverdue(request) ? 'text-red-600 font-medium' : 'text-gray-600'}`}>
+          {format(parseISO(request.neededBy), 'MMM dd, yyyy')}
+        </div>
+      )
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      render: (value: any, request: SupplyRequest) => (
+        <div className="flex items-center space-x-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => handleViewRequest(request)}
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+          {request.status === 'pending' && (
+            <>
+              <Button
+                size="sm"
+                onClick={() => openApprovalModal(request, 'approve')}
+                disabled={updating}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <CheckSquare className="h-4 w-4" />
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => openApprovalModal(request, 'reject')}
+                disabled={updating}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                <XCircle className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+        </div>
+      ),
+      align: 'center' as const
+    }
+  ];
+
+  if (loading && !requests.length) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  return (
+    <ErrorBoundary level="page" onError={(error, errorInfo) => {
+      console.error('AdminSupplyRequests Error:', error, errorInfo);
+      toast.error('An error occurred in the supply requests management page');
+    }}>
+    <div className="p-6 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Supply Requests Management</h1>
+          <p className="text-gray-600">Review and approve supply requests from staff</p>
+        </div>
+        <div className="flex items-center space-x-3">
+          {/* Real-time connection status */}
+          <div className="flex items-center space-x-2">
+            <div className={`w-2 h-2 rounded-full ${
+              connectionState === 'connected' ? 'bg-green-500' : 
+              connectionState === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+            }`}></div>
+            <span className="text-xs text-gray-500 capitalize">{connectionState}</span>
+          </div>
+          
+          <Button onClick={fetchRequests} variant="secondary" size="sm" disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      {stats && (
+        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-9 gap-4 mb-8">
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
+              <div className="text-sm text-gray-600">Total Requests</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
+              <div className="text-sm text-gray-600">Pending</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-blue-600">{stats.approved}</div>
+              <div className="text-sm text-gray-600">Approved</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-red-600">{stats.rejected}</div>
+              <div className="text-sm text-gray-600">Rejected</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-purple-600">{stats.ordered}</div>
+              <div className="text-sm text-gray-600">Ordered</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-green-600">{stats.received}</div>
+              <div className="text-sm text-gray-600">Received</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-gray-600">{stats.cancelled}</div>
+              <div className="text-sm text-gray-600">Cancelled</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-green-600">${formatNumber(stats.totalValue)}</div>
+              <div className="text-sm text-gray-600">Total Value</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4 text-center">
+              <div className="text-2xl font-bold text-red-600">{stats.overdue}</div>
+              <div className="text-sm text-gray-600">Overdue</div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Filters */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Filter className="h-5 w-5 mr-2" />
+            Filters
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <select
+                className="w-full border border-gray-300 rounded-md px-3 py-2"
+                value={filters.status || ''}
+                onChange={(e) => setFilters({ ...filters, status: e.target.value || undefined, page: 1 })}
+              >
+                <option value="">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                <option value="ordered">Ordered</option>
+                <option value="partial_received">Partially Received</option>
+                <option value="received">Received</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+              <select
+                className="w-full border border-gray-300 rounded-md px-3 py-2"
+                value={filters.department || ''}
+                onChange={(e) => setFilters({ ...filters, department: e.target.value || undefined, page: 1 })}
+              >
+                <option value="">All Departments</option>
+                <option value="housekeeping">Housekeeping</option>
+                <option value="maintenance">Maintenance</option>
+                <option value="front_desk">Front Desk</option>
+                <option value="food_beverage">Food & Beverage</option>
+                <option value="spa">Spa</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+              <select
+                className="w-full border border-gray-300 rounded-md px-3 py-2"
+                value={filters.priority || ''}
+                onChange={(e) => setFilters({ ...filters, priority: e.target.value || undefined, page: 1 })}
+              >
+                <option value="">All Priorities</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+                <option value="emergency">Emergency</option>
+              </select>
+            </div>
+            <div className="flex items-end">
+              <Button
+                variant="secondary"
+                onClick={() => setFilters({ page: 1, limit: 20 })}
+                className="w-full"
+              >
+                Reset Filters
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Requests Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Supply Requests ({pagination.total})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ErrorBoundary level="component" fallback={
+            <div className="p-4 text-center text-gray-500">
+              Failed to load supply requests table
+            </div>
+          }>
+            <DataTable 
+              data={requests}
+              columns={columns}
+              loading={loading}
+            />
+          </ErrorBoundary>
+        </CardContent>
+        
+        {/* Pagination */}
+        {pagination.pages > 1 && (
+          <div className="px-6 py-4 border-t border-gray-200">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-gray-700">
+                Showing {((filters.page || 1) - 1) * (filters.limit || 20) + 1} to{' '}
+                {Math.min((filters.page || 1) * (filters.limit || 20), pagination.total)} of{' '}
+                {pagination.total} results
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={(filters.page || 1) <= 1}
+                  onClick={() => setFilters({ ...filters, page: (filters.page || 1) - 1 })}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-gray-700">
+                  Page {filters.page || 1} of {pagination.pages}
+                </span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={(filters.page || 1) >= pagination.pages}
+                  onClick={() => setFilters({ ...filters, page: (filters.page || 1) + 1 })}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* View Request Modal */}
+      {selectedRequest && (
+        <Modal
+          isOpen={showViewModal}
+          onClose={() => setShowViewModal(false)}
+          title="Supply Request Details"
+          size="lg"
+        >
+          <div className="space-y-6">
+            {/* Header Info */}
+            <div className="border-b border-gray-200 pb-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">{selectedRequest.title}</h3>
+                  <p className="text-sm text-gray-500 mt-1">Request #{selectedRequest.requestNumber}</p>
+                </div>
+                <div className="text-right">
+                  <StatusBadge 
+                    status={selectedRequest.status} 
+                    colorMap={{
+                      pending: 'yellow',
+                      approved: 'blue',
+                      rejected: 'red',
+                      ordered: 'purple',
+                      partial_received: 'orange',
+                      received: 'green',
+                      cancelled: 'gray'
+                    }}
+                  />
+                  {isOverdue(selectedRequest) && (
+                    <div className="text-xs text-red-600 font-medium mt-1">OVERDUE</div>
+                  )}
+                </div>
+              </div>
+              <p className="text-gray-600 mt-2">{selectedRequest.description}</p>
+            </div>
+
+            {/* Request Info */}
+            <div className="grid grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Requested By</label>
+                <div className="mt-1">
+                  <div className="font-medium">{selectedRequest.requestedBy.name}</div>
+                  <div className="text-sm text-gray-500">{selectedRequest.requestedBy.email}</div>
+                  <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium mt-1 ${getDepartmentColor(selectedRequest.department)}`}>
+                    {selectedRequest.department.replace('_', ' ')}
+                  </span>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Priority & Dates</label>
+                <div className="mt-1">
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(selectedRequest.priority)}`}>
+                    {selectedRequest.priority}
+                  </span>
+                  <div className="text-sm text-gray-600 mt-2">
+                    <div>Created: {format(parseISO(selectedRequest.createdAt), 'MMM dd, yyyy')}</div>
+                    <div className={isOverdue(selectedRequest) ? 'text-red-600 font-medium' : ''}>
+                      Needed: {format(parseISO(selectedRequest.neededBy), 'MMM dd, yyyy')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Items List */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-3">Requested Items</label>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="space-y-4">
+                  {selectedRequest.items.map((item, index) => (
+                    <div key={index} className="flex items-start justify-between p-3 bg-white rounded border">
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">{item.name}</div>
+                        <div className="text-sm text-gray-500">{item.description}</div>
+                        <div className="text-sm text-gray-600 mt-1">
+                          {item.quantity} {item.unit} • {item.category}
+                          {item.supplier && (
+                            <span className="ml-2">• Supplier: {item.supplier}</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right ml-4">
+                        <div className="font-medium text-gray-900">
+                          ${item.actualCost ? item.actualCost.toFixed(2) : item.estimatedCost.toFixed(2)}
+                        </div>
+                        {item.actualCost && item.actualCost !== item.estimatedCost && (
+                          <div className="text-sm text-gray-500">Est: ${item.estimatedCost.toFixed(2)}</div>
+                        )}
+                        {item.isReceived && (
+                          <div className="text-xs text-green-600 font-medium mt-1">
+                            ✓ Received {item.receivedQuantity}/{item.quantity}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="border-t border-gray-200 pt-4 mt-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-lg font-semibold text-gray-900">Total Cost:</span>
+                    <span className="text-lg font-bold text-gray-900">
+                      ${selectedRequest.totalActualCost > 0 ? selectedRequest.totalActualCost.toFixed(2) : selectedRequest.totalEstimatedCost.toFixed(2)}
+                      {selectedRequest.totalActualCost > 0 && selectedRequest.totalActualCost !== selectedRequest.totalEstimatedCost && (
+                        <span className="text-sm text-gray-500 ml-2">(Est: ${selectedRequest.totalEstimatedCost.toFixed(2)})</span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Approval Info */}
+            {selectedRequest.approvedBy && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Approval Details</label>
+                <div className="mt-1 bg-blue-50 p-3 rounded-md">
+                  <div className="text-sm">
+                    <div className="font-medium">Approved by {selectedRequest.approvedBy.name}</div>
+                    <div className="text-gray-600">
+                      {selectedRequest.approvedAt && format(parseISO(selectedRequest.approvedAt), 'MMM dd, yyyy HH:mm')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Rejection Reason */}
+            {selectedRequest.status === 'rejected' && selectedRequest.rejectedReason && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Rejection Reason</label>
+                <div className="mt-1 bg-red-50 p-3 rounded-md text-sm text-red-800">
+                  {selectedRequest.rejectedReason}
+                </div>
+              </div>
+            )}
+
+            {/* Notes */}
+            {selectedRequest.notes && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Notes</label>
+                <div className="mt-1 bg-gray-50 p-3 rounded-md text-sm text-gray-900">
+                  {selectedRequest.notes}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end space-x-3 pt-6 border-t border-gray-200">
+            <Button variant="secondary" onClick={() => setShowViewModal(false)}>
+              Close
+            </Button>
+            {selectedRequest.status === 'pending' && (
+              <>
+                <Button 
+                  onClick={() => {
+                    setShowViewModal(false);
+                    openApprovalModal(selectedRequest, 'reject');
+                  }}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  Reject Request
+                </Button>
+                <Button 
+                  onClick={() => {
+                    setShowViewModal(false);
+                    openApprovalModal(selectedRequest, 'approve');
+                  }}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  Approve Request
+                </Button>
+              </>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* Approval Modal */}
+      <Modal
+        isOpen={showApprovalModal}
+        onClose={() => setShowApprovalModal(false)}
+        title={`${approvalData.action === 'approve' ? 'Approve' : 'Reject'} Supply Request`}
+      >
+        <form onSubmit={handleApprovalAction} className="space-y-4">
+          {selectedRequest && (
+            <div className="bg-gray-50 p-4 rounded-md">
+              <div className="text-sm">
+                <div className="font-medium">Request: {selectedRequest.requestNumber}</div>
+                <div className="text-gray-600">{selectedRequest.title}</div>
+                <div className="font-medium mt-2">Total Cost: ${selectedRequest.totalEstimatedCost.toFixed(2)}</div>
+              </div>
+            </div>
+          )}
+
+          {approvalData.action === 'reject' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Rejection Reason *</label>
+              <textarea
+                className="w-full border border-gray-300 rounded-md px-3 py-2 h-24 resize-none"
+                required
+                value={approvalData.rejectedReason}
+                onChange={(e) => setApprovalData({ ...approvalData, rejectedReason: e.target.value })}
+                placeholder="Please provide a reason for rejection..."
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Additional Notes</label>
+            <textarea
+              className="w-full border border-gray-300 rounded-md px-3 py-2 h-20 resize-none"
+              value={approvalData.notes}
+              onChange={(e) => setApprovalData({ ...approvalData, notes: e.target.value })}
+              placeholder="Add any additional notes or comments..."
+            />
+          </div>
+
+          <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowApprovalModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="submit" 
+              disabled={updating}
+              className={approvalData.action === 'approve' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
+            >
+              {updating ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  {approvalData.action === 'approve' ? (
+                    <CheckSquare className="h-4 w-4 mr-2" />
+                  ) : (
+                    <XCircle className="h-4 w-4 mr-2" />
+                  )}
+                  {approvalData.action === 'approve' ? 'Approve Request' : 'Reject Request'}
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+    </div>
+    </ErrorBoundary>
+  );
+}

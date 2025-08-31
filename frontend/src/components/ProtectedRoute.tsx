@@ -12,6 +12,13 @@ export function ProtectedRoute({ children, allowedRoles = [] }: ProtectedRoutePr
   const { user, isLoading, isAuthenticated } = useAuth();
   const location = useLocation();
 
+  console.log('ProtectedRoute debug:', {
+    isAuthenticated,
+    user,
+    allowedRoles,
+    currentPath: location.pathname
+  });
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -21,10 +28,12 @@ export function ProtectedRoute({ children, allowedRoles = [] }: ProtectedRoutePr
   }
 
   if (!isAuthenticated) {
+    console.log('User not authenticated, redirecting to login');
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   if (allowedRoles.length > 0 && user && !allowedRoles.includes(user.role)) {
+    console.log('User role not allowed, redirecting:', user.role, 'allowed:', allowedRoles);
     // Redirect based on user role to their appropriate dashboard
     let redirectPath = '/';
     

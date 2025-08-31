@@ -5,7 +5,8 @@ import {
   RevenueReportData, 
   OccupancyReportData, 
   BookingsReportData, 
-  BookingStatsData 
+  BookingStatsData,
+  CheckoutInventoryData
 } from '../services/reportsService';
 
 // Query keys
@@ -15,6 +16,7 @@ export const reportsKeys = {
   occupancy: (filters: ReportFilters) => [...reportsKeys.all, 'occupancy', filters] as const,
   bookings: (filters: ReportFilters) => [...reportsKeys.all, 'bookings', filters] as const,
   bookingStats: (filters: ReportFilters) => [...reportsKeys.all, 'booking-stats', filters] as const,
+  checkoutInventory: (filters: ReportFilters) => [...reportsKeys.all, 'checkout-inventory', filters] as const,
   comprehensive: (reportType: string, filters: ReportFilters) => 
     [...reportsKeys.all, 'comprehensive', reportType, filters] as const,
 } as const;
@@ -52,6 +54,15 @@ export const useBookingStats = (filters: ReportFilters, options?: { enabled?: bo
     queryKey: reportsKeys.bookingStats(filters),
     queryFn: () => reportsService.getBookingStats(filters),
     enabled: options?.enabled,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+  });
+};
+
+export const useCheckoutInventoryReport = (filters: ReportFilters, options?: { enabled?: boolean }) => {
+  return useQuery({
+    queryKey: reportsKeys.checkoutInventory(filters),
+    queryFn: () => reportsService.getCheckoutInventoryReport(filters),
+    enabled: options?.enabled && !!(filters.startDate && filters.endDate),
     staleTime: 2 * 60 * 1000, // 2 minutes
   });
 };
@@ -117,19 +128,22 @@ export const useDashboardReports = (
   const occupancyQuery = useOccupancyReport(filters, { enabled: options?.enabled });
   const bookingsQuery = useBookingsReport(filters, { enabled: options?.enabled });
   const statsQuery = useBookingStats(filters, { enabled: options?.enabled });
+  const checkoutInventoryQuery = useCheckoutInventoryReport(filters, { enabled: options?.enabled });
 
   return {
     revenue: revenueQuery,
     occupancy: occupancyQuery,
     bookings: bookingsQuery,
     stats: statsQuery,
-    isLoading: revenueQuery.isLoading || occupancyQuery.isLoading || bookingsQuery.isLoading || statsQuery.isLoading,
-    error: revenueQuery.error || occupancyQuery.error || bookingsQuery.error || statsQuery.error,
+    checkoutInventory: checkoutInventoryQuery,
+    isLoading: revenueQuery.isLoading || occupancyQuery.isLoading || bookingsQuery.isLoading || statsQuery.isLoading || checkoutInventoryQuery.isLoading,
+    error: revenueQuery.error || occupancyQuery.error || bookingsQuery.error || statsQuery.error || checkoutInventoryQuery.error,
     refetchAll: () => {
       revenueQuery.refetch();
       occupancyQuery.refetch();
       bookingsQuery.refetch();
       statsQuery.refetch();
+      checkoutInventoryQuery.refetch();
     },
   };
 };

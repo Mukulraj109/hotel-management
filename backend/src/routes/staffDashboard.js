@@ -2,6 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import { AppError } from '../utils/appError.js';
 import User from '../models/User.js';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
@@ -9,13 +10,20 @@ import Housekeeping from '../models/Housekeeping.js';
 import GuestService from '../models/GuestService.js';
 import MaintenanceTask from '../models/MaintenanceTask.js';
 import RoomInventory from '../models/RoomInventory.js';
-import InventoryItem from '../models/InventoryItem.js';
+import Inventory from '../models/Inventory.js';
+import SupplyRequest from '../models/SupplyRequest.js';
+import CheckoutInventory from '../models/CheckoutInventory.js';
 
 const router = express.Router();
 
 // All routes require staff authentication
 router.use(authenticate);
 router.use(authorize('staff', 'admin'));
+
+// Simple health check for debugging
+router.get('/health', (req, res) => {
+  res.json({ status: 'ok', message: 'Staff dashboard API is working' });
+});
 
 /**
  * Staff Dashboard - Today's Overview
@@ -27,6 +35,13 @@ router.get('/today', catchAsync(async (req, res) => {
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
+  console.log('STAFF DASHBOARD DEBUG - Today Overview:', {
+    hotelId,
+    today,
+    tomorrow,
+    timestamp: new Date().toISOString()
+  });
+
   // Get today's key metrics for staff
   const [
     todayCheckIns,
@@ -34,29 +49,38 @@ router.get('/today', catchAsync(async (req, res) => {
     pendingHousekeeping,
     pendingMaintenance,
     pendingGuestServices,
+    pendingOrders,
     roomMetrics
   ] = await Promise.all([
+    // Count bookings scheduled to check in today (including those already checked in)
     Booking.countDocuments({
       hotelId: new mongoose.Types.ObjectId(hotelId),
       checkIn: { $gte: today, $lt: tomorrow },
       status: { $in: ['confirmed', 'checked_in'] }
     }),
-    Booking.countDocuments({
-      hotelId: new mongoose.Types.ObjectId(hotelId),
-      checkOut: { $gte: today, $lt: tomorrow },
-      status: 'checked_in'
-    }),
+    // Count actual checkout inventory records created today
+    CheckoutInventory.aggregate([
+      { $match: { createdAt: { $gte: today, $lt: tomorrow } } },
+      { $lookup: { from: 'bookings', localField: 'bookingId', foreignField: '_id', as: 'booking' } },
+      { $match: { 'booking.hotelId': new mongoose.Types.ObjectId(hotelId) } },
+      { $count: 'total' }
+    ]).then(result => result[0]?.total || 0),
     Housekeeping.countDocuments({
       hotelId: new mongoose.Types.ObjectId(hotelId),
       status: 'pending'
     }),
     MaintenanceTask.countDocuments({
       hotelId: new mongoose.Types.ObjectId(hotelId),
+      assignedTo: req.user._id,
       status: 'pending'
     }),
     GuestService.countDocuments({
       hotelId: new mongoose.Types.ObjectId(hotelId),
       status: { $in: ['pending', 'assigned'] }
+    }),
+    SupplyRequest.countDocuments({
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      status: 'ordered'
     }),
     // Use real-time room status calculation like admin dashboard
     Room.aggregate([
@@ -71,8 +95,8 @@ router.get('/today', catchAsync(async (req, res) => {
                 $expr: {
                   $and: [
                     { $in: ['$$roomId', '$rooms.roomId'] },
-                    { $lte: ['$checkIn', new Date()] },
-                    { $gt: ['$checkOut', new Date()] },
+                    { $lte: ['$checkIn', today] },
+                    { $gt: ['$checkOut', today] },
                     { $in: ['$status', ['confirmed', 'checked_in']] }
                   ]
                 }
@@ -97,6 +121,16 @@ router.get('/today', catchAsync(async (req, res) => {
   const totalRooms = roomMetrics[0]?.totalRooms || 0;
   const occupiedRooms = roomMetrics[0]?.occupiedRooms || 0;
 
+  console.log('STAFF DASHBOARD DEBUG - Query Results:', {
+    todayCheckIns,
+    todayCheckOuts,
+    pendingHousekeeping,
+    pendingMaintenance,
+    pendingGuestServices,
+    totalRooms,
+    occupiedRooms
+  });
+
   res.status(200).json({
     status: 'success',
     data: {
@@ -106,6 +140,7 @@ router.get('/today', catchAsync(async (req, res) => {
         pendingHousekeeping,
         pendingMaintenance,
         pendingGuestServices,
+        pendingOrders,
         occupancyRate: totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0
       },
       lastUpdated: new Date().toISOString()
@@ -113,65 +148,21 @@ router.get('/today', catchAsync(async (req, res) => {
   });
 }));
 
-/**
- * Staff Dashboard - My Tasks
- */
-router.get('/my-tasks', catchAsync(async (req, res) => {
-  const { _id: staffId, hotelId } = req.user;
 
-  try {
-    // Get tasks assigned to this staff member
-    const [housekeepingTasks, maintenanceTasks, guestServices] = await Promise.all([
-      Housekeeping.find({
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        assignedToUserId: staffId,
-        status: { $in: ['pending', 'in_progress'] }
-      }).populate('roomId', 'roomNumber type').limit(10),
-      
-      MaintenanceTask.find({
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        assignedTo: staffId,
-        status: { $in: ['pending', 'in_progress'] }
-      }).populate('roomId', 'roomNumber type').limit(10),
-      
-      GuestService.find({
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        assignedTo: staffId,
-        status: { $in: ['assigned', 'in_progress'] }
-      }).populate('userId', 'name').populate('roomId', 'roomNumber').limit(10)
-    ]);
-
-    res.status(200).json({
-      status: 'success',
-      data: {
-        housekeeping: housekeepingTasks || [],
-        maintenance: maintenanceTasks || [],
-        guestServices: guestServices || [],
-        totalTasks: (housekeepingTasks?.length || 0) + (maintenanceTasks?.length || 0) + (guestServices?.length || 0)
-      }
-    });
-  } catch (error) {
-    console.error('Error in /my-tasks:', error);
-    res.status(200).json({
-      status: 'success',
-      data: {
-        housekeeping: [],
-        maintenance: [],
-        guestServices: [],
-        totalTasks: 0
-      }
-    });
-  }
-}));
 
 /**
  * Staff Dashboard - Room Status Overview
  */
 router.get('/rooms/status', catchAsync(async (req, res) => {
-  const { hotelId } = req.user;
+  try {
+    const { hotelId } = req.user;
+    const today = new Date();
 
-  // Use real-time room status calculation like admin dashboard
-  const roomsWithStatus = await Room.aggregate([
+    console.log('[DEBUG] Staff rooms/status - hotelId:', hotelId);
+    console.log('[DEBUG] Staff rooms/status - today:', today);
+
+    // Use real-time room status calculation like admin dashboard
+    const roomsWithStatus = await Room.aggregate([
     { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
     {
       $lookup: {
@@ -183,8 +174,8 @@ router.get('/rooms/status', catchAsync(async (req, res) => {
               $expr: {
                 $and: [
                   { $in: ['$$roomId', '$rooms.roomId'] },
-                  { $lte: ['$checkIn', new Date()] },
-                  { $gt: ['$checkOut', new Date()] },
+                  { $lte: ['$checkIn', today] },
+                  { $gt: ['$checkOut', today] },
                   { $in: ['$status', ['confirmed', 'checked_in']] }
                 ]
               }
@@ -215,7 +206,6 @@ router.get('/rooms/status', catchAsync(async (req, res) => {
 
   const statusSummary = {
     occupied: 0,
-    vacant: 0,
     vacant_clean: 0,
     vacant_dirty: 0,
     maintenance: 0,
@@ -223,7 +213,14 @@ router.get('/rooms/status', catchAsync(async (req, res) => {
   };
 
   roomsWithStatus.forEach(status => {
-    statusSummary[status._id] = status.count;
+    // Map the computed status correctly
+    if (status._id === 'vacant') {
+      statusSummary.vacant_clean = status.count;
+    } else if (status._id === 'dirty') {
+      statusSummary.vacant_dirty = status.count;
+    } else {
+      statusSummary[status._id] = status.count;
+    }
   });
 
   // Get rooms that need attention (using real-time status)
@@ -239,8 +236,8 @@ router.get('/rooms/status', catchAsync(async (req, res) => {
               $expr: {
                 $and: [
                   { $in: ['$$roomId', '$rooms.roomId'] },
-                  { $lte: ['$checkIn', new Date()] },
-                  { $gt: ['$checkOut', new Date()] },
+                  { $lte: ['$checkIn', today] },
+                  { $gt: ['$checkOut', today] },
                   { $in: ['$status', ['confirmed', 'checked_in']] }
                 ]
               }
@@ -264,7 +261,7 @@ router.get('/rooms/status', catchAsync(async (req, res) => {
     {
       $match: {
         $or: [
-          { computedStatus: 'vacant_dirty' },
+          { computedStatus: 'dirty' },
           { computedStatus: 'maintenance' },
           { computedStatus: 'out_of_order' }
         ]
@@ -279,14 +276,23 @@ router.get('/rooms/status', catchAsync(async (req, res) => {
     }
   ]).limit(20);
 
-  res.status(200).json({
-    status: 'success',
-    data: {
-      summary: statusSummary,
-      needsAttention: roomsNeedingAttention,
-      total: Object.values(statusSummary).reduce((a, b) => a + b, 0)
-    }
-  });
+    res.status(200).json({
+      status: 'success',
+      data: {
+        summary: statusSummary,
+        needsAttention: roomsNeedingAttention,
+        total: Object.values(statusSummary).reduce((a, b) => a + b, 0)
+      }
+    });
+  } catch (error) {
+    console.error('[ERROR] Staff rooms/status error:', error);
+    console.error('[ERROR] Stack trace:', error.stack);
+    res.status(500).json({
+      status: 'error', 
+      message: 'Failed to fetch room status',
+      error: error.message
+    });
+  }
 }));
 
 /**
@@ -294,26 +300,41 @@ router.get('/rooms/status', catchAsync(async (req, res) => {
  */
 router.get('/activity', catchAsync(async (req, res) => {
   const { hotelId } = req.user;
-  const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const now = new Date();
+  const last7Days = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const next7Days = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
   // Get recent bookings and services
   const [recentCheckIns, recentCheckOuts, recentServices] = await Promise.all([
+    // Recent check-ins - show bookings that checked in within the last 7 days
     Booking.find({
       hotelId: new mongoose.Types.ObjectId(hotelId),
-      checkIn: { $gte: last24Hours },
-      status: 'checked_in'
-    }).populate('userId', 'name').populate('rooms.roomId', 'roomNumber').limit(10),
+      checkIn: { $gte: last7Days, $lte: now },
+      status: { $in: ['checked_in', 'checked_out'] }
+    }).populate('userId', 'name').populate('rooms.roomId', 'roomNumber').sort({ checkIn: -1 }).limit(10),
 
-    Booking.find({
-      hotelId: new mongoose.Types.ObjectId(hotelId),
-      checkOut: { $gte: last24Hours },
-      status: 'checked_out'
-    }).populate('userId', 'name').populate('rooms.roomId', 'roomNumber').limit(10),
+    // Recent checkout inventories - show checkout inventory records created in the last 7 days
+    CheckoutInventory.find({
+      createdAt: { $gte: last7Days, $lte: now }
+    }).populate([
+      { path: 'bookingId', select: 'bookingNumber userId', match: { hotelId: new mongoose.Types.ObjectId(hotelId) }, populate: { path: 'userId', select: 'name' } },
+      { path: 'roomId', select: 'roomNumber' },
+      { path: 'checkedBy', select: 'name' }
+    ]).sort({ createdAt: -1 }).limit(10).then(inventories => inventories.filter(inv => inv.bookingId)),
 
     GuestService.find({
       hotelId: new mongoose.Types.ObjectId(hotelId),
-      createdAt: { $gte: last24Hours }
-    }).populate('userId', 'name').populate('roomId', 'roomNumber').limit(10)
+      createdAt: { $gte: last7Days }
+    }).populate('userId', 'name')
+      .populate({
+        path: 'bookingId',
+        select: 'rooms',
+        populate: {
+          path: 'rooms.roomId',
+          select: 'roomNumber'
+        }
+      })
+      .sort({ createdAt: -1 }).limit(10)
   ]);
 
   res.status(200).json({
@@ -333,22 +354,61 @@ router.get('/inventory/summary', catchAsync(async (req, res) => {
   const { hotelId } = req.user;
 
   try {
-    // Since InventoryItem and RoomInventory have no data, return empty results
+    // Get low stock items using the Inventory model (consistent with admin)
+    const lowStockItems = await Inventory.find({
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      $expr: { $lte: ['$quantity', '$minimumThreshold'] },
+      isActive: true
+    }).select('name category quantity minimumThreshold unit').limit(10);
+    
+    // Get rooms that need inspection (cleaned more than 30 days ago or never cleaned)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const roomsNeedingInspection = await Room.find({
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      isActive: true,
+      $or: [
+        { lastCleaned: { $lt: thirtyDaysAgo } },
+        { lastCleaned: { $exists: false } }
+      ]
+    }).select('_id roomNumber lastCleaned').sort('lastCleaned');
+
+    // Calculate days past due for each room
+    const inspectionRooms = roomsNeedingInspection.map(room => {
+      const lastCleanedDate = room.lastCleaned || room.createdAt || new Date();
+      const daysPastDue = Math.floor((Date.now() - new Date(lastCleanedDate).getTime()) / (1000 * 60 * 60 * 24)) - 30;
+      return {
+        _id: room._id,
+        roomNumber: room.roomNumber,
+        daysPastDue: Math.max(0, daysPastDue)
+      };
+    });
+
+    // Format low stock items (using unified Inventory model fields)
+    const formattedLowStockItems = lowStockItems.map(item => ({
+      _id: item._id,
+      name: item.name,
+      currentStock: item.quantity, // quantity field from unified model
+      threshold: item.minimumThreshold, // minimumThreshold field from unified model
+      category: item.category,
+      unit: item.unit
+    }));
+
     res.status(200).json({
       status: 'success',
       data: {
         lowStockAlert: {
-          count: 0,
-          items: []
+          count: formattedLowStockItems.length,
+          items: formattedLowStockItems
         },
         inspectionsDue: {
-          count: 0,
-          rooms: []
+          count: inspectionRooms.length,
+          rooms: inspectionRooms
         }
       }
     });
   } catch (error) {
     console.error('Error in /inventory/summary:', error);
+    // Return empty data on error but still indicate success to prevent UI crashes
     res.status(200).json({
       status: 'success',
       data: {
@@ -363,6 +423,80 @@ router.get('/inventory/summary', catchAsync(async (req, res) => {
       }
     });
   }
+}));
+
+/**
+ * Staff Dashboard - Order Inventory Item (Mark as Ordered)
+ */
+router.post('/inventory/:itemId/order', catchAsync(async (req, res) => {
+  const { itemId } = req.params;
+  const { hotelId } = req.user;
+  const { quantity = 50 } = req.body; // Default order quantity
+
+  // Find the inventory item and verify it belongs to the user's hotel (using unified Inventory model)
+  const inventoryItem = await Inventory.findOne({ 
+    _id: itemId, 
+    hotelId: new mongoose.Types.ObjectId(hotelId),
+    isActive: true
+  });
+
+  if (!inventoryItem) {
+    throw new AppError('Inventory item not found', 404);
+  }
+
+  // For this demo, we'll just increase the current stock to above threshold
+  // In a real system, this would create a purchase order
+  const newStock = inventoryItem.minimumThreshold + quantity;
+  inventoryItem.quantity = newStock;
+  await inventoryItem.save();
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      item: {
+        _id: inventoryItem._id,
+        name: inventoryItem.name,
+        quantity: inventoryItem.quantity,
+        minimumThreshold: inventoryItem.minimumThreshold,
+        unit: inventoryItem.unit
+      }
+    },
+    message: `Order placed for ${inventoryItem.name}. Stock updated to ${newStock} ${inventoryItem.unit}.`
+  });
+}));
+
+/**
+ * Staff Dashboard - Mark Room as Inspected
+ */
+router.patch('/rooms/:roomId/inspect', catchAsync(async (req, res) => {
+  const { roomId } = req.params;
+  const { hotelId } = req.user;
+
+  // Find the room and verify it belongs to the user's hotel
+  const room = await Room.findOne({ 
+    _id: roomId, 
+    hotelId: new mongoose.Types.ObjectId(hotelId) 
+  });
+
+  if (!room) {
+    throw new AppError('Room not found', 404);
+  }
+
+  // Update the lastCleaned date to current date/time
+  room.lastCleaned = new Date();
+  await room.save();
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      room: {
+        _id: room._id,
+        roomNumber: room.roomNumber,
+        lastCleaned: room.lastCleaned
+      }
+    },
+    message: `Room ${room.roomNumber} marked as inspected`
+  });
 }));
 
 export default router;

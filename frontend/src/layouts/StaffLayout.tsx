@@ -13,17 +13,18 @@ import {
   X,
   Home,
   Bell,
-  MessageSquare
+  MessageSquare,
+  CreditCard
 } from 'lucide-react';
 
 const navigation = [
   { name: 'Dashboard', href: '/staff', icon: Home },
-  { name: 'My Tasks', href: '/staff/tasks', icon: ClipboardCheck },
   { name: 'Housekeeping', href: '/staff/housekeeping', icon: ClipboardCheck },
   { name: 'Maintenance', href: '/staff/maintenance', icon: Wrench },
   { name: 'Guest Services', href: '/staff/guest-services', icon: Users },
   { name: 'Room Status', href: '/staff/rooms', icon: Users },
   { name: 'Inventory', href: '/staff/inventory', icon: Package },
+  { name: 'Checkout Inventory', href: '/staff/checkout-inventory', icon: CreditCard },
   { name: 'Reports', href: '/staff/reports', icon: BarChart3 },
 ];
 
