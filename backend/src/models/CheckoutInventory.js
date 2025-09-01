@@ -164,6 +164,10 @@ const checkoutInventorySchema = new mongoose.Schema({
   },
   paidAt: {
     type: Date
+  },
+  isAdminBypass: {
+    type: Boolean,
+    default: false
   }
 }, {
   timestamps: true,

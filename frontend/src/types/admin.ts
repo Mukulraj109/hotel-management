@@ -129,6 +129,7 @@ export interface AdminBooking {
     quantity: number;
   }[];
   source: 'direct' | 'booking_com' | 'expedia' | 'airbnb';
+  roomType?: 'single' | 'double' | 'suite' | 'deluxe'; // Room type preference for room-type bookings
   cancellationReason?: string;
   checkInTime?: string;
   checkOutTime?: string;

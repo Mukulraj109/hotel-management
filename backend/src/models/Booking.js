@@ -51,6 +51,10 @@ import mongoose from 'mongoose';
  *         currency:
  *           type: string
  *           default: USD
+ *         roomType:
+ *           type: string
+ *           enum: [single, double, suite, deluxe]
+ *           description: Room type preference for room-type bookings
  *         stripePaymentId:
  *           type: string
  *         idempotencyKey:
@@ -145,6 +149,11 @@ const bookingSchema = new mongoose.Schema({
     type: String,
     default: 'INR',
     uppercase: true
+  },
+  roomType: {
+    type: String,
+    enum: ['single', 'double', 'suite', 'deluxe'],
+    required: false // Optional field for room-type bookings
   },
   stripePaymentId: String,
   idempotencyKey: {

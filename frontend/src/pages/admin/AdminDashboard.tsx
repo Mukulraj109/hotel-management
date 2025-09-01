@@ -146,14 +146,14 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 max-w-full lg:max-w-7xl mx-auto min-w-0">
       {/* Header Section */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-gray-600 mt-1">Real-time hotel management overview</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Admin Dashboard</h1>
+          <p className="text-gray-600 mt-1 text-sm sm:text-base">Real-time hotel management overview</p>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
           <Button
             onClick={() => navigate('/')}
             variant="secondary"
@@ -201,7 +201,7 @@ export default function AdminDashboard() {
       />
 
       {/* KPI Cards Section */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <div 
           className="relative"
           onMouseEnter={() => setShowRevenueBreakdown(true)}
@@ -330,7 +330,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Revenue Chart */}
         <ChartCard
           title="Revenue Trends"
@@ -468,7 +468,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Bottom Section - Tables and Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Recent Bookings */}
         <div className="lg:col-span-2">
           <DataTable
@@ -555,8 +555,8 @@ export default function AdminDashboard() {
       </div>
 
       {/* System Health Status */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="flex items-center justify-between">
+      <div className="bg-white rounded-lg border border-gray-200 p-3 sm:p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div className="flex items-center space-x-3">
             <div className={cn(
               'w-3 h-3 rounded-full',

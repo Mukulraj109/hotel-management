@@ -62,13 +62,13 @@ export default function StaffRooms() {
   const { summary, needsAttention } = roomData;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Room Status Overview</h1>
-        <p className="text-gray-600">Monitor and manage room statuses</p>
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+      <div className="mb-6 sm:mb-8">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Room Status Overview</h1>
+        <p className="text-gray-600 text-sm sm:text-base">Monitor and manage room statuses</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Room Status Summary */}
         <Card>
           <CardHeader>
@@ -78,7 +78,7 @@ export default function StaffRooms() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
               <div className="text-center p-4 bg-green-50 rounded-lg">
                 <div className="text-2xl font-bold text-green-600">{summary.occupied}</div>
                 <div className="text-sm text-gray-600">Occupied</div>

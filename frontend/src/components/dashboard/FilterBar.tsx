@@ -47,7 +47,7 @@ export function FilterBar({
             key={filter.key}
             value={value}
             onChange={(e) => onChange(filter.key, e.target.value)}
-            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            className="block w-full min-w-0 px-2 sm:px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"
           >
             <option value="">{filter.placeholder || `Select ${filter.label}`}</option>
             {filter.options?.map((option) => (
@@ -65,25 +65,25 @@ export function FilterBar({
             type="date"
             value={value}
             onChange={(e) => onChange(filter.key, e.target.value)}
-            className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+            className="block w-full min-w-0 px-2 sm:px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"
           />
         );
 
       case 'daterange':
         return (
-          <div key={filter.key} className="flex space-x-2">
+          <div key={filter.key} className="flex flex-col sm:flex-row gap-2">
             <input
               type="date"
               value={value?.start || ''}
               onChange={(e) => onChange(filter.key, { ...value, start: e.target.value })}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              className="block w-full min-w-0 px-2 sm:px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"
               placeholder="Start date"
             />
             <input
               type="date"
               value={value?.end || ''}
               onChange={(e) => onChange(filter.key, { ...value, end: e.target.value })}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              className="block w-full min-w-0 px-2 sm:px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"
               placeholder="End date"
             />
           </div>
@@ -97,7 +97,7 @@ export function FilterBar({
               value={value}
               onChange={(e) => onChange(filter.key, e.target.value)}
               placeholder={filter.placeholder || `Search ${filter.label}`}
-              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              className="block w-full min-w-0 pl-8 sm:pl-10 pr-2 sm:pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-xs sm:text-sm"
             />
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -126,22 +126,22 @@ export function FilterBar({
   };
 
   return (
-    <div className={cn('bg-white p-4 rounded-lg border border-gray-200 shadow-sm', className)}>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-medium text-gray-900">Filters</h3>
-        <div className="flex items-center space-x-2">
+    <div className={cn('bg-white p-3 sm:p-4 rounded-lg border border-gray-200 shadow-sm', className)}>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4 mb-4">
+        <h3 className="text-base sm:text-lg font-medium text-gray-900">Filters</h3>
+        <div className="flex items-center gap-2">
           {showApplyButton && onApply && (
-            <Button variant="primary" size="sm" onClick={onApply}>
+            <Button variant="primary" size="sm" onClick={onApply} className="text-xs sm:text-sm">
               Apply
             </Button>
           )}
-          <Button variant="secondary" size="sm" onClick={handleReset}>
+          <Button variant="secondary" size="sm" onClick={handleReset} className="text-xs sm:text-sm">
             Reset
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
         {filters.map((filter) => (
           <div key={filter.key} className="space-y-1">
             <label className="block text-sm font-medium text-gray-700">

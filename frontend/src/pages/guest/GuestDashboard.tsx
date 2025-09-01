@@ -90,20 +90,20 @@ export default function GuestDashboard() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
       {/* Welcome Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+      <div className="mb-6 sm:mb-8">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
           Welcome back, {user?.name}!
         </h1>
-        <p className="text-gray-600">
+        <p className="text-gray-600 text-sm sm:text-base">
           Manage your bookings and explore your loyalty benefits
         </p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <Card className="p-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
+        <Card className="p-4 sm:p-6">
           <div className="flex items-center">
             <div className="p-2 bg-blue-100 rounded-lg">
               <Calendar className="w-6 h-6 text-blue-600" />
@@ -115,7 +115,7 @@ export default function GuestDashboard() {
           </div>
         </Card>
 
-        <Card className="p-6">
+        <Card className="p-4 sm:p-6">
           <div className="flex items-center">
             <div className="p-2 bg-green-100 rounded-lg">
               <Clock className="w-6 h-6 text-green-600" />
@@ -127,7 +127,7 @@ export default function GuestDashboard() {
           </div>
         </Card>
 
-        <Card className="p-6">
+        <Card className="p-4 sm:p-6">
           <div className="flex items-center">
             <div className="p-2 bg-yellow-100 rounded-lg">
               <CreditCard className="w-6 h-6 text-yellow-600" />
@@ -141,7 +141,7 @@ export default function GuestDashboard() {
           </div>
         </Card>
 
-        <Card className="p-6">
+        <Card className="p-4 sm:p-6">
           <div className="flex items-center">
             <div className="p-2 bg-purple-100 rounded-lg">
               <Star className="w-6 h-6 text-purple-600" />
@@ -155,10 +155,10 @@ export default function GuestDashboard() {
       </div>
 
       {/* Recent Bookings */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">Recent Bookings</h2>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+        <Card className="p-4 sm:p-6">
+          <div className="flex items-center justify-between mb-4 sm:mb-6">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Recent Bookings</h2>
             <button 
               onClick={() => window.location.href = '/guest/bookings'}
               className="text-yellow-600 hover:text-yellow-700 text-sm font-medium"
@@ -181,7 +181,7 @@ export default function GuestDashboard() {
           ) : (
             <div className="space-y-4">
               {stats.recentBookings.map((booking) => (
-                <div key={booking._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                <div key={booking._id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 bg-gray-50 rounded-lg gap-3 sm:gap-0">
                   <div>
                     <p className="font-medium text-gray-900">{booking.hotelId?.name || 'Hotel'}</p>
                     <p className="text-sm text-gray-600">
@@ -210,17 +210,17 @@ export default function GuestDashboard() {
         </Card>
 
         {/* Loyalty Program */}
-        <Card className="p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">Loyalty Status</h2>
+        <Card className="p-4 sm:p-6">
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 sm:mb-6">Loyalty Status</h2>
           
-          <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full mb-4">
-              <Star className="w-8 h-8 text-white" />
+          <div className="text-center mb-4 sm:mb-6">
+            <div className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-full mb-3 sm:mb-4">
+              <Star className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
             </div>
-            <h3 className="text-2xl font-bold text-gray-900 capitalize mb-1">
+            <h3 className="text-xl sm:text-2xl font-bold text-gray-900 capitalize mb-1">
               {user?.loyalty?.tier || 'Bronze'} Member
             </h3>
-            <p className="text-gray-600">{stats.loyaltyPoints} points</p>
+            <p className="text-gray-600 text-sm sm:text-base">{stats.loyaltyPoints} points</p>
           </div>
 
           {/* Loyalty Progress */}
@@ -296,10 +296,10 @@ export default function GuestDashboard() {
       )}
 
       {/* Quick Actions */}
-      <div className="mt-8">
-        <Card className="p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="mt-6 sm:mt-8">
+        <Card className="p-4 sm:p-6">
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             <button
               onClick={() => window.location.href = '/rooms'}
               className="flex items-center justify-center p-4 bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100 transition-colors"

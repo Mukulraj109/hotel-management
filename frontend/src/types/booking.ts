@@ -68,5 +68,6 @@ export interface CreateBookingRequest {
     children: number;
     specialRequests?: string;
   };
+  roomType?: 'single' | 'double' | 'suite' | 'deluxe'; // Room type preference for room-type bookings
   idempotencyKey: string;
 }

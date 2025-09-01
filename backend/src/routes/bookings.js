@@ -321,7 +321,8 @@ router.post('/',
       currency,
       paymentStatus,
       status,
-      idempotencyKey
+      idempotencyKey,
+      roomType // Add roomType field for room-type bookings
     } = req.body;
 
     const session = await mongoose.startSession();
@@ -337,36 +338,45 @@ router.post('/',
         const checkInDate = new Date(checkIn);
         const checkOutDate = new Date(checkOut);
 
-        // Get rooms and check availability
-        const rooms = await Room.find({
-          _id: { $in: roomIds },
-          hotelId,
-          isActive: true
-        });
+        let rooms = [];
+        let roomsWithRates = [];
 
-        if (rooms.length !== roomIds.length) {
-          throw new AppError('One or more rooms not found or not available', 404);
+        // Only validate rooms if roomIds are provided
+        if (roomIds && roomIds.length > 0) {
+          // Get rooms and check availability
+          rooms = await Room.find({
+            _id: { $in: roomIds },
+            hotelId,
+            isActive: true
+          });
+
+          if (rooms.length !== roomIds.length) {
+            throw new AppError('One or more rooms not found or not available', 404);
+          }
+
+          // Check for overlapping bookings
+          const overlappingBookings = await Booking.findOverlapping(
+            roomIds,
+            checkInDate,
+            checkOutDate
+          );
+
+          if (overlappingBookings.length > 0) {
+            throw new AppError('One or more rooms are not available for the selected dates', 409);
+          }
+
+          // Calculate rates from actual rooms
+          roomsWithRates = rooms.map(room => ({
+            roomId: room._id,
+            rate: room.currentRate
+          }));
         }
-
-        // Check for overlapping bookings
-        const overlappingBookings = await Booking.findOverlapping(
-          roomIds,
-          checkInDate,
-          checkOutDate
-        );
-
-        if (overlappingBookings.length > 0) {
-          throw new AppError('One or more rooms are not available for the selected dates', 409);
-        }
-
-        // Calculate total amount
-        const roomsWithRates = rooms.map(room => ({
-          roomId: room._id,
-          rate: room.currentRate
-        }));
+        // For bookings without room allocation, use empty rooms array
 
         const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
-        const calculatedTotal = roomsWithRates.reduce((total, room) => total + room.rate, 0) * nights;
+        const calculatedTotal = roomsWithRates.length > 0 
+          ? roomsWithRates.reduce((total, room) => total + room.rate, 0) * nights
+          : 0; // No calculated total for bookings without room allocation
 
         // Create booking - use admin-provided values when available
         const booking = await Booking.create([{
@@ -377,11 +387,12 @@ router.post('/',
           checkOut: checkOutDate,
           nights,
           guestDetails,
-          totalAmount: totalAmount || calculatedTotal, // Use provided total or calculated total
+          totalAmount: totalAmount || calculatedTotal, // Use provided total or calculated total (required for non-room bookings)
           currency: currency || 'INR',
           idempotencyKey,
           status: status || 'pending',
-          paymentStatus: paymentStatus || 'pending'
+          paymentStatus: paymentStatus || 'pending',
+          roomType // Add roomType for room-type preference bookings
         }], { session });
 
         // Create corresponding invoice for billing history
@@ -393,18 +404,28 @@ router.post('/',
         dueDate.setDate(dueDate.getDate() + 30);
         
         // Create invoice items from room charges
-        const invoiceItems = roomsWithRates.map(room => {
-          const roomDetails = rooms.find(r => r._id.toString() === room.roomId.toString());
-          return {
-            description: `Room ${roomDetails?.roomNumber || 'N/A'} - ${roomDetails?.type || 'Standard'} (${nights} nights)`,
-            category: 'accommodation',
-            quantity: nights,
-            unitPrice: room.rate,
-            totalPrice: room.rate * nights,
-            taxRate: 10, // Standard 10% tax rate
-            taxAmount: (room.rate * nights * 10) / 100
-          };
-        });
+        const invoiceItems = roomsWithRates.length > 0 
+          ? roomsWithRates.map(room => {
+              const roomDetails = rooms.find(r => r._id.toString() === room.roomId.toString());
+              return {
+                description: `Room ${roomDetails?.roomNumber || 'N/A'} - ${roomDetails?.type || 'Standard'} (${nights} nights)`,
+                category: 'accommodation',
+                quantity: nights,
+                unitPrice: room.rate,
+                totalPrice: room.rate * nights,
+                taxRate: 10, // Standard 10% tax rate
+                taxAmount: (room.rate * nights * 10) / 100
+              };
+            })
+          : [{
+              description: `Accommodation Booking (${nights} nights) - Room allocation pending`,
+              category: 'accommodation',
+              quantity: nights,
+              unitPrice: Math.round(finalAmount / nights),
+              totalPrice: finalAmount,
+              taxRate: 18, // 18% GST for Indian bookings
+              taxAmount: 0 // Tax already included in finalAmount from frontend
+            }];
         
         // Calculate subtotal and tax
         const subtotal = invoiceItems.reduce((sum, item) => sum + item.totalPrice, 0);

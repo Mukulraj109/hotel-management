@@ -1,9 +1,17 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Star, Wifi, Car, Coffee, Utensils, Waves, Dumbbell, Shield, MapPin, Award, Heart, Sparkles, Phone, Mail, Facebook, Twitter, Instagram, Youtube, MapIcon } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import LocalAttractions from '../../components/LocalAttractions';
+import reviewsService, { Review, ReviewSummary } from '../../services/reviewsService';
 
 export default function HomePage() {
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+
+  const HOTEL_ID = '68b43ce31a6ab7adb5764b6b';
+
   const amenities = [
     { icon: Wifi, name: 'Free WiFi' },
     { icon: Car, name: 'Parking' },
@@ -13,6 +21,26 @@ export default function HomePage() {
     { icon: Dumbbell, name: 'Fitness Center' },
     { icon: Shield, name: '24/7 Security' },
   ];
+
+  useEffect(() => {
+    const loadReviews = async () => {
+      try {
+        const [reviewsData, summary] = await Promise.all([
+          reviewsService.getHotelReviews(HOTEL_ID, { limit: 3, sortBy: 'newest' }),
+          reviewsService.getHotelSummary(HOTEL_ID)
+        ]);
+        setReviews(reviewsData.reviews);
+        setReviewSummary(summary);
+      } catch (error) {
+        console.error('Error loading reviews:', error);
+        // Keep the current hardcoded data as fallback
+      } finally {
+        setReviewsLoading(false);
+      }
+    };
+
+    loadReviews();
+  }, []);
 
   return (
     <div className="min-h-screen">
@@ -28,7 +56,7 @@ export default function HomePage() {
           <div className="mb-4">
             <Sparkles className="h-8 w-8 text-yellow-400 mx-auto animate-pulse" />
           </div>
-          <h1 className="text-5xl md:text-7xl font-extrabold mb-6 bg-gradient-to-r from-white via-blue-100 to-yellow-200 bg-clip-text text-transparent leading-tight">
+          <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold mb-6 bg-gradient-to-r from-white via-blue-100 to-yellow-200 bg-clip-text text-transparent leading-tight">
             Welcome to <span className="text-yellow-400">THE PENTOUZ</span>
           </h1>
           <p className="text-xl md:text-3xl mb-4 text-gray-100 font-light">
@@ -53,18 +81,18 @@ export default function HomePage() {
       </section>
 
       {/* Features Section */}
-      <section className="py-24 bg-gradient-to-br from-gray-50 via-white to-blue-50 relative overflow-hidden">
+      <section className="py-16 sm:py-24 bg-gradient-to-br from-gray-50 via-white to-blue-50 relative overflow-hidden">
         {/* Background decoration */}
         <div className="absolute inset-0 opacity-5">
           <div className="absolute top-10 left-10 w-72 h-72 bg-blue-500 rounded-full blur-3xl"></div>
           <div className="absolute bottom-10 right-10 w-96 h-96 bg-yellow-500 rounded-full blur-3xl"></div>
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="text-center mb-20">
+          <div className="text-center mb-12 sm:mb-20">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-yellow-400 to-yellow-600 rounded-full mb-6">
               <Award className="h-8 w-8 text-white" />
             </div>
-            <h2 className="text-5xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-gray-900 bg-clip-text text-transparent mb-6">
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-gray-900 bg-clip-text text-transparent mb-6">
               Why Choose The Pentouz?
             </h2>
             <div className="max-w-4xl mx-auto">
@@ -136,26 +164,26 @@ export default function HomePage() {
       </section>
 
       {/* Amenities Section */}
-      <section className="py-24 bg-gradient-to-b from-white to-gray-100 relative">
+      <section className="py-16 sm:py-24 bg-gradient-to-b from-white to-gray-100 relative">
         {/* Decorative elements */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-20 left-20 w-64 h-64 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full blur-3xl"></div>
           <div className="absolute bottom-20 right-20 w-80 h-80 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full blur-3xl"></div>
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="text-center mb-20">
+          <div className="text-center mb-12 sm:mb-20">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full mb-6">
               <Sparkles className="h-8 w-8 text-white" />
             </div>
-            <h2 className="text-5xl font-bold bg-gradient-to-r from-gray-900 via-purple-800 to-gray-900 bg-clip-text text-transparent mb-6">
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-gray-900 via-purple-800 to-gray-900 bg-clip-text text-transparent mb-6">
               Hotel Amenities
             </h2>
-            <p className="text-2xl text-gray-600 font-light">
+            <p className="text-lg sm:text-xl lg:text-2xl text-gray-600 font-light">
               Everything you need for a perfect stay
             </p>
           </div>
           
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-10">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-6 sm:gap-8 lg:gap-10">
             {amenities.map((amenity, index) => (
               <div key={index} className="group text-center transform hover:scale-105 transition-all duration-300">
                 <div className="h-20 w-20 bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-lg hover:shadow-xl flex items-center justify-center mx-auto mb-4 border border-gray-100 group-hover:border-blue-200 transition-all duration-300">
@@ -168,118 +196,162 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Local Attractions Section */}
+      <section className="py-16 sm:py-24 bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 relative overflow-hidden">
+        {/* Background decoration */}
+        <div className="absolute inset-0 opacity-5">
+          <div className="absolute top-10 left-10 w-72 h-72 bg-blue-500 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-10 right-10 w-96 h-96 bg-indigo-500 rounded-full blur-3xl"></div>
+        </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+          <div className="text-center mb-12 sm:mb-16">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full mb-6">
+              <MapPin className="h-8 w-8 text-white" />
+            </div>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-gray-900 bg-clip-text text-transparent mb-6">
+              Explore the Area
+            </h2>
+            <p className="text-lg sm:text-xl text-gray-600 max-w-3xl mx-auto">
+              Discover amazing amenities, dining, and attractions near THE PENTOUZ
+            </p>
+          </div>
+          
+          <div className="max-w-4xl mx-auto">
+            <LocalAttractions 
+              hotelId="68b43ce31a6ab7adb5764b6b"
+              maxDistance={10}
+              className="shadow-xl border-0"
+            />
+          </div>
+        </div>
+      </section>
+
       {/* Reviews Section */}
-      <section className="py-24 bg-gradient-to-br from-blue-50 via-white to-indigo-50 relative overflow-hidden">
+      <section className="py-16 sm:py-24 bg-gradient-to-br from-blue-50 via-white to-indigo-50 relative overflow-hidden">
         <div className="absolute inset-0 opacity-5">
           <div className="absolute top-20 left-20 w-64 h-64 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full blur-3xl"></div>
           <div className="absolute bottom-20 right-20 w-80 h-80 bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full blur-3xl"></div>
         </div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="text-center mb-16">
+          <div className="text-center mb-12 sm:mb-16">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-yellow-400 to-yellow-600 rounded-full mb-6">
               <Star className="h-8 w-8 text-white fill-current" />
             </div>
-            <h2 className="text-5xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-gray-900 bg-clip-text text-transparent mb-6">
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-gray-900 bg-clip-text text-transparent mb-6">
               Guest Reviews & Feedback
             </h2>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            <p className="text-lg sm:text-xl text-gray-600 max-w-3xl mx-auto">
               See what our guests are saying about their unforgettable experiences at The Pentouz
             </p>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
-            {/* Sample reviews with Indian content */}
-            <div className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100">
-              <div className="flex items-center mb-4">
-                <div className="flex text-yellow-400 mb-2">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="h-5 w-5 fill-current" />
-                  ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8 mb-12">
+            {reviewsLoading ? (
+              // Loading state
+              [...Array(3)].map((_, i) => (
+                <div key={i} className="bg-white p-6 sm:p-8 rounded-2xl shadow-lg border border-gray-100 animate-pulse">
+                  <div className="flex items-center mb-4">
+                    <div className="flex space-x-1">
+                      {[...Array(5)].map((_, j) => (
+                        <div key={j} className="h-5 w-5 bg-gray-200 rounded" />
+                      ))}
+                    </div>
+                    <div className="ml-2 h-4 w-8 bg-gray-200 rounded" />
+                  </div>
+                  <div className="space-y-2 mb-4">
+                    <div className="h-4 bg-gray-200 rounded w-full" />
+                    <div className="h-4 bg-gray-200 rounded w-3/4" />
+                  </div>
+                  <div className="flex items-center">
+                    <div className="w-10 h-10 bg-gray-200 rounded-full" />
+                    <div className="ml-3 space-y-2">
+                      <div className="h-4 w-24 bg-gray-200 rounded" />
+                      <div className="h-3 w-20 bg-gray-200 rounded" />
+                    </div>
+                  </div>
                 </div>
-                <span className="ml-2 text-sm text-gray-600">5.0</span>
-              </div>
-              <p className="text-gray-700 mb-4 leading-relaxed">
-                "Amazing experience! Our stay at The Pentouz was truly memorable. The staff behavior and service was outstanding."
-              </p>
-              <div className="flex items-center">
-                <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-blue-600 rounded-full flex items-center justify-center text-white font-bold">
-                  P
+              ))
+            ) : (
+              // Real reviews
+              reviews.map((review, index) => (
+                <div key={review._id} className="bg-white p-6 sm:p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100">
+                  <div className="flex items-center mb-4">
+                    <div className="flex text-yellow-400 mb-2">
+                      {[...Array(5)].map((_, i) => (
+                        <Star 
+                          key={i} 
+                          className={`h-5 w-5 ${
+                            i < Math.floor(review.rating) 
+                              ? 'fill-current' 
+                              : 'text-gray-300'
+                          }`} 
+                        />
+                      ))}
+                    </div>
+                    <span className="ml-2 text-sm text-gray-600">{review.rating.toFixed(1)}</span>
+                  </div>
+                  <p className="text-gray-700 mb-4 leading-relaxed">
+                    "{review.content.length > 120 ? review.content.substring(0, 120) + '...' : review.content}"
+                  </p>
+                  <div className="flex items-center">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${
+                      index === 0 ? 'bg-gradient-to-r from-blue-400 to-blue-600' :
+                      index === 1 ? 'bg-gradient-to-r from-green-400 to-green-600' :
+                      'bg-gradient-to-r from-pink-400 to-pink-600'
+                    }`}>
+                      {review.guestName?.charAt(0)?.toUpperCase() || 'G'}
+                    </div>
+                    <div className="ml-3">
+                      <p className="font-semibold text-gray-900">{review.guestName || 'Guest'}</p>
+                      <p className="text-sm text-gray-600 capitalize">
+                        {review.visitType?.replace('_', ' ') || 'Stay'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <div className="ml-3">
-                  <p className="font-semibold text-gray-900">Priya Sharma</p>
-                  <p className="text-sm text-gray-600">Family Vacation</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100">
-              <div className="flex items-center mb-4">
-                <div className="flex text-yellow-400 mb-2">
-                  {[...Array(5)].map((_, i) => (
-                    <Star key={i} className="h-5 w-5 fill-current" />
-                  ))}
-                </div>
-                <span className="ml-2 text-sm text-gray-600">5.0</span>
-              </div>
-              <p className="text-gray-700 mb-4 leading-relaxed">
-                "Exceptional service and luxurious amenities! Rajesh's welcome and assistance was unforgettable. Perfect for business trips."
-              </p>
-              <div className="flex items-center">
-                <div className="w-10 h-10 bg-gradient-to-r from-green-400 to-green-600 rounded-full flex items-center justify-center text-white font-bold">
-                  A
-                </div>
-                <div className="ml-3">
-                  <p className="font-semibold text-gray-900">Arjun Patel</p>
-                  <p className="text-sm text-gray-600">Business Travel</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-100">
-              <div className="flex items-center mb-4">
-                <div className="flex text-yellow-400 mb-2">
-                  {[...Array(4)].map((_, i) => (
-                    <Star key={i} className="h-5 w-5 fill-current" />
-                  ))}
-                  <Star className="h-5 w-5 text-gray-300" />
-                </div>
-                <span className="ml-2 text-sm text-gray-600">4.8</span>
-              </div>
-              <p className="text-gray-700 mb-4 leading-relaxed">
-                "Perfect place for our honeymoon trip! Romantic ambiance and beautiful rooms. Pool and spa facilities are amazing."
-              </p>
-              <div className="flex items-center">
-                <div className="w-10 h-10 bg-gradient-to-r from-pink-400 to-pink-600 rounded-full flex items-center justify-center text-white font-bold">
-                  S
-                </div>
-                <div className="ml-3">
-                  <p className="font-semibold text-gray-900">Sunita & Amit</p>
-                  <p className="text-sm text-gray-600">Honeymoon</p>
-                </div>
-              </div>
-            </div>
+              ))
+            )}
           </div>
 
           <div className="text-center">
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-8 rounded-2xl border border-blue-100 mb-8">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-blue-600 mb-2">4.9</div>
-                  <div className="text-sm text-gray-600">Overall Rating</div>
+              {reviewsLoading ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 animate-pulse">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="text-center">
+                      <div className="h-8 w-16 bg-gray-200 rounded mx-auto mb-2" />
+                      <div className="h-4 w-20 bg-gray-200 rounded mx-auto" />
+                    </div>
+                  ))}
                 </div>
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-blue-600 mb-2">2,847</div>
-                  <div className="text-sm text-gray-600">Reviews</div>
+              ) : (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-blue-600 mb-2">
+                      {reviewSummary?.averageRating?.toFixed(1) || '0.0'}
+                    </div>
+                    <div className="text-sm text-gray-600">Overall Rating</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-blue-600 mb-2">
+                      {reviewSummary?.totalReviews?.toLocaleString() || '0'}
+                    </div>
+                    <div className="text-sm text-gray-600">Reviews</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-blue-600 mb-2">
+                      {reviewSummary ? Math.round(((reviewSummary.ratingDistribution[4] + reviewSummary.ratingDistribution[5]) / reviewSummary.totalReviews) * 100) : '0'}%
+                    </div>
+                    <div className="text-sm text-gray-600">Recommend</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-blue-600 mb-2">
+                      {reviewSummary?.categoryAverages?.service?.toFixed(1) || 'N/A'}
+                    </div>
+                    <div className="text-sm text-gray-600">Service</div>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-blue-600 mb-2">98%</div>
-                  <div className="text-sm text-gray-600">Recommend</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-3xl font-bold text-blue-600 mb-2">4.8</div>
-                  <div className="text-sm text-gray-600">Service</div>
-                </div>
-              </div>
+              )}
             </div>
             
             <Link to="/reviews">
@@ -292,7 +364,7 @@ export default function HomePage() {
       </section>
 
       {/* Contact Section */}
-      <section className="py-24 bg-gradient-to-br from-gray-900 via-slate-800 to-gray-900 relative overflow-hidden">
+      <section className="py-16 sm:py-24 bg-gradient-to-br from-gray-900 via-slate-800 to-gray-900 relative overflow-hidden">
         {/* Background decoration */}
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-10 right-10 w-72 h-72 bg-yellow-500 rounded-full blur-3xl"></div>
@@ -300,11 +372,11 @@ export default function HomePage() {
         </div>
         
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <div className="text-center mb-16">
+          <div className="text-center mb-12 sm:mb-16">
             <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-yellow-400 to-yellow-600 rounded-full mb-6">
               <Phone className="h-8 w-8 text-white" />
             </div>
-            <h2 className="text-5xl font-bold text-white mb-6">
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-6">
               Contact <span className="text-yellow-400">The Pentouz</span>
             </h2>
             <p className="text-xl text-gray-300 max-w-3xl mx-auto">
@@ -312,7 +384,7 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
             {/* Contact Information */}
             <div className="space-y-8">
               {/* Corporate Office */}
@@ -405,17 +477,11 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Footer */}
-          <div className="mt-16 pt-8 border-t border-white/10 text-center">
-            <p className="text-gray-400">
-              © THE PENTOUZ HOTELS & RESORTS ALL RIGHTS RESERVED, 2024
-            </p>
-          </div>
         </div>
       </section>
 
       {/* CTA Section */}
-      <section className="py-24 bg-gradient-to-r from-blue-600 via-indigo-700 to-purple-700 relative overflow-hidden">
+      <section className="py-16 sm:py-24 bg-gradient-to-r from-blue-600 via-indigo-700 to-purple-700 relative overflow-hidden">
         {/* Background patterns */}
         <div className="absolute inset-0 opacity-20">
           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-transparent via-white/10 to-transparent"></div>
@@ -428,7 +494,7 @@ export default function HomePage() {
               <Sparkles className="h-10 w-10 text-yellow-300 animate-pulse" />
             </div>
           </div>
-          <h2 className="text-5xl md:text-6xl font-extrabold text-white mb-8 leading-tight">
+          <h2 className="text-4xl sm:text-5xl md:text-6xl font-extrabold text-white mb-8 leading-tight">
             Ready to Experience <span className="text-yellow-300">Luxury?</span>
           </h2>
           <div className="max-w-3xl mx-auto mb-8">

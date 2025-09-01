@@ -10,6 +10,8 @@ import { AdminBooking, BookingFilters, BookingStats } from '../../types/admin';
 import { formatCurrency, formatNumber, getStatusColor } from '../../utils/dashboardUtils';
 import { format, parseISO } from 'date-fns';
 import WalkInBooking from './WalkInBooking';
+import toast from 'react-hot-toast';
+import { useQueryClient } from '@tanstack/react-query';
 import { 
   Calendar, 
   Coins, 
@@ -32,6 +34,7 @@ import {
 } from 'lucide-react';
 
 export default function AdminBookings() {
+  const queryClient = useQueryClient();
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [stats, setStats] = useState<BookingStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,6 +51,12 @@ export default function AdminBookings() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [updating, setUpdating] = useState(false);
+  
+  // Room assignment state
+  const [showRoomAssignmentModal, setShowRoomAssignmentModal] = useState(false);
+  const [selectedBookingForRoomAssignment, setSelectedBookingForRoomAssignment] = useState<AdminBooking | null>(null);
+  const [availableRoomsForAssignment, setAvailableRoomsForAssignment] = useState<any[]>([]);
+  const [selectedRoomNumbers, setSelectedRoomNumbers] = useState<{ [key: string]: string }>({});
   
   // Manual booking form state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -113,13 +122,33 @@ export default function AdminBookings() {
 
   // Handle status update
   const handleStatusUpdate = async (bookingId: string, newStatus: 'pending' | 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled' | 'no_show') => {
+    const booking = bookings.find(b => b._id === bookingId);
+    
+    // Check if this is a pending -> confirmed transition that needs room assignment
+    if (booking?.status === 'pending' && newStatus === 'confirmed') {
+      // If booking has no rooms assigned or roomType is not specified, trigger room assignment
+      if (!booking.rooms || booking.rooms.length === 0) {
+        handleRoomAssignmentForConfirmation(booking);
+        return;
+      }
+    }
+    
     try {
       setUpdating(true);
       await adminService.updateBooking(bookingId, { status: newStatus });
+      
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-bookings-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      
       await fetchBookings();
       await fetchStats();
+      toast.success('Booking status updated successfully');
     } catch (error) {
       console.error('Error updating booking status:', error);
+      toast.error('Failed to update booking status');
     } finally {
       setUpdating(false);
     }
@@ -136,6 +165,111 @@ export default function AdminBookings() {
       console.error('Error cancelling booking:', error);
     } finally {
       setUpdating(false);
+    }
+  };
+
+  // Handle room assignment specifically for confirmation
+  const handleRoomAssignmentForConfirmation = async (booking: AdminBooking) => {
+    try {
+      setSelectedBookingForRoomAssignment(booking);
+      
+      console.log('🔍 BOOKING DEBUG - Full booking object:', JSON.stringify(booking, null, 2));
+      console.log('🔍 BOOKING DEBUG - Room type value:', booking.roomType);
+      console.log('🔍 BOOKING DEBUG - Room type type:', typeof booking.roomType);
+      console.log('🔍 BOOKING DEBUG - Rooms array:', booking.rooms);
+      console.log('🔍 BOOKING DEBUG - Rooms length:', booking.rooms?.length);
+      
+      // Check if hotel information is available
+      if (!booking.hotelId?._id) {
+        toast.error('Hotel information is missing for this booking');
+        return;
+      }
+      
+      // Fetch available rooms for the booking dates
+      const checkInDate = new Date(booking.checkIn).toISOString().split('T')[0];
+      const checkOutDate = new Date(booking.checkOut).toISOString().split('T')[0];
+      
+      console.log('Room assignment - dates:', { 
+        originalCheckIn: booking.checkIn, 
+        formattedCheckIn: checkInDate,
+        originalCheckOut: booking.checkOut, 
+        formattedCheckOut: checkOutDate 
+      });
+      
+      const response = await adminService.getAvailableRooms(
+        booking.hotelId._id, 
+        checkInDate, 
+        checkOutDate
+      );
+      
+      let availableRooms = response.data.rooms;
+      console.log('Available rooms received:', availableRooms);
+      
+      setAvailableRoomsForAssignment(availableRooms);
+      setSelectedRoomNumbers({});
+      setShowRoomAssignmentModal(true);
+    } catch (error) {
+      console.error('Error fetching available rooms for assignment:', error);
+      toast.error('Failed to load available rooms');
+    }
+  };
+
+  // Handle room assignment submission
+  const handleSubmitRoomAssignment = async () => {
+    if (!selectedBookingForRoomAssignment) return;
+
+    try {
+      const selectedRoomId = selectedRoomNumbers.selectedRoomId;
+      const selectedRoomType = selectedRoomNumbers.selectedRoomType;
+      
+      if (!selectedRoomId) {
+        toast.error('Please select a room');
+        return;
+      }
+
+      // Find the selected room details
+      const selectedRoom = availableRoomsForAssignment.find(r => r._id === selectedRoomId);
+      if (!selectedRoom) {
+        toast.error('Selected room not found');
+        return;
+      }
+
+      // Create room assignment data
+      const roomAssignments = [{
+        roomType: selectedRoomType,
+        roomNumber: selectedRoom.roomNumber
+      }];
+
+      // Submit room assignment by updating the booking with the selected room
+      const roomAssignmentUpdate = {
+        rooms: [{
+          roomId: selectedRoomId,
+          rate: selectedRoom.baseRate || selectedRoom.currentRate || 0
+        }],
+        status: 'confirmed'
+      };
+
+      await adminService.updateBooking(selectedBookingForRoomAssignment._id, roomAssignmentUpdate);
+
+      toast.success('Room assigned and booking confirmed successfully!');
+
+      // Close modal and refresh data
+      setShowRoomAssignmentModal(false);
+      setSelectedBookingForRoomAssignment(null);
+      setAvailableRoomsForAssignment([]);
+      setSelectedRoomNumbers({});
+      
+      // Refresh all data
+      queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-bookings-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      
+      await fetchBookings();
+      await fetchStats();
+    } catch (error) {
+      console.error('Error assigning room:', error);
+      toast.error('Failed to assign room');
     }
   };
 
@@ -379,14 +513,14 @@ export default function AdminBookings() {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Booking Management</h1>
-          <p className="text-gray-600">Manage all hotel bookings and reservations</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Booking Management</h1>
+          <p className="text-gray-600 text-sm sm:text-base">Manage all hotel bookings and reservations</p>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
           <Button
             onClick={() => setShowWalkInModal(true)}
             className="bg-green-600 hover:bg-green-700 text-white"
@@ -413,9 +547,9 @@ export default function AdminBookings() {
 
       {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-blue-100 rounded-lg">
                   <Calendar className="h-6 w-6 text-blue-600" />
@@ -429,7 +563,7 @@ export default function AdminBookings() {
           </Card>
 
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-green-100 rounded-lg">
                   <Coins className="h-6 w-6 text-green-600" />
@@ -443,7 +577,7 @@ export default function AdminBookings() {
           </Card>
 
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-yellow-100 rounded-lg">
                   <Clock className="h-6 w-6 text-yellow-600" />
@@ -457,7 +591,7 @@ export default function AdminBookings() {
           </Card>
 
           <Card>
-            <CardContent className="p-6">
+            <CardContent className="p-4 sm:p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-purple-100 rounded-lg">
                   <TrendingUp className="h-6 w-6 text-purple-600" />
@@ -480,8 +614,8 @@ export default function AdminBookings() {
           <CardHeader>
             <CardTitle>Filters</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <CardContent className="p-4 sm:p-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
                 <select
@@ -544,8 +678,8 @@ export default function AdminBookings() {
 
       {/* Search and Controls */}
       <Card>
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <CardContent className="p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex-1 max-w-md">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -587,7 +721,7 @@ export default function AdminBookings() {
           
           {/* Results info */}
           <div className="mt-4 pt-4 border-t border-gray-100">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="text-sm text-gray-600">
                 Showing <span className="font-medium text-gray-900">
                   {((pagination.current - 1) * (filters.limit || 50)) + 1}
@@ -1160,6 +1294,228 @@ export default function AdminBookings() {
           </div>
         </div>
       </Modal>
+
+      {/* Room Assignment Modal */}
+      {selectedBookingForRoomAssignment && (
+        <Modal
+          isOpen={showRoomAssignmentModal}
+          onClose={() => {
+            setShowRoomAssignmentModal(false);
+            setSelectedBookingForRoomAssignment(null);
+            setAvailableRoomsForAssignment([]);
+            setSelectedRoomNumbers({});
+          }}
+          title="Assign Room Numbers"
+          size="lg"
+        >
+          <div className="space-y-6">
+            {/* Booking Details */}
+            <div className="bg-gray-50 p-4 rounded-lg">
+              <h3 className="text-lg font-medium text-gray-900 mb-3">
+                Booking #{selectedBookingForRoomAssignment.bookingNumber}
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="text-sm text-gray-600">Guest: </span>
+                  <span className="font-medium">{selectedBookingForRoomAssignment.userId.name}</span>
+                </div>
+                <div>
+                  <span className="text-sm text-gray-600">Dates: </span>
+                  <span className="font-medium">
+                    {format(parseISO(selectedBookingForRoomAssignment.checkIn), 'MMM dd')} - {format(parseISO(selectedBookingForRoomAssignment.checkOut), 'MMM dd')}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Current Room Assignments */}
+            <div>
+              <h4 className="font-semibold text-gray-900 mb-3">Current Room Assignments</h4>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                {selectedBookingForRoomAssignment.rooms.length === 0 && !selectedBookingForRoomAssignment.roomType ? (
+                  <div className="text-center text-yellow-700">
+                    <div className="font-medium">Room - No Room Assigned Yet</div>
+                    <div className="text-sm">No room type specified • Room number will be assigned below</div>
+                  </div>
+                ) : selectedBookingForRoomAssignment.rooms.length === 0 && selectedBookingForRoomAssignment.roomType ? (
+                  <div className="text-center text-yellow-700">
+                    <div className="font-medium">Room - No Room Assigned Yet</div>
+                    <div className="text-sm capitalize">Room type: {selectedBookingForRoomAssignment.roomType} • Room number will be assigned below</div>
+                  </div>
+                ) : (
+                  selectedBookingForRoomAssignment.rooms.map((room, index) => (
+                    <div key={index} className="flex justify-between items-center">
+                      <div>
+                        <div className="font-medium">Room {room.roomId.roomNumber}</div>
+                        <div className="text-sm text-gray-600 capitalize">{room.roomId.type}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-medium">{formatCurrency(room.rate, selectedBookingForRoomAssignment.currency)}/night</div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Available Rooms for Assignment */}
+            {availableRoomsForAssignment.length > 0 && (
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3">Available Rooms</h4>
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  {/* Handle bookings with empty rooms array (room-type bookings or no rooms assigned) */}
+                  {selectedBookingForRoomAssignment.rooms.length === 0 ? (
+                    selectedBookingForRoomAssignment.roomType ? (
+                      // If booking has roomType, filter by that type
+                      <div className="border border-gray-200 rounded-lg p-4">
+                        <h5 className="font-medium text-gray-900 mb-2 capitalize">
+                          Assign {selectedBookingForRoomAssignment.roomType} Room
+                        </h5>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                          {availableRoomsForAssignment
+                            .filter(room => room.type === selectedBookingForRoomAssignment.roomType)
+                            .map((room) => (
+                              <button
+                                key={room._id}
+                                className={`p-3 border rounded-lg text-sm transition-colors ${
+                                  selectedRoomNumbers.selectedRoomId === room._id
+                                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                    : 'border-gray-300 hover:border-gray-400'
+                                }`}
+                                onClick={() => setSelectedRoomNumbers({
+                                  selectedRoomId: room._id,
+                                  selectedRoomType: room.type,
+                                  general: room.roomNumber
+                                })}
+                              >
+                                <div className="font-semibold">{room.roomNumber}</div>
+                                <div className="text-xs capitalize">{room.type}</div>
+                                <div className="text-xs text-gray-500">₹{room.baseRate}/night</div>
+                              </button>
+                            ))
+                          }
+                        </div>
+                        {availableRoomsForAssignment.filter(room => room.type === selectedBookingForRoomAssignment.roomType).length === 0 && (
+                          <div className="text-center py-4 text-gray-500">
+                            No available {selectedBookingForRoomAssignment.roomType} rooms for the selected dates
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      // If booking has no roomType, show all available rooms grouped by type
+                      <div className="space-y-4">
+                        <div className="text-sm text-gray-600 mb-3">
+                          Select a room for this booking:
+                        </div>
+                        {['single', 'double', 'suite', 'deluxe'].map(roomType => {
+                          const roomsOfType = availableRoomsForAssignment.filter(room => room.type === roomType);
+                          if (roomsOfType.length === 0) return null;
+                          
+                          return (
+                            <div key={roomType} className="border border-gray-200 rounded-lg p-4">
+                              <h5 className="font-medium text-gray-900 mb-2 capitalize">
+                                {roomType} Rooms
+                              </h5>
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                {roomsOfType.map((room) => (
+                                  <button
+                                    key={room._id}
+                                    className={`p-3 border rounded-lg text-sm transition-colors ${
+                                      selectedRoomNumbers.selectedRoomId === room._id
+                                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                        : 'border-gray-300 hover:border-gray-400'
+                                    }`}
+                                    onClick={() => setSelectedRoomNumbers({
+                                      selectedRoomId: room._id,
+                                      selectedRoomType: room.type,
+                                      general: room.roomNumber
+                                    })}
+                                  >
+                                    <div className="font-semibold">{room.roomNumber}</div>
+                                    <div className="text-xs capitalize">{room.type}</div>
+                                    <div className="text-xs text-gray-500">₹{room.baseRate}/night</div>
+                                  </button>
+                                ))
+                                }
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )
+                  ) : (
+                    // Handle existing bookings with specific rooms already assigned (traditional re-assignment)
+                    selectedBookingForRoomAssignment.rooms.map((bookingRoom, index) => (
+                      <div key={index} className="border border-gray-200 rounded-lg p-4">
+                        <h5 className="font-medium text-gray-900 mb-2">
+                          Assign {bookingRoom.roomId.type} Room
+                        </h5>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                          {availableRoomsForAssignment
+                            .filter(room => room.type === bookingRoom.roomId.type)
+                            .map((room) => (
+                              <button
+                                key={room._id}
+                                className={`p-3 border rounded-lg text-sm transition-colors ${
+                                  selectedRoomNumbers[bookingRoom.roomId.type] === room.roomNumber
+                                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                    : 'border-gray-300 hover:border-gray-400'
+                                }`}
+                                onClick={() => setSelectedRoomNumbers(prev => ({
+                                  ...prev,
+                                  [bookingRoom.roomId.type]: room.roomNumber
+                                }))}
+                              >
+                                <div className="font-semibold">{room.roomNumber}</div>
+                                <div className="text-xs capitalize">{room.type}</div>
+                                <div className="text-xs text-gray-500">₹{room.baseRate}/night</div>
+                              </button>
+                            ))
+                          }
+                        </div>
+                        {availableRoomsForAssignment.filter(room => room.type === bookingRoom.roomId.type).length === 0 && (
+                          <div className="text-center py-4 text-gray-500">
+                            No available {bookingRoom.roomId.type} rooms
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {availableRoomsForAssignment.length === 0 && (
+              <div className="text-center py-8 text-gray-500">
+                <Building className="h-12 w-12 mx-auto mb-3 text-gray-400" />
+                <p>No available rooms found for the booking dates</p>
+              </div>
+            )}
+          </div>
+
+          {/* Modal Actions */}
+          <div className="flex justify-end space-x-3 pt-6 border-t mt-6">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowRoomAssignmentModal(false);
+                setSelectedBookingForRoomAssignment(null);
+                setAvailableRoomsForAssignment([]);
+                setSelectedRoomNumbers({});
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitRoomAssignment}
+              disabled={!selectedRoomNumbers.selectedRoomId}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
+              Assign Rooms
+            </Button>
+          </div>
+        </Modal>
+      )}
 
       {/* Walk-in Booking Modal */}
       <WalkInBooking

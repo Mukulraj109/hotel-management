@@ -45,7 +45,7 @@ export const schemas = {
   createBooking: Joi.object({
     hotelId: Joi.string().required(),
     userId: Joi.string().optional(), // Allow admin to specify userId for manual bookings
-    roomIds: Joi.array().items(Joi.string()).min(1).required(),
+    roomIds: Joi.array().items(Joi.string()).min(0).required(),
     checkIn: Joi.date().iso().custom((value, helpers) => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -64,7 +64,14 @@ export const schemas = {
     currency: Joi.string().optional(),
     paymentStatus: Joi.string().valid('pending', 'paid').optional(),
     status: Joi.string().valid('pending', 'confirmed', 'checked_in').optional(),
-    idempotencyKey: Joi.string().required()
+    idempotencyKey: Joi.string().required(),
+    // Additional fields for room type bookings (optional metadata)
+    roomType: Joi.string().valid('single', 'double', 'suite', 'deluxe').optional(),
+    nights: Joi.number().min(1).optional(),
+    ratePerNight: Joi.number().min(0).optional(),
+    guestName: Joi.string().optional(),
+    guestEmail: Joi.string().email().optional(),
+    guestPhone: Joi.string().optional()
   }),
 
   createPaymentIntent: Joi.object({

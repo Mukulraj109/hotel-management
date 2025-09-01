@@ -46,6 +46,7 @@ import AdminSupplyRequests from './pages/admin/AdminSupplyRequests';
 import AdminReports from './pages/admin/AdminReports';
 import AdminOTA from './pages/admin/AdminOTA';
 import BillingHistory from './pages/admin/BillingHistory';
+import AdminBypassCheckoutPage from './pages/admin/AdminBypassCheckout';
 import { InventoryTemplateManagement } from './components/admin/InventoryTemplateManagement';
 
 // Staff Pages
@@ -86,7 +87,7 @@ function App() {
               <Route path="/" element={<PublicLayout />}>
                 <Route index element={<HomePage />} />
                 <Route path="rooms" element={<RoomsPage />} />
-                <Route path="rooms/:id" element={<RoomDetailPage />} />
+                <Route path="rooms/:type" element={<RoomDetailPage />} />
                 <Route path="booking" element={<BookingPage />} />
                 <Route path="contact" element={<ContactPage />} />
                 <Route path="reviews" element={<ReviewsPage />} />
@@ -135,6 +136,7 @@ function App() {
                 <Route path="inventory" element={<AdminInventory />} />
                 <Route path="inventory/templates" element={<InventoryTemplateManagement />} />
                 <Route path="reports" element={<AdminReports />} />
+                <Route path="bypass-checkout" element={<AdminBypassCheckoutPage />} />
                 <Route path="ota" element={<AdminOTA />} />
                 <Route path="billing" element={<BillingHistory />} />
               </Route>

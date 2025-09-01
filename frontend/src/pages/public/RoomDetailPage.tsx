@@ -1,299 +1,409 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { IndianRupee } from "lucide-react";
+import React, { useState } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Users, 
   Wifi, 
-  Car, 
   Coffee, 
   Tv, 
   Wind, 
   ArrowLeft,
   Calendar,
-  Coins,
   MapPin,
   Star,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  CheckCircle,
+  Bed,
+  Crown,
+  Phone,
+  Mail
 } from 'lucide-react';
-import { bookingService } from '../../services/bookingService';
-import { Room } from '../../types/booking';
 import { Button } from '../../components/ui/Button';
-import { Card } from '../../components/ui/Card';
-import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
+import { Badge } from '../../components/ui/Badge';
+import { Input } from '../../components/ui/Input';
+import { formatIndianCurrency } from '../../utils/currency';
 
-const amenityIcons: Record<string, React.ReactNode> = {
-  'wifi': <Wifi className="h-5 w-5" />,
-  'free wifi': <Wifi className="h-5 w-5" />,
-  'parking': <Car className="h-5 w-5" />,
-  'coffee machine': <Coffee className="h-5 w-5" />,
-  'tv': <Tv className="h-5 w-5" />,
-  'air conditioning': <Wind className="h-5 w-5" />,
+// Same room types data as other pages
+const ROOM_TYPES = {
+  single: {
+    name: 'Single Room',
+    description: 'Perfect for solo travelers with all essential amenities',
+    longDescription: 'Our Single Rooms are thoughtfully designed for solo travelers who value comfort and functionality. Each room features modern amenities, ergonomic furniture, and a peaceful atmosphere perfect for rest and productivity.',
+    baseRate: 2500,
+    maxGuests: 1,
+    icon: Bed,
+    amenities: ['Free WiFi', 'AC', 'TV', 'Room Service', 'Daily Housekeeping'],
+    images: [
+      'https://images.pexels.com/photos/164595/pexels-photo-164595.jpeg?auto=compress&cs=tinysrgb&w=800',
+      'https://images.pexels.com/photos/271618/pexels-photo-271618.jpeg?auto=compress&cs=tinysrgb&w=800',
+      'https://images.pexels.com/photos/1134176/pexels-photo-1134176.jpeg?auto=compress&cs=tinysrgb&w=800'
+    ],
+    features: ['Queen Size Bed', 'Work Desk', 'Mini Fridge', 'Private Bathroom', 'City View', 'Reading Chair'],
+    roomSize: '20 sqm',
+    bedType: 'Queen Size Bed'
+  },
+  double: {
+    name: 'Double Room', 
+    description: 'Comfortable accommodation perfect for couples or friends',
+    longDescription: 'Our Double Rooms provide ample space and comfort for two guests. Whether you\'re traveling with a partner or friend, these rooms offer the perfect balance of comfort, style, and modern conveniences.',
+    baseRate: 3500,
+    maxGuests: 2,
+    icon: Crown,
+    amenities: ['Free WiFi', 'AC', 'TV', 'Mini Bar', 'Room Service', 'Daily Housekeeping'],
+    images: [
+      'https://images.pexels.com/photos/271618/pexels-photo-271618.jpeg?auto=compress&cs=tinysrgb&w=800',
+      'https://images.pexels.com/photos/164595/pexels-photo-164595.jpeg?auto=compress&cs=tinysrgb&w=800',
+      'https://images.pexels.com/photos/1743229/pexels-photo-1743229.jpeg?auto=compress&cs=tinysrgb&w=800'
+    ],
+    features: ['Twin/Double Beds', 'Seating Area', 'Mini Bar', 'Premium Bathroom', 'Balcony', 'Work Station'],
+    roomSize: '30 sqm',
+    bedType: 'Twin or Double Bed'
+  },
+  suite: {
+    name: 'Suite',
+    description: 'Spacious luxury suite with separate living area',
+    longDescription: 'Experience luxury in our spacious Suites featuring separate living and sleeping areas. Perfect for longer stays or when you need extra space to relax and entertain.',
+    baseRate: 6500,
+    maxGuests: 3,
+    icon: Star,
+    amenities: ['Free WiFi', 'AC', 'TV', 'Mini Bar', 'Balcony', 'Room Service', 'Kitchenette', 'Daily Housekeeping'],
+    images: [
+      'https://images.pexels.com/photos/1134176/pexels-photo-1134176.jpeg?auto=compress&cs=tinysrgb&w=800',
+      'https://images.pexels.com/photos/1743229/pexels-photo-1743229.jpeg?auto=compress&cs=tinysrgb&w=800',
+      'https://images.pexels.com/photos/271618/pexels-photo-271618.jpeg?auto=compress&cs=tinysrgb&w=800'
+    ],
+    features: ['Separate Living Room', 'Kitchenette', 'Balcony', 'Luxury Bathroom', 'Dining Area', 'Premium Bedding'],
+    roomSize: '50 sqm',
+    bedType: 'King Size Bed + Sofa Bed'
+  },
+  deluxe: {
+    name: 'Deluxe Room',
+    description: 'Premium accommodation with luxury amenities and city views', 
+    longDescription: 'Our Deluxe Rooms represent the pinnacle of luxury accommodation. Featuring premium amenities, stunning city views, and exceptional service, these rooms are perfect for special occasions.',
+    baseRate: 8500,
+    maxGuests: 4,
+    icon: Crown,
+    amenities: ['Free WiFi', 'AC', 'TV', 'Mini Bar', 'Balcony', 'Room Service', 'Jacuzzi', 'City View', 'Daily Housekeeping'],
+    images: [
+      'https://images.pexels.com/photos/1743229/pexels-photo-1743229.jpeg?auto=compress&cs=tinysrgb&w=800',
+      'https://images.pexels.com/photos/1134176/pexels-photo-1134176.jpeg?auto=compress&cs=tinysrgb&w=800',
+      'https://images.pexels.com/photos/271618/pexels-photo-271618.jpeg?auto=compress&cs=tinysrgb&w=800'
+    ],
+    features: ['King Size Bed', 'City View', 'Jacuzzi', 'Premium Amenities', 'Concierge Service', 'Butler Service'],
+    roomSize: '45 sqm',
+    bedType: 'King Size Bed'
+  }
 };
 
 export default function RoomDetailPage() {
-  const { id } = useParams<{ id: string }>();
+  const { type } = useParams<{ type: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['room', id],
-    queryFn: () => bookingService.getRoomById(id!),
-    enabled: !!id,
+  const [bookingDates, setBookingDates] = useState({
+    checkIn: searchParams.get('checkIn') || '',
+    checkOut: searchParams.get('checkOut') || '',
+    guests: parseInt(searchParams.get('guests') || '2')
   });
 
-  const room: Room | undefined = data?.data?.room;
+  const roomType = type as keyof typeof ROOM_TYPES;
+  const room = ROOM_TYPES[roomType];
 
-  const handleBookNow = () => {
-    navigate(`/booking?roomId=${id}`);
-  };
-
-  const nextImage = () => {
-    if (room?.images) {
-      setCurrentImageIndex((prev) => 
-        prev === room.images.length - 1 ? 0 : prev + 1
-      );
-    }
-  };
-
-  const prevImage = () => {
-    if (room?.images) {
-      setCurrentImageIndex((prev) => 
-        prev === 0 ? room.images.length - 1 : prev - 1
-      );
-    }
-  };
-
-  if (isLoading) {
+  if (!room) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <LoadingSpinner />
-      </div>
-    );
-  }
-
-  if (error || !room) {
-    return (
-      <div className="container mx-auto px-4 py-8">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Room Not Found</h1>
-          <p className="text-gray-600 mb-6">The room you're looking for doesn't exist.</p>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Room Type Not Found</h2>
           <Button onClick={() => navigate('/rooms')}>
-            View All Rooms
+            Back to Rooms
           </Button>
         </div>
       </div>
     );
   }
 
+  const calculateNights = () => {
+    if (!bookingDates.checkIn || !bookingDates.checkOut) return 0;
+    const start = new Date(bookingDates.checkIn);
+    const end = new Date(bookingDates.checkOut);
+    return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  };
+
+  const nights = calculateNights();
+  const totalPrice = nights > 0 ? room.baseRate * nights : room.baseRate;
+
+  const handleBookNow = () => {
+    const params = new URLSearchParams();
+    if (bookingDates.checkIn) params.set('checkIn', bookingDates.checkIn);
+    if (bookingDates.checkOut) params.set('checkOut', bookingDates.checkOut);
+    if (bookingDates.guests) params.set('guests', bookingDates.guests.toString());
+    params.set('roomType', roomType);
+    
+    navigate(`/booking?${params.toString()}`);
+  };
+
+  const nextImage = () => {
+    setCurrentImageIndex((prev) => (prev + 1) % room.images.length);
+  };
+
+  const prevImage = () => {
+    setCurrentImageIndex((prev) => (prev - 1 + room.images.length) % room.images.length);
+  };
+
+  const Icon = room.icon;
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b">
-        <div className="container mx-auto px-4 py-4">
+      {/* Back Button */}
+      <div className="bg-white shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <button
-            onClick={() => navigate(-1)}
-            className="flex items-center text-gray-600 hover:text-gray-900 mb-2"
+            onClick={() => navigate('/rooms')}
+            className="flex items-center text-gray-600 hover:text-gray-900"
           >
             <ArrowLeft className="h-5 w-5 mr-2" />
-            Back
+            Back to Room Types
           </button>
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                {room.type.charAt(0).toUpperCase() + room.type.slice(1)} Room
-              </h1>
-              <p className="text-gray-600">Room {room.roomNumber}</p>
-            </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold text-blue-600">
-                ₹{room.currentRate}
-              </div>
-              <div className="text-sm text-gray-500">per night</div>
-            </div>
-          </div>
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Image Gallery */}
-          <div className="lg:col-span-2">
-            <Card className="p-0 overflow-hidden">
-              <div className="relative">
-                {room.images && room.images.length > 0 ? (
-                  <>
-                    <img
-                      src={room.images[currentImageIndex]}
-                      alt={`Room ${room.roomNumber} - Image ${currentImageIndex + 1}`}
-                      className="w-full h-96 object-cover"
+          {/* Left Column - Room Details */}
+          <div className="lg:col-span-2 space-y-8">
+            {/* Image Gallery */}
+            <div className="relative">
+              <div className="aspect-w-16 aspect-h-9 bg-gray-200 rounded-lg overflow-hidden">
+                <img
+                  src={room.images[currentImageIndex]}
+                  alt={`${room.name} - Image ${currentImageIndex + 1}`}
+                  className="w-full h-96 object-cover"
+                />
+                
+                {/* Navigation Arrows */}
+                <button
+                  onClick={prevImage}
+                  className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-80 hover:bg-opacity-100 rounded-full p-2 shadow-lg"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={nextImage}
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-80 hover:bg-opacity-100 rounded-full p-2 shadow-lg"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+
+                {/* Image Indicators */}
+                <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-2">
+                  {room.images.map((_, index) => (
+                    <button
+                      key={index}
+                      onClick={() => setCurrentImageIndex(index)}
+                      className={`w-2 h-2 rounded-full ${
+                        index === currentImageIndex ? 'bg-white' : 'bg-white bg-opacity-50'
+                      }`}
                     />
-                    {room.images.length > 1 && (
-                      <>
-                        <button
-                          onClick={prevImage}
-                          className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2"
-                        >
-                          <ChevronLeft className="h-6 w-6" />
-                        </button>
-                        <button
-                          onClick={nextImage}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2"
-                        >
-                          <ChevronRight className="h-6 w-6" />
-                        </button>
-                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex space-x-2">
-                          {room.images.map((_, index) => (
-                            <button
-                              key={index}
-                              onClick={() => setCurrentImageIndex(index)}
-                              className={`w-3 h-3 rounded-full ${
-                                index === currentImageIndex
-                                  ? 'bg-white'
-                                  : 'bg-white/50'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </>
-                ) : (
-                  <div className="w-full h-96 bg-gray-200 flex items-center justify-center">
-                    <div className="text-gray-500 text-center">
-                      <MapPin className="h-12 w-12 mx-auto mb-4" />
-                      <p>No images available</p>
-                    </div>
-                  </div>
-                )}
+                  ))}
+                </div>
               </div>
-            </Card>
+            </div>
 
-            {/* Room Details */}
-            <Card className="mt-6">
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold mb-4">Room Details</h2>
-                  {room.description && (
-                    <p className="text-gray-600 leading-relaxed mb-6">
-                      {room.description}
-                    </p>
-                  )}
+            {/* Room Information */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <Icon className="h-8 w-8 text-blue-600 mr-3" />
+                    <CardTitle className="text-3xl">{room.name}</CardTitle>
+                  </div>
+                  <Badge className="bg-blue-100 text-blue-800">
+                    Up to {room.maxGuests} Guest{room.maxGuests > 1 ? 's' : ''}
+                  </Badge>
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex items-center space-x-3">
-                    <Users className="h-5 w-5 text-gray-400" />
-                    <span>Up to {room.capacity} guests</span>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <MapPin className="h-5 w-5 text-gray-400" />
-                    <span>Floor {room.floor || 'N/A'}</span>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <IndianRupee className="h-5 w-5 text-gray-400" />
-                    <span>Base rate: ₹{room.baseRate}/night</span>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <Star className="h-5 w-5 text-gray-400" />
-                    <span className="capitalize">{room.type} room</span>
-                  </div>
-                </div>
-
-                {/* Amenities */}
-                {room.amenities && room.amenities.length > 0 && (
+              </CardHeader>
+              <CardContent>
+                <p className="text-gray-600 text-lg mb-6">{room.longDescription}</p>
+                
+                {/* Room Specifications */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                   <div>
-                    <h3 className="text-xl font-semibold mb-4">Amenities</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      {room.amenities.map((amenity, index) => (
-                        <div key={index} className="flex items-center space-x-3">
-                          {amenityIcons[amenity.toLowerCase()] || (
-                            <Star className="h-5 w-5 text-gray-400" />
-                          )}
-                          <span className="text-gray-700">{amenity}</span>
-                        </div>
-                      ))}
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Room Details</h3>
+                    <div className="space-y-2 text-sm text-gray-600">
+                      <div className="flex justify-between">
+                        <span>Room Size:</span>
+                        <span className="font-medium">{room.roomSize}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Bed Type:</span>
+                        <span className="font-medium">{room.bedType}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Max Occupancy:</span>
+                        <span className="font-medium">{room.maxGuests} guests</span>
+                      </div>
                     </div>
                   </div>
-                )}
-              </div>
+                  
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Pricing</h3>
+                    <div className="space-y-2 text-sm text-gray-600">
+                      <div className="flex justify-between">
+                        <span>Base Rate:</span>
+                        <span className="font-medium text-lg text-blue-600">{formatIndianCurrency(room.baseRate)}/night</span>
+                      </div>
+                      {nights > 0 && (
+                        <>
+                          <div className="flex justify-between">
+                            <span>{nights} night{nights > 1 ? 's' : ''}:</span>
+                            <span className="font-medium">{formatIndianCurrency(room.baseRate * nights)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span>Taxes (18% GST):</span>
+                            <span className="font-medium">{formatIndianCurrency(Math.round(totalPrice * 0.18))}</span>
+                          </div>
+                          <div className="border-t pt-2 flex justify-between text-lg font-bold">
+                            <span>Total:</span>
+                            <span className="text-blue-600">{formatIndianCurrency(totalPrice + Math.round(totalPrice * 0.18))}</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Features */}
+                <div className="mb-8">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Features & Amenities</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    {room.features.map((feature, index) => (
+                      <div key={index} className="flex items-center">
+                        <CheckCircle className="w-4 h-4 text-green-500 mr-2 flex-shrink-0" />
+                        <span className="text-gray-700">{feature}</span>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2">
+                    {room.amenities.map((amenity, index) => (
+                      <span key={index} className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
+                        {amenity}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
             </Card>
           </div>
 
-          {/* Booking Sidebar */}
+          {/* Right Column - Booking Widget */}
           <div className="lg:col-span-1">
-            <Card className="sticky top-8">
-              <div className="text-center mb-6">
-                <div className="text-4xl font-bold text-blue-600 mb-2">
-                  ₹{room.currentRate}
-                </div>
-                <div className="text-gray-500">per night</div>
-                {room.currentRate !== room.baseRate && (
-                  <div className="text-sm text-gray-400 line-through">
-                    ₹{room.baseRate}
+            <div className="sticky top-8">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-center">Book This Room Type</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Check-in</label>
+                      <Input
+                        type="date"
+                        value={bookingDates.checkIn}
+                        onChange={(e) => setBookingDates(prev => ({ ...prev, checkIn: e.target.value }))}
+                        min={new Date().toISOString().split('T')[0]}
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Check-out</label>
+                      <Input
+                        type="date"
+                        value={bookingDates.checkOut}
+                        onChange={(e) => setBookingDates(prev => ({ ...prev, checkOut: e.target.value }))}
+                        min={bookingDates.checkIn || new Date().toISOString().split('T')[0]}
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Guests</label>
+                      <div className="flex items-center space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setBookingDates(prev => ({ 
+                            ...prev, 
+                            guests: Math.max(1, prev.guests - 1)
+                          }))}
+                          disabled={bookingDates.guests <= 1}
+                        >
+                          -
+                        </Button>
+                        <span className="w-12 text-center font-semibold">{bookingDates.guests}</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setBookingDates(prev => ({ 
+                            ...prev, 
+                            guests: Math.min(room.maxGuests, prev.guests + 1)
+                          }))}
+                          disabled={bookingDates.guests >= room.maxGuests}
+                        >
+                          +
+                        </Button>
+                      </div>
+                      {bookingDates.guests > room.maxGuests && (
+                        <p className="text-sm text-red-600 mt-1">
+                          This room type can accommodate maximum {room.maxGuests} guests
+                        </p>
+                      )}
+                    </div>
+
+                    {nights > 0 && (
+                      <div className="bg-blue-50 p-4 rounded-lg">
+                        <div className="text-center">
+                          <p className="text-sm text-gray-600 mb-1">{nights} night{nights > 1 ? 's' : ''}</p>
+                          <p className="text-2xl font-bold text-blue-600">{formatIndianCurrency(totalPrice + Math.round(totalPrice * 0.18))}</p>
+                          <p className="text-xs text-gray-500">Including taxes</p>
+                        </div>
+                      </div>
+                    )}
+
+                    <Button
+                      onClick={handleBookNow}
+                      className="w-full py-3 text-lg"
+                      size="lg"
+                      disabled={bookingDates.guests > room.maxGuests}
+                    >
+                      Book Now
+                    </Button>
+                    
+                    <div className="text-center text-sm text-gray-500">
+                      <p>✓ Free cancellation</p>
+                      <p>✓ No booking fees</p>
+                    </div>
                   </div>
-                )}
-              </div>
+                </CardContent>
+              </Card>
 
-              <div className="space-y-4 mb-6">
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <div className="flex items-center justify-center text-gray-600 mb-2">
-                    <Calendar className="h-5 w-5 mr-2" />
-                    Select your dates
+              {/* Contact Information */}
+              <Card className="mt-6">
+                <CardContent className="p-6">
+                  <h3 className="font-semibold text-gray-900 mb-4">Need Help?</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center text-sm text-gray-600">
+                      <Phone className="h-4 w-4 mr-2" />
+                      <span>+91 98765 43210</span>
+                    </div>
+                    <div className="flex items-center text-sm text-gray-600">
+                      <Mail className="h-4 w-4 mr-2" />
+                      <span>reservations@hotel.com</span>
+                    </div>
                   </div>
-                  <p className="text-sm text-gray-500 text-center">
-                    Choose check-in and check-out dates to see availability
-                  </p>
-                </div>
-
-                <div className="text-center">
-                  <div className="text-sm text-green-600 font-medium mb-2">
-                    ✓ Free cancellation
-                  </div>
-                  <div className="text-sm text-green-600 font-medium">
-                    ✓ Instant confirmation
-                  </div>
-                </div>
-              </div>
-
-              <Button 
-                onClick={handleBookNow}
-                className="w-full mb-4"
-                size="lg"
-              >
-                Book This Room
-              </Button>
-
-              <div className="text-center">
-                <p className="text-sm text-gray-500">
-                  You won't be charged yet
-                </p>
-              </div>
-            </Card>
-
-            {/* Room Status */}
-            <Card className="mt-6">
-              <h3 className="font-semibold mb-3">Room Status</h3>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Availability:</span>
-                  <span className={`font-medium ${
-                    room.status === 'vacant' ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {room.status === 'vacant' ? 'Available' : 'Unavailable'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Room Type:</span>
-                  <span className="font-medium capitalize">{room.type}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Max Occupancy:</span>
-                  <span className="font-medium">{room.capacity} guests</span>
-                </div>
-              </div>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       </div>

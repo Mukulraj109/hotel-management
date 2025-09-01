@@ -217,6 +217,7 @@ class AdminService {
     currency?: string;
     paymentStatus?: 'pending' | 'paid';
     status?: 'pending' | 'confirmed';
+    roomType?: 'single' | 'double' | 'suite' | 'deluxe'; // Room type preference for room-type bookings
   }): Promise<ApiResponse<{ booking: AdminBooking }>> {
     const payload = {
       ...bookingData,
@@ -227,6 +228,13 @@ class AdminService {
     };
     
     const response = await api.post('/bookings', payload);
+    return response.data;
+  }
+
+  async assignRoomsToBooking(bookingId: string, assignmentData: {
+    roomAssignments: { roomType: string; roomNumber: string; }[];
+  }): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const response = await api.patch(`/bookings/${bookingId}/assign-rooms`, assignmentData);
     return response.data;
   }
 

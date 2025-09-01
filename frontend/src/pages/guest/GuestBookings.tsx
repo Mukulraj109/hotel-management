@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { bookingService } from '../../services/bookingService';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Booking } from '../../types/booking';
 import { 
   Calendar, 
@@ -75,36 +76,28 @@ const getStatusIcon = (status: string) => {
 
 export default function GuestBookings() {
   const { user } = useAuth();
-  const [bookings, setBookings] = useState<BookingWithHotel[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<string>('all');
 
-  useEffect(() => {
-    if (user) {
-      fetchBookings();
-    }
-  }, [user]);
-
-  const fetchBookings = async () => {
-    try {
-      setLoading(true);
+  // Use React Query for data fetching
+  const { data: bookings = [], isLoading: loading, error } = useQuery({
+    queryKey: ['bookings', 'user', user?._id],
+    queryFn: async () => {
       const response = await bookingService.getUserBookings();
       // Handle the actual API response structure
       const bookingsData = response.data?.bookings || response.data || [];
       if (Array.isArray(bookingsData)) {
-        setBookings(bookingsData as unknown as BookingWithHotel[]);
+        return bookingsData as unknown as BookingWithHotel[];
       } else {
         console.error('Unexpected response format:', response);
-        setBookings([]);
+        return [];
       }
-    } catch (error) {
-      console.error('Failed to fetch bookings:', error);
-      toast.error('Failed to load bookings');
-      setBookings([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    retry: 3,
+  });
 
   const filteredBookings = bookings.filter(booking => {
     if (filter === 'all') return true;
@@ -130,8 +123,13 @@ export default function GuestBookings() {
     
     try {
       await bookingService.cancelBooking(bookingId);
+      
+      // Invalidate queries to refresh data immediately
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      
       toast.success('Booking cancelled successfully');
-      fetchBookings();
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to cancel booking');
     }
@@ -146,17 +144,17 @@ export default function GuestBookings() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">My Bookings</h1>
-        <p className="text-gray-600">Manage your hotel reservations and view booking history</p>
+      <div className="mb-6 sm:mb-8">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">My Bookings</h1>
+        <p className="text-gray-600 text-sm sm:text-base">Manage your hotel reservations and view booking history</p>
       </div>
 
       {/* Filter Tabs */}
       <div className="mb-6">
         <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
+          <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto">
             {[
               { id: 'all', label: 'All Bookings', count: bookings.length },
               { id: 'upcoming', label: 'Upcoming', count: bookings.filter(b => ['confirmed', 'pending'].includes(b.status) && new Date(b.checkIn) > new Date()).length },
@@ -167,7 +165,7 @@ export default function GuestBookings() {
               <button
                 key={tab.id}
                 onClick={() => setFilter(tab.id)}
-                className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
+                className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm transition-colors whitespace-nowrap ${
                   filter === tab.id
                     ? 'border-yellow-500 text-yellow-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -201,15 +199,15 @@ export default function GuestBookings() {
         <div className="space-y-6">
           {filteredBookings.map((booking) => (
             <Card key={booking._id} className="overflow-hidden">
-              <div className="p-6">
+              <div className="p-4 sm:p-6">
                 {/* Booking Header */}
-                <div className="flex items-start justify-between mb-4">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4 gap-3 sm:gap-0">
                   <div>
-                    <div className="flex items-center space-x-3 mb-2">
-                      <h3 className="text-xl font-semibold text-gray-900">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
+                      <h3 className="text-lg sm:text-xl font-semibold text-gray-900">
                         {booking.hotelId?.name || 'Hotel'}
                       </h3>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(booking.status)}`}>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium w-fit ${getStatusColor(booking.status)}`}>
                         {getStatusIcon(booking.status)}
                         <span className="ml-1 capitalize">{booking.status.replace('_', ' ')}</span>
                       </span>
@@ -224,11 +222,11 @@ export default function GuestBookings() {
                       </div>
                     )}
                   </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-gray-900">
+                  <div className="text-left sm:text-right">
+                    <div className="text-xl sm:text-2xl font-bold text-gray-900">
                       {formatCurrency(booking.totalAmount, booking.currency)}
                     </div>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPaymentStatusColor(booking.paymentStatus)}`}>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium w-fit ${getPaymentStatusColor(booking.paymentStatus)}`}>
                       <CreditCard className="w-3 h-3 mr-1" />
                       {booking.paymentStatus === 'paid' ? 'Paid' : booking.paymentStatus.charAt(0).toUpperCase() + booking.paymentStatus.slice(1)}
                     </span>
@@ -236,7 +234,7 @@ export default function GuestBookings() {
                 </div>
 
                 {/* Booking Details Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-4">
                   {/* Check-in/out */}
                   <div className="flex items-center space-x-3">
                     <Calendar className="w-5 h-5 text-yellow-600" />
@@ -269,7 +267,7 @@ export default function GuestBookings() {
                   <h4 className="text-sm font-medium text-gray-900 mb-2">Rooms ({booking.rooms.length})</h4>
                   <div className="space-y-2">
                     {booking.rooms.map((room, index) => (
-                      <div key={index} className="flex items-center justify-between bg-gray-50 rounded-lg p-3">
+                      <div key={index} className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-gray-50 rounded-lg p-3 gap-2 sm:gap-0">
                         <div>
                           <p className="text-sm font-medium text-gray-900">
                             Room {room.roomId?.roomNumber || index + 1} - {room.roomId?.type || 'Standard'}
@@ -297,11 +295,11 @@ export default function GuestBookings() {
                 )}
 
                 {/* Actions */}
-                <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pt-4 border-t border-gray-200 gap-3 sm:gap-0">
                   <div className="flex items-center space-x-4 text-sm text-gray-500">
                     <span>Booked on {formatDate(booking.createdAt)}</span>
                   </div>
-                  <div className="flex items-center space-x-3">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                     {booking.hotelId?.contact && (
                       <>
                         {booking.hotelId.contact.phone && (

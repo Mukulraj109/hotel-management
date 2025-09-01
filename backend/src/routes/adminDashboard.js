@@ -5677,4 +5677,144 @@ router.get('/reports', catchAsync(async (req, res, next) => {
   }
 }));
 
+/**
+ * Admin Bypass Checkout - Emergency/Special Case Checkout
+ */
+router.post('/bypass-checkout', authenticate, authorize('admin'), catchAsync(async (req, res) => {
+  const { bookingId, notes, paymentMethod = 'cash' } = req.body;
+  const adminId = req.user._id;
+
+  console.log('ADMIN BYPASS CHECKOUT:', { bookingId, notes, paymentMethod, adminId });
+
+  // Find the booking
+  const booking = await Booking.findById(bookingId).populate('userId rooms.roomId');
+  if (!booking) {
+    throw new AppError('Booking not found', 404);
+  }
+
+  // Verify booking is checked in
+  if (booking.status !== 'checked_in') {
+    throw new AppError('Only checked-in bookings can be checked out', 400);
+  }
+
+  // Create a special checkout inventory record for bypass
+  const checkoutInventory = await CheckoutInventory.create({
+    bookingId: booking._id,
+    roomId: booking.rooms[0].roomId._id,
+    checkedBy: adminId,
+    items: [], // No items for bypass checkout
+    subtotal: 0,
+    tax: 0,
+    totalAmount: 0,
+    status: 'paid', // Directly mark as paid for bypass
+    paymentMethod: paymentMethod,
+    paymentStatus: 'paid',
+    paidAt: new Date(),
+    notes: `ADMIN BYPASS CHECKOUT: ${notes}`,
+    isAdminBypass: true // Flag to identify bypass checkouts
+  });
+
+  // Update booking status to checked out
+  booking.status = 'checked_out';
+  booking.actualCheckOut = new Date();
+  await booking.save();
+
+  // Log the bypass action
+  console.log('ADMIN BYPASS COMPLETED:', {
+    bookingId: booking._id,
+    bookingNumber: booking.bookingNumber,
+    guest: booking.userId.name,
+    room: booking.rooms[0].roomId.roomNumber,
+    adminId,
+    timestamp: new Date()
+  });
+
+  await checkoutInventory.populate([
+    { path: 'bookingId', select: 'bookingNumber' },
+    { path: 'roomId', select: 'roomNumber' },
+    { path: 'checkedBy', select: 'name email' }
+  ]);
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Admin bypass checkout completed successfully',
+    data: {
+      booking: {
+        id: booking._id,
+        bookingNumber: booking.bookingNumber,
+        guest: booking.userId.name,
+        room: booking.rooms[0].roomId.roomNumber,
+        status: booking.status,
+        checkedOut: booking.actualCheckOut
+      },
+      checkoutInventory: {
+        id: checkoutInventory._id,
+        totalAmount: checkoutInventory.totalAmount,
+        paymentMethod: checkoutInventory.paymentMethod,
+        notes: checkoutInventory.notes,
+        isAdminBypass: checkoutInventory.isAdminBypass
+      }
+    }
+  });
+}));
+
+/**
+ * Get Checked-in Bookings for Admin Bypass
+ */
+router.get('/checked-in-bookings', authenticate, authorize('admin'), catchAsync(async (req, res) => {
+  const { hotelId } = req.user;
+
+  // Get all checked-in bookings for this hotel
+  const checkedInBookings = await Booking.find({
+    hotelId: new mongoose.Types.ObjectId(hotelId),
+    status: 'checked_in'
+  })
+  .populate('userId', 'name email phone')
+  .populate('rooms.roomId', 'roomNumber type')
+  .sort({ checkIn: -1 })
+  .limit(20);
+
+  // Check which ones already have checkout inventory
+  const bookingIds = checkedInBookings.map(b => b._id);
+  const existingCheckouts = await CheckoutInventory.find({
+    bookingId: { $in: bookingIds }
+  }).select('bookingId status paymentStatus');
+
+  const checkoutMap = {};
+  existingCheckouts.forEach(checkout => {
+    checkoutMap[checkout.bookingId.toString()] = {
+      status: checkout.status,
+      paymentStatus: checkout.paymentStatus
+    };
+  });
+
+  const bookingsWithStatus = checkedInBookings.map(booking => ({
+    _id: booking._id,
+    bookingNumber: booking.bookingNumber,
+    guest: {
+      name: booking.userId.name,
+      email: booking.userId.email,
+      phone: booking.userId.phone
+    },
+    room: {
+      number: booking.rooms[0]?.roomId.roomNumber,
+      type: booking.rooms[0]?.roomId.type
+    },
+    checkIn: booking.checkIn,
+    checkOut: booking.checkOut,
+    nights: booking.nights,
+    totalAmount: booking.totalAmount,
+    checkoutInventory: checkoutMap[booking._id.toString()] || null,
+    canBypassCheckout: !checkoutMap[booking._id.toString()] || checkoutMap[booking._id.toString()].status === 'pending'
+  }));
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      bookings: bookingsWithStatus,
+      count: bookingsWithStatus.length
+    }
+  });
+}));
+
 export default router;

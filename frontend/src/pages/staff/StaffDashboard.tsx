@@ -130,18 +130,18 @@ export default function StaffDashboard() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+      <div className="mb-6 sm:mb-8">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
           Welcome, {user?.name}!
         </h1>
-        <p className="text-gray-600">Staff Dashboard - Today's Operations</p>
+        <p className="text-gray-600 text-sm sm:text-base">Staff Dashboard - Today's Operations</p>
       </div>
 
       {/* Tab Navigation */}
       <div className="mb-6 border-b">
-        <nav className="-mb-px flex space-x-8">
+        <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto">
           {[
             { id: 'overview', label: 'Overview', icon: TrendingUp },
             { id: 'rooms', label: 'Room Status', icon: Users },
@@ -151,7 +151,7 @@ export default function StaffDashboard() {
             <button
               key={id}
               onClick={() => setActiveTab(id as any)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
+              className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm flex items-center space-x-1 sm:space-x-2 whitespace-nowrap ${
                 activeTab === id
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -168,8 +168,8 @@ export default function StaffDashboard() {
       {activeTab === 'overview' && (
         <div className="space-y-6">
           {/* Today's Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <Card className="p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            <Card className="p-4 sm:p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-green-100 rounded-lg">
                   <Calendar className="w-6 h-6 text-green-600" />
@@ -181,7 +181,7 @@ export default function StaffDashboard() {
               </div>
             </Card>
 
-            <Card className="p-6">
+            <Card className="p-4 sm:p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-blue-100 rounded-lg">
                   <CheckCircle className="w-6 h-6 text-blue-600" />
@@ -193,7 +193,7 @@ export default function StaffDashboard() {
               </div>
             </Card>
 
-            <Card className="p-6">
+            <Card className="p-4 sm:p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-purple-100 rounded-lg">
                   <TrendingUp className="w-6 h-6 text-purple-600" />
@@ -205,7 +205,7 @@ export default function StaffDashboard() {
               </div>
             </Card>
 
-            <Card className="p-6">
+            <Card className="p-4 sm:p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-yellow-100 rounded-lg">
                   <ClipboardCheck className="w-6 h-6 text-yellow-600" />
@@ -217,7 +217,7 @@ export default function StaffDashboard() {
               </div>
             </Card>
 
-            <Card className="p-6">
+            <Card className="p-4 sm:p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-orange-100 rounded-lg">
                   <Wrench className="w-6 h-6 text-orange-600" />
@@ -229,7 +229,7 @@ export default function StaffDashboard() {
               </div>
             </Card>
 
-            <Card className="p-6">
+            <Card className="p-4 sm:p-6">
               <div className="flex items-center">
                 <div className="p-2 bg-pink-100 rounded-lg">
                   <Users className="w-6 h-6 text-pink-600" />
@@ -245,7 +245,7 @@ export default function StaffDashboard() {
           {/* Quick Actions */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
               <Button
                 onClick={() => setActiveTab('rooms')}
                 className="flex items-center justify-center space-x-2"
@@ -296,7 +296,7 @@ export default function StaffDashboard() {
           <h2 className="text-xl font-semibold text-gray-900">Room Status Overview</h2>
 
           {/* Status Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
             {Object.entries(data.roomStatus.summary).map(([status, count]) => (
               <Card key={status} className="p-4">
                 <div className="text-center">
@@ -312,7 +312,7 @@ export default function StaffDashboard() {
           {/* Rooms Needing Attention */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Rooms Needing Attention</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {data.roomStatus.needsAttention.map((room, index) => (
                 <div key={index} className="p-4 border rounded-lg">
                   <div className="flex items-center justify-between">
@@ -343,9 +343,9 @@ export default function StaffDashboard() {
         <div className="space-y-6">
           <h2 className="text-xl font-semibold text-gray-900">Inventory Summary</h2>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             {/* Low Stock Items */}
-            <Card className="p-6">
+            <Card className="p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-900">Low Stock Alert</h3>
                 <Badge variant="default" className="bg-red-100 text-red-800">
@@ -371,7 +371,7 @@ export default function StaffDashboard() {
             </Card>
 
             {/* Inspections Due */}
-            <Card className="p-6">
+            <Card className="p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-900">Inspections Due</h3>
                 <Badge variant="default" className="bg-yellow-100 text-yellow-800">
@@ -414,9 +414,9 @@ export default function StaffDashboard() {
             {data.checkoutInventories.length > 0 ? (
               data.checkoutInventories.map((checkout) => (
                 <Card key={checkout._id} className="p-6">
-                  <div className="flex justify-between items-start">
+                  <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4 lg:gap-0">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
                         <h3 className="text-lg font-semibold text-gray-900">
                           Booking #{checkout.bookingId.bookingNumber}
                         </h3>
@@ -441,7 +441,7 @@ export default function StaffDashboard() {
                         </Badge>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4">
                         <div>
                           <p className="text-sm text-gray-600">Customer</p>
                           <p className="font-medium">
@@ -470,7 +470,7 @@ export default function StaffDashboard() {
 
                       <div className="mb-3">
                         <h4 className="text-sm font-medium text-gray-700 mb-2">Items with Charges:</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           {checkout.items
                             .filter(item => item.status !== 'intact' && item.totalPrice > 0)
                             .map((item, index) => (
@@ -496,7 +496,7 @@ export default function StaffDashboard() {
                       </div>
                     </div>
 
-                    <div className="flex gap-2 ml-4">
+                    <div className="flex flex-col sm:flex-row gap-2 lg:ml-4">
                       {checkout.status === 'completed' && checkout.paymentStatus === 'pending' && (
                         <Button
                           onClick={() => window.location.href = '/staff/checkout-inventory'}

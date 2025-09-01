@@ -416,14 +416,14 @@ export default function AdminRooms() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
       {/* Header Section */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Room Management</h1>
-          <p className="text-gray-600 mt-1">Manage and monitor all hotel rooms</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Room Management</h1>
+          <p className="text-gray-600 mt-1 text-sm sm:text-base">Manage and monitor all hotel rooms</p>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
           {/* Real-time Controls */}
           <div className="flex items-center space-x-2 bg-gray-50 rounded-lg p-2">
             {/* Connection Status Indicator */}
@@ -519,8 +519,8 @@ export default function AdminRooms() {
       </div>
 
       {/* Phase 5: Filters and Quick Actions */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <div className="flex flex-col lg:flex-row gap-6">
+      <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
+        <div className="flex flex-col lg:flex-row gap-4 sm:gap-6">
           {/* Filter Section */}
           <div className="flex-1">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Filters</h3>
@@ -684,7 +684,7 @@ export default function AdminRooms() {
       </div>
 
       {/* Phase 1: Room Overview Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6">
         {/* Total Rooms */}
         <MetricCard
           title="Total Rooms"
@@ -770,7 +770,7 @@ export default function AdminRooms() {
       </div>
 
       {/* Phase 2: Floor-wise Distribution Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Floor Distribution Bar Chart */}
         
         <ChartCard
@@ -1009,7 +1009,7 @@ export default function AdminRooms() {
         {/* Revenue breakdown by room type */}
         <div className="mt-8">
           <h3 className="text-lg font-medium text-gray-900 mb-4">Revenue by Room Type</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {(() => {
               const rooms = roomsQuery.data?.rooms || [];
               const roomTypes = ['single', 'double', 'suite', 'deluxe'];
@@ -1051,7 +1051,7 @@ export default function AdminRooms() {
 
         {/* Performance indicators */}
         <div className="mt-8 pt-6 border-t border-gray-200">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
             <div className="text-center">
               <div className="text-2xl font-bold text-gray-900">
                 {formatPercentage(metrics?.availabilityRate || 0)}
@@ -1094,7 +1094,7 @@ export default function AdminRooms() {
       {/* Phase 4: Enhanced Room Status Overview */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
         {/* Header with gradient background */}
-        <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 p-6 text-white">
+        <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 p-4 sm:p-6 text-white">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h2 className="text-2xl font-bold text-white flex items-center">
@@ -1136,7 +1136,7 @@ export default function AdminRooms() {
         </div>
 
         {/* Enhanced Status Legend with modern design */}
-        <div className="p-6 bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
+        <div className="p-4 sm:p-6 bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900 flex items-center">
               <svg className="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1209,7 +1209,7 @@ export default function AdminRooms() {
         </div>
 
         {/* Floor-by-Floor Room Grid */}
-        <div className="space-y-6 p-6">
+        <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
           {floorData.map(floor => {
             // Get filtered rooms for this floor
             const floorRooms = filteredRooms
@@ -1224,7 +1224,7 @@ export default function AdminRooms() {
             return (
               <div key={floor.floor} className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden">
                 {/* Floor Header with gradient */}
-                <div className="bg-gradient-to-r from-gray-50 to-blue-50 px-6 py-4 border-b border-gray-200">
+                <div className="bg-gradient-to-r from-gray-50 to-blue-50 px-4 sm:px-6 py-4 border-b border-gray-200">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center space-x-4">
                       <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-lg">
@@ -1273,8 +1273,8 @@ export default function AdminRooms() {
                 </div>
 
                 {/* Enhanced Room Grid */}
-                <div className="p-6">
-                  <div className="grid gap-3 grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12">
+                <div className="p-4 sm:p-6">
+                  <div className="grid gap-2 sm:gap-3 grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12">
                     {floorRooms.map(room => (
                       <div
                         key={room._id}

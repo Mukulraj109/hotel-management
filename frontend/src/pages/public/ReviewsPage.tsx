@@ -30,8 +30,8 @@ function ReviewCard({ review, onHelpful, onReply }: ReviewCardProps) {
   };
 
   return (
-    <Card className="p-6 hover:shadow-lg transition-all duration-300">
-      <div className="flex items-start justify-between mb-4">
+    <Card className="p-4 sm:p-6 hover:shadow-lg transition-all duration-300">
+      <div className="flex flex-col sm:flex-row items-start sm:justify-between mb-4 gap-3 sm:gap-0">
         <div className="flex items-center space-x-3">
           <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-lg">
             {review.guestName.charAt(0).toUpperCase()}
@@ -57,7 +57,7 @@ function ReviewCard({ review, onHelpful, onReply }: ReviewCardProps) {
       <p className="text-gray-700 leading-relaxed mb-4">{review.content}</p>
 
       {review.categories && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4 p-4 bg-gray-50 rounded-lg">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-4 p-3 sm:p-4 bg-gray-50 rounded-lg">
           {Object.entries(review.categories).map(([category, rating]) => (
             rating && (
               <div key={category} className="text-center">
@@ -84,7 +84,7 @@ function ReviewCard({ review, onHelpful, onReply }: ReviewCardProps) {
         </div>
       )}
 
-      <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200">
+      <div className="flex flex-col sm:flex-row items-center sm:justify-between mt-6 pt-4 border-t border-gray-200 gap-3 sm:gap-0">
         <Button
           variant="secondary"
           size="sm"
@@ -129,7 +129,7 @@ function RatingSummary({ summary }: { summary: ReviewSummary }) {
   };
 
   return (
-    <Card className="p-6 bg-gradient-to-br from-yellow-50 to-orange-50 border border-yellow-200">
+    <Card className="p-4 sm:p-6 bg-gradient-to-br from-yellow-50 to-orange-50 border border-yellow-200">
       <div className="text-center mb-6">
         <div className="text-4xl font-bold text-yellow-600 mb-2">
           {summary.averageRating.toFixed(1)}
@@ -170,7 +170,7 @@ function RatingSummary({ summary }: { summary: ReviewSummary }) {
             <BarChart3 className="h-5 w-5 mr-2" />
             Category Ratings
           </h4>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {Object.entries(summary.categoryAverages).map(([category, rating]) => (
               <div key={category} className="text-center">
                 <div className="text-sm font-medium text-gray-600 capitalize mb-1">
@@ -196,7 +196,7 @@ export default function ReviewsPage() {
   const [filterRating, setFilterRating] = useState<number | undefined>();
 
   // Default hotel ID - in real app, this would come from context or props
-  const hotelId = '68b19648e35a38ee7b1d1828';
+  const hotelId = '68b43ce31a6ab7adb5764b6b';
 
   const loadReviews = async (page = 1) => {
     try {
@@ -255,27 +255,27 @@ export default function ReviewsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
         {/* Header */}
-        <div className="text-center mb-16">
+        <div className="text-center mb-10 sm:mb-16">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-yellow-400 to-yellow-600 rounded-full mb-6">
             <Star className="h-8 w-8 text-white fill-current" />
           </div>
-          <h1 className="text-5xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-gray-900 bg-clip-text text-transparent mb-6">
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-gray-900 bg-clip-text text-transparent mb-6">
             Guest Reviews & Feedback
           </h1>
-          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+          <p className="text-lg sm:text-xl text-gray-600 max-w-3xl mx-auto">
             Real experiences from our guests at The Pentouz
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-8">
           {/* Sidebar with Rating Summary and Filters */}
           <div className="lg:col-span-1 space-y-6">
             {summary && <RatingSummary summary={summary} />}
             
             {/* Filters */}
-            <Card className="p-6">
+            <Card className="p-4 sm:p-6">
               <h3 className="font-semibold text-gray-900 mb-4 flex items-center">
                 <Filter className="h-5 w-5 mr-2" />
                 Filters
@@ -323,7 +323,7 @@ export default function ReviewsPage() {
           {/* Reviews List */}
           <div className="lg:col-span-3">
             <div className="mb-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 mb-2">
                 {summary?.totalReviews ? `${summary.totalReviews.toLocaleString()} Reviews` : 'Reviews'}
               </h2>
               <p className="text-gray-600">
@@ -334,7 +334,7 @@ export default function ReviewsPage() {
             {loading ? (
               <div className="space-y-6">
                 {[...Array(5)].map((_, i) => (
-                  <Card key={i} className="p-6 animate-pulse">
+                  <Card key={i} className="p-4 sm:p-6 animate-pulse">
                     <div className="h-4 bg-gray-200 rounded w-1/4 mb-4"></div>
                     <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
                     <div className="h-4 bg-gray-200 rounded w-1/2"></div>
@@ -342,7 +342,7 @@ export default function ReviewsPage() {
                 ))}
               </div>
             ) : reviews.length === 0 ? (
-              <Card className="p-12 text-center">
+              <Card className="p-8 sm:p-12 text-center">
                 <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Star className="h-8 w-8 text-gray-400" />
                 </div>
@@ -361,7 +361,7 @@ export default function ReviewsPage() {
 
                 {/* Pagination */}
                 {totalPages > 1 && (
-                  <div className="flex justify-center items-center space-x-4 mt-8">
+                  <div className="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4 mt-8">
                     <Button
                       variant="secondary"
                       onClick={() => handlePageChange(currentPage - 1)}
@@ -370,7 +370,7 @@ export default function ReviewsPage() {
                       Previous
                     </Button>
                     
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-2 overflow-x-auto pb-2">
                       {[...Array(Math.min(5, totalPages))].map((_, i) => {
                         const page = i + 1;
                         return (
@@ -378,7 +378,7 @@ export default function ReviewsPage() {
                             key={page}
                             onClick={() => handlePageChange(page)}
                             className={cn(
-                              'w-10 h-10 rounded-lg font-medium transition-colors',
+                              'w-10 h-10 rounded-lg font-medium transition-colors flex-shrink-0',
                               page === currentPage
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-white text-gray-700 hover:bg-gray-100'

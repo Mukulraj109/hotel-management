@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -24,9 +24,6 @@ import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
 import { useAuth } from '../../context/AuthContext';
 import { formatIndianCurrency } from '../../utils/currency';
-import { bookingService } from '../../services/bookingService';
-import { adminService } from '../../services/adminService';
-import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 
 // Room types data
@@ -75,26 +72,17 @@ const guestDetailsSchema = z.object({
 
 type GuestDetailsForm = z.infer<typeof guestDetailsSchema>;
 
-const BookingPage: React.FC = () => {
+const ImprovedBookingPage: React.FC = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
-  const [searchParams] = useSearchParams();
-  const queryClient = useQueryClient();
-  
-  // Get URL parameters for pre-filling booking data
-  const urlRoomType = searchParams.get('roomType') as keyof typeof ROOM_TYPES | null;
-  const urlGuests = parseInt(searchParams.get('guests') || '1');
-  const urlCheckIn = searchParams.get('checkIn') || '';
-  const urlCheckOut = searchParams.get('checkOut') || '';
   
   // Booking state
   const [currentStep, setCurrentStep] = useState(1);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookingData, setBookingData] = useState({
-    roomType: urlRoomType,
-    guests: urlGuests,
-    checkIn: urlCheckIn,
-    checkOut: urlCheckOut,
+    roomType: null as keyof typeof ROOM_TYPES | null,
+    guests: 1,
+    checkIn: '',
+    checkOut: '',
     guestDetails: null as GuestDetailsForm | null,
     paymentCompleted: false
   });
@@ -129,16 +117,16 @@ const BookingPage: React.FC = () => {
     const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
 
     return (
-      <div className="max-w-4xl mx-auto space-y-4 sm:space-y-6">
+      <div className="max-w-4xl mx-auto space-y-6">
         <div className="text-center">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Book Your Stay</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Book Your Stay</h1>
           <p className="text-gray-600">Choose your room type and travel dates</p>
         </div>
 
         {/* Date & Guest Selection */}
         <Card className="border-2">
           <CardContent className="p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Check-in</label>
                 <Input
@@ -166,7 +154,7 @@ const BookingPage: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Guests</label>
-                <div className="flex items-center justify-center space-x-2">
+                <div className="flex items-center space-x-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -206,7 +194,7 @@ const BookingPage: React.FC = () => {
         {/* Room Type Selection */}
         <div className="space-y-4">
           <h2 className="text-xl font-semibold text-gray-900">Choose Your Room Type</h2>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {Object.entries(ROOM_TYPES).map(([type, room]) => {
               const Icon = room.icon;
               const isSelected = bookingData.roomType === type;
@@ -228,7 +216,7 @@ const BookingPage: React.FC = () => {
                     roomType: type as keyof typeof ROOM_TYPES
                   })}
                 >
-                  <CardContent className="p-4 sm:p-6">
+                  <CardContent className="p-6">
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center">
                         <Icon className={`h-6 w-6 mr-3 ${isSelected ? 'text-blue-600' : 'text-gray-600'}`} />
@@ -296,15 +284,15 @@ const BookingPage: React.FC = () => {
 
     return (
       <div className="max-w-2xl mx-auto">
-        <div className="text-center mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Guest Details</h1>
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Guest Details</h1>
           <p className="text-gray-600">Please provide your information</p>
         </div>
 
         <Card>
-          <CardContent className="p-4 sm:p-6">
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 sm:space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+          <CardContent className="p-6">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <User className="h-4 w-4 inline mr-1" />
@@ -333,7 +321,7 @@ const BookingPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     <Phone className="h-4 w-4 inline mr-1" />
@@ -349,7 +337,7 @@ const BookingPage: React.FC = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Guests</label>
-                  <div className="flex items-center justify-center space-x-2">
+                  <div className="flex items-center space-x-2">
                     <Button
                       type="button"
                       variant="outline"
@@ -391,7 +379,7 @@ const BookingPage: React.FC = () => {
                 />
               </div>
 
-              <div className="flex flex-col sm:flex-row justify-between gap-4 pt-6">
+              <div className="flex justify-between pt-6">
                 <Button
                   type="button"
                   variant="outline"
@@ -416,12 +404,12 @@ const BookingPage: React.FC = () => {
   const renderStep3 = () => {
     return (
       <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Review Your Booking</h1>
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Review Your Booking</h1>
           <p className="text-gray-600">Confirm your details before payment</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Booking Details */}
           <div className="lg:col-span-2 space-y-6">
             {/* Room Details */}
@@ -499,8 +487,8 @@ const BookingPage: React.FC = () => {
 
             {/* Dates */}
             <Card>
-              <CardContent className="p-4 sm:p-6">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
+              <CardContent className="p-6">
+                <div className="grid grid-cols-3 gap-4 text-center">
                   <div>
                     <Calendar className="h-5 w-5 mx-auto mb-2 text-gray-500" />
                     <p className="text-sm text-gray-600">Check-in</p>
@@ -555,91 +543,17 @@ const BookingPage: React.FC = () => {
 
             <Button 
               className="w-full py-4 text-lg"
-              onClick={async () => {
-                if (!isAuthenticated) {
-                  toast.error('Please login to complete booking');
-                  navigate('/login');
-                  return;
-                }
-
-                if (!bookingData.roomType || !bookingData.checkIn || !bookingData.checkOut || !bookingData.guestDetails) {
-                  toast.error('Please complete all booking details');
-                  return;
-                }
-
-                setIsSubmitting(true);
-                try {
-                  // Create booking without room allocation - admin will assign rooms later
-                  console.log('Creating booking without room allocation...');
-                  
-                  // Calculate the total amount for the booking
-                  const roomRate = ROOM_TYPES[bookingData.roomType].baseRate;
-                  const subtotalAmount = roomRate * nights;
-                  const taxAmount = Math.round(subtotalAmount * 0.18); // 18% GST
-                  const totalAmount = subtotalAmount + taxAmount;
-
-                  // Create booking request with room type info but no specific room assignment
-                  const bookingRequest = {
-                    hotelId: '68b43ce31a6ab7adb5764b6b', // Default hotel ID - should match admin dashboard
-                    roomIds: [], // No specific rooms assigned - admin will assign later
-                    checkIn: new Date(bookingData.checkIn).toISOString(),
-                    checkOut: new Date(bookingData.checkOut).toISOString(),
-                    guestDetails: {
-                      adults: bookingData.guests,
-                      children: 0,
-                      specialRequests: bookingData.guestDetails.specialRequests || ''
-                    },
-                    // Additional metadata for the booking
-                    totalAmount: totalAmount,
-                    currency: 'INR',
-                    roomType: bookingData.roomType, // Store room type preference
-                    nights: nights,
-                    ratePerNight: roomRate,
-                    guestName: bookingData.guestDetails.name,
-                    guestEmail: bookingData.guestDetails.email,
-                    guestPhone: bookingData.guestDetails.phone,
-                    idempotencyKey: `booking-${Date.now()}-${user?._id}-${Math.random().toString(36).substr(2, 9)}`
-                  };
-
-                  console.log('🚀 USER BOOKING DEBUG - Full booking data state:', JSON.stringify(bookingData, null, 2));
-                  console.log('🚀 USER BOOKING DEBUG - Room type from state:', bookingData.roomType);
-                  console.log('🚀 USER BOOKING DEBUG - Full booking request:', JSON.stringify(bookingRequest, null, 2));
-                  console.log('🚀 USER BOOKING DEBUG - Room type in request:', bookingRequest.roomType);
-                  
-                  const response = await bookingService.createBooking(bookingRequest);
-                  
-                  if (response.status === 'success') {
-                    // Invalidate all dashboard and booking queries to refresh data immediately
-                    queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-                    queryClient.invalidateQueries({ queryKey: ['bookings'] });
-                    queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
-                    queryClient.invalidateQueries({ queryKey: ['staff-bookings'] });
-                    
-                    toast.success('Booking created successfully! Awaiting admin confirmation.');
-                    navigate('/app');
-                  } else {
-                    toast.error('Failed to create booking');
-                  }
-                } catch (error: any) {
-                  console.error('Booking error:', error);
-                  toast.error(error.response?.data?.message || 'Failed to create booking');
-                } finally {
-                  setIsSubmitting(false);
-                }
+              onClick={() => {
+                // Simulate payment completion
+                toast.success('Booking submitted! Awaiting admin confirmation.');
+                navigate('/guest/bookings');
               }}
-              disabled={isSubmitting}
             >
-              {isSubmitting ? (
-                <>Processing...</>
-              ) : (
-                <>
-                  <CreditCard className="h-5 w-5 mr-2" />
-                  Pay {formatIndianCurrency(total)}
-                </>
-              )}
+              <CreditCard className="h-5 w-5 mr-2" />
+              Pay {formatIndianCurrency(total)}
             </Button>
 
-            <div className="flex justify-center mt-4">
+            <div className="flex justify-center">
               <Button
                 variant="outline"
                 onClick={() => setCurrentStep(2)}
@@ -657,10 +571,10 @@ const BookingPage: React.FC = () => {
   const canContinueStep1 = bookingData.roomType && bookingData.checkIn && bookingData.checkOut && nights > 0;
 
   return (
-    <div className="min-h-screen bg-gray-50 py-6 sm:py-8">
+    <div className="min-h-screen bg-gray-50 py-8">
       {/* Progress Steps */}
-      <div className="max-w-4xl mx-auto px-4 mb-6 sm:mb-8">
-        <div className="flex items-center justify-center space-x-4 sm:space-x-8 overflow-x-auto pb-2">
+      <div className="max-w-4xl mx-auto px-4 mb-8">
+        <div className="flex items-center justify-center space-x-8">
           {[1, 2, 3].map((step) => (
             <div key={step} className="flex items-center">
               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
@@ -670,12 +584,12 @@ const BookingPage: React.FC = () => {
               }`}>
                 {currentStep > step ? <CheckCircle className="h-5 w-5" /> : step}
               </div>
-              <span className={`ml-2 text-xs sm:text-sm font-medium whitespace-nowrap ${
+              <span className={`ml-2 text-sm font-medium ${
                 currentStep >= step ? 'text-blue-600' : 'text-gray-500'
               }`}>
                 {step === 1 ? 'Room Selection' : step === 2 ? 'Guest Details' : 'Review & Payment'}
               </span>
-              {step < 3 && <ArrowRight className="h-4 w-4 ml-2 sm:ml-4 text-gray-400 flex-shrink-0" />}
+              {step < 3 && <ArrowRight className="h-4 w-4 ml-4 text-gray-400" />}
             </div>
           ))}
         </div>
@@ -685,7 +599,7 @@ const BookingPage: React.FC = () => {
         {currentStep === 1 && (
           <>
             {renderStep1()}
-            <div className="flex flex-col sm:flex-row justify-between gap-4 mt-6 sm:mt-8 max-w-4xl mx-auto">
+            <div className="flex justify-between mt-8 max-w-4xl mx-auto">
               <Button
                 variant="outline"
                 onClick={() => navigate('/')}
@@ -711,4 +625,4 @@ const BookingPage: React.FC = () => {
   );
 };
 
-export default BookingPage;
+export default ImprovedBookingPage;
