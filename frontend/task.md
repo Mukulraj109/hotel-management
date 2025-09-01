@@ -1,1 +1,0 @@
-so we have only one staff in our hotel but when we have to add more staff in that case for that we have to create a form for submittion so we have to add this part in the admin dashboard  for that see the staff model check if there is a route for creating the staff is present or not then create them and then create the frontend also and then connect it properly 

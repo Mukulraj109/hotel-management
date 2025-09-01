@@ -152,11 +152,30 @@ router.get('/users', catchAsync(async (req, res) => {
   if (role) query.role = role;
   if (isActive !== undefined) query.isActive = isActive === 'true';
   
-  if (search) {
+  // Filter staff/admin users by the current admin's hotel
+  if (role === 'staff' || role === 'admin' || !role) {
     query.$or = [
+      { role: 'guest' }, // Include all guests
+      { hotelId: req.user.hotelId } // Include staff/admin from this hotel
+    ];
+  }
+  
+  if (search) {
+    const searchQuery = [
       { name: { $regex: search, $options: 'i' } },
       { email: { $regex: search, $options: 'i' } }
     ];
+    
+    // If we already have a $or condition, combine them
+    if (query.$or) {
+      query.$and = [
+        { $or: query.$or },
+        { $or: searchQuery }
+      ];
+      delete query.$or;
+    } else {
+      query.$or = searchQuery;
+    }
   }
 
   const skip = (page - 1) * limit;
@@ -240,6 +259,11 @@ router.post('/users', catchAsync(async (req, res) => {
     role: role || 'guest',
     preferences
   };
+
+  // If creating staff or admin, automatically assign to the current admin's hotel
+  if (role === 'staff' || role === 'admin') {
+    userData.hotelId = req.user.hotelId;
+  }
 
   const user = await User.create(userData);
 

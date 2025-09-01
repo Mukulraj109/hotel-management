@@ -16,7 +16,8 @@ import {
   FileText,
   AlertTriangle,
   Menu,
-  X
+  X,
+  UserCheck
 } from 'lucide-react';
 
 const navigation = [
@@ -25,6 +26,7 @@ const navigation = [
   { name: 'Rooms', href: '/admin/rooms', icon: Bed },
   { name: 'Bookings', href: '/admin/bookings', icon: Calendar },
   { name: 'Corporate', href: '/admin/corporate', icon: Users },
+  { name: 'Staff Management', href: '/admin/staff', icon: UserCheck },
   { name: 'Billing & Payments', href: '/admin/billing', icon: CreditCard },
   { name: 'Housekeeping', href: '/admin/housekeeping', icon: ClipboardList },
   { name: 'Maintenance', href: '/admin/maintenance', icon: Wrench },

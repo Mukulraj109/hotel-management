@@ -39,6 +39,7 @@ import AdminRooms from './pages/admin/AdminRooms';
 import RoomDetailsPage from './pages/admin/RoomDetailsPage';
 import RoomBookingsPage from './pages/admin/RoomBookingsPage';
 import AdminBookings from './pages/admin/AdminBookings';
+import AdminStaffManagement from './pages/admin/AdminStaffManagement';
 import AdminHousekeeping from './pages/admin/AdminHousekeeping';
 import AdminInventory from './pages/admin/AdminInventory';
 import AdminMaintenance from './pages/admin/AdminMaintenance';
@@ -136,6 +137,7 @@ function App() {
                 <Route path="rooms/:roomId" element={<RoomDetailsPage />} />
                 <Route path="rooms/:roomId/bookings" element={<RoomBookingsPage />} />
                 <Route path="bookings" element={<AdminBookings />} />
+                <Route path="staff" element={<AdminStaffManagement />} />
                 <Route path="corporate" element={<AdminCorporateDashboard />} />
                 <Route path="corporate/credit" element={<CorporateCreditManagement />} />
                 <Route path="corporate/gst" element={<GSTManagement />} />

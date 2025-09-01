@@ -201,7 +201,6 @@ export default function ReviewsPage() {
   const loadReviews = async (page = 1) => {
     try {
       setLoading(true);
-      console.log('Loading reviews for hotel:', hotelId);
       
       const [reviewsData, summaryData] = await Promise.all([
         reviewsService.getHotelReviews(hotelId, {
@@ -212,9 +211,6 @@ export default function ReviewsPage() {
         }),
         reviewsService.getHotelRatingSummary(hotelId)
       ]);
-
-      console.log('Reviews data received:', reviewsData);
-      console.log('Summary data received:', summaryData);
 
       setReviews(reviewsData.reviews);
       setSummary(summaryData);
