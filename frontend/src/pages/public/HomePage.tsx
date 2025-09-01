@@ -10,7 +10,7 @@ export default function HomePage() {
   const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
   const [reviewsLoading, setReviewsLoading] = useState(true);
 
-  const HOTEL_ID = '68b43ce31a6ab7adb5764b6b';
+  const HOTEL_ID = '68b54c3ee4ece2394a618e2f';
 
   const amenities = [
     { icon: Wifi, name: 'Free WiFi' },
@@ -27,7 +27,7 @@ export default function HomePage() {
       try {
         const [reviewsData, summary] = await Promise.all([
           reviewsService.getHotelReviews(HOTEL_ID, { limit: 3, sortBy: 'newest' }),
-          reviewsService.getHotelSummary(HOTEL_ID)
+          reviewsService.getHotelRatingSummary(HOTEL_ID)
         ]);
         setReviews(reviewsData.reviews);
         setReviewSummary(summary);
@@ -218,7 +218,7 @@ export default function HomePage() {
           
           <div className="max-w-4xl mx-auto">
             <LocalAttractions 
-              hotelId="68b43ce31a6ab7adb5764b6b"
+              hotelId="68b54c3ee4ece2394a618e2f"
               maxDistance={10}
               className="shadow-xl border-0"
             />

@@ -196,11 +196,13 @@ export default function ReviewsPage() {
   const [filterRating, setFilterRating] = useState<number | undefined>();
 
   // Default hotel ID - in real app, this would come from context or props
-  const hotelId = '68b43ce31a6ab7adb5764b6b';
+  const hotelId = '68b54c3ee4ece2394a618e2f';
 
   const loadReviews = async (page = 1) => {
     try {
       setLoading(true);
+      console.log('Loading reviews for hotel:', hotelId);
+      
       const [reviewsData, summaryData] = await Promise.all([
         reviewsService.getHotelReviews(hotelId, {
           page,
@@ -208,8 +210,11 @@ export default function ReviewsPage() {
           sortBy,
           rating: filterRating
         }),
-        reviewsService.getHotelSummary(hotelId)
+        reviewsService.getHotelRatingSummary(hotelId)
       ]);
+
+      console.log('Reviews data received:', reviewsData);
+      console.log('Summary data received:', summaryData);
 
       setReviews(reviewsData.reviews);
       setSummary(summaryData);
@@ -229,7 +234,7 @@ export default function ReviewsPage() {
 
   const handleHelpful = async (reviewId: string) => {
     try {
-      await reviewsService.markHelpful(reviewId);
+      await reviewsService.markReviewHelpful(reviewId);
       // Reload reviews to get updated helpful count
       loadReviews(currentPage);
     } catch (error) {

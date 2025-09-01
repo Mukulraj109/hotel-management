@@ -231,6 +231,9 @@ router.get('/hotel/:hotelId', optionalAuth, catchAsync(async (req, res) => {
 
   const [reviews, total, summary] = await Promise.all([
     Review.find(query)
+      .populate('hotelId', 'name address')
+      .populate('userId', 'name')
+      .populate('bookingId', 'bookingNumber checkIn checkOut')
       .sort(sortOption)
       .skip(skip)
       .limit(parseInt(limit)),

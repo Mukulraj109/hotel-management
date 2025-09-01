@@ -108,13 +108,25 @@ class ReviewsService {
     if (params?.rating) queryParams.append('rating', params.rating.toString());
     if (params?.sortBy) queryParams.append('sortBy', params.sortBy);
 
-    const response = await api.get(`/reviews/hotel/${hotelId}?${queryParams.toString()}`);
+    const url = `/reviews/hotel/${hotelId}?${queryParams.toString()}`;
+    console.log('Making API call to:', url);
+    
+    const response = await api.get(url);
+    console.log('API response status:', response.status);
+    console.log('API response data:', response.data);
+    
     return response.data.data;
   }
 
   // Get hotel rating summary
-  async getHotelSummary(hotelId: string): Promise<ReviewSummary> {
-    const response = await api.get(`/reviews/hotel/${hotelId}/summary`);
+  async getHotelRatingSummary(hotelId: string): Promise<ReviewSummary> {
+    const url = `/reviews/hotel/${hotelId}/summary`;
+    console.log('Making summary API call to:', url);
+    
+    const response = await api.get(url);
+    console.log('Summary API response status:', response.status);
+    console.log('Summary API response data:', response.data);
+    
     return response.data.data;
   }
 
