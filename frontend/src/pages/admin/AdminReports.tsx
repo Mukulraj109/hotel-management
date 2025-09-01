@@ -1,19 +1,23 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import ReportBuilder from './reports/ReportBuilder';
+import BusinessIntelligenceDashboard from '../../components/reports/BusinessIntelligenceDashboard';
 import { MetricCard, ChartCard, LineChart, BarChart } from '../../components/dashboard';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/Tabs';
 import { useDashboardReports, useReportDateRanges, useExportReport } from '../../hooks/useReports';
 import { formatCurrency, formatPercentage } from '../../utils/dashboardUtils';
 
 export default function AdminReports() {
   const { user } = useAuth();
-  const [currentView, setCurrentView] = useState<'overview' | 'builder'>('overview');
+  const [currentView, setCurrentView] = useState<'business-intelligence' | 'overview' | 'builder'>('business-intelligence');
   const [selectedDateRange, setSelectedDateRange] = useState('thisYear');
   const [exportFormat, setExportFormat] = useState<'csv' | 'excel' | 'pdf'>('csv');
   const [autoRefresh, setAutoRefresh] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   
   // Test both hotel IDs to see which has data
   const hotelId = user?.hotelId || '68b036db9f87a72c2d171a91';
@@ -40,6 +44,53 @@ export default function AdminReports() {
     return <ReportBuilder />;
   }
 
+  if (currentView === 'business-intelligence') {
+    return (
+      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Business Intelligence Dashboard</h1>
+            <p className="text-gray-600 mt-1">Advanced KPI tracking and business analytics</p>
+          </div>
+          <div className="flex items-center space-x-3">
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {Array.from({ length: 12 }, (_, i) => (
+                <option key={i} value={i + 1}>
+                  {new Date(0, i).toLocaleString('en-US', { month: 'long' })}
+                </option>
+              ))}
+            </select>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {Array.from({ length: 5 }, (_, i) => (
+                <option key={i} value={new Date().getFullYear() - 2 + i}>
+                  {new Date().getFullYear() - 2 + i}
+                </option>
+              ))}
+            </select>
+            <Button onClick={() => setCurrentView('overview')}>
+              Classic Reports
+            </Button>
+          </div>
+        </div>
+
+        <BusinessIntelligenceDashboard 
+          hotelId={hotelId} 
+          month={selectedMonth}
+          year={selectedYear}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -50,10 +101,16 @@ export default function AdminReports() {
         </div>
         <div className="flex items-center space-x-3">
           <Button
+            variant={currentView === 'business-intelligence' ? 'primary' : 'secondary'}
+            onClick={() => setCurrentView('business-intelligence')}
+          >
+            Business Intelligence
+          </Button>
+          <Button
             variant={currentView === 'overview' ? 'primary' : 'secondary'}
             onClick={() => setCurrentView('overview')}
           >
-            Overview
+            Classic Reports
           </Button>
           <Button
             variant={currentView === 'builder' ? 'primary' : 'secondary'}

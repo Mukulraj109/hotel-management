@@ -19,9 +19,9 @@ import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
 
-// All routes require admin authentication
+// All routes require authentication
 router.use(authenticate);
-router.use(authorize('admin'));
+// Most routes require admin authentication - specific routes can override this
 
 /**
  * @swagger
@@ -41,7 +41,7 @@ router.use(authorize('admin'));
  *       200:
  *         description: Real-time dashboard data
  */
-router.get('/real-time', catchAsync(async (req, res) => {
+router.get('/real-time', authorize('admin'), catchAsync(async (req, res) => {
   const { hotelId } = req.query;
   const today = new Date();
   const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -456,7 +456,7 @@ router.get('/real-time', catchAsync(async (req, res) => {
  *       200:
  *         description: Key performance indicators
  */
-router.get('/kpis', catchAsync(async (req, res) => {
+router.get('/kpis', authorize('admin', 'staff'), catchAsync(async (req, res) => {
   const { hotelId, period = 'month' } = req.query;
   
   // Calculate date range based on period
@@ -784,7 +784,7 @@ router.get('/kpis', catchAsync(async (req, res) => {
  *       200:
  *         description: Occupancy dashboard data
  */
-router.get('/occupancy', catchAsync(async (req, res, next) => {
+router.get('/occupancy', authorize('admin', 'staff'), catchAsync(async (req, res, next) => {
   const { hotelId, floor, roomType } = req.query;
   
   if (!hotelId) {
@@ -1247,7 +1247,7 @@ router.get('/occupancy', catchAsync(async (req, res, next) => {
  *       200:
  *         description: Revenue dashboard data
  */
-router.get('/revenue', catchAsync(async (req, res, next) => {
+router.get('/revenue', authorize('admin', 'staff'), catchAsync(async (req, res, next) => {
   const { hotelId, period = 'month', startDate, endDate } = req.query;
   
   if (!hotelId) {
@@ -1678,7 +1678,7 @@ router.get('/revenue', catchAsync(async (req, res, next) => {
  *       200:
  *         description: Staff performance dashboard data
  */
-router.get('/staff-performance', catchAsync(async (req, res, next) => {
+router.get('/staff-performance', authorize('admin'), catchAsync(async (req, res, next) => {
   const { hotelId, period = 'month', department, staffId } = req.query;
   
   if (!hotelId) {
@@ -2310,7 +2310,7 @@ router.get('/staff-performance', catchAsync(async (req, res, next) => {
  *       200:
  *         description: Guest satisfaction dashboard data
  */
-router.get('/guest-satisfaction', catchAsync(async (req, res, next) => {
+router.get('/guest-satisfaction', authorize('admin', 'staff'), catchAsync(async (req, res, next) => {
   const { hotelId, period = 'month', startDate, endDate, source } = req.query;
   
   if (!hotelId) {
@@ -2804,7 +2804,7 @@ router.get('/guest-satisfaction', catchAsync(async (req, res, next) => {
  *       200:
  *         description: Operations dashboard data
  */
-router.get('/operations', catchAsync(async (req, res, next) => {
+router.get('/operations', authorize('admin', 'staff'), catchAsync(async (req, res, next) => {
   const { hotelId, period = 'today', department = 'all', priority } = req.query;
   
   if (!hotelId) {
@@ -3440,7 +3440,7 @@ router.get('/operations', catchAsync(async (req, res, next) => {
  *       200:
  *         description: Marketing dashboard data
  */
-router.get('/marketing', catchAsync(async (req, res, next) => {
+router.get('/marketing', authorize('admin'), catchAsync(async (req, res, next) => {
   const { hotelId, period = 'month', startDate, endDate, channel = 'all' } = req.query;
   
   if (!hotelId) {
@@ -4099,7 +4099,7 @@ router.get('/marketing', catchAsync(async (req, res, next) => {
  *       200:
  *         description: Alerts and notifications data
  */
-router.get('/alerts', catchAsync(async (req, res, next) => {
+router.get('/alerts', authorize('admin', 'staff'), catchAsync(async (req, res, next) => {
   const { hotelId, severity = 'all', category = 'all', status = 'all', limit = 50 } = req.query;
   
   if (!hotelId) {
@@ -4681,7 +4681,7 @@ router.get('/alerts', catchAsync(async (req, res, next) => {
  *       200:
  *         description: System health monitoring data
  */
-router.get('/system-health', catchAsync(async (req, res, next) => {
+router.get('/system-health', authorize('admin'), catchAsync(async (req, res, next) => {
   const { hotelId, timeframe = '24h', component = 'all' } = req.query;
   
   if (!hotelId) {
@@ -5130,7 +5130,7 @@ router.get('/system-health', catchAsync(async (req, res, next) => {
  *       200:
  *         description: Generated report data
  */
-router.get('/reports', catchAsync(async (req, res, next) => {
+router.get('/reports', authorize('admin', 'staff'), catchAsync(async (req, res, next) => {
   const { 
     hotelId, 
     reportType = 'comprehensive', 

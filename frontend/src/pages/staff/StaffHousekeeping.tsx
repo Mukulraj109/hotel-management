@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Ca
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { TaskCompletionModal, getDefaultSteps } from '../../components/staff/TaskCompletionModal';
 import { 
   ClipboardCheck, 
   Clock, 
@@ -50,6 +51,8 @@ export default function StaffHousekeeping() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<HousekeepingTask | null>(null);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   useEffect(() => {
     fetchTasks();
@@ -100,6 +103,41 @@ export default function StaffHousekeeping() {
       }
     } catch (error) {
       console.error('Error updating task status:', error);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const handleCompleteClick = (task: HousekeepingTask) => {
+    setSelectedTask(task);
+    setShowCompletionModal(true);
+  };
+
+  const handleCompleteTask = async (completedSteps: string[]) => {
+    if (!selectedTask) return;
+
+    try {
+      setUpdating(true);
+      const response = await fetch(`/api/v1/housekeeping/${selectedTask._id}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          status: 'completed',
+          completedSteps: completedSteps,
+          completedAt: new Date().toISOString()
+        })
+      });
+
+      if (response.ok) {
+        await fetchTasks();
+        setShowCompletionModal(false);
+        setSelectedTask(null);
+      }
+    } catch (error) {
+      console.error('Error completing task:', error);
     } finally {
       setUpdating(false);
     }
@@ -297,7 +335,7 @@ export default function StaffHousekeeping() {
                       </div>
                       <Button 
                         size="sm" 
-                        onClick={() => updateTaskStatus(task._id, 'completed')}
+                        onClick={() => handleCompleteClick(task)}
                         disabled={updating}
                         className="bg-green-600 hover:bg-green-700"
                       >
@@ -353,6 +391,22 @@ export default function StaffHousekeeping() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Task Completion Modal */}
+      {selectedTask && (
+        <TaskCompletionModal
+          isOpen={showCompletionModal}
+          onClose={() => {
+            setShowCompletionModal(false);
+            setSelectedTask(null);
+          }}
+          onComplete={handleCompleteTask}
+          title="Complete Housekeeping Task"
+          taskName={`${selectedTask.roomId.roomNumber} - ${selectedTask.title}`}
+          steps={getDefaultSteps('housekeeping', selectedTask.taskType)}
+          loading={updating}
+        />
+      )}
     </div>
   );
 }

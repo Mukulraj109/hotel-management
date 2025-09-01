@@ -78,6 +78,18 @@ router.post('/', authenticate, catchAsync(async (req, res) => {
     throw new AppError('Booking not found', 404);
   }
 
+  // Simple automatic staff assignment
+  let assignedTo = null;
+  let status = 'pending';
+  const User = mongoose.model('User');
+  const staffList = await User.find({ hotelId: booking.hotelId, role: 'staff', isActive: true }).select('_id');
+  if (staffList.length > 0) {
+    // Pick a random staff member
+    const randomIndex = Math.floor(Math.random() * staffList.length);
+    assignedTo = staffList[randomIndex]._id;
+    status = 'assigned';
+  }
+
   // Guests can only create requests for their own bookings
   if (req.user.role === 'guest' && booking.userId.toString() !== req.user._id.toString()) {
     throw new AppError('You can only create requests for your own bookings', 403);
@@ -93,7 +105,9 @@ router.post('/', authenticate, catchAsync(async (req, res) => {
     priority: priority || 'medium',
     scheduledTime,
     items: items || [],
-    specialInstructions
+    specialInstructions,
+    assignedTo,
+    status
   });
 
   await serviceRequest.populate([

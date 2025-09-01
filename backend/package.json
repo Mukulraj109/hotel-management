@@ -12,6 +12,7 @@
     "test:watch": "jest --watch --detectOpenHandles",
     "test:coverage": "jest --coverage --detectOpenHandles",
     "seed": "node src/scripts/seed.js",
+    "generate-kpis": "node src/scripts/generateKPIs.js",
     "migrate": "node src/scripts/migrate.js",
     "generate-keys": "node src/scripts/generateKeys.js",
     "lint": "eslint src/**/*.js",

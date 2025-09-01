@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Users, Clock, CheckCircle, MessageSquare, Bell, RefreshCw, AlertTriangle } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { TaskCompletionModal, getDefaultSteps } from '../../components/staff/TaskCompletionModal';
 import { guestServiceService, GuestServiceRequest } from '../../services/guestService';
 import { formatDate } from '../../utils/formatters';
 import toast from 'react-hot-toast';
@@ -12,6 +13,8 @@ export default function StaffGuestServices() {
   const [requests, setRequests] = useState<GuestServiceRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [selectedRequest, setSelectedRequest] = useState<GuestServiceRequest | null>(null);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   useEffect(() => {
     fetchRequests();
@@ -39,6 +42,33 @@ export default function StaffGuestServices() {
     } catch (error) {
       console.error('Failed to update request status:', error);
       toast.error('Failed to update request status');
+    } finally {
+      setUpdating(null);
+    }
+  };
+
+  const handleCompleteClick = (request: GuestServiceRequest) => {
+    setSelectedRequest(request);
+    setShowCompletionModal(true);
+  };
+
+  const handleCompleteRequest = async (completedSteps: string[]) => {
+    if (!selectedRequest) return;
+
+    try {
+      setUpdating(selectedRequest._id);
+      await guestServiceService.updateServiceRequest(selectedRequest._id, { 
+        status: 'completed',
+        completedSteps: completedSteps,
+        completedTime: new Date().toISOString()
+      });
+      toast.success('Request completed successfully');
+      fetchRequests(); // Refresh the list
+      setShowCompletionModal(false);
+      setSelectedRequest(null);
+    } catch (error) {
+      console.error('Failed to complete request:', error);
+      toast.error('Failed to complete request');
     } finally {
       setUpdating(null);
     }
@@ -96,7 +126,7 @@ export default function StaffGuestServices() {
           <Button 
             size="sm" 
             variant="outline"
-            onClick={() => updateRequestStatus(request._id, 'completed')}
+            onClick={() => handleCompleteClick(request)}
             disabled={isUpdating}
           >
             {isUpdating ? <RefreshCw className="h-4 w-4 animate-spin" /> : 'Complete'}
@@ -304,6 +334,22 @@ export default function StaffGuestServices() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Task Completion Modal */}
+      {selectedRequest && (
+        <TaskCompletionModal
+          isOpen={showCompletionModal}
+          onClose={() => {
+            setShowCompletionModal(false);
+            setSelectedRequest(null);
+          }}
+          onComplete={handleCompleteRequest}
+          title="Complete Guest Service Request"
+          taskName={`${selectedRequest.bookingId?.bookingNumber ? `Room ${selectedRequest.bookingId.bookingNumber} - ` : ''}${selectedRequest.title}`}
+          steps={getDefaultSteps('guest_service', selectedRequest.serviceType)}
+          loading={updating === selectedRequest._id}
+        />
+      )}
     </div>
   );
 }

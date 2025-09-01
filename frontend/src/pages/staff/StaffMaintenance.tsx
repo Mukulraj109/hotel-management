@@ -4,6 +4,7 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Wrench, Clock, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { TaskCompletionModal, getDefaultSteps } from '../../components/staff/TaskCompletionModal';
 import { maintenanceService, MaintenanceTask } from '../../services/maintenanceService';
 
 interface GroupedTasks {
@@ -18,6 +19,8 @@ export default function StaffMaintenance() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [selectedTask, setSelectedTask] = useState<MaintenanceTask | null>(null);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
 
   useEffect(() => {
     fetchTasks();
@@ -53,12 +56,23 @@ export default function StaffMaintenance() {
     }
   };
 
-  const handleCompleteTask = async (taskId: string) => {
+  const handleCompleteClick = (task: MaintenanceTask) => {
+    setSelectedTask(task);
+    setShowCompletionModal(true);
+  };
+
+  const handleCompleteTask = async (completedSteps: string[]) => {
+    if (!selectedTask) return;
+
     try {
-      setActionLoading(taskId);
-      await maintenanceService.completeTask(taskId);
+      setActionLoading(selectedTask._id);
+      await maintenanceService.completeTask(selectedTask._id, {
+        completedSteps: completedSteps,
+        completedAt: new Date().toISOString()
+      });
       await fetchTasks(); // Refresh data
-      // Show success feedback (optional)
+      setShowCompletionModal(false);
+      setSelectedTask(null);
       console.log('Task completed successfully');
     } catch (err) {
       console.error('Failed to complete task:', err);
@@ -261,7 +275,7 @@ export default function StaffMaintenance() {
                     <Button 
                       size="sm" 
                       variant="outline"
-                      onClick={() => handleCompleteTask(task._id)}
+                      onClick={() => handleCompleteClick(task)}
                       disabled={actionLoading === task._id}
                     >
                       {actionLoading === task._id ? (
@@ -321,6 +335,22 @@ export default function StaffMaintenance() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Task Completion Modal */}
+      {selectedTask && (
+        <TaskCompletionModal
+          isOpen={showCompletionModal}
+          onClose={() => {
+            setShowCompletionModal(false);
+            setSelectedTask(null);
+          }}
+          onComplete={handleCompleteTask}
+          title="Complete Maintenance Task"
+          taskName={`${selectedTask.roomId?.roomNumber ? `Room ${selectedTask.roomId.roomNumber} - ` : ''}${selectedTask.title}`}
+          steps={getDefaultSteps('maintenance', selectedTask.category)}
+          loading={actionLoading === selectedTask._id}
+        />
+      )}
     </div>
   );
 }
