@@ -52,6 +52,7 @@ import roomInventoryRoutes from './routes/roomInventory.js';
 import photoUploadRoutes from './routes/photoUpload.js';
 import staffTaskRoutes from './routes/staffTasks.js';
 import checkoutInventoryRoutes from './routes/checkoutInventory.js';
+import dailyRoutineCheckRoutes from './routes/dailyRoutineCheck.js';
 import testCheckoutsRoutes from './routes/testCheckouts.js';
 import attractionsRoutes from './routes/attractions.js';
 
@@ -184,6 +185,7 @@ app.use('/api/v1/room-inventory', roomInventoryRoutes);
 app.use('/api/v1/photos', photoUploadRoutes);
 app.use('/api/v1/staff-tasks', staffTaskRoutes);
 app.use('/api/v1/checkout-inventory', checkoutInventoryRoutes);
+app.use('/api/v1/daily-routine-check', dailyRoutineCheckRoutes);
 app.use('/api/v1/test', testCheckoutsRoutes);
 app.use('/api/v1/attractions', attractionsRoutes);
 

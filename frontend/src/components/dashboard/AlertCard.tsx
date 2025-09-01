@@ -37,13 +37,13 @@ export function AlertCard({
   const getTypeIcon = (type: string) => {
     const icons = {
       incident: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
             d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 19c-.77.833.192 2.5 1.732 2.5z" />
         </svg>
       ),
       maintenance: (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-full h-full" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
             d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -74,15 +74,15 @@ export function AlertCard({
   if (compact) {
     return (
       <div className={cn(
-        'flex items-center p-3 border-l-4 bg-white shadow-sm',
+        'flex items-center p-2 sm:p-3 border-l-4 bg-white shadow-sm',
         getSeverityColor(alert.severity),
         className
       )}>
-        <div className="flex-shrink-0 mr-3 text-current">
-          {getTypeIcon(alert.type)}
+        <div className="flex-shrink-0 mr-2 sm:mr-3 text-current">
+          <div className="w-4 h-4 sm:w-5 sm:h-5">{getTypeIcon(alert.type)}</div>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">{alert.title}</p>
+          <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">{alert.title}</p>
           <p className="text-xs text-gray-500">{formatRelativeTime(alert.createdAt || alert.timestamp)}</p>
         </div>
         {showActions && onViewDetails && (
@@ -90,9 +90,9 @@ export function AlertCard({
             variant="ghost"
             size="sm"
             onClick={() => onViewDetails(alert)}
-            className="ml-2 p-1"
+            className="ml-1 sm:ml-2 p-1"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                 d="M9 5l7 7-7 7" />
             </svg>
@@ -108,36 +108,37 @@ export function AlertCard({
       getSeverityColor(alert.severity),
       className
     )}>
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between">
-          <div className="flex items-start space-x-3">
+      <CardContent className="p-3 sm:p-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="flex items-start space-x-2 sm:space-x-3 min-w-0 flex-1">
             <div className="flex-shrink-0 text-current">
-              {getTypeIcon(alert.type)}
+              <div className="w-4 h-4 sm:w-5 sm:h-5">{getTypeIcon(alert.type)}</div>
             </div>
-            <div className="flex-1">
-              <div className="flex items-center space-x-2 mb-1">
-                <h4 className="text-sm font-medium text-gray-900">{alert.title}</h4>
-                <Badge variant="secondary" size="sm">
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mb-1">
+                <h4 className="text-sm font-medium text-gray-900 truncate">{alert.title}</h4>
+                <Badge variant="secondary" size="sm" className="self-start">
                   {alert.severity}
                 </Badge>
               </div>
-              <p className="text-sm text-gray-600 mb-2">{alert.message}</p>
-              <div className="flex items-center space-x-4 text-xs text-gray-500">
-                <span>Type: {alert.type}</span>
-                {alert.hotel && <span>Hotel: {alert.hotel}</span>}
-                {alert.guest && <span>Guest: {alert.guest}</span>}
-                <span>{formatRelativeTime(alert.createdAt || alert.timestamp)}</span>
+              <p className="text-sm text-gray-600 mb-2 line-clamp-2">{alert.message}</p>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 text-xs text-gray-500">
+                <span className="truncate">Type: {alert.type}</span>
+                {alert.hotel && <span className="truncate">Hotel: {alert.hotel}</span>}
+                {alert.guest && <span className="truncate">Guest: {alert.guest}</span>}
+                <span className="whitespace-nowrap">{formatRelativeTime(alert.createdAt || alert.timestamp)}</span>
               </div>
             </div>
           </div>
 
           {showActions && (
-            <div className="flex items-center space-x-2 ml-4">
+            <div className="flex items-center space-x-1 sm:space-x-2 flex-shrink-0">
               {onViewDetails && (
                 <Button
                   variant="secondary"
                   size="sm"
                   onClick={() => onViewDetails(alert)}
+                  className="text-xs sm:text-sm px-2 sm:px-3"
                 >
                   Details
                 </Button>
@@ -147,6 +148,7 @@ export function AlertCard({
                   variant="primary"
                   size="sm"
                   onClick={() => onAcknowledge(alert.id)}
+                  className="text-xs sm:text-sm px-2 sm:px-3"
                 >
                   Acknowledge
                 </Button>
@@ -160,10 +162,10 @@ export function AlertCard({
             <Button
               variant="ghost"
               size="sm"
-              className="text-blue-600 hover:text-blue-700"
+              className="text-blue-600 hover:text-blue-700 text-xs sm:text-sm px-2 sm:px-3"
               onClick={() => window.open(alert.actionUrl, '_blank')}
             >
-              {alert.action} →
+              <span className="truncate">{alert.action} →</span>
             </Button>
           </div>
         )}

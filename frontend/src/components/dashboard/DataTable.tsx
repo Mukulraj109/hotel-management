@@ -100,18 +100,18 @@ export function DataTable<T extends Record<string, any>>({
   const getSortIcon = (columnKey: keyof T | string) => {
     if (!sortConfig || sortConfig.key !== columnKey) {
       return (
-        <svg className="w-4 h-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-3 h-3 sm:w-4 sm:h-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
         </svg>
       );
     }
 
     return sortConfig.direction === 'asc' ? (
-      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
       </svg>
     ) : (
-      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 13l-5 5m0 0l-5-5m5 5V6" />
       </svg>
     );
@@ -120,12 +120,12 @@ export function DataTable<T extends Record<string, any>>({
   return (
     <Card className={cn('overflow-hidden', className)}>
       {(title || searchable || actions) && (
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <div>
-              {title && <CardTitle>{title}</CardTitle>}
+        <CardHeader className="pb-3 sm:pb-4 px-4 sm:px-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="min-w-0">
+              {title && <CardTitle className="text-base sm:text-lg truncate">{title}</CardTitle>}
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
               {searchable && (
                 <Input
                   placeholder={searchPlaceholder}
@@ -134,10 +134,10 @@ export function DataTable<T extends Record<string, any>>({
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-64"
+                  className="w-full sm:w-64 text-sm"
                 />
               )}
-              {actions}
+              {actions && <div className="flex-shrink-0">{actions}</div>}
             </div>
           </div>
         </CardHeader>
@@ -145,23 +145,23 @@ export function DataTable<T extends Record<string, any>>({
 
       <CardContent className="p-0 flex-1 flex flex-col min-h-0">
         <div className="overflow-x-auto scrollbar-thin flex-1">
-          <table className="w-full">
+          <table className="w-full min-w-full">
             <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
               <tr>
                 {columns.map((column, index) => (
                   <th
                     key={index}
                     className={cn(
-                      'px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider',
+                      'px-3 sm:px-6 py-2 sm:py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap',
                       column.align === 'center' && 'text-center',
                       column.align === 'right' && 'text-right',
                       (column.sortable || sortable) && 'cursor-pointer hover:text-gray-700',
                     )}
-                    style={{ width: column.width }}
+                    style={{ width: column.width, minWidth: '100px' }}
                     onClick={() => (column.sortable || sortable) && handleSort(column.key)}
                   >
                     <div className="flex items-center space-x-1">
-                      <span>{column.header}</span>
+                      <span className="truncate">{column.header}</span>
                       {(column.sortable || sortable) && getSortIcon(column.key)}
                     </div>
                   </th>
@@ -173,8 +173,8 @@ export function DataTable<T extends Record<string, any>>({
                 Array.from({ length: pageSize }, (_, index) => (
                   <tr key={index}>
                     {columns.map((_, colIndex) => (
-                      <td key={colIndex} className="px-6 py-4">
-                        <div className="animate-pulse bg-gray-200 h-4 rounded"></div>
+                      <td key={colIndex} className="px-3 sm:px-6 py-3 sm:py-4">
+                        <div className="animate-pulse bg-gray-200 h-3 sm:h-4 rounded"></div>
                       </td>
                     ))}
                   </tr>
@@ -183,7 +183,7 @@ export function DataTable<T extends Record<string, any>>({
                 <tr>
                   <td
                     colSpan={columns.length}
-                    className="px-6 py-12 text-center text-gray-500"
+                    className="px-3 sm:px-6 py-8 sm:py-12 text-center text-gray-500 text-sm"
                   >
                     {emptyMessage}
                   </td>
@@ -204,12 +204,16 @@ export function DataTable<T extends Record<string, any>>({
                         <td
                           key={colIndex}
                           className={cn(
-                            'px-6 py-4 whitespace-nowrap text-sm text-gray-900',
+                            'px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-900',
+                            'max-w-0 truncate',
                             column.align === 'center' && 'text-center',
                             column.align === 'right' && 'text-right'
                           )}
+                          style={{ maxWidth: '200px' }}
                         >
-                          {column.render ? column.render(value, row) : value}
+                          <div className="truncate" title={String(column.render ? column.render(value, row) : value)}>
+                            {column.render ? column.render(value, row) : value}
+                          </div>
                         </td>
                       );
                     })}
@@ -221,20 +225,21 @@ export function DataTable<T extends Record<string, any>>({
         </div>
 
         {pagination && totalPages > 1 && (
-          <div className="px-6 py-4 border-t border-gray-200 flex items-center justify-between">
-            <div className="text-sm text-gray-700">
+          <div className="px-3 sm:px-6 py-3 sm:py-4 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-xs sm:text-sm text-gray-700 text-center sm:text-left">
               Showing {startIndex + 1} to {Math.min(startIndex + pageSize, sortedData.length)} of {sortedData.length} results
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1 sm:space-x-2">
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
+                className="text-xs px-2 sm:px-3"
               >
-                Previous
+                Prev
               </Button>
-              <div className="flex items-center space-x-1">
+              <div className="hidden sm:flex items-center space-x-1">
                 {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                   const pageNumber = i + 1;
                   return (
@@ -243,17 +248,22 @@ export function DataTable<T extends Record<string, any>>({
                       variant={currentPage === pageNumber ? 'primary' : 'ghost'}
                       size="sm"
                       onClick={() => setCurrentPage(pageNumber)}
+                      className="text-xs min-w-[32px]"
                     >
                       {pageNumber}
                     </Button>
                   );
                 })}
               </div>
+              <div className="sm:hidden text-xs text-gray-500">
+                {currentPage} / {totalPages}
+              </div>
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}
+                className="text-xs px-2 sm:px-3"
               >
                 Next
               </Button>

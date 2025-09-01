@@ -11,7 +11,8 @@ import {
   Package,
   TrendingUp,
   RefreshCw,
-  Receipt
+  Receipt,
+  CheckSquare
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -284,6 +285,14 @@ export default function StaffDashboard() {
               >
                 <Package className="w-4 h-4" />
                 <span>Inventory</span>
+              </Button>
+              <Button
+                onClick={() => window.location.href = '/staff/daily-routine-check'}
+                variant="secondary"
+                className="flex items-center justify-center space-x-2"
+              >
+                <CheckSquare className="w-4 h-4" />
+                <span>Daily Check</span>
               </Button>
             </div>
           </Card>

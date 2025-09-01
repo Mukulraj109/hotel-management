@@ -54,38 +54,42 @@ const BillingFilters: React.FC<BillingFiltersProps> = ({
   };
 
   return (
-    <Card className="p-6 mb-6">
+    <Card className="p-4 sm:p-6 mb-6">
       <div className="space-y-4">
         {/* Search Bar */}
-        <form onSubmit={handleSearchSubmit} className="flex gap-2">
+        <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-2">
           <Input
             type="text"
             placeholder="Search invoices, bookings, guests..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1"
+            className="flex-1 text-sm"
           />
-          <Button type="submit">Search</Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onExport}
-            disabled={isExporting}
-          >
-            {isExporting ? 'Exporting...' : 'Export'}
-          </Button>
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" className="flex-1 sm:flex-none">Search</Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onExport}
+              disabled={isExporting}
+              className="flex-1 sm:flex-none"
+            >
+              {isExporting ? 'Exporting...' : 'Export'}
+            </Button>
+          </div>
         </form>
 
         {/* Filter Controls */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
               Type
             </label>
             <select
               value={localFilters.type || 'all'}
               onChange={(e) => handleFilterChange('type', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Types</option>
               <option value="invoice">Invoices</option>
@@ -95,13 +99,13 @@ const BillingFilters: React.FC<BillingFiltersProps> = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
               Status
             </label>
             <select
               value={localFilters.status || ''}
               onChange={(e) => handleFilterChange('status', e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">All Statuses</option>
               <option value="paid">Paid</option>
@@ -115,30 +119,32 @@ const BillingFilters: React.FC<BillingFiltersProps> = ({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
               Start Date
             </label>
             <Input
               type="date"
               value={localFilters.startDate || ''}
               onChange={(e) => handleFilterChange('startDate', e.target.value)}
+              className="text-sm"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
               End Date
             </label>
             <Input
               type="date"
               value={localFilters.endDate || ''}
               onChange={(e) => handleFilterChange('endDate', e.target.value)}
+              className="text-sm"
             />
           </div>
         </div>
 
         <div className="flex justify-end">
-          <Button variant="outline" onClick={clearFilters}>
+          <Button variant="outline" size="sm" onClick={clearFilters} className="text-sm">
             Clear Filters
           </Button>
         </div>
@@ -165,32 +171,32 @@ const SummaryStats: React.FC<SummaryStatsProps> = ({ summary, isLoading }) => {
   }
 
   return (
-    <Card className="p-6 mb-6">
-      <h3 className="text-lg font-semibold mb-4">Summary Statistics</h3>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="text-center">
-          <div className="text-2xl font-bold text-blue-600">
+    <Card className="p-4 sm:p-6 mb-6">
+      <h3 className="text-base sm:text-lg font-semibold mb-4">Summary Statistics</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-100">
+          <div className="text-lg sm:text-2xl font-bold text-blue-600 truncate">
             {summary.totalTransactions}
           </div>
-          <div className="text-sm text-gray-600">Total Transactions</div>
+          <div className="text-xs sm:text-sm text-gray-600 mt-1">Total Transactions</div>
         </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold text-green-600">
+        <div className="text-center p-3 bg-green-50 rounded-lg border border-green-100">
+          <div className="text-lg sm:text-2xl font-bold text-green-600 truncate">
             {billingHistoryService.formatCurrency(summary.totalPaymentAmount)}
           </div>
-          <div className="text-sm text-gray-600">Total Payments</div>
+          <div className="text-xs sm:text-sm text-gray-600 mt-1">Total Payments</div>
         </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold text-orange-600">
+        <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-100">
+          <div className="text-lg sm:text-2xl font-bold text-orange-600 truncate">
             {billingHistoryService.formatCurrency(summary.totalInvoiceAmount)}
           </div>
-          <div className="text-sm text-gray-600">Total Invoiced</div>
+          <div className="text-xs sm:text-sm text-gray-600 mt-1">Total Invoiced</div>
         </div>
-        <div className="text-center">
-          <div className="text-2xl font-bold text-purple-600">
+        <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-100">
+          <div className="text-lg sm:text-2xl font-bold text-purple-600 truncate">
             {billingHistoryService.formatCurrency(summary.totalRefundAmount)}
           </div>
-          <div className="text-sm text-gray-600">Total Refunds</div>
+          <div className="text-xs sm:text-sm text-gray-600 mt-1">Total Refunds</div>
         </div>
       </div>
     </Card>
@@ -430,36 +436,48 @@ const Pagination: React.FC<PaginationProps> = ({ currentPage, totalPages, onPage
   if (totalPages <= 1) return null;
 
   return (
-    <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200 sm:px-6">
+    <div className="flex flex-col sm:flex-row items-center justify-between px-4 py-3 bg-white border-t border-gray-200 sm:px-6 gap-3">
       <div className="flex items-center">
-        <p className="text-sm text-gray-700">
+        <p className="text-xs sm:text-sm text-gray-700">
           Page <span className="font-medium">{currentPage}</span> of{' '}
           <span className="font-medium">{totalPages}</span>
         </p>
       </div>
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center space-x-1 sm:space-x-2">
         <Button
           variant="outline"
+          size="sm"
           onClick={() => onPageChange(currentPage - 1)}
           disabled={currentPage <= 1}
+          className="text-xs px-2 sm:px-3"
         >
-          Previous
+          Prev
         </Button>
         
-        {pages.map((page) => (
-          <Button
-            key={page}
-            variant={page === currentPage ? 'primary' : 'outline'}
-            onClick={() => onPageChange(page)}
-          >
-            {page}
-          </Button>
-        ))}
+        <div className="hidden sm:flex items-center space-x-1">
+          {pages.map((page) => (
+            <Button
+              key={page}
+              variant={page === currentPage ? 'primary' : 'outline'}
+              size="sm"
+              onClick={() => onPageChange(page)}
+              className="text-xs min-w-[32px]"
+            >
+              {page}
+            </Button>
+          ))}
+        </div>
+        
+        <div className="sm:hidden text-xs text-gray-500">
+          {currentPage} / {totalPages}
+        </div>
         
         <Button
           variant="outline"
+          size="sm"
           onClick={() => onPageChange(currentPage + 1)}
           disabled={currentPage >= totalPages}
+          className="text-xs px-2 sm:px-3"
         >
           Next
         </Button>
@@ -530,10 +548,10 @@ export default function BillingHistory() {
   };
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Billing & Payments History</h1>
-        <p className="text-gray-600 mt-1">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Billing & Payments History</h1>
+        <p className="text-sm sm:text-base text-gray-600 mt-1">
           Comprehensive view of invoices, transactions, and refunds
         </p>
       </div>

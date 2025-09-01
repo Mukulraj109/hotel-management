@@ -14,11 +14,13 @@ import {
   Home,
   Bell,
   MessageSquare,
-  CreditCard
+  CreditCard,
+  CheckSquare
 } from 'lucide-react';
 
 const navigation = [
   { name: 'Dashboard', href: '/staff', icon: Home },
+  { name: 'Daily Routine Check', href: '/staff/daily-routine-check', icon: CheckSquare },
   { name: 'Housekeeping', href: '/staff/housekeeping', icon: ClipboardCheck },
   { name: 'Maintenance', href: '/staff/maintenance', icon: Wrench },
   { name: 'Guest Services', href: '/staff/guest-services', icon: Users },

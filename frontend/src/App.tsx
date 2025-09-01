@@ -59,6 +59,7 @@ import StaffRooms from './pages/staff/StaffRooms';
 import StaffInventory from './pages/staff/StaffInventory';
 import StaffReports from './pages/staff/StaffReports';
 import CheckoutInventory from './pages/staff/CheckoutInventory';
+import DailyRoutineCheck from './pages/staff/DailyRoutineCheck';
 import { DailyInventoryCheckForm } from './components/staff/DailyInventoryCheckForm';
 
 // Layout Components
@@ -155,9 +156,10 @@ function App() {
                 <Route path="maintenance" element={<StaffMaintenance />} />
                 <Route path="guest-services" element={<StaffGuestServices />} />
                 <Route path="rooms" element={<StaffRooms />} />
-                                  <Route path="inventory" element={<StaffInventory />} />
-                  <Route path="checkout-inventory" element={<CheckoutInventory />} />
-                  <Route path="reports" element={<StaffReports />} />
+                                                  <Route path="inventory" element={<StaffInventory />} />
+                <Route path="daily-routine-check" element={<DailyRoutineCheck />} />
+                <Route path="checkout-inventory" element={<CheckoutInventory />} />
+                <Route path="reports" element={<StaffReports />} />
               </Route>
 
               {/* Catch all route */}

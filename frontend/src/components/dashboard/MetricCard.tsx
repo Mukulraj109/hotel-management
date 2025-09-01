@@ -88,22 +88,22 @@ export function MetricCard({
 
   const sizeClasses = {
     sm: {
-      padding: 'p-4',
+      padding: 'p-3 sm:p-4',
       title: 'text-xs',
-      value: 'text-lg',
-      icon: 'w-5 h-5',
+      value: 'text-base sm:text-lg',
+      icon: 'w-4 h-4 sm:w-5 sm:h-5',
     },
     md: {
-      padding: 'p-6',
-      title: 'text-sm',
-      value: 'text-2xl',
-      icon: 'w-6 h-6',
+      padding: 'p-4 sm:p-6',
+      title: 'text-xs sm:text-sm',
+      value: 'text-xl sm:text-2xl',
+      icon: 'w-5 h-5 sm:w-6 sm:h-6',
     },
     lg: {
-      padding: 'p-8',
-      title: 'text-base',
-      value: 'text-3xl',
-      icon: 'w-8 h-8',
+      padding: 'p-6 sm:p-8',
+      title: 'text-sm sm:text-base',
+      value: 'text-2xl sm:text-3xl',
+      icon: 'w-6 h-6 sm:w-8 sm:h-8',
     },
   };
 
@@ -139,13 +139,14 @@ export function MetricCard({
       <CardContent className={cn(sizeClasses[size].padding, 'space-y-2')}>
         <div className="flex items-center justify-between">
           <p className={cn(
-            'font-medium text-gray-600 uppercase tracking-wide',
+            'font-medium text-gray-600 uppercase tracking-wide truncate pr-2',
             sizeClasses[size].title
           )}>
             {title}
           </p>
           {icon && (
             <div className={cn(
+              'flex-shrink-0',
               colorClasses[color].icon,
               sizeClasses[size].icon
             )}>
@@ -163,18 +164,18 @@ export function MetricCard({
               )}></div>
             </div>
           ) : (
-            <div className="flex items-baseline space-x-1">
+            <div className="flex items-baseline space-x-1 min-w-0">
               {prefix && (
-                <span className="text-sm text-gray-500">{prefix}</span>
+                <span className="text-xs sm:text-sm text-gray-500 flex-shrink-0">{prefix}</span>
               )}
               <p className={cn(
-                'font-bold text-gray-900',
+                'font-bold text-gray-900 truncate',
                 sizeClasses[size].value
               )}>
                 {formatValue()}
               </p>
               {suffix && (
-                <span className="text-sm text-gray-500">{suffix}</span>
+                <span className="text-xs sm:text-sm text-gray-500 flex-shrink-0">{suffix}</span>
               )}
             </div>
           )}
