@@ -28,6 +28,9 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { Tabs } from '../../components/ui/Tabs';
 import CorporateCompanyManagement from '../../components/admin/CorporateCompanyManagement';
 import GroupBookingManagement from '../../components/admin/GroupBookingManagement';
+import CorporateCreditManagement from '../../components/admin/CorporateCreditManagement';
+import GSTManagement from '../../components/admin/GSTManagement';
+import { api } from '../../services/api';
 
 interface CorporateOverviewData {
   companies: {
@@ -73,37 +76,13 @@ interface MonthlyTrend {
 
 // API functions
 const fetchCorporateOverview = async (): Promise<{ overview: CorporateOverviewData; topCompanies: TopCompany[] }> => {
-  const token = localStorage.getItem('token');
-  const response = await fetch('/api/v1/corporate/admin/dashboard-overview', {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-  
-  if (!response.ok) {
-    throw new Error('Failed to fetch corporate overview');
-  }
-  
-  const data = await response.json();
-  return data.data;
+  const response = await api.get('/corporate/admin/dashboard-overview');
+  return response.data.data;
 };
 
 const fetchMonthlyTrends = async (months: number = 12): Promise<{ trends: MonthlyTrend[] }> => {
-  const token = localStorage.getItem('token');
-  const response = await fetch(`/api/v1/corporate/admin/monthly-trends?months=${months}`, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-  });
-  
-  if (!response.ok) {
-    throw new Error('Failed to fetch monthly trends');
-  }
-  
-  const data = await response.json();
-  return data.data;
+  const response = await api.get(`/corporate/admin/monthly-trends?months=${months}`);
+  return response.data.data;
 };
 
 export default function AdminCorporateDashboard() {
@@ -309,20 +288,12 @@ export default function AdminCorporateDashboard() {
 
           {/* Credit Tab */}
           {activeTab === 'credit' && (
-            <div className="text-center py-12">
-              <CreditCard className="mx-auto h-12 w-12 text-gray-300 mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Credit Management</h3>
-              <p className="text-gray-500">Corporate credit management interface coming soon.</p>
-            </div>
+            <CorporateCreditManagement />
           )}
 
           {/* GST Tab */}
           {activeTab === 'gst' && (
-            <div className="text-center py-12">
-              <Receipt className="mx-auto h-12 w-12 text-gray-300 mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">GST & Invoicing</h3>
-              <p className="text-gray-500">GST calculation and invoice generation interface coming soon.</p>
-            </div>
+            <GSTManagement />
           )}
         </div>
       </Tabs>
@@ -354,56 +325,60 @@ function OverviewContent({ overview, topCompanies, revenueChartData, companyDist
     <div className="space-y-6">
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <MetricCard
-          title="Corporate Companies"
-          value={overview.companies.total}
-          icon={<Building2 className="w-5 h-5" />}
-          trend={overview.companies.newThisMonth > 0 ? {
-            value: overview.companies.newThisMonth,
-            label: 'new this month',
-            direction: 'up'
-          } : undefined}
-          className="bg-blue-50 border-blue-200"
-        />
+                 <MetricCard
+           title="Corporate Companies"
+           value={overview.companies.total}
+           type="number"
+           icon={<Building2 className="w-5 h-5" />}
+           trend={overview.companies.newThisMonth > 0 ? {
+             value: overview.companies.newThisMonth,
+             label: 'new this month',
+             direction: 'up'
+           } : undefined}
+           className="bg-blue-50 border-blue-200"
+         />
+         
+         <MetricCard
+           title="Monthly Bookings"
+           value={overview.bookings.thisMonth}
+           type="number"
+           icon={<Calendar className="w-5 h-5" />}
+           trend={{
+             value: overview.bookings.totalYearly,
+             label: 'total this year',
+             direction: 'neutral'
+           }}
+           className="bg-green-50 border-green-200"
+         />
         
-        <MetricCard
-          title="Monthly Bookings"
-          value={overview.bookings.thisMonth}
-          icon={<Calendar className="w-5 h-5" />}
-          trend={{
-            value: overview.bookings.totalYearly,
-            label: 'total this year',
-            direction: 'neutral'
-          }}
-          className="bg-green-50 border-green-200"
-        />
-        
-        <MetricCard
-          title="Monthly Revenue"
-          value={formatCurrency(overview.revenue.monthly)}
-          icon={<DollarSign className="w-5 h-5" />}
-          trend={{
-            value: formatCurrency(overview.revenue.yearly),
-            label: 'total this year',
-            direction: 'up'
-          }}
-          className="bg-purple-50 border-purple-200"
-        />
-        
-        <MetricCard
-          title="Credit Exposure"
-          value={formatCurrency(overview.credit.totalExposure)}
-          icon={<CreditCard className="w-5 h-5" />}
-          trend={overview.credit.overdueAmount > 0 ? {
-            value: formatCurrency(overview.credit.overdueAmount),
-            label: 'overdue amount',
-            direction: 'down'
-          } : undefined}
-          className={cn(
-            "border-2",
-            overview.credit.overdueAmount > 50000 ? "bg-red-50 border-red-200" : "bg-yellow-50 border-yellow-200"
-          )}
-        />
+                 <MetricCard
+           title="Monthly Revenue"
+           value={overview.revenue.monthly}
+           type="currency"
+           icon={<DollarSign className="w-5 h-5" />}
+           trend={{
+             value: overview.revenue.yearly,
+             label: 'total this year',
+             direction: 'up'
+           }}
+           className="bg-purple-50 border-purple-200"
+         />
+         
+         <MetricCard
+           title="Credit Exposure"
+           value={overview.credit.totalExposure}
+           type="currency"
+           icon={<CreditCard className="w-5 h-5" />}
+           trend={overview.credit.overdueAmount > 0 ? {
+             value: overview.credit.overdueAmount,
+             label: 'overdue amount',
+             direction: 'down'
+           } : undefined}
+           className={cn(
+             "border-2",
+             overview.credit.overdueAmount > 50000 ? "bg-red-50 border-red-200" : "bg-yellow-50 border-yellow-200"
+           )}
+         />
       </div>
 
       {/* Additional Metrics Row */}

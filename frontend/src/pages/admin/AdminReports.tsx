@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import ReportBuilder from './reports/ReportBuilder';
 import BusinessIntelligenceDashboard from '../../components/reports/BusinessIntelligenceDashboard';
+import ExecutiveDashboard from '../../components/admin/ExecutiveDashboard';
 import { MetricCard, ChartCard, LineChart, BarChart } from '../../components/dashboard';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -12,7 +13,7 @@ import { formatCurrency, formatPercentage } from '../../utils/dashboardUtils';
 
 export default function AdminReports() {
   const { user } = useAuth();
-  const [currentView, setCurrentView] = useState<'business-intelligence' | 'overview' | 'builder'>('business-intelligence');
+  const [currentView, setCurrentView] = useState<'executive' | 'business-intelligence' | 'overview' | 'builder'>('executive');
   const [selectedDateRange, setSelectedDateRange] = useState('thisYear');
   const [exportFormat, setExportFormat] = useState<'csv' | 'excel' | 'pdf'>('csv');
   const [autoRefresh, setAutoRefresh] = useState(false);
@@ -42,6 +43,10 @@ export default function AdminReports() {
 
   if (currentView === 'builder') {
     return <ReportBuilder />;
+  }
+
+  if (currentView === 'executive') {
+    return <ExecutiveDashboard />;
   }
 
   if (currentView === 'business-intelligence') {
@@ -100,6 +105,12 @@ export default function AdminReports() {
           <p className="text-gray-600 mt-1">Comprehensive business intelligence and reporting</p>
         </div>
         <div className="flex items-center space-x-3">
+          <Button
+            variant={currentView === 'executive' ? 'primary' : 'secondary'}
+            onClick={() => setCurrentView('executive')}
+          >
+            Executive Dashboard
+          </Button>
           <Button
             variant={currentView === 'business-intelligence' ? 'primary' : 'secondary'}
             onClick={() => setCurrentView('business-intelligence')}

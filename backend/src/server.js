@@ -56,6 +56,7 @@ import checkoutInventoryRoutes from './routes/checkoutInventory.js';
 import dailyRoutineCheckRoutes from './routes/dailyRoutineCheck.js';
 import testCheckoutsRoutes from './routes/testCheckouts.js';
 import attractionsRoutes from './routes/attractions.js';
+import analyticsRoutes from './routes/analytics.js';
 
 const app = express();
 
@@ -190,6 +191,7 @@ app.use('/api/v1/daily-routine-check', dailyRoutineCheckRoutes);
 app.use('/api/v1/test', testCheckoutsRoutes);
 app.use('/api/v1/attractions', attractionsRoutes);
 app.use('/api/v1/corporate', corporateRoutes);
+app.use('/api/v1/analytics', analyticsRoutes);
 
 // 404 handler
 app.all('*', (req, res) => {

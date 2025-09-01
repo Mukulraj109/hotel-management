@@ -1,3 +1,1 @@
- now in this page i want to add feedback that will create a new feedback add in this and also update all the other review data so according to review fields create a       
-   feedback form and create a model that will open when i click on a button or whatever u think is more perfect so check backend or routeds or anything it needs but the      
-  only those user will be able to give feedback the user has booked any room in our hotel and  status of that room is checkedout
+so we have only one staff in our hotel but when we have to add more staff in that case for that we have to create a form for submittion so we have to add this part in the admin dashboard  for that see the staff model check if there is a route for creating the staff is present or not then create them and then create the frontend also and then connect it properly 

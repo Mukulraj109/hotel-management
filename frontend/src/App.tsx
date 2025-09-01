@@ -30,6 +30,7 @@ import NotificationsDashboard from './pages/guest/NotificationsDashboard';
 import DigitalKeysDashboard from './pages/guest/DigitalKeysDashboard';
 import MeetUpRequestsDashboard from './pages/guest/MeetUpRequestsDashboard';
 import GuestBillingHistory from './pages/guest/GuestBillingHistory';
+import GuestFeedback from './pages/guest/GuestFeedback';
 
 // Admin Pages
 import AdminLogin from './pages/admin/AdminLogin';
@@ -120,6 +121,7 @@ function App() {
             <Route path="profile" element={<GuestProfile />} />
                         <Route path="requests" element={<GuestRequests />} />
             <Route path="inventory-requests" element={<InventoryRequests />} />
+            <Route path="feedback" element={<GuestFeedback />} />
           </Route>
 
               {/* Admin Routes */}

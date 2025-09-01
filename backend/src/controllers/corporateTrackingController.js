@@ -42,11 +42,13 @@ export const getCorporateDashboardOverview = catchAsync(async (req, res, next) =
 
   // Corporate bookings metrics
   const totalCorporateBookings = await Booking.countDocuments({
+    hotelId: req.user.hotelId,
     'corporateBooking.corporateCompanyId': { $exists: true },
     createdAt: { $gte: startOfYear }
   });
 
   const monthlyBookings = await Booking.countDocuments({
+    hotelId: req.user.hotelId,
     'corporateBooking.corporateCompanyId': { $exists: true },
     createdAt: { $gte: startOfMonth, $lte: endOfMonth }
   });
@@ -55,6 +57,7 @@ export const getCorporateDashboardOverview = catchAsync(async (req, res, next) =
   const monthlyRevenue = await Booking.aggregate([
     {
       $match: {
+        hotelId: req.user.hotelId,
         'corporateBooking.corporateCompanyId': { $exists: true },
         createdAt: { $gte: startOfMonth, $lte: endOfMonth },
         status: { $nin: ['cancelled', 'no_show'] }
@@ -72,6 +75,7 @@ export const getCorporateDashboardOverview = catchAsync(async (req, res, next) =
   const yearlyRevenue = await Booking.aggregate([
     {
       $match: {
+        hotelId: req.user.hotelId,
         'corporateBooking.corporateCompanyId': { $exists: true },
         createdAt: { $gte: startOfYear },
         status: { $nin: ['cancelled', 'no_show'] }
@@ -87,10 +91,12 @@ export const getCorporateDashboardOverview = catchAsync(async (req, res, next) =
 
   // Group bookings metrics
   const activeGroupBookings = await GroupBooking.countDocuments({
+    hotelId: req.user.hotelId,
     status: { $in: ['draft', 'confirmed', 'partially_confirmed'] }
   });
 
   const upcomingGroupBookings = await GroupBooking.countDocuments({
+    hotelId: req.user.hotelId,
     checkIn: { $gte: currentDate },
     status: { $in: ['confirmed', 'partially_confirmed'] }
   });
@@ -99,6 +105,7 @@ export const getCorporateDashboardOverview = catchAsync(async (req, res, next) =
   const totalCreditExposure = await CorporateCredit.aggregate([
     {
       $match: {
+        hotelId: req.user.hotelId,
         transactionType: { $in: ['debit', 'adjustment'] },
         status: { $in: ['approved', 'pending'] }
       }
@@ -114,6 +121,7 @@ export const getCorporateDashboardOverview = catchAsync(async (req, res, next) =
   const overdueAmount = await CorporateCredit.aggregate([
     {
       $match: {
+        hotelId: req.user.hotelId,
         transactionType: { $in: ['debit', 'adjustment'] },
         status: 'approved',
         dueDate: { $lt: currentDate }
@@ -131,6 +139,7 @@ export const getCorporateDashboardOverview = catchAsync(async (req, res, next) =
   const topCompanies = await Booking.aggregate([
     {
       $match: {
+        hotelId: req.user.hotelId,
         'corporateBooking.corporateCompanyId': { $exists: true },
         createdAt: { $gte: startOfYear },
         status: { $nin: ['cancelled', 'no_show'] }

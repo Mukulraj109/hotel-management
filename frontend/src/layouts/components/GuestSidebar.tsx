@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Calendar, User, MessageSquare, Globe, Star, ConciergeBell, Bell, Key, Users, CreditCard, LogOut, Package } from 'lucide-react';
+import { Home, Calendar, User, MessageSquare, Globe, Star, ConciergeBell, Bell, Key, Users, CreditCard, LogOut, Package, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 const navigation = [
@@ -15,6 +15,7 @@ const navigation = [
   { name: 'Profile', href: '/app/profile', icon: User },
   { name: 'Requests', href: '/app/requests', icon: MessageSquare },
   { name: 'Inventory Requests', href: '/app/inventory-requests', icon: Package },
+  { name: 'Feedback', href: '/app/feedback', icon: MessageCircle },
 ];
 
 const publicNavigation = [
