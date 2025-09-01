@@ -1,5 +1,5 @@
-import { AdvancedReportingService } from '../services/analytics/AdvancedReportingService.js';
-import { ETLService } from '../services/analytics/ETLService.js';
+import AdvancedReportingService from '../services/analytics/AdvancedReportingService.js';
+import ETLService from '../services/analytics/ETLService.js';
 import PredictiveAnalyticsEngine from '../services/analytics/PredictiveAnalyticsEngine.js';
 import GuestSegmentationService from '../services/analytics/GuestSegmentationService.js';
 import { 
@@ -8,8 +8,8 @@ import {
   MonthlyRevenueAggregate,
   DataWarehouseHelpers 
 } from '../models/analytics/DataWarehouse.js';
-import { Booking } from '../models/Booking.js';
-import { Room } from '../models/Room.js';
+import Booking from '../models/Booking.js';
+import Room from '../models/Room.js';
 
 const reportingService = new AdvancedReportingService();
 const etlService = new ETLService();

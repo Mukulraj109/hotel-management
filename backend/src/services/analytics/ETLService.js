@@ -9,11 +9,11 @@ import Booking from '../../models/Booking.js';
 import User from '../../models/User.js';
 import Room from '../../models/Room.js';
 import Hotel from '../../models/Hotel.js';
-import { Logger } from '../../utils/logger.js';
+import logger from '../../utils/logger.js';
 
 class ETLService {
   constructor() {
-    this.logger = new Logger('ETLService');
+    this.logger = logger;
     this.isRunning = false;
     this.lastRunTime = null;
     

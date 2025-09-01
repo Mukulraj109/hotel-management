@@ -1,5 +1,5 @@
 import express from 'express';
-import { authMiddleware, roleMiddleware } from '../middleware/auth.js';
+import { authenticate, authorize } from '../middleware/auth.js';
 import { 
   generateReport,
   getReportStatus,
@@ -18,66 +18,66 @@ import {
 const router = express.Router();
 
 // Apply authentication middleware to all analytics routes
-router.use(authMiddleware);
+router.use(authenticate);
 
 // Basic report generation
-router.post('/reports/generate', roleMiddleware(['admin', 'manager']), generateReport);
-router.get('/reports/status/:reportId', roleMiddleware(['admin', 'manager']), getReportStatus);
-router.get('/reports/cached/:cacheKey', roleMiddleware(['admin', 'manager']), getCachedReport);
+router.post('/reports/generate', authorize(['admin', 'manager']), generateReport);
+router.get('/reports/status/:reportId', authorize(['admin', 'manager']), getReportStatus);
+router.get('/reports/cached/:cacheKey', authorize(['admin', 'manager']), getCachedReport);
 
 // Report management
-router.get('/reports/templates', roleMiddleware(['admin', 'manager']), getReportTemplates);
-router.delete('/reports/cache/:reportType?', roleMiddleware(['admin']), clearReportCache);
-router.post('/reports/schedule', roleMiddleware(['admin']), scheduleReport);
-router.get('/reports/export/:reportId/:format', roleMiddleware(['admin', 'manager']), exportReport);
+router.get('/reports/templates', authorize(['admin', 'manager']), getReportTemplates);
+router.delete('/reports/cache/:reportType?', authorize(['admin']), clearReportCache);
+router.post('/reports/schedule', authorize(['admin']), scheduleReport);
+router.get('/reports/export/:reportId/:format', authorize(['admin', 'manager']), exportReport);
 
 // Dashboard and real-time metrics
-router.get('/dashboard/metrics', roleMiddleware(['admin', 'manager']), getDashboardMetrics);
-router.get('/kpis/realtime', roleMiddleware(['admin', 'manager', 'staff']), getRealtimeKPIs);
+router.get('/dashboard/metrics', authorize(['admin', 'manager']), getDashboardMetrics);
+router.get('/kpis/realtime', authorize(['admin', 'manager', 'staff']), getRealtimeKPIs);
 
 // Advanced analytics endpoints
-router.get('/reports/executive-summary', roleMiddleware(['admin']), (req, res, next) => {
+router.get('/reports/executive-summary', authorize(['admin']), (req, res, next) => {
   req.reportType = 'executive_summary';
   generateReport(req, res, next);
 });
 
-router.get('/reports/revenue-analysis', roleMiddleware(['admin', 'manager']), (req, res, next) => {
+router.get('/reports/revenue-analysis', authorize(['admin', 'manager']), (req, res, next) => {
   req.reportType = 'revenue_analysis';
   generateReport(req, res, next);
 });
 
-router.get('/reports/occupancy-analysis', roleMiddleware(['admin', 'manager']), (req, res, next) => {
+router.get('/reports/occupancy-analysis', authorize(['admin', 'manager']), (req, res, next) => {
   req.reportType = 'occupancy_analysis';
   generateReport(req, res, next);
 });
 
-router.get('/reports/guest-segmentation', roleMiddleware(['admin', 'manager']), (req, res, next) => {
+router.get('/reports/guest-segmentation', authorize(['admin', 'manager']), (req, res, next) => {
   req.reportType = 'guest_segmentation';
   generateReport(req, res, next);
 });
 
-router.get('/reports/booking-trends', roleMiddleware(['admin', 'manager']), (req, res, next) => {
+router.get('/reports/booking-trends', authorize(['admin', 'manager']), (req, res, next) => {
   req.reportType = 'booking_trends';
   generateReport(req, res, next);
 });
 
-router.get('/reports/performance-comparison', roleMiddleware(['admin', 'manager']), (req, res, next) => {
+router.get('/reports/performance-comparison', authorize(['admin', 'manager']), (req, res, next) => {
   req.reportType = 'performance_comparison';
   generateReport(req, res, next);
 });
 
-router.get('/reports/channel-analysis', roleMiddleware(['admin', 'manager']), (req, res, next) => {
+router.get('/reports/channel-analysis', authorize(['admin', 'manager']), (req, res, next) => {
   req.reportType = 'channel_analysis';
   generateReport(req, res, next);
 });
 
-router.get('/reports/seasonal-analysis', roleMiddleware(['admin', 'manager']), (req, res, next) => {
+router.get('/reports/seasonal-analysis', authorize(['admin', 'manager']), (req, res, next) => {
   req.reportType = 'seasonal_analysis';
   generateReport(req, res, next);
 });
 
 // ETL management endpoints
-router.post('/etl/run', roleMiddleware(['admin']), async (req, res) => {
+router.post('/etl/run', authorize(['admin']), async (req, res) => {
   try {
     const { ETLService } = await import('../services/analytics/ETLService.js');
     const etlService = new ETLService();
@@ -101,7 +101,7 @@ router.post('/etl/run', roleMiddleware(['admin']), async (req, res) => {
   }
 });
 
-router.get('/etl/status', roleMiddleware(['admin']), async (req, res) => {
+router.get('/etl/status', authorize(['admin']), async (req, res) => {
   try {
     const { ETLService } = await import('../services/analytics/ETLService.js');
     const etlService = new ETLService();
@@ -127,8 +127,8 @@ router.get('/etl/status', roleMiddleware(['admin']), async (req, res) => {
 });
 
 // Predictive analytics endpoints
-router.get('/forecast/occupancy/:hotelId', roleMiddleware(['admin', 'manager']), forecastOccupancy);
-router.get('/predict/demand/:hotelId', roleMiddleware(['admin', 'manager']), predictDemand);
-router.get('/market/trends/:hotelId', roleMiddleware(['admin', 'manager']), analyzeMarketTrends);
+router.get('/forecast/occupancy/:hotelId', authorize(['admin', 'manager']), forecastOccupancy);
+router.get('/predict/demand/:hotelId', authorize(['admin', 'manager']), predictDemand);
+router.get('/market/trends/:hotelId', authorize(['admin', 'manager']), analyzeMarketTrends);
 
 export default router;

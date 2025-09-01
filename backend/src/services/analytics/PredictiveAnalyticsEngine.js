@@ -4,8 +4,8 @@ import {
   MonthlyRevenueAggregate,
   DataWarehouseHelpers 
 } from '../../models/analytics/DataWarehouse.js';
-import { Booking } from '../../models/Booking.js';
-import { Room } from '../../models/Room.js';
+import Booking from '../../models/Booking.js';
+import Room from '../../models/Room.js';
 import logger from '../../utils/logger.js';
 import cron from 'node-cron';
 

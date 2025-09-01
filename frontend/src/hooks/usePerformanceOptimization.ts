@@ -1,304 +1,408 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useCallback, useRef, useState } from 'react';
 
-// Hook for debounced values
-export function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
-
-  return debouncedValue;
+// Performance monitoring interface
+interface PerformanceMetrics {
+  loadTime: number;
+  renderTime: number;
+  memoryUsage: number;
+  networkRequests: number;
+  cacheHits: number;
+  cacheMisses: number;
 }
 
-// Hook for throttled callbacks
-export function useThrottle<T extends (...args: any[]) => any>(
-  callback: T,
-  delay: number
-): T {
-  const lastCallTime = useRef<number>(0);
-  const timeoutRef = useRef<NodeJS.Timeout>();
+// Performance optimization hook
+export const usePerformanceOptimization = () => {
+  const [metrics, setMetrics] = useState<PerformanceMetrics>({
+    loadTime: 0,
+    renderTime: 0,
+    memoryUsage: 0,
+    networkRequests: 0,
+    cacheHits: 0,
+    cacheMisses: 0
+  });
 
-  return useCallback(
-    ((...args: Parameters<T>) => {
+  const renderStartTime = useRef<number>(0);
+  const networkRequestCount = useRef<number>(0);
+  const cacheHitCount = useRef<number>(0);
+  const cacheMissCount = useRef<number>(0);
+
+  // Measure render performance
+  const measureRender = useCallback(() => {
+    const startTime = performance.now();
+    renderStartTime.current = startTime;
+
+    return () => {
+      const endTime = performance.now();
+      const renderTime = endTime - startTime;
+      
+      setMetrics(prev => ({
+        ...prev,
+        renderTime
+      }));
+
+      // Log slow renders
+      if (renderTime > 16) { // 60fps threshold
+        console.warn(`Slow render detected: ${renderTime.toFixed(2)}ms`);
+      }
+    };
+  }, []);
+
+  // Track network requests
+  const trackNetworkRequest = useCallback(() => {
+    networkRequestCount.current += 1;
+    setMetrics(prev => ({
+      ...prev,
+      networkRequests: networkRequestCount.current
+    }));
+  }, []);
+
+  // Track cache performance
+  const trackCacheHit = useCallback(() => {
+    cacheHitCount.current += 1;
+    setMetrics(prev => ({
+      ...prev,
+      cacheHits: cacheHitCount.current
+    }));
+  }, []);
+
+  const trackCacheMiss = useCallback(() => {
+    cacheMissCount.current += 1;
+    setMetrics(prev => ({
+      ...prev,
+      cacheMisses: cacheMissCount.current
+    }));
+  }, []);
+
+  // Memory usage monitoring
+  const getMemoryUsage = useCallback(() => {
+    if ('memory' in performance) {
+      const memory = (performance as any).memory;
+      return {
+        used: memory.usedJSHeapSize,
+        total: memory.totalJSHeapSize,
+        limit: memory.jsHeapSizeLimit
+      };
+    }
+    return null;
+  }, []);
+
+  // Debounce function
+  const debounce = useCallback(<T extends (...args: any[]) => any>(
+    func: T,
+    delay: number
+  ): ((...args: Parameters<T>) => void) => {
+    let timeoutId: NodeJS.Timeout;
+    
+    return (...args: Parameters<T>) => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => func(...args), delay);
+    };
+  }, []);
+
+  // Throttle function
+  const throttle = useCallback(<T extends (...args: any[]) => any>(
+    func: T,
+    delay: number
+  ): ((...args: Parameters<T>) => void) => {
+    let lastCall = 0;
+    
+    return (...args: Parameters<T>) => {
       const now = Date.now();
-      const timeSinceLastCall = now - lastCallTime.current;
-
-      if (timeSinceLastCall >= delay) {
-        lastCallTime.current = now;
-        return callback(...args);
-      } else {
-        if (timeoutRef.current) {
-          clearTimeout(timeoutRef.current);
-        }
-        timeoutRef.current = setTimeout(() => {
-          lastCallTime.current = Date.now();
-          callback(...args);
-        }, delay - timeSinceLastCall);
+      if (now - lastCall >= delay) {
+        lastCall = now;
+        func(...args);
       }
-    }) as T,
-    [callback, delay]
-  );
-}
-
-// Hook for intersection observer (lazy loading)
-export function useIntersectionObserver(
-  options: IntersectionObserverInit = {}
-) {
-  const [isVisible, setIsVisible] = useState(false);
-  const [hasBeenVisible, setHasBeenVisible] = useState(false);
-  const elementRef = useRef<HTMLElement>(null);
-
-  useEffect(() => {
-    const element = elementRef.current;
-    if (!element) return;
-
-    const observer = new IntersectionObserver(([entry]) => {
-      const isIntersecting = entry.isIntersecting;
-      setIsVisible(isIntersecting);
-      
-      if (isIntersecting && !hasBeenVisible) {
-        setHasBeenVisible(true);
-      }
-    }, options);
-
-    observer.observe(element);
-
-    return () => {
-      observer.unobserve(element);
     };
-  }, [options, hasBeenVisible]);
-
-  return {
-    elementRef,
-    isVisible,
-    hasBeenVisible,
-  };
-}
-
-// Hook for memory-efficient data caching
-export function useMemoryCache<T>(
-  key: string,
-  maxSize: number = 50
-): [Map<string, T>, (key: string, value: T) => void, (key: string) => void] {
-  const cache = useMemo(() => new Map<string, T>(), []);
-  const accessOrder = useRef<string[]>([]);
-
-  const set = useCallback((cacheKey: string, value: T) => {
-    // Remove if already exists to update access order
-    if (cache.has(cacheKey)) {
-      const index = accessOrder.current.indexOf(cacheKey);
-      if (index > -1) {
-        accessOrder.current.splice(index, 1);
-      }
-    }
-
-    // Add to cache and access order
-    cache.set(cacheKey, value);
-    accessOrder.current.push(cacheKey);
-
-    // Remove oldest if exceeds max size
-    while (accessOrder.current.length > maxSize) {
-      const oldest = accessOrder.current.shift();
-      if (oldest) {
-        cache.delete(oldest);
-      }
-    }
-  }, [cache, maxSize]);
-
-  const remove = useCallback((cacheKey: string) => {
-    cache.delete(cacheKey);
-    const index = accessOrder.current.indexOf(cacheKey);
-    if (index > -1) {
-      accessOrder.current.splice(index, 1);
-    }
-  }, [cache]);
-
-  return [cache, set, remove];
-}
-
-// Hook for optimized data fetching with caching
-export function useOptimizedQuery<T>(
-  queryKey: string[],
-  queryFn: () => Promise<T>,
-  options: {
-    staleTime?: number;
-    cacheTime?: number;
-    refetchInterval?: number;
-    enabled?: boolean;
-    select?: (data: T) => any;
-  } = {}
-) {
-  const queryClient = useQueryClient();
-  const {
-    staleTime = 5 * 60 * 1000, // 5 minutes
-    cacheTime = 10 * 60 * 1000, // 10 minutes
-    refetchInterval,
-    enabled = true,
-    select,
-  } = options;
-
-  // Preload related data when this query succeeds
-  const handleSuccess = useCallback((data: T) => {
-    // Example: preload related queries
-    // This can be customized based on the data structure
   }, []);
 
-  return {
-    queryKey,
-    queryFn,
-    staleTime,
-    cacheTime,
-    refetchInterval,
-    enabled,
-    select,
-    onSuccess: handleSuccess,
-  };
-}
+  // Intersection Observer for lazy loading
+  const useIntersectionObserver = useCallback((
+    callback: IntersectionObserverCallback,
+    options: IntersectionObserverInit = {}
+  ) => {
+    const observerRef = useRef<IntersectionObserver | null>(null);
 
-// Hook for batch operations
-export function useBatchOperations<T>(
-  batchSize: number = 10,
-  delay: number = 100
-) {
-  const [queue, setQueue] = useState<T[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const processingRef = useRef<NodeJS.Timeout>();
+    useEffect(() => {
+      observerRef.current = new IntersectionObserver(callback, {
+        root: null,
+        rootMargin: '0px',
+        threshold: 0.1,
+        ...options
+      });
 
-  const addToQueue = useCallback((item: T) => {
-    setQueue(prev => [...prev, item]);
+      return () => {
+        if (observerRef.current) {
+          observerRef.current.disconnect();
+        }
+      };
+    }, [callback, options]);
+
+    return observerRef.current;
   }, []);
 
-  const processBatch = useCallback(
-    async (processor: (batch: T[]) => Promise<void> | void) => {
-      if (queue.length === 0 || isProcessing) return;
+  // Virtual scrolling hook
+  const useVirtualScrolling = useCallback((
+    items: any[],
+    itemHeight: number,
+    containerHeight: number
+  ) => {
+    const [scrollTop, setScrollTop] = useState(0);
+    const [visibleItems, setVisibleItems] = useState<any[]>([]);
 
-      setIsProcessing(true);
-      
+    useEffect(() => {
+      const startIndex = Math.floor(scrollTop / itemHeight);
+      const endIndex = Math.min(
+        startIndex + Math.ceil(containerHeight / itemHeight) + 1,
+        items.length
+      );
+
+      setVisibleItems(items.slice(startIndex, endIndex));
+    }, [items, itemHeight, containerHeight, scrollTop]);
+
+    const handleScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+      setScrollTop(event.currentTarget.scrollTop);
+    }, []);
+
+    return {
+      visibleItems,
+      handleScroll,
+      totalHeight: items.length * itemHeight,
+      offsetY: Math.floor(scrollTop / itemHeight) * itemHeight
+    };
+  }, []);
+
+  // Image optimization hook
+  const useImageOptimization = useCallback(() => {
+    const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
+    const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+
+    const preloadImage = useCallback((src: string): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        
+        img.onload = () => {
+          setLoadedImages(prev => new Set(prev).add(src));
+          resolve();
+        };
+        
+        img.onerror = () => {
+          setFailedImages(prev => new Set(prev).add(src));
+          reject(new Error(`Failed to load image: ${src}`));
+        };
+        
+        img.src = src;
+      });
+    }, []);
+
+    const preloadImages = useCallback(async (srcs: string[]) => {
+      const promises = srcs.map(src => preloadImage(src));
+      await Promise.allSettled(promises);
+    }, [preloadImage]);
+
+    return {
+      loadedImages,
+      failedImages,
+      preloadImage,
+      preloadImages
+    };
+  }, []);
+
+  // Code splitting hook
+  const useCodeSplitting = useCallback(() => {
+    const [loadedModules, setLoadedModules] = useState<Map<string, any>>(new Map());
+
+    const loadModule = useCallback(async (modulePath: string) => {
+      if (loadedModules.has(modulePath)) {
+        return loadedModules.get(modulePath);
+      }
+
       try {
-        const batch = queue.slice(0, batchSize);
-        setQueue(prev => prev.slice(batchSize));
-        
-        await processor(batch);
-        
-        // Process remaining items after delay
-        if (queue.length > batchSize) {
-          processingRef.current = setTimeout(() => {
-            setIsProcessing(false);
-            processBatch(processor);
-          }, delay);
-        } else {
-          setIsProcessing(false);
-        }
+        const module = await import(/* webpackChunkName: "[request]" */ modulePath);
+        setLoadedModules(prev => new Map(prev).set(modulePath, module));
+        return module;
       } catch (error) {
-        console.error('Batch processing error:', error);
-        setIsProcessing(false);
+        console.error(`Failed to load module: ${modulePath}`, error);
+        throw error;
       }
-    },
-    [queue, batchSize, delay, isProcessing]
-  );
+    }, [loadedModules]);
 
-  useEffect(() => {
-    return () => {
-      if (processingRef.current) {
-        clearTimeout(processingRef.current);
-      }
-    };
+    return { loadModule, loadedModules };
   }, []);
 
-  return {
-    queue,
-    addToQueue,
-    processBatch,
-    isProcessing,
-    queueSize: queue.length,
-  };
-}
+  // Service Worker hook
+  const useServiceWorker = useCallback(() => {
+    const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
+    const [updateAvailable, setUpdateAvailable] = useState(false);
 
-// Hook for performance monitoring
-export function usePerformanceMonitoring(
-  componentName: string,
-  enabled: boolean = process.env.NODE_ENV === 'development'
-) {
-  const renderCount = useRef(0);
-  const renderTimes = useRef<number[]>([]);
-  const lastRenderTime = useRef<number>(Date.now());
+    useEffect(() => {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker
+          .register('/sw.js')
+          .then(reg => {
+            setRegistration(reg);
+            
+            reg.addEventListener('updatefound', () => {
+              const newWorker = reg.installing;
+              if (newWorker) {
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    setUpdateAvailable(true);
+                  }
+                });
+              }
+            });
+          })
+          .catch(error => {
+            console.error('Service Worker registration failed:', error);
+          });
+      }
+    }, []);
 
+    const updateServiceWorker = useCallback(() => {
+      if (registration && updateAvailable) {
+        registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
+        setUpdateAvailable(false);
+        window.location.reload();
+      }
+    }, [registration, updateAvailable]);
+
+    return { registration, updateAvailable, updateServiceWorker };
+  }, []);
+
+  // Performance monitoring effect
   useEffect(() => {
-    if (!enabled) return;
+    // Measure initial load time
+    const loadTime = performance.now();
+    setMetrics(prev => ({ ...prev, loadTime }));
 
-    renderCount.current += 1;
-    const now = Date.now();
-    const renderTime = now - lastRenderTime.current;
-    
-    renderTimes.current.push(renderTime);
-    
-    // Keep only last 10 render times
-    if (renderTimes.current.length > 10) {
-      renderTimes.current.shift();
+    // Monitor memory usage
+    const memoryInterval = setInterval(() => {
+      const memory = getMemoryUsage();
+      if (memory) {
+        setMetrics(prev => ({
+          ...prev,
+          memoryUsage: memory.used
+        }));
+      }
+    }, 5000);
+
+    // Monitor long tasks
+    if ('PerformanceObserver' in window) {
+      const observer = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (entry.duration > 50) { // 50ms threshold
+            console.warn('Long task detected:', entry);
+          }
+        }
+      });
+      
+      observer.observe({ entryTypes: ['longtask'] });
     }
 
-    lastRenderTime.current = now;
+    return () => {
+      clearInterval(memoryInterval);
+    };
+  }, [getMemoryUsage]);
 
-    // Log performance metrics every 10 renders
-    if (renderCount.current % 10 === 0) {
-      const avgRenderTime = renderTimes.current.reduce((a, b) => a + b, 0) / renderTimes.current.length;
-      console.log(`${componentName} Performance:`, {
-        renders: renderCount.current,
-        avgRenderTime: avgRenderTime.toFixed(2) + 'ms',
-        lastRenderTime: renderTime + 'ms',
+  return {
+    metrics,
+    measureRender,
+    trackNetworkRequest,
+    trackCacheHit,
+    trackCacheMiss,
+    debounce,
+    throttle,
+    useIntersectionObserver,
+    useVirtualScrolling,
+    useImageOptimization,
+    useCodeSplitting,
+    useServiceWorker,
+    getMemoryUsage
+  };
+};
+
+// React.memo wrapper with performance monitoring
+export const withPerformanceMonitoring = <P extends object>(
+  Component: React.ComponentType<P>,
+  componentName?: string
+) => {
+  const WrappedComponent = React.memo((props: P) => {
+    const { measureRender } = usePerformanceOptimization();
+    
+    useEffect(() => {
+      return measureRender();
+    }, [measureRender]);
+
+    return <Component {...props} />;
+  });
+
+  WrappedComponent.displayName = componentName || Component.displayName || 'WithPerformanceMonitoring';
+  
+  return WrappedComponent;
+};
+
+// Lazy loading wrapper
+export const withLazyLoading = <P extends object>(
+  Component: React.ComponentType<P>,
+  fallback?: React.ReactNode
+) => {
+  const LazyComponent = React.lazy(() => 
+    Promise.resolve({ default: Component })
+  );
+
+  const WrappedComponent = (props: P) => (
+    <React.Suspense fallback={fallback || <div>Loading...</div>}>
+      <LazyComponent {...props} />
+    </React.Suspense>
+  );
+
+  WrappedComponent.displayName = Component.displayName || 'WithLazyLoading';
+  
+  return WrappedComponent;
+};
+
+// Error boundary with performance monitoring
+export class PerformanceErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error?: Error }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('Performance Error Boundary caught an error:', error, errorInfo);
+    
+    // Log performance metrics when error occurs
+    if ('performance' in window) {
+      const metrics = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming;
+      console.error('Performance metrics at error:', {
+        loadTime: metrics.loadEventEnd - metrics.loadEventStart,
+        domContentLoaded: metrics.domContentLoadedEventEnd - metrics.domContentLoadedEventStart,
+        firstPaint: performance.getEntriesByName('first-paint')[0]?.startTime,
+        firstContentfulPaint: performance.getEntriesByName('first-contentful-paint')[0]?.startTime
       });
     }
-  });
+  }
 
-  const getMetrics = useCallback(() => ({
-    renderCount: renderCount.current,
-    averageRenderTime: renderTimes.current.reduce((a, b) => a + b, 0) / renderTimes.current.length,
-    lastRenderTime: renderTimes.current[renderTimes.current.length - 1] || 0,
-  }), []);
-
-  return { getMetrics };
-}
-
-// Hook for image lazy loading
-export function useLazyImage(src: string, placeholder?: string) {
-  const [imageSrc, setImageSrc] = useState<string>(placeholder || '');
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [isError, setIsError] = useState(false);
-  const { elementRef, hasBeenVisible } = useIntersectionObserver({
-    threshold: 0.1,
-    rootMargin: '50px',
-  });
-
-  useEffect(() => {
-    if (hasBeenVisible && src && !isLoaded && !isError) {
-      const img = new Image();
-      
-      img.onload = () => {
-        setImageSrc(src);
-        setIsLoaded(true);
-      };
-      
-      img.onerror = () => {
-        setIsError(true);
-      };
-      
-      img.src = src;
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="error-boundary">
+          <h2>Something went wrong</h2>
+          <p>Please refresh the page or contact support if the problem persists.</p>
+          <button onClick={() => window.location.reload()}>
+            Refresh Page
+          </button>
+        </div>
+      );
     }
-  }, [hasBeenVisible, src, isLoaded, isError]);
 
-  return {
-    elementRef,
-    imageSrc,
-    isLoaded,
-    isError,
-    hasBeenVisible,
-  };
+    return this.props.children;
+  }
 }
