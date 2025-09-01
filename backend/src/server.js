@@ -48,6 +48,7 @@ import notificationRoutes from './routes/notifications.js';
 import digitalKeyRoutes from './routes/digitalKeys.js';
 import meetUpRequestRoutes from './routes/meetUpRequests.js';
 import dashboardUpdatesRoutes from './routes/dashboardUpdates.js';
+import corporateRoutes from './routes/corporate.js';
 import roomInventoryRoutes from './routes/roomInventory.js';
 import photoUploadRoutes from './routes/photoUpload.js';
 import staffTaskRoutes from './routes/staffTasks.js';
@@ -188,6 +189,7 @@ app.use('/api/v1/checkout-inventory', checkoutInventoryRoutes);
 app.use('/api/v1/daily-routine-check', dailyRoutineCheckRoutes);
 app.use('/api/v1/test', testCheckoutsRoutes);
 app.use('/api/v1/attractions', attractionsRoutes);
+app.use('/api/v1/corporate', corporateRoutes);
 
 // 404 handler
 app.all('*', (req, res) => {

@@ -47,6 +47,10 @@ import AdminReports from './pages/admin/AdminReports';
 import AdminOTA from './pages/admin/AdminOTA';
 import BillingHistory from './pages/admin/BillingHistory';
 import AdminBypassCheckoutPage from './pages/admin/AdminBypassCheckout';
+import AdminCorporateDashboard from './pages/admin/AdminCorporateDashboard';
+import CorporateCreditManagement from './components/admin/CorporateCreditManagement';
+import GSTManagement from './components/admin/GSTManagement';
+import CorporateUserRegistration from './components/admin/CorporateUserRegistration';
 import { InventoryTemplateManagement } from './components/admin/InventoryTemplateManagement';
 
 // Staff Pages
@@ -130,6 +134,10 @@ function App() {
                 <Route path="rooms/:roomId" element={<RoomDetailsPage />} />
                 <Route path="rooms/:roomId/bookings" element={<RoomBookingsPage />} />
                 <Route path="bookings" element={<AdminBookings />} />
+                <Route path="corporate" element={<AdminCorporateDashboard />} />
+                <Route path="corporate/credit" element={<CorporateCreditManagement />} />
+                <Route path="corporate/gst" element={<GSTManagement />} />
+                <Route path="corporate/users" element={<CorporateUserRegistration />} />
                 <Route path="housekeeping" element={<AdminHousekeeping />} />
                 <Route path="maintenance" element={<AdminMaintenance />} />
                 <Route path="guest-services" element={<AdminGuestServices />} />

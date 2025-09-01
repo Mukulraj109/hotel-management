@@ -88,6 +88,41 @@ const userSchema = new mongoose.Schema({
     enum: ['guest', 'staff', 'admin'],
     default: 'guest'
   },
+  guestType: {
+    type: String,
+    enum: ['normal', 'corporate'],
+    default: 'normal'
+  },
+  corporateDetails: {
+    corporateCompanyId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'CorporateCompany'
+    },
+    employeeId: {
+      type: String,
+      trim: true
+    },
+    department: {
+      type: String,
+      trim: true
+    },
+    designation: {
+      type: String,
+      trim: true
+    },
+    costCenter: {
+      type: String,
+      trim: true
+    },
+    approvalRequired: {
+      type: Boolean,
+      default: false
+    },
+    approverEmail: {
+      type: String,
+      lowercase: true
+    }
+  },
   hotelId: {
     type: mongoose.Schema.ObjectId,
     ref: 'Hotel',

@@ -366,3 +366,18 @@ export const generateExportFilename = (
   
   return `${type}${hotel}${range}-${timestamp}`;
 };
+
+// Format date utility
+export const formatDate = (date: string | Date | undefined | null, formatString: string = 'MMM dd, yyyy'): string => {
+  if (!date) return 'N/A';
+  
+  try {
+    const dateObj = typeof date === 'string' ? parseISO(date) : date;
+    if (!dateObj || isNaN(dateObj.getTime())) return 'Invalid date';
+    
+    return format(dateObj, formatString);
+  } catch (error) {
+    console.warn('Error formatting date:', error);
+    return 'Invalid date';
+  }
+};

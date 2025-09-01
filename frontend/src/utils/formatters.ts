@@ -64,3 +64,12 @@ export function getStatusColor(status: string): string {
 
   return statusColors[status] || 'gray';
 }
+
+// ✅ Percentage formatter
+export function formatPercent(value: number, minimumFractionDigits = 1): string {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'percent',
+    minimumFractionDigits,
+    maximumFractionDigits: 2,
+  }).format(value);
+}

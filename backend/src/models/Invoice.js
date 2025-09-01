@@ -247,6 +247,97 @@ const invoiceSchema = new mongoose.Schema({
     default: 'INR',
     uppercase: true
   },
+  gstDetails: {
+    gstNumber: {
+      type: String,
+      match: [/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, 'Please enter a valid GST number']
+    },
+    gstRate: {
+      type: Number,
+      default: 18,
+      min: 0,
+      max: 100
+    },
+    cgstRate: {
+      type: Number,
+      default: 9,
+      min: 0,
+      max: 100
+    },
+    sgstRate: {
+      type: Number,
+      default: 9,
+      min: 0,
+      max: 100
+    },
+    igstRate: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100
+    },
+    cgstAmount: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    sgstAmount: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    igstAmount: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    totalGstAmount: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    placeOfSupply: {
+      type: String,
+      trim: true
+    },
+    isGstApplicable: {
+      type: Boolean,
+      default: true
+    }
+  },
+  corporateDetails: {
+    corporateCompanyId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'CorporateCompany'
+    },
+    groupBookingId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'GroupBooking'
+    },
+    billingAddress: {
+      street: String,
+      city: String,
+      state: String,
+      country: String,
+      zipCode: String
+    },
+    purchaseOrderNumber: {
+      type: String,
+      trim: true
+    },
+    costCenter: {
+      type: String,
+      trim: true
+    },
+    paymentTerms: {
+      type: Number,
+      default: 30
+    },
+    billingEmail: {
+      type: String,
+      lowercase: true
+    }
+  },
   issueDate: {
     type: Date,
     default: Date.now

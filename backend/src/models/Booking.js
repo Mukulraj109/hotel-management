@@ -181,6 +181,65 @@ const bookingSchema = new mongoose.Schema({
     },
     specialRequests: String
   },
+  corporateBooking: {
+    corporateCompanyId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'CorporateCompany'
+    },
+    groupBookingId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'GroupBooking'
+    },
+    employeeId: {
+      type: String,
+      trim: true
+    },
+    department: {
+      type: String,
+      trim: true
+    },
+    costCenter: {
+      type: String,
+      trim: true
+    },
+    purchaseOrderNumber: {
+      type: String,
+      trim: true
+    },
+    approverEmail: {
+      type: String,
+      lowercase: true
+    },
+    paymentMethod: {
+      type: String,
+      enum: ['corporate_credit', 'direct_billing', 'advance_payment'],
+      default: 'corporate_credit'
+    },
+    billingEmail: {
+      type: String,
+      lowercase: true
+    }
+  },
+  gstDetails: {
+    gstNumber: {
+      type: String,
+      match: [/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/, 'Please enter a valid GST number']
+    },
+    gstRate: {
+      type: Number,
+      default: 18,
+      min: 0,
+      max: 100
+    },
+    gstAmount: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    cgst: Number,
+    sgst: Number,
+    igst: Number
+  },
   extras: [{
     name: String,
     price: Number,

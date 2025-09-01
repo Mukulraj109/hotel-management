@@ -24,6 +24,7 @@ const navigation = [
   { name: 'Dashboard', href: '/admin', icon: Home },
   { name: 'Rooms', href: '/admin/rooms', icon: Bed },
   { name: 'Bookings', href: '/admin/bookings', icon: Calendar },
+  { name: 'Corporate', href: '/admin/corporate', icon: Users },
   { name: 'Billing & Payments', href: '/admin/billing', icon: CreditCard },
   { name: 'Housekeeping', href: '/admin/housekeeping', icon: ClipboardList },
   { name: 'Maintenance', href: '/admin/maintenance', icon: Wrench },
