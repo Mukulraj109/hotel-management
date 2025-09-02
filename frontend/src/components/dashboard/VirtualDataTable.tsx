@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { cn } from '../../utils/cn';
-import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
-import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { useVirtualization } from '../../hooks/useVirtualization';
 import { useDebounce, usePerformanceMonitoring } from '../../hooks/usePerformanceOptimization';
 

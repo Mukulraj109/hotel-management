@@ -18,10 +18,10 @@ import {
   Tv,
   Wind
 } from 'lucide-react';
-import { Button } from '../ui/Button';
-import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
-import { Input } from '../ui/Input';
-import { Badge } from '../ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Input } from '@/components/ui/Input';
+import { Badge } from '@/components/ui/Badge';
 import { LoadingSpinner } from '../LoadingSpinner';
 import { bookingService } from '../../services/bookingService';
 import { formatIndianCurrency } from '../../utils/currency';

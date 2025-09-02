@@ -1,8 +1,8 @@
 import React from 'react';
 import { cn } from '../../utils/cn';
-import { Card, CardContent } from '../ui/Card';
-import { Badge } from '../ui/Badge';
-import { Button } from '../ui/Button';
+import { Card, CardContent } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import { formatRelativeTime } from '../../utils/dashboardUtils';
 import type { Alert } from '../../types/dashboard';
 

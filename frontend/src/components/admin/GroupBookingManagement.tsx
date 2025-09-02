@@ -20,8 +20,8 @@ import {
   Briefcase
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
-import { Button } from '../ui/Button';
-import { Badge } from '../ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { LoadingSpinner } from '../LoadingSpinner';
 import { formatCurrency, formatDate } from '../../utils/dashboardUtils';
 import toast from 'react-hot-toast';

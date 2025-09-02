@@ -1,6 +1,6 @@
 import React from 'react';
 import { cn } from '../../utils/cn';
-import { Card, CardContent } from '../ui/Card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { formatNumber, formatCurrency, formatPercentage } from '../../utils/dashboardUtils';
 
 interface MetricCardProps {

@@ -13,9 +13,9 @@ import {
   Wrench,
   Clock
 } from 'lucide-react';
-import { Card } from '../ui/Card';
-import { Button } from '../ui/Button';
-import { Badge } from '../ui/Badge';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { LoadingSpinner } from '../LoadingSpinner';
 import { formatCurrency } from '../../utils/formatters';
 import { roomInventoryService, RoomInventory, InventoryItem } from '../../services/roomInventoryService';
