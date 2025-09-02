@@ -11,7 +11,7 @@ import {
   PieChart,
   AreaChart,
 } from '../../../components/dashboard';
-import { Button } from '../../../components/ui/Button';
+import { Button } from '@/components/ui/Button';
 import { useRevenueData } from '../../../hooks/useDashboard';
 import { formatCurrency, formatPercentage, getDateRange } from '../../../utils/dashboardUtils';
 

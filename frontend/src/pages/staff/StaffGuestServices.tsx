@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
-import { Badge } from '../../components/ui/Badge';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { Users, Clock, CheckCircle, MessageSquare, Bell, RefreshCw, AlertTriangle } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { TaskCompletionModal, getDefaultSteps, getServiceVariationSteps } from '../../components/staff/TaskCompletionModal';

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import RevenueDashboard from '../../components/revenue/RevenueDashboard';
 import PricingRulesManagement from '../../components/revenue/PricingRulesManagement';
 import RevenueManagementDashboard from '../../components/revenue/RevenueManagementDashboard';

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import POSDashboard from '../../components/pos/POSDashboard';
 import POSOrderEntry from '../../components/pos/POSOrderEntry';
 import OutletManagement from '../../components/pos/OutletManagement';

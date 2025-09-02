@@ -4,10 +4,10 @@ import ReportBuilder from './reports/ReportBuilder';
 import BusinessIntelligenceDashboard from '../../components/reports/BusinessIntelligenceDashboard';
 import ExecutiveDashboard from '../../components/admin/ExecutiveDashboard';
 import { MetricCard, ChartCard, LineChart, BarChart } from '../../components/dashboard';
-import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
-import { Badge } from '../../components/ui/Badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/Tabs';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { useDashboardReports, useReportDateRanges, useExportReport } from '../../hooks/useReports';
 import { formatCurrency, formatPercentage } from '../../utils/dashboardUtils';
 

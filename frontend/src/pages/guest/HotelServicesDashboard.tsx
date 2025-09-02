@@ -16,9 +16,9 @@ import {
   Loader2
 } from 'lucide-react';
 import { hotelServicesService, HotelService, ServiceType } from '../../services/hotelServicesService';
-import { Card } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';

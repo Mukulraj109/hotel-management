@@ -12,9 +12,9 @@ import {
   AreaChart,
   ProgressBar,
 } from '../../../components/dashboard';
-import { Button } from '../../../components/ui/Button';
-import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/Card';
-import { Badge } from '../../../components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
 import { useGuestSatisfaction } from '../../../hooks/useDashboard';
 import { formatPercentage, formatRelativeTime } from '../../../utils/dashboardUtils';
 

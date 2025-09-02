@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Phone, Mail, MapPin, Clock, Send, Facebook, Twitter, Instagram, Youtube, MapIcon, Sparkles, Award, Users, Shield } from 'lucide-react';
-import { Button } from '../../components/ui/Button';
-import { Card } from '../../components/ui/Card';
-import { Input } from '../../components/ui/Input';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { Input } from '@/components/ui/Input';
 import contactService, { ContactForm } from '../../services/contactService';
 
 export default function ContactPage() {

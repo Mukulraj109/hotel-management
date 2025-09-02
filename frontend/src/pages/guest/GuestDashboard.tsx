@@ -12,7 +12,7 @@ import {
   Users,
   Star
 } from 'lucide-react';
-import { Card } from '../../components/ui/Card';
+import { Card } from '@/components/ui/Card';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { RoomServiceWidget } from '../../components/guest/RoomServiceWidget';

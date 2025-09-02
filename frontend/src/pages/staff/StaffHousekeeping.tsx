@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
-import { Badge } from '../../components/ui/Badge';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { TaskCompletionModal, getDefaultSteps } from '../../components/staff/TaskCompletionModal';
 import { 

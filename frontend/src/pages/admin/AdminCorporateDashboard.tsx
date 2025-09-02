@@ -20,12 +20,12 @@ import {
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { formatCurrency, formatPercentage } from '../../utils/dashboardUtils';
-import { Button } from '../../components/ui/Button';
-import { Badge } from '../../components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { LineChart, DonutChart, BarChart } from '../../components/dashboard';
 import { MetricCard } from '../../components/dashboard';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
-import { Tabs } from '../../components/ui/Tabs';
+import { Tabs } from '@/components/ui/Tabs';
 import CorporateCompanyManagement from '../../components/admin/CorporateCompanyManagement';
 import GroupBookingManagement from '../../components/admin/GroupBookingManagement';
 import CorporateCreditManagement from '../../components/admin/CorporateCreditManagement';

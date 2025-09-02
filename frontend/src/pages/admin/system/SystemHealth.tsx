@@ -10,9 +10,9 @@ import {
   ProgressBar,
   CircularProgress,
 } from '../../../components/dashboard';
-import { Button } from '../../../components/ui/Button';
-import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/Card';
-import { Badge } from '../../../components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
 import { useSystemHealth } from '../../../hooks/useDashboard';
 import { formatRelativeTime, formatDuration } from '../../../utils/dashboardUtils';
 

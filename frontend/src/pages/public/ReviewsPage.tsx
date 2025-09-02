@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Star, Filter, ThumbsUp, MessageCircle, Calendar, User, Heart, TrendingUp, BarChart3 } from 'lucide-react';
-import { Button } from '../../components/ui/Button';
-import { Card } from '../../components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
 import reviewsService, { Review, ReviewSummary } from '../../services/reviewsService';
 import { cn } from '../../utils/cn';
 

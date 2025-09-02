@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import MarketingDashboard from '../../components/marketing/MarketingDashboard';
 import BookingWidgetManager from '../../components/marketing/BookingWidgetManager';
 import BookingEngineWidget from '../../components/booking/BookingEngineWidget';

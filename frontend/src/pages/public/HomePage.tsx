@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Star, Wifi, Car, Coffee, Utensils, Waves, Dumbbell, Shield, MapPin, Award, Heart, Sparkles, Phone, Mail, Facebook, Twitter, Instagram, Youtube, MapIcon } from 'lucide-react';
-import { Button } from '../../components/ui/Button';
+import { Button } from '@/components/ui/Button';
 import LocalAttractions from '../../components/LocalAttractions';
 import reviewsService, { Review, ReviewSummary } from '../../services/reviewsService';
 

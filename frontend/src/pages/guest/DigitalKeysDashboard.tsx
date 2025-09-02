@@ -30,9 +30,9 @@ import {
   Search
 } from 'lucide-react';
 import { digitalKeyService, DigitalKey, KeyStats, GenerateKeyRequest, ShareKeyRequest } from '../../services/digitalKeyService';
-import { Card } from '../../components/ui/Card';
-import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
+import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';

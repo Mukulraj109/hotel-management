@@ -11,11 +11,11 @@ import {
   PieChart,
   AreaChart,
 } from '../../../components/dashboard';
-import { Button } from '../../../components/ui/Button';
-import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/Card';
-import { Badge } from '../../../components/ui/Badge';
-import { Input } from '../../../components/ui/Input';
-import { Modal } from '../../../components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
+import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import { useReports } from '../../../hooks/useDashboard';
 import { formatCurrency, formatRelativeTime, generateExportFilename } from '../../../utils/dashboardUtils';
 

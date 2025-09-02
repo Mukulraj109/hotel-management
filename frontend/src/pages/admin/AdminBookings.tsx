@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { DataTable } from '../../components/dashboard/DataTable';
 import { StatusBadge } from '../../components/dashboard/StatusBadge';
-import { Button } from '../../components/ui/Button';
-import { Input } from '../../components/ui/Input';
-import { Modal } from '../../components/ui/Modal';
-import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { adminService } from '../../services/adminService';
 import { AdminBooking, BookingFilters, BookingStats } from '../../types/admin';
 import { formatCurrency, formatNumber, getStatusColor } from '../../utils/dashboardUtils';

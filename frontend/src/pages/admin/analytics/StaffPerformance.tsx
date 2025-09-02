@@ -13,9 +13,9 @@ import {
   CircularProgress,
 } from '../../../components/dashboard';
 import { StatusBadge } from '../../../components/dashboard/StatusBadge';
-import { Button } from '../../../components/ui/Button';
-import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/Card';
-import { Badge } from '../../../components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
 import { useStaffPerformance } from '../../../hooks/useDashboard';
 import { formatPercentage, formatDuration } from '../../../utils/dashboardUtils';
 
