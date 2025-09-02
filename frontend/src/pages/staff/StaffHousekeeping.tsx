@@ -18,32 +18,7 @@ import {
   CheckSquare
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-
-interface HousekeepingTask {
-  _id: string;
-  title: string;
-  description: string;
-  taskType: 'cleaning' | 'maintenance' | 'inspection' | 'deep_clean' | 'checkout_clean';
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
-  roomId: {
-    _id: string;
-    roomNumber: string;
-    type: string;
-  };
-  assignedToUserId?: string;
-  estimatedDuration: number;
-  startedAt?: string;
-  completedAt?: string;
-  actualDuration?: number;
-  notes?: string;
-  supplies?: Array<{
-    name: string;
-    quantity: number;
-    unit: string;
-  }>;
-  createdAt: string;
-}
+import { housekeepingService, HousekeepingTask } from '../../services/housekeepingService';
 
 export default function StaffHousekeeping() {
   const { user } = useAuth();
@@ -62,21 +37,8 @@ export default function StaffHousekeeping() {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('/api/v1/housekeeping?assignedToUserId=' + user?._id, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setTasks(data.data.tasks || []);
-      } else {
-        console.error('Failed to fetch housekeeping tasks:', response.statusText);
-        setError(`Failed to load tasks: ${response.status} ${response.statusText}`);
-        setTasks([]);
-      }
+      const data = await housekeepingService.getTasks(user?._id);
+      setTasks(data.data.tasks || []);
     } catch (error) {
       console.error('Error fetching tasks:', error);
       setError('Unable to connect to server. Please check your internet connection.');
@@ -89,18 +51,8 @@ export default function StaffHousekeeping() {
   const updateTaskStatus = async (taskId: string, newStatus: string) => {
     try {
       setUpdating(true);
-      const response = await fetch(`/api/v1/housekeeping/${taskId}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ status: newStatus })
-      });
-
-      if (response.ok) {
-        await fetchTasks();
-      }
+      await housekeepingService.updateTaskStatus(taskId, newStatus);
+      await fetchTasks();
     } catch (error) {
       console.error('Error updating task status:', error);
     } finally {
@@ -118,24 +70,14 @@ export default function StaffHousekeeping() {
 
     try {
       setUpdating(true);
-      const response = await fetch(`/api/v1/housekeeping/${selectedTask._id}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ 
-          status: 'completed',
-          completedSteps: completedSteps,
-          completedAt: new Date().toISOString()
-        })
+      await housekeepingService.completeTask(selectedTask._id, {
+        status: 'completed',
+        completedSteps: completedSteps,
+        completedAt: new Date().toISOString()
       });
-
-      if (response.ok) {
-        await fetchTasks();
-        setShowCompletionModal(false);
-        setSelectedTask(null);
-      }
+      await fetchTasks();
+      setShowCompletionModal(false);
+      setSelectedTask(null);
     } catch (error) {
       console.error('Error completing task:', error);
     } finally {

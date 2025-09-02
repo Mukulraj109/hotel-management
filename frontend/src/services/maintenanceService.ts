@@ -1,4 +1,5 @@
 import { ApiResponse } from '../types/dashboard';
+import { api } from './api';
 
 export interface MaintenanceTask {
   _id: string;
@@ -48,34 +49,7 @@ export interface MaintenanceStats {
 }
 
 class MaintenanceService {
-  private baseURL = '/api/v1/maintenance';
-
-  private async fetchWithAuth<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-
-    const response = await fetch(`${this.baseURL}${endpoint}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        ...options?.headers,
-      },
-      ...options,
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        localStorage.removeItem('token');
-        window.location.href = '/login';
-        throw new Error('Authentication required');
-      }
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    return response.json();
-  }
+  private baseURL = '/maintenance';
 
   // Get maintenance tasks with filters
   async getTasks(params: {
@@ -95,33 +69,26 @@ class MaintenanceService {
     if (params.overdue) queryParams.append('overdue', 'true');
 
     const endpoint = queryParams.toString() ? `?${queryParams.toString()}` : '';
-    return this.fetchWithAuth<{
-      tasks: MaintenanceTask[];
-      pagination: {
-        page: number;
-        limit: number;
-        total: number;
-        pages: number;
-      };
-    }>(endpoint);
+    const response = await api.get(`${this.baseURL}${endpoint}`);
+    return response.data;
   }
 
   // Get maintenance statistics
   async getStats() {
-    return this.fetchWithAuth<MaintenanceStats>('/stats');
+    const response = await api.get(`${this.baseURL}/stats`);
+    return response.data;
   }
 
   // Get overdue tasks
   async getOverdueTasks() {
-    return this.fetchWithAuth<{
-      tasks: MaintenanceTask[];
-      count: number;
-    }>('/overdue');
+    const response = await api.get(`${this.baseURL}/overdue`);
+    return response.data;
   }
 
   // Get task by ID
   async getTask(id: string) {
-    return this.fetchWithAuth<{ task: MaintenanceTask }>(`/${id}`);
+    const response = await api.get(`${this.baseURL}/${id}`);
+    return response.data;
   }
 
   // Create new maintenance task
@@ -137,10 +104,8 @@ class MaintenanceService {
     category?: string;
     roomOutOfOrder?: boolean;
   }) {
-    return this.fetchWithAuth<{ task: MaintenanceTask }>('', {
-      method: 'POST',
-      body: JSON.stringify(taskData),
-    });
+    const response = await api.post(`${this.baseURL}`, taskData);
+    return response.data;
   }
 
   // Update task
@@ -153,10 +118,8 @@ class MaintenanceService {
     completionNotes?: string;
     priority?: string;
   }) {
-    return this.fetchWithAuth<{ task: MaintenanceTask }>(`/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(updates),
-    });
+    const response = await api.patch(`${this.baseURL}/${id}`, updates);
+    return response.data;
   }
 
   // Assign task
@@ -165,10 +128,8 @@ class MaintenanceService {
     scheduledDate?: string;
     notes?: string;
   }) {
-    return this.fetchWithAuth<{ task: MaintenanceTask }>(`/${id}/assign`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+    const response = await api.post(`${this.baseURL}/${id}/assign`, data);
+    return response.data;
   }
 
   // Get tasks for staff dashboard (grouped by status)
