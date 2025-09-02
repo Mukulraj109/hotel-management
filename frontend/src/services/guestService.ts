@@ -16,9 +16,12 @@ export interface GuestServiceRequest {
     bookingNumber: string;
   };
   serviceType: 'room_service' | 'housekeeping' | 'maintenance' | 'concierge' | 'transport' | 'spa' | 'laundry' | 'other';
-  title: string;
+  serviceVariation: string;
+  serviceVariations?: string[];
+  completedServiceVariations?: string[];
+  title?: string;
   description?: string;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
+  priority: 'now' | 'later' | 'low' | 'medium' | 'high' | 'urgent';
   status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
   assignedTo?: {
     _id: string;
@@ -42,7 +45,9 @@ export interface GuestServiceRequest {
 interface CreateServiceRequestData {
   bookingId: string;
   serviceType: string;
-  title: string;
+  serviceVariation?: string;
+  serviceVariations: string[];
+  title?: string;
   description?: string;
   priority?: string;
   scheduledTime?: string;

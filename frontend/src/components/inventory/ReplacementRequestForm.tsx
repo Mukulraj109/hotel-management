@@ -16,6 +16,7 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { LoadingSpinner } from '../LoadingSpinner';
+import { formatCurrency } from '../../utils/formatters';
 import { roomInventoryService, InventoryItem, RoomInventory } from '../../services/roomInventoryService';
 
 interface ReplacementRequestFormProps {
@@ -221,7 +222,7 @@ export function ReplacementRequestForm({
           <div className="text-right">
             <div className="text-sm text-gray-500">Total Cost</div>
             <div className="text-2xl font-bold text-gray-900">
-              ${getTotalCost().toFixed(2)}
+              {formatCurrency(getTotalCost())}
             </div>
           </div>
         </div>
@@ -287,7 +288,7 @@ export function ReplacementRequestForm({
                       )}
                       <div>
                         <p className="font-medium text-gray-900 text-sm">{item.name}</p>
-                        <p className="text-xs text-gray-500">${item.unitPrice}</p>
+                        <p className="text-xs text-gray-500">{formatCurrency(item.unitPrice)}</p>
                       </div>
                     </div>
                   </div>
@@ -455,10 +456,10 @@ export function ReplacementRequestForm({
 
                       <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-200">
                         <div className="text-sm text-gray-600">
-                          Unit Price: ${item.unitPrice.toFixed(2)}
+                          Unit Price: {formatCurrency(item.unitPrice)}
                         </div>
                         <div className="font-semibold text-gray-900">
-                          Total: ${item.totalCost.toFixed(2)}
+                          Total: {formatCurrency(item.totalCost)}
                         </div>
                       </div>
                     </Card>
@@ -490,7 +491,7 @@ export function ReplacementRequestForm({
                     </div>
                     <div className="text-right">
                       <div className="text-2xl font-bold text-gray-900">
-                        ${getTotalCost().toFixed(2)}
+                        {formatCurrency(getTotalCost())}
                       </div>
                       <div className="text-sm text-gray-600">Total estimated cost</div>
                     </div>

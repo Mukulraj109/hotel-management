@@ -4,7 +4,7 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Users, Clock, CheckCircle, MessageSquare, Bell, RefreshCw, AlertTriangle } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
-import { TaskCompletionModal, getDefaultSteps } from '../../components/staff/TaskCompletionModal';
+import { TaskCompletionModal, getDefaultSteps, getServiceVariationSteps } from '../../components/staff/TaskCompletionModal';
 import { guestServiceService, GuestServiceRequest } from '../../services/guestService';
 import { formatDate } from '../../utils/formatters';
 import toast from 'react-hot-toast';
@@ -57,18 +57,34 @@ export default function StaffGuestServices() {
 
     try {
       setUpdating(selectedRequest._id);
+      
+      // Extract completed service variations from the steps
+      const completedServiceVariations: string[] = [];
+      if (selectedRequest.serviceVariations) {
+        selectedRequest.serviceVariations.forEach((variation, index) => {
+          if (completedSteps.includes(`service_${index}`)) {
+            completedServiceVariations.push(variation);
+          }
+        });
+      }
+      
+      // Check if all service variations are completed
+      const allServicesCompleted = selectedRequest.serviceVariations?.length === completedServiceVariations.length;
+      
       await guestServiceService.updateServiceRequest(selectedRequest._id, { 
-        status: 'completed',
+        status: allServicesCompleted ? 'completed' : 'in_progress',
+        completedServiceVariations: completedServiceVariations,
         completedSteps: completedSteps,
-        completedTime: new Date().toISOString()
+        completedTime: allServicesCompleted ? new Date().toISOString() : undefined
       });
-      toast.success('Request completed successfully');
+      
+      toast.success(allServicesCompleted ? 'Request completed successfully' : 'Progress updated successfully');
       fetchRequests(); // Refresh the list
       setShowCompletionModal(false);
       setSelectedRequest(null);
     } catch (error) {
-      console.error('Failed to complete request:', error);
-      toast.error('Failed to complete request');
+      console.error('Failed to update request:', error);
+      toast.error('Failed to update request');
     } finally {
       setUpdating(null);
     }
@@ -202,13 +218,32 @@ export default function StaffGuestServices() {
                 pendingRequests.map((request) => (
                   <div key={request._id} className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200">
                     <div>
-                      <p className="font-medium">{request.title}</p>
+                      <p className="font-medium">
+                        {request.serviceVariations && request.serviceVariations.length > 0
+                          ? request.serviceVariations.length === 1 
+                            ? request.serviceVariations[0]
+                            : `${request.serviceVariations.length} ${request.serviceType.replace('_', ' ')} services`
+                          : request.title}
+                      </p>
                       <p className="text-sm text-gray-600">
                         Room {request.bookingId?.bookingNumber} - {request.serviceType.replace('_', ' ')}
                       </p>
                       <p className="text-xs text-orange-600">
                         Requested: {getTimeAgo(request.createdAt)}
                       </p>
+                      {/* Show multiple service variations */}
+                      {request.serviceVariations && request.serviceVariations.length > 1 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {request.serviceVariations.map((variation, index) => (
+                            <span 
+                              key={index} 
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                            >
+                              {variation}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       {request.description && (
                         <p className="text-xs text-gray-500 mt-1">{request.description}</p>
                       )}
@@ -240,13 +275,32 @@ export default function StaffGuestServices() {
                 assignedRequests.map((request) => (
                   <div key={request._id} className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-200">
                     <div>
-                      <p className="font-medium">{request.title}</p>
+                      <p className="font-medium">
+                        {request.serviceVariations && request.serviceVariations.length > 0
+                          ? request.serviceVariations.length === 1 
+                            ? request.serviceVariations[0]
+                            : `${request.serviceVariations.length} ${request.serviceType.replace('_', ' ')} services`
+                          : request.title}
+                      </p>
                       <p className="text-sm text-gray-600">
                         Room {request.bookingId?.bookingNumber} - {request.serviceType.replace('_', ' ')}
                       </p>
                       <p className="text-xs text-blue-600">
                         Assigned: {getTimeAgo(request.updatedAt)}
                       </p>
+                      {/* Show multiple service variations */}
+                      {request.serviceVariations && request.serviceVariations.length > 1 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {request.serviceVariations.map((variation, index) => (
+                            <span 
+                              key={index} 
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800"
+                            >
+                              {variation}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       {request.assignedTo && (
                         <p className="text-xs text-gray-500">Assigned to: {request.assignedTo.name}</p>
                       )}
@@ -278,13 +332,39 @@ export default function StaffGuestServices() {
                 inProgressRequests.map((request) => (
                   <div key={request._id} className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg border border-yellow-200">
                     <div>
-                      <p className="font-medium">{request.title}</p>
+                      <p className="font-medium">
+                        {request.serviceVariations && request.serviceVariations.length > 0
+                          ? request.serviceVariations.length === 1 
+                            ? request.serviceVariations[0]
+                            : `${request.serviceVariations.length} ${request.serviceType.replace('_', ' ')} services`
+                          : request.title}
+                      </p>
                       <p className="text-sm text-gray-600">
                         Room {request.bookingId?.bookingNumber} - {request.serviceType.replace('_', ' ')}
                       </p>
                       <p className="text-xs text-yellow-600">
                         Started: {getTimeAgo(request.updatedAt)}
                       </p>
+                      {/* Show multiple service variations with completion status */}
+                      {request.serviceVariations && request.serviceVariations.length > 1 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {request.serviceVariations.map((variation, index) => {
+                            const isCompleted = request.completedServiceVariations?.includes(variation);
+                            return (
+                              <span 
+                                key={index} 
+                                className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium ${
+                                  isCompleted 
+                                    ? 'bg-green-100 text-green-800 line-through' 
+                                    : 'bg-yellow-100 text-yellow-800'
+                                }`}
+                              >
+                                {variation}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                     {getActionButton(request)}
                   </div>
@@ -313,13 +393,32 @@ export default function StaffGuestServices() {
                 completedRequests.map((request) => (
                   <div key={request._id} className="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-200">
                     <div>
-                      <p className="font-medium">{request.title}</p>
+                      <p className="font-medium">
+                        {request.serviceVariations && request.serviceVariations.length > 0
+                          ? request.serviceVariations.length === 1 
+                            ? request.serviceVariations[0]
+                            : `${request.serviceVariations.length} ${request.serviceType.replace('_', ' ')} services`
+                          : request.title}
+                      </p>
                       <p className="text-sm text-gray-600">
                         Room {request.bookingId?.bookingNumber} - {request.serviceType.replace('_', ' ')}
                       </p>
                       <p className="text-xs text-green-600">
                         Completed: {getTimeAgo(request.completedTime || request.updatedAt)}
                       </p>
+                      {/* Show multiple service variations - all completed */}
+                      {request.serviceVariations && request.serviceVariations.length > 1 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {request.serviceVariations.map((variation, index) => (
+                            <span 
+                              key={index} 
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800"
+                            >
+                              ✓ {variation}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <Badge variant="outline" className="text-green-700">Completed</Badge>
                   </div>
@@ -345,8 +444,18 @@ export default function StaffGuestServices() {
           }}
           onComplete={handleCompleteRequest}
           title="Complete Guest Service Request"
-          taskName={`${selectedRequest.bookingId?.bookingNumber ? `Room ${selectedRequest.bookingId.bookingNumber} - ` : ''}${selectedRequest.title}`}
-          steps={getDefaultSteps('guest_service', selectedRequest.serviceType)}
+          taskName={`${selectedRequest.bookingId?.bookingNumber ? `Room ${selectedRequest.bookingId.bookingNumber} - ` : ''}${
+            selectedRequest.serviceVariations && selectedRequest.serviceVariations.length > 0
+              ? selectedRequest.serviceVariations.length === 1 
+                ? selectedRequest.serviceVariations[0]
+                : `${selectedRequest.serviceVariations.length} ${selectedRequest.serviceType.replace('_', ' ')} services`
+              : selectedRequest.title || 'Guest Service Request'
+          }`}
+          steps={
+            selectedRequest.serviceVariations && selectedRequest.serviceVariations.length > 0
+              ? getServiceVariationSteps(selectedRequest.serviceVariations, selectedRequest.completedServiceVariations)
+              : getDefaultSteps('guest_service', selectedRequest.serviceType)
+          }
           loading={updating === selectedRequest._id}
         />
       )}

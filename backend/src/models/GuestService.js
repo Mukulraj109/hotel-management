@@ -11,7 +11,7 @@ import mongoose from 'mongoose';
  *         - userId
  *         - bookingId
  *         - serviceType
- *         - title
+ *         - serviceVariation
  *       properties:
  *         _id:
  *           type: string
@@ -30,14 +30,28 @@ import mongoose from 'mongoose';
  *           description: Type of service requested
  *         title:
  *           type: string
- *           description: Brief title of the request
+ *           description: Brief title of the request (optional)
  *         description:
  *           type: string
- *           description: Detailed description of the request
+ *           description: Detailed description of the request (optional)
+ *         serviceVariation:
+ *           type: string
+ *           description: Primary service variation (for backward compatibility)
+ *         serviceVariations:
+ *           type: array
+ *           items:
+ *             type: string
+ *           description: Multiple service variations/options selected by the guest
+ *         completedServiceVariations:
+ *           type: array
+ *           items:
+ *             type: string
+ *           description: Service variations that have been completed by staff
  *         priority:
  *           type: string
- *           enum: [low, medium, high, urgent]
- *           default: medium
+ *           enum: [now, later, low, medium, high, urgent]
+ *           default: now
+ *           description: Priority level - 'now' for immediate, 'later' for scheduled
  *         status:
  *           type: string
  *           enum: [pending, assigned, in_progress, completed, cancelled]
@@ -97,7 +111,6 @@ const guestServiceSchema = new mongoose.Schema({
   },
   title: {
     type: String,
-    required: [true, 'Service title is required'],
     trim: true,
     maxlength: [200, 'Title cannot be more than 200 characters']
   },
@@ -105,13 +118,26 @@ const guestServiceSchema = new mongoose.Schema({
     type: String,
     maxlength: [1000, 'Description cannot be more than 1000 characters']
   },
+  serviceVariation: {
+    type: String,
+    required: [true, 'Service variation is required'],
+    trim: true
+  },
+  serviceVariations: [{
+    type: String,
+    trim: true
+  }],
+  completedServiceVariations: [{
+    type: String,
+    trim: true
+  }],
   priority: {
     type: String,
     enum: {
-      values: ['low', 'medium', 'high', 'urgent'],
+      values: ['now', 'later', 'low', 'medium', 'high', 'urgent'],
       message: 'Invalid priority level'
     },
-    default: 'medium'
+    default: 'now'
   },
   status: {
     type: String,

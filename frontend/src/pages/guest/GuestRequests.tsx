@@ -21,6 +21,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatDate, formatCurrency } from '../../utils/formatters';
+import { SERVICE_VARIATIONS } from '../../utils/currencyUtils';
 import toast from 'react-hot-toast';
 
 interface Booking {
@@ -55,6 +56,8 @@ const getStatusIcon = (status: string) => {
 
 const getPriorityColor = (priority: string) => {
   switch (priority) {
+    case 'now': return 'bg-red-100 text-red-800';
+    case 'later': return 'bg-blue-100 text-blue-800';
     case 'urgent': return 'bg-red-100 text-red-800';
     case 'high': return 'bg-orange-100 text-orange-800';
     case 'medium': return 'bg-yellow-100 text-yellow-800';
@@ -62,6 +65,7 @@ const getPriorityColor = (priority: string) => {
     default: return 'bg-gray-100 text-gray-800';
   }
 };
+
 
 export default function GuestRequests() {
   const { user } = useAuth();
@@ -77,9 +81,8 @@ export default function GuestRequests() {
   const [formData, setFormData] = useState({
     bookingId: '',
     serviceType: '',
-    title: '',
-    description: '',
-    priority: 'medium',
+    serviceVariations: [] as string[],
+    priority: 'now',
     scheduledTime: '',
     specialInstructions: ''
   });
@@ -118,31 +121,44 @@ export default function GuestRequests() {
   };
 
   const handleCreateRequest = async () => {
-    if (!formData.bookingId || !formData.serviceType || !formData.title) {
-      toast.error('Please fill in all required fields');
+    if (!formData.bookingId || !formData.serviceType || formData.serviceVariations.length === 0) {
+      toast.error('Please fill in all required fields and select at least one service option');
+      return;
+    }
+
+    // Validate scheduled time when priority is "later"
+    if (formData.priority === 'later' && !formData.scheduledTime) {
+      toast.error('Please select a scheduled time for later requests');
       return;
     }
 
     try {
       setCreating(true);
-      await guestServiceService.createServiceRequest({
+      const requestData: any = {
         bookingId: formData.bookingId,
         serviceType: formData.serviceType,
-        title: formData.title,
-        description: formData.description,
+        serviceVariations: formData.serviceVariations,
         priority: formData.priority,
-        scheduledTime: formData.scheduledTime || undefined,
         specialInstructions: formData.specialInstructions
-      });
+      };
+
+      // Only include scheduledTime if priority is "later" or if it's set
+      if (formData.priority === 'later' || formData.scheduledTime) {
+        requestData.scheduledTime = formData.scheduledTime || new Date().toISOString();
+      } else if (formData.priority === 'now') {
+        // For "now" requests, set the scheduled time to current time
+        requestData.scheduledTime = new Date().toISOString();
+      }
+
+      await guestServiceService.createServiceRequest(requestData);
       
       toast.success('Service request created successfully');
       setShowCreateForm(false);
       setFormData({
         bookingId: '',
         serviceType: '',
-        title: '',
-        description: '',
-        priority: 'medium',
+        serviceVariations: [],
+        priority: 'now',
         scheduledTime: '',
         specialInstructions: ''
       });
@@ -167,9 +183,12 @@ export default function GuestRequests() {
   };
 
   const filteredRequests = requests.filter(request =>
-    request.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    request.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    request.serviceVariation?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    request.serviceVariations?.some(variation => variation.toLowerCase().includes(searchTerm.toLowerCase())) ||
     request.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    request.bookingId?.bookingNumber?.includes(searchTerm)
+    request.bookingId?.bookingNumber?.includes(searchTerm) ||
+    request.serviceType.replace('_', ' ').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   if (loading) {
@@ -275,7 +294,13 @@ export default function GuestRequests() {
               </label>
               <select
                 value={formData.serviceType}
-                onChange={(e) => setFormData(prev => ({ ...prev, serviceType: e.target.value }))}
+                onChange={(e) => {
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    serviceType: e.target.value,
+                    serviceVariations: [] // Reset variations when service type changes
+                  }));
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">Select service type</option>
@@ -290,59 +315,112 @@ export default function GuestRequests() {
               </select>
             </div>
 
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Title *
-              </label>
-              <input
-                type="text"
-                value={formData.title}
-                onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Brief description of your request"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Description
-              </label>
-              <textarea
-                value={formData.description}
-                onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                rows={3}
-                placeholder="Detailed description of your request..."
-              />
-            </div>
+            {formData.serviceType && (
+              <div className="md:col-span-2">
+                <div className="flex items-center justify-between mb-3">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Service Options * (Select multiple)
+                  </label>
+                  <div className="flex space-x-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allVariations = SERVICE_VARIATIONS[formData.serviceType as keyof typeof SERVICE_VARIATIONS] || [];
+                        setFormData(prev => ({
+                          ...prev,
+                          serviceVariations: allVariations
+                        }));
+                      }}
+                      className="text-xs text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData(prev => ({
+                          ...prev,
+                          serviceVariations: []
+                        }));
+                      }}
+                      className="text-xs text-gray-600 hover:text-gray-800 underline"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3">
+                  {SERVICE_VARIATIONS[formData.serviceType as keyof typeof SERVICE_VARIATIONS]?.map((variation) => (
+                    <label key={variation} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                      <input
+                        type="checkbox"
+                        checked={formData.serviceVariations.includes(variation)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setFormData(prev => ({
+                              ...prev,
+                              serviceVariations: [...prev.serviceVariations, variation]
+                            }));
+                          } else {
+                            setFormData(prev => ({
+                              ...prev,
+                              serviceVariations: prev.serviceVariations.filter(v => v !== variation)
+                            }));
+                          }
+                        }}
+                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                      />
+                      <span className="text-sm text-gray-900">{variation}</span>
+                    </label>
+                  ))}
+                </div>
+                {formData.serviceVariations.length > 0 && (
+                  <div className="mt-2 p-2 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-blue-800">
+                      <strong>Selected ({formData.serviceVariations.length}):</strong> {formData.serviceVariations.join(', ')}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Priority
+                When do you need this? *
               </label>
               <select
                 value={formData.priority}
-                onChange={(e) => setFormData(prev => ({ ...prev, priority: e.target.value }))}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    priority: value,
+                    // Clear scheduled time if switching to "now"
+                    scheduledTime: value === 'now' ? '' : prev.scheduledTime
+                  }));
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
+                <option value="now">Now</option>
+                <option value="later">Later</option>
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Scheduled Time (Optional)
-              </label>
-              <input
-                type="datetime-local"
-                value={formData.scheduledTime}
-                onChange={(e) => setFormData(prev => ({ ...prev, scheduledTime: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
+            {formData.priority === 'later' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Scheduled Time *
+                </label>
+                <input
+                  type="datetime-local"
+                  value={formData.scheduledTime}
+                  onChange={(e) => setFormData(prev => ({ ...prev, scheduledTime: e.target.value }))}
+                  min={new Date().toISOString().slice(0, 16)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required={formData.priority === 'later'}
+                />
+              </div>
+            )}
 
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -403,14 +481,18 @@ export default function GuestRequests() {
                 <div className="flex-1">
                   <div className="flex items-center space-x-3 mb-2">
                     <h3 className="text-lg font-semibold text-gray-900">
-                      {request.title}
+                      {request.serviceVariations && request.serviceVariations.length > 0
+                        ? request.serviceVariations.length === 1 
+                          ? request.serviceVariations[0]
+                          : `${request.serviceVariations.length} ${request.serviceType.replace('_', ' ')} services`
+                        : request.serviceVariation || request.title || `${request.serviceType.replace('_', ' ')} Service`}
                     </h3>
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
                       {getStatusIcon(request.status)}
                       <span className="ml-1 capitalize">{request.status.replace('_', ' ')}</span>
                     </span>
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(request.priority)}`}>
-                      {request.priority.charAt(0).toUpperCase() + request.priority.slice(1)} Priority
+                      {request.priority === 'now' ? 'Now' : request.priority === 'later' ? 'Scheduled' : `${request.priority.charAt(0).toUpperCase() + request.priority.slice(1)} Priority`}
                     </span>
                   </div>
                   
@@ -420,6 +502,23 @@ export default function GuestRequests() {
                   
                   {request.description && (
                     <p className="text-sm text-gray-700 mb-3">{request.description}</p>
+                  )}
+
+                  {/* Display multiple service variations */}
+                  {request.serviceVariations && request.serviceVariations.length > 1 && (
+                    <div className="mb-3">
+                      <p className="text-sm font-medium text-gray-700 mb-2">Selected Services:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {request.serviceVariations.map((variation, index) => (
+                          <span 
+                            key={index} 
+                            className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                          >
+                            {variation}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                   )}
 
                   <div className="flex items-center space-x-6 text-sm text-gray-500">

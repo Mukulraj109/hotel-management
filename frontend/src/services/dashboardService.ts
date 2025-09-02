@@ -363,6 +363,37 @@ class DashboardService {
     const response = await api.get('/user/preferences/dashboard');
     return response.data;
   }
+
+  // New simplified dashboard counts for sidebar
+  async getDashboardCounts(): Promise<{
+    frontDesk: {
+      total: number;
+      checkIn: number;
+      checkOut: number;
+    };
+    reservations: {
+      total: number;
+      confirmed: number;
+      pending: number;
+      checkedIn: number;
+    };
+    housekeeping: {
+      total: number;
+      dirty: number;
+      maintenance: number;
+      outOfOrder: number;
+    };
+    guestServices: {
+      total: number;
+      pending: number;
+      inProgress: number;
+      vipGuests: number;
+      corporate: number;
+    };
+  }> {
+    const response = await api.get('/dashboard/counts');
+    return response.data.data;
+  }
 }
 
 export const dashboardService = new DashboardService();

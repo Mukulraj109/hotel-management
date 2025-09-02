@@ -25,6 +25,7 @@ import { StatusBadge } from '../../components/dashboard/StatusBadge';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import { formatNumber } from '../../utils/dashboardUtils';
+import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { adminSupplyRequestsService, SupplyRequest, SupplyRequestStats, SupplyRequestFilters, SupplyRequestItem } from '../../services/adminSupplyRequestsService';
 import { useRealTime } from '../../services/realTimeService';
@@ -240,18 +241,7 @@ export default function AdminSupplyRequests() {
       key: 'status',
       header: 'Status',
       render: (value: any, request: SupplyRequest) => (
-        <StatusBadge 
-          status={request.status} 
-          colorMap={{
-            pending: 'yellow',
-            approved: 'blue',
-            rejected: 'red',
-            ordered: 'purple',
-            partial_received: 'orange',
-            received: 'green',
-            cancelled: 'gray'
-          }}
-        />
+        <StatusBadge status={request.status} />
       )
     },
     {
@@ -261,13 +251,13 @@ export default function AdminSupplyRequests() {
         <div className="text-sm">
           {request.totalActualCost > 0 ? (
             <div>
-              <div className="font-medium">${request.totalActualCost.toFixed(2)}</div>
+              <div className="font-medium">{formatCurrency(request.totalActualCost)}</div>
               {request.totalActualCost !== request.totalEstimatedCost && (
-                <div className="text-gray-500">Est: ${request.totalEstimatedCost.toFixed(2)}</div>
+                <div className="text-gray-500">Est: {formatCurrency(request.totalEstimatedCost)}</div>
               )}
             </div>
           ) : (
-            <div className="text-gray-600">${request.totalEstimatedCost.toFixed(2)}</div>
+            <div className="text-gray-600">{formatCurrency(request.totalEstimatedCost)}</div>
           )}
         </div>
       )
@@ -558,18 +548,7 @@ export default function AdminSupplyRequests() {
                   <p className="text-sm text-gray-500 mt-1">Request #{selectedRequest.requestNumber}</p>
                 </div>
                 <div className="text-right">
-                  <StatusBadge 
-                    status={selectedRequest.status} 
-                    colorMap={{
-                      pending: 'yellow',
-                      approved: 'blue',
-                      rejected: 'red',
-                      ordered: 'purple',
-                      partial_received: 'orange',
-                      received: 'green',
-                      cancelled: 'gray'
-                    }}
-                  />
+                  <StatusBadge status={selectedRequest.status} />
                   {isOverdue(selectedRequest) && (
                     <div className="text-xs text-red-600 font-medium mt-1">OVERDUE</div>
                   )}
@@ -625,10 +604,10 @@ export default function AdminSupplyRequests() {
                       </div>
                       <div className="text-right ml-4">
                         <div className="font-medium text-gray-900">
-                          ${item.actualCost ? item.actualCost.toFixed(2) : item.estimatedCost.toFixed(2)}
+                          {formatCurrency(item.actualCost ? item.actualCost : item.estimatedCost)}
                         </div>
                         {item.actualCost && item.actualCost !== item.estimatedCost && (
-                          <div className="text-sm text-gray-500">Est: ${item.estimatedCost.toFixed(2)}</div>
+                          <div className="text-sm text-gray-500">Est: {formatCurrency(item.estimatedCost)}</div>
                         )}
                         {item.isReceived && (
                           <div className="text-xs text-green-600 font-medium mt-1">
@@ -643,9 +622,9 @@ export default function AdminSupplyRequests() {
                   <div className="flex justify-between items-center">
                     <span className="text-lg font-semibold text-gray-900">Total Cost:</span>
                     <span className="text-lg font-bold text-gray-900">
-                      ${selectedRequest.totalActualCost > 0 ? selectedRequest.totalActualCost.toFixed(2) : selectedRequest.totalEstimatedCost.toFixed(2)}
+                      {formatCurrency(selectedRequest.totalActualCost > 0 ? selectedRequest.totalActualCost : selectedRequest.totalEstimatedCost)}
                       {selectedRequest.totalActualCost > 0 && selectedRequest.totalActualCost !== selectedRequest.totalEstimatedCost && (
-                        <span className="text-sm text-gray-500 ml-2">(Est: ${selectedRequest.totalEstimatedCost.toFixed(2)})</span>
+                        <span className="text-sm text-gray-500 ml-2">(Est: {formatCurrency(selectedRequest.totalEstimatedCost)})</span>
                       )}
                     </span>
                   </div>
@@ -731,7 +710,7 @@ export default function AdminSupplyRequests() {
               <div className="text-sm">
                 <div className="font-medium">Request: {selectedRequest.requestNumber}</div>
                 <div className="text-gray-600">{selectedRequest.title}</div>
-                <div className="font-medium mt-2">Total Cost: ${selectedRequest.totalEstimatedCost.toFixed(2)}</div>
+                <div className="font-medium mt-2">Total Cost: {formatCurrency(selectedRequest.totalEstimatedCost)}</div>
               </div>
             </div>
           )}

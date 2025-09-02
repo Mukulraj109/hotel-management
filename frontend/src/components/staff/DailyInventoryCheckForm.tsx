@@ -16,6 +16,7 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { PhotoUpload } from '../inventory/PhotoUpload';
+import { formatCurrency } from '../../utils/formatters';
 
 interface InventoryItem {
   itemId: string;
@@ -281,7 +282,7 @@ export function DailyInventoryCheckForm({
               <DollarSign className="h-8 w-8 text-green-600" />
               <div className="ml-3">
                 <p className="text-sm text-gray-600">Guest Charges</p>
-                <p className="text-xl font-semibold">${getTotalCharges().toFixed(2)}</p>
+                <p className="text-xl font-semibold">{formatCurrency(getTotalCharges())}</p>
               </div>
             </div>
           </Card>
@@ -428,7 +429,7 @@ export function DailyInventoryCheckForm({
             )}
             {getTotalCharges() > 0 && (
               <span className="text-red-600 ml-4">
-                Guest charges: ${getTotalCharges().toFixed(2)}
+                Guest charges: {formatCurrency(getTotalCharges())}
               </span>
             )}
           </div>

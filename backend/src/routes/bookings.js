@@ -632,4 +632,78 @@ router.patch('/:id/cancel',
   })
 );
 
+// Change room for a booking (for drag & drop in tape chart)
+router.post('/change-room', 
+  authenticate, 
+  authorize(['admin', 'staff']),
+  catchAsync(async (req, res) => {
+    const { bookingId, newRoomId, newRoomNumber, reason, changeDate } = req.body;
+    
+    const booking = await Booking.findById(bookingId);
+    if (!booking) {
+      throw new AppError('Booking not found', 404);
+    }
+
+    // Find the room in the booking's rooms array and update it
+    if (booking.rooms && booking.rooms.length > 0) {
+      booking.rooms[0].roomId = new mongoose.Types.ObjectId(newRoomId);
+      // Add a note about the room change
+      if (!booking.notes) booking.notes = [];
+      booking.notes.push(`Room changed to ${newRoomNumber} on ${new Date().toISOString()} by ${req.user.name}. Reason: ${reason}`);
+      
+      await booking.save();
+      
+      res.json({
+        success: true,
+        data: {
+          booking,
+          message: `Room changed to ${newRoomNumber} successfully`
+        }
+      });
+    } else {
+      throw new AppError('Booking has no rooms to change', 400);
+    }
+  })
+);
+
+// Change room by finding booking via guest details (for drag & drop in tape chart)
+router.post('/change-room-by-guest', 
+  authenticate, 
+  authorize(['admin', 'staff']),
+  catchAsync(async (req, res) => {
+    const { guestName, checkIn, checkOut, newRoomId, newRoomNumber, reason } = req.body;
+    
+    // Find booking by guest name and dates
+    const booking = await Booking.findOne({
+      guestName: { $regex: new RegExp(guestName, 'i') }, // Case insensitive search
+      checkIn: new Date(checkIn),
+      checkOut: new Date(checkOut)
+    });
+    
+    if (!booking) {
+      throw new AppError(`Booking not found for ${guestName} (${checkIn} to ${checkOut})`, 404);
+    }
+
+    // Find the room in the booking's rooms array and update it
+    if (booking.rooms && booking.rooms.length > 0) {
+      booking.rooms[0].roomId = new mongoose.Types.ObjectId(newRoomId);
+      // Add a note about the room change
+      if (!booking.notes) booking.notes = [];
+      booking.notes.push(`Room changed to ${newRoomNumber} on ${new Date().toISOString()} by ${req.user.name}. Reason: ${reason}`);
+      
+      await booking.save();
+      
+      res.json({
+        success: true,
+        data: {
+          booking,
+          message: `${guestName}'s room changed to ${newRoomNumber} successfully`
+        }
+      });
+    } else {
+      throw new AppError('Booking has no rooms to change', 400);
+    }
+  })
+);
+
 export default router;

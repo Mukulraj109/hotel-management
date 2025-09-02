@@ -213,18 +213,23 @@ export default function AdminHousekeeping() {
   // Fetch staff members
   const fetchStaffMembers = async () => {
     try {
-      // This would typically come from a staff/users API endpoint
-      // For now, we'll use mock data with proper MongoDB ObjectIds
-      const mockStaff: StaffMember[] = [
-        { _id: '507f1f77bcf86cd799439021', name: 'John Smith', email: 'john@hotel.com', role: 'housekeeper' },
-        { _id: '507f1f77bcf86cd799439022', name: 'Sarah Johnson', email: 'sarah@hotel.com', role: 'housekeeper' },
-        { _id: '507f1f77bcf86cd799439023', name: 'Mike Wilson', email: 'mike@hotel.com', role: 'housekeeper' },
-        { _id: '507f1f77bcf86cd799439024', name: 'Lisa Brown', email: 'lisa@hotel.com', role: 'housekeeper' },
-        { _id: '507f1f77bcf86cd799439025', name: 'David Lee', email: 'david@hotel.com', role: 'maintenance' },
-      ];
-      setStaffMembers(mockStaff);
+      // Fetch only staff members (role: 'staff') from the API
+      const response = await adminService.getUsers({ role: 'staff' });
+      const staffUsers = response.data.users || [];
+      
+      // Transform the data to match our StaffMember interface
+      const transformedStaff: StaffMember[] = staffUsers.map((user: any) => ({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }));
+      
+      setStaffMembers(transformedStaff);
     } catch (error) {
       console.error('Error fetching staff members:', error);
+      // Fallback to empty array if API fails
+      setStaffMembers([]);
     }
   };
 

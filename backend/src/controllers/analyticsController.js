@@ -14,6 +14,7 @@ import Room from '../models/Room.js';
 const reportingService = new AdvancedReportingService();
 const etlService = new ETLService();
 const predictiveEngine = new PredictiveAnalyticsEngine();
+const guestSegmentationService = new GuestSegmentationService();
 
 // Initialize services
 let servicesInitialized = false;
@@ -21,6 +22,7 @@ const initializeServices = async () => {
   if (!servicesInitialized) {
     await reportingService.initialize();
     await predictiveEngine.initialize();
+    await guestSegmentationService.initialize();
     servicesInitialized = true;
   }
 };

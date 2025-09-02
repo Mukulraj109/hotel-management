@@ -26,20 +26,26 @@ const router = express.Router();
  *             required:
  *               - bookingId
  *               - serviceType
- *               - title
+ *               - serviceVariation
  *             properties:
  *               bookingId:
  *                 type: string
  *               serviceType:
  *                 type: string
  *                 enum: [room_service, housekeeping, maintenance, concierge, transport, spa, laundry, other]
+ *               serviceVariation:
+ *                 type: string
+ *               serviceVariations:
+ *                 type: array
+ *                 items:
+ *                   type: string
  *               title:
  *                 type: string
  *               description:
  *                 type: string
  *               priority:
  *                 type: string
- *                 enum: [low, medium, high, urgent]
+ *                 enum: [now, later, low, medium, high, urgent]
  *               scheduledTime:
  *                 type: string
  *                 format: date-time
@@ -64,6 +70,8 @@ router.post('/', authenticate, catchAsync(async (req, res) => {
   const {
     bookingId,
     serviceType,
+    serviceVariation,
+    serviceVariations,
     title,
     description,
     priority,
@@ -95,14 +103,20 @@ router.post('/', authenticate, catchAsync(async (req, res) => {
     throw new AppError('You can only create requests for your own bookings', 403);
   }
 
+  // Handle multiple service variations
+  const finalServiceVariations = serviceVariations && serviceVariations.length > 0 ? serviceVariations : [];
+  const primaryVariation = serviceVariation || (finalServiceVariations.length > 0 ? finalServiceVariations[0] : '');
+  
   const serviceRequest = await GuestService.create({
     hotelId: booking.hotelId,
     userId: booking.userId,
     bookingId,
     serviceType,
-    title,
+    serviceVariation: primaryVariation,
+    serviceVariations: finalServiceVariations,
+    title: title || (finalServiceVariations.length > 1 ? `${finalServiceVariations.length} ${serviceType.replace('_', ' ')} services` : primaryVariation),
     description,
-    priority: priority || 'medium',
+    priority: priority || 'now',
     scheduledTime,
     items: items || [],
     specialInstructions,
@@ -435,7 +449,8 @@ router.patch('/:id', authenticate, catchAsync(async (req, res) => {
     notes,
     actualCost,
     scheduledTime,
-    priority
+    priority,
+    completedServiceVariations
   } = req.body;
 
   // Permission checks
@@ -462,6 +477,7 @@ router.patch('/:id', authenticate, catchAsync(async (req, res) => {
     if (actualCost !== undefined) serviceRequest.actualCost = actualCost;
     if (scheduledTime !== undefined) serviceRequest.scheduledTime = scheduledTime;
     if (priority !== undefined) serviceRequest.priority = priority;
+    if (completedServiceVariations !== undefined) serviceRequest.completedServiceVariations = completedServiceVariations;
   }
 
   await serviceRequest.save();

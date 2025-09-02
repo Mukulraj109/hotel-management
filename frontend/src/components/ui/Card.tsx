@@ -38,6 +38,17 @@ export function CardTitle({ children, className, ...props }: CardProps) {
   );
 }
 
+export function CardDescription({ children, className, ...props }: CardProps) {
+  return (
+    <p
+      className={cn('text-sm text-gray-600', className)}
+      {...props}
+    >
+      {children}
+    </p>
+  );
+}
+
 export function CardContent({ children, className, ...props }: CardProps) {
   return (
     <div

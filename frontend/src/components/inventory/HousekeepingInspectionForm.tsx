@@ -17,6 +17,7 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { LoadingSpinner } from '../LoadingSpinner';
+import { formatCurrency } from '../../utils/formatters';
 import { roomInventoryService, RoomInventory, InventoryItem } from '../../services/roomInventoryService';
 
 interface HousekeepingInspectionFormProps {
@@ -699,7 +700,7 @@ export function HousekeepingInspectionForm({
                       <div className="flex-1">
                         <span className="font-medium">{finding.issue}</span>
                         {finding.cost > 0 && (
-                          <span className="text-gray-600 ml-2">${finding.cost.toFixed(2)}</span>
+                          <span className="text-gray-600 ml-2">{formatCurrency(finding.cost)}</span>
                         )}
                       </div>
                       <div className="flex items-center space-x-2">

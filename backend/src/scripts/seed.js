@@ -20,7 +20,13 @@ import Offer from '../models/Offer.js';
 import MeetUpRequest from '../models/MeetUpRequest.js';
 import HotelService from '../models/HotelService.js';
 import Notification from '../models/Notification.js';
+import TapeChartModels from '../models/TapeChart.js';
+import POSOutlet from '../models/POSOutlet.js';
+import POSMenu from '../models/POSMenu.js';
+import POSOrder from '../models/POSOrder.js';
 import logger from '../utils/logger.js';
+
+const { RoomBlock, RoomAssignmentRules, AdvancedReservation } = TapeChartModels;
 
 dotenv.config();
 
@@ -56,6 +62,12 @@ const seedData = async () => {
     await MeetUpRequest.deleteMany({});
     await HotelService.deleteMany({});
     await Notification.deleteMany({});
+    await RoomBlock.deleteMany({});
+    await RoomAssignmentRules.deleteMany({});
+    await AdvancedReservation.deleteMany({});
+    await POSOutlet.deleteMany({});
+    await POSMenu.deleteMany({});
+    await POSOrder.deleteMany({});
 
     logger.info('Cleared existing data');
 
@@ -415,20 +427,72 @@ const seedData = async () => {
       const room = createdRooms[Math.floor(Math.random() * createdRooms.length)];
       const booking = createdBookings[Math.floor(Math.random() * createdBookings.length)];
       const serviceType = serviceTypes[Math.floor(Math.random() * serviceTypes.length)];
+      const priority = ['now', 'later', 'low', 'medium', 'high', 'urgent'][Math.floor(Math.random() * 6)];
+      const isLater = priority === 'later';
+      
+      // Service variations mapping
+      const serviceVariations = {
+        room_service: ['Food & Beverage Delivery', 'Ice & Water Request', 'Extra Towels', 'Extra Pillows & Blankets', 'Late Night Snacks', 'Breakfast in Room', 'Special Dietary Meal'],
+        housekeeping: ['Room Cleaning', 'Fresh Towels', 'Bed Linen Change', 'Bathroom Cleaning', 'Trash Removal', 'Vacuum Cleaning', 'Deep Cleaning'],
+        maintenance: ['AC/Heating Issue', 'Plumbing Problem', 'Electrical Issue', 'TV/Electronics Problem', 'Door/Lock Issue', 'Window/Curtain Problem', 'Furniture Repair'],
+        concierge: ['Restaurant Reservation', 'Tour Booking', 'Transportation Arrangement', 'Ticket Booking', 'Local Information', 'Wake-up Call', 'Special Occasion Setup'],
+        transport: ['Airport Pickup', 'Airport Drop-off', 'City Tour', 'Taxi Booking', 'Car Rental', 'Train Station Transfer', 'Sightseeing Trip'],
+        spa: ['Massage Appointment', 'Facial Treatment', 'Spa Package', 'Manicure/Pedicure', 'Hair Styling', 'Wellness Consultation', 'Relaxation Therapy'],
+        laundry: ['Clothes Washing', 'Dry Cleaning', 'Iron & Press', 'Express Laundry', 'Shoe Cleaning', 'Special Fabric Care', 'Pickup & Delivery'],
+        other: ['Special Request', 'Event Setup', 'Medical Assistance', 'Baby/Child Services', 'Pet Services', 'Lost & Found', 'Complaint Resolution']
+      };
+      
+      const variations = serviceVariations[serviceType];
+      
+      // Randomly select 1-3 service variations
+      const numVariations = Math.floor(Math.random() * 3) + 1; // 1 to 3 variations
+      const selectedVariations = [];
+      const shuffled = [...variations].sort(() => 0.5 - Math.random());
+      
+      for (let j = 0; j < Math.min(numVariations, variations.length); j++) {
+        selectedVariations.push(shuffled[j]);
+      }
+      
+      const primaryVariation = selectedVariations[0];
+      const title = selectedVariations.length === 1 
+        ? primaryVariation 
+        : `${selectedVariations.length} ${serviceType.replace('_', ' ')} services`;
+      
+      const status = ['pending', 'assigned', 'in_progress', 'completed', 'cancelled'][Math.floor(Math.random() * 5)];
+      
+      // For in_progress requests, randomly complete some services
+      let completedServiceVariations = [];
+      if (status === 'in_progress' && selectedVariations.length > 1) {
+        const numCompleted = Math.floor(Math.random() * (selectedVariations.length - 1)); // At least 1 incomplete
+        completedServiceVariations = selectedVariations.slice(0, numCompleted);
+      } else if (status === 'completed') {
+        completedServiceVariations = [...selectedVariations]; // All completed
+      }
       
       guestServicesData.push({
         hotelId: hotel._id,
         userId: guest._id,
         bookingId: booking._id,
         serviceType,
-        title: `${serviceType.replace('_', ' ')} request`,
-        description: `Customer requested ${serviceType.replace('_', ' ')} service`,
-        priority: ['low', 'medium', 'high', 'urgent'][Math.floor(Math.random() * 4)],
-        status: ['pending', 'assigned', 'in_progress', 'completed', 'cancelled'][Math.floor(Math.random() * 5)],
+        serviceVariation: primaryVariation,
+        serviceVariations: selectedVariations,
+        completedServiceVariations: completedServiceVariations,
+        title: title,
+        description: selectedVariations.length === 1 
+          ? `Customer requested ${primaryVariation.toLowerCase()}`
+          : `Customer requested multiple services: ${selectedVariations.join(', ').toLowerCase()}`,
+        priority,
+        status: status,
         requestDate: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000),
         assignedTo: Math.random() > 0.5 ? staffUser._id : null,
         estimatedCost: Math.random() * 2000 + 500, // ₹500-2500
-        actualCost: Math.random() * 1800 + 400 // ₹400-2200
+        actualCost: Math.random() * 1800 + 400, // ₹400-2200
+        // Add scheduledTime for "later" priority or for "now" requests
+        scheduledTime: isLater 
+          ? new Date(Date.now() + Math.random() * 48 * 60 * 60 * 1000) // Next 48 hours for "later"
+          : priority === 'now' 
+          ? new Date() // Current time for "now" priority
+          : undefined
       });
     }
     const createdGuestServices = await GuestService.create(guestServicesData);
@@ -1190,6 +1254,412 @@ const seedData = async () => {
     const createdNotifications = await Notification.create(notificationsData);
     logger.info(`Created ${createdNotifications.length} notifications`);
 
+    // Create Room Blocks
+    const roomBlocksData = [
+      {
+        blockId: `RB-${Date.now()}-1`,
+        blockName: 'Tech Conference 2025',
+        groupName: 'TechCorp International',
+        eventType: 'conference',
+        startDate: new Date('2025-03-15'),
+        endDate: new Date('2025-03-17'),
+        rooms: createdRooms.slice(0, 5).map(room => ({
+          roomId: room._id,
+          roomNumber: room.roomNumber,
+          roomType: room.type,
+          rate: room.currentRate * 0.9, // 10% discount
+          status: 'blocked'
+        })),
+        totalRooms: 5,
+        roomsBooked: 2,
+        roomsReleased: 0,
+        blockRate: createdRooms[0].currentRate * 0.9,
+        status: 'active',
+        contactPerson: {
+          name: 'Sarah Johnson',
+          email: 'sarah@techcorp.com',
+          phone: '+1-555-0123',
+          title: 'Event Coordinator'
+        },
+        billingInstructions: 'master_account',
+        specialInstructions: 'Setup AV equipment in all rooms',
+        amenities: ['wifi', 'breakfast', 'parking'],
+        cateringRequirements: 'Vegetarian lunch for 50 people on March 16th',
+        createdBy: adminUser._id
+      },
+      {
+        blockId: `RB-${Date.now()}-2`,
+        blockName: 'Smith-Williams Wedding',
+        groupName: 'Smith-Williams Family',
+        eventType: 'wedding',
+        startDate: new Date('2025-04-20'),
+        endDate: new Date('2025-04-22'),
+        rooms: createdRooms.slice(5, 10).map(room => ({
+          roomId: room._id,
+          roomNumber: room.roomNumber,
+          roomType: room.type,
+          rate: room.currentRate,
+          status: 'blocked'
+        })),
+        totalRooms: 5,
+        roomsBooked: 5,
+        roomsReleased: 0,
+        blockRate: createdRooms[5].currentRate,
+        status: 'confirmed',
+        contactPerson: {
+          name: 'Emily Smith',
+          email: 'emily.smith@email.com',
+          phone: '+1-555-0456',
+          title: 'Bride'
+        },
+        billingInstructions: 'individual_folios',
+        specialInstructions: 'All rooms should have flower arrangements',
+        amenities: ['champagne', 'late_checkout', 'spa_access'],
+        cateringRequirements: 'Wedding reception for 100 guests',
+        createdBy: staffUser._id
+      },
+      {
+        blockId: `RB-${Date.now()}-3`,
+        blockName: 'Annual Sales Meeting',
+        groupName: 'GlobalSales Inc',
+        eventType: 'corporate_event',
+        startDate: new Date('2025-05-10'),
+        endDate: new Date('2025-05-12'),
+        rooms: createdRooms.slice(10, 15).map(room => ({
+          roomId: room._id,
+          roomNumber: room.roomNumber,
+          roomType: room.type,
+          rate: room.currentRate * 0.85, // 15% discount
+          status: 'blocked'
+        })),
+        totalRooms: 5,
+        roomsBooked: 1,
+        roomsReleased: 1,
+        blockRate: createdRooms[10].currentRate * 0.85,
+        status: 'active',
+        contactPerson: {
+          name: 'Mike Thompson',
+          email: 'mike@globalsales.com',
+          phone: '+1-555-0789',
+          title: 'Sales Director'
+        },
+        billingInstructions: 'master_account',
+        specialInstructions: 'Meeting room required for presentations',
+        amenities: ['business_center', 'early_checkin'],
+        cateringRequirements: 'Continental breakfast daily, coffee breaks',
+        createdBy: adminUser._id
+      }
+    ];
+
+    const createdRoomBlocks = await RoomBlock.create(roomBlocksData);
+    logger.info(`Created ${createdRoomBlocks.length} room blocks`);
+
+    // Assignment Rules Seed Data
+    const assignmentRulesData = [
+      {
+        ruleId: `AR-${Date.now()}-1`,
+        ruleName: 'VIP Guest Priority Assignment',
+        priority: 1,
+        isActive: true,
+        conditions: {
+          guestType: ['vip'],
+          reservationType: ['vip', 'corporate'],
+          lengthOfStay: { min: 2 }
+        },
+        actions: {
+          preferredFloors: [5, 6, 7],
+          upgradeEligible: true,
+          upgradeFromTypes: ['deluxe'],
+          upgradeToTypes: ['suite', 'presidential'],
+          amenityPackages: ['wifi', 'breakfast', 'spa_access', 'late_checkout'],
+          specialServices: ['turndown_service', 'welcome_amenities', 'concierge_service']
+        },
+        restrictions: {
+          maxUpgrades: 10,
+          minimumRevenue: 500,
+          requiredApproval: 'manager'
+        },
+        createdBy: adminUser._id
+      },
+      {
+        ruleId: `AR-${Date.now()}-2`,
+        ruleName: 'Corporate Booking Standard Assignment',
+        priority: 2,
+        isActive: true,
+        conditions: {
+          guestType: ['corporate'],
+          reservationType: ['corporate'],
+          lengthOfStay: { min: 3 },
+          advanceBooking: { min: 7 }
+        },
+        actions: {
+          preferredFloors: [3, 4],
+          upgradeEligible: false,
+          amenityPackages: ['wifi', 'business_center', 'early_checkin'],
+          specialServices: ['priority_housekeeping']
+        },
+        restrictions: {
+          maxUpgrades: 5,
+          minimumRevenue: 200,
+          requiredApproval: 'supervisor'
+        },
+        createdBy: staffUser._id
+      },
+      {
+        ruleId: `AR-${Date.now()}-3`,
+        ruleName: 'Group Booking Block Assignment',
+        priority: 3,
+        isActive: true,
+        conditions: {
+          guestType: ['group'],
+          reservationType: ['group'],
+          lengthOfStay: { min: 2, max: 7 }
+        },
+        actions: {
+          preferredFloors: [2, 3],
+          upgradeEligible: true,
+          upgradeFromTypes: ['single', 'double'],
+          upgradeToTypes: ['deluxe'],
+          amenityPackages: ['wifi', 'parking']
+        },
+        restrictions: {
+          maxUpgrades: 3,
+          minimumRevenue: 150,
+          requiredApproval: 'supervisor',
+          blockoutDates: [
+            {
+              startDate: new Date('2025-12-20'),
+              endDate: new Date('2025-12-31'),
+              reason: 'Holiday season - premium rates only'
+            }
+          ]
+        },
+        createdBy: adminUser._id
+      }
+    ];
+
+    const createdAssignmentRules = await RoomAssignmentRules.create(assignmentRulesData);
+    logger.info(`Created ${createdAssignmentRules.length} assignment rules`);
+
+    // Advanced Reservations Seed Data
+    const advancedReservationsData = [
+      {
+        reservationId: `ADV-${Date.now()}-1`,
+        bookingId: createdBookings[0]._id,
+        reservationType: 'vip',
+        priority: 'vip',
+        roomPreferences: {
+          preferredRooms: [createdRooms[5]._id.toString(), createdRooms[6]._id.toString()],
+          preferredFloor: 6,
+          preferredView: 'ocean',
+          adjacentRooms: false,
+          connectingRooms: false,
+          accessibleRoom: false,
+          smokingPreference: 'non_smoking'
+        },
+        guestProfile: {
+          vipStatus: 'platinum',
+          loyaltyNumber: 'PLT-789456',
+          preferences: {
+            bedType: 'king',
+            pillowType: 'memory_foam',
+            roomTemperature: 72,
+            newspaper: 'Financial Times',
+            wakeUpCall: false,
+            turndownService: true
+          },
+          allergies: ['shellfish'],
+          specialNeeds: [],
+          dietaryRestrictions: ['vegetarian']
+        },
+        roomAssignments: [
+          {
+            roomId: createdRooms[5]._id,
+            roomNumber: createdRooms[5].roomNumber,
+            assignedDate: new Date(),
+            assignmentType: 'preference',
+            assignedBy: staffUser._id,
+            notes: 'VIP guest preference - ocean view suite'
+          }
+        ],
+        upgrades: [
+          {
+            fromRoomType: 'deluxe',
+            toRoomType: 'suite',
+            upgradeType: 'complimentary',
+            upgradeReason: 'VIP status - platinum member',
+            additionalCharge: 0,
+            approvedBy: adminUser._id,
+            upgradeDate: new Date()
+          }
+        ],
+        specialRequests: [
+          {
+            type: 'amenities',
+            description: 'Premium champagne and chocolate arrangement',
+            priority: 'high',
+            status: 'confirmed',
+            assignedTo: staffUser._id,
+            dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
+            cost: 150,
+            notes: 'VIP welcome amenity'
+          },
+          {
+            type: 'services',
+            description: 'Daily turndown service with rose petals',
+            priority: 'medium',
+            status: 'pending',
+            cost: 50,
+            notes: 'Special romantic package'
+          }
+        ],
+        reservationFlags: [
+          {
+            flag: 'vip',
+            severity: 'info',
+            description: 'Platinum loyalty member - provide exceptional service',
+            createdBy: staffUser._id,
+            createdAt: new Date(),
+            expiryDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
+          }
+        ]
+      },
+      {
+        reservationId: `ADV-${Date.now()}-2`,
+        bookingId: createdBookings[1]._id,
+        reservationType: 'corporate',
+        priority: 'high',
+        roomPreferences: {
+          preferredFloor: 4,
+          preferredView: 'city',
+          adjacentRooms: true,
+          connectingRooms: false,
+          accessibleRoom: false,
+          smokingPreference: 'non_smoking'
+        },
+        guestProfile: {
+          vipStatus: 'gold',
+          loyaltyNumber: 'GLD-456789',
+          preferences: {
+            bedType: 'queen',
+            pillowType: 'firm',
+            roomTemperature: 70,
+            newspaper: 'Wall Street Journal',
+            wakeUpCall: true,
+            turndownService: false
+          },
+          allergies: [],
+          specialNeeds: [],
+          dietaryRestrictions: []
+        },
+        roomAssignments: [
+          {
+            roomId: createdRooms[8]._id,
+            roomNumber: createdRooms[8].roomNumber,
+            assignedDate: new Date(),
+            assignmentType: 'auto',
+            assignedBy: staffUser._id,
+            notes: 'Auto-assigned based on corporate preferences'
+          }
+        ],
+        upgrades: [],
+        specialRequests: [
+          {
+            type: 'room_setup',
+            description: 'Business setup with desk and ergonomic chair',
+            priority: 'medium',
+            status: 'completed',
+            assignedTo: staffUser._id,
+            cost: 0,
+            notes: 'Standard corporate amenity'
+          },
+          {
+            type: 'services',
+            description: 'Early check-in at 12:00 PM',
+            priority: 'low',
+            status: 'confirmed',
+            cost: 0,
+            notes: 'Corporate account privilege'
+          }
+        ],
+        reservationFlags: [
+          {
+            flag: 'special_attention',
+            severity: 'info',
+            description: 'Corporate account - bill to company',
+            createdBy: staffUser._id,
+            createdAt: new Date()
+          }
+        ]
+      },
+      {
+        reservationId: `ADV-${Date.now()}-3`,
+        bookingId: createdBookings[2]._id,
+        reservationType: 'standard',
+        priority: 'medium',
+        roomPreferences: {
+          preferredView: 'garden',
+          accessibleRoom: true,
+          smokingPreference: 'non_smoking'
+        },
+        guestProfile: {
+          vipStatus: 'member',
+          preferences: {
+            bedType: 'double',
+            pillowType: 'soft'
+          },
+          allergies: ['nuts'],
+          specialNeeds: ['wheelchair_accessible'],
+          dietaryRestrictions: ['gluten_free']
+        },
+        roomAssignments: [],
+        upgrades: [],
+        specialRequests: [
+          {
+            type: 'room_setup',
+            description: 'Wheelchair accessible room with roll-in shower',
+            priority: 'high',
+            status: 'pending',
+            notes: 'Essential accessibility requirement'
+          }
+        ],
+        reservationFlags: [
+          {
+            flag: 'special_attention',
+            severity: 'warning',
+            description: 'Guest requires wheelchair accessible accommodations',
+            createdBy: staffUser._id,
+            createdAt: new Date()
+          }
+        ],
+        waitlistInfo: {
+          waitlistPosition: 1,
+          waitlistDate: new Date(),
+          preferredRoomTypes: ['deluxe'],
+          maxRate: 200,
+          flexibleDates: {
+            checkInRange: {
+              start: new Date('2025-03-15'),
+              end: new Date('2025-03-20')
+            },
+            checkOutRange: {
+              start: new Date('2025-03-18'),
+              end: new Date('2025-03-25')
+            }
+          },
+          notificationPreferences: {
+            email: true,
+            sms: true,
+            phone: false
+          },
+          autoConfirm: false
+        }
+      }
+    ];
+
+    const createdAdvancedReservations = await AdvancedReservation.create(advancedReservationsData);
+    logger.info(`Created ${createdAdvancedReservations.length} advanced reservations`);
+
     logger.info('✅ Comprehensive seed data created successfully!');
     logger.info('\n📊 Data Summary:');
     logger.info(`🏨 Hotels: 1`);
@@ -1211,6 +1681,492 @@ const seedData = async () => {
     logger.info(`🏨 Hotel Services: ${createdHotelServices.length}`);
     logger.info(`🤝 Meet-Up Requests: ${createdMeetUpRequests.length}`);
     logger.info(`🔔 Notifications: ${createdNotifications.length}`);
+    logger.info(`🏢 Room Blocks: ${createdRoomBlocks.length}`);
+    logger.info(`⚙️ Assignment Rules: ${createdAssignmentRules.length}`);
+    logger.info(`🎯 Advanced Reservations: ${createdAdvancedReservations.length}`);
+
+    // Create POS Outlets
+    const posOutlets = [
+      {
+        outletId: 'outlet_restaurant_main',
+        name: 'Main Restaurant',
+        type: 'restaurant',
+        location: 'Ground Floor',
+        isActive: true,
+        operatingHours: {
+          monday: { open: '06:00', close: '23:00', closed: false },
+          tuesday: { open: '06:00', close: '23:00', closed: false },
+          wednesday: { open: '06:00', close: '23:00', closed: false },
+          thursday: { open: '06:00', close: '23:00', closed: false },
+          friday: { open: '06:00', close: '23:00', closed: false },
+          saturday: { open: '06:00', close: '23:00', closed: false },
+          sunday: { open: '06:00', close: '23:00', closed: false }
+        },
+        taxSettings: {
+          defaultTaxRate: 5,
+          serviceTaxRate: 10,
+          gstRate: 18
+        },
+        paymentMethods: ['cash', 'card', 'room_charge', 'voucher'],
+        manager: adminUser._id,
+        staff: [staffUser._id],
+        settings: {
+          allowRoomCharges: true,
+          requireSignature: false,
+          printReceipts: true,
+          allowDiscounts: true,
+          maxDiscountPercent: 20
+        }
+      },
+      {
+        outletId: 'outlet_bar_sky',
+        name: 'Sky Bar',
+        type: 'bar',
+        location: 'Rooftop',
+        isActive: true,
+        operatingHours: {
+          monday: { open: '18:00', close: '02:00', closed: false },
+          tuesday: { open: '18:00', close: '02:00', closed: false },
+          wednesday: { open: '18:00', close: '02:00', closed: false },
+          thursday: { open: '18:00', close: '02:00', closed: false },
+          friday: { open: '18:00', close: '03:00', closed: false },
+          saturday: { open: '18:00', close: '03:00', closed: false },
+          sunday: { open: '18:00', close: '02:00', closed: false }
+        },
+        taxSettings: {
+          defaultTaxRate: 5,
+          serviceTaxRate: 10,
+          gstRate: 18
+        },
+        paymentMethods: ['cash', 'card', 'room_charge'],
+        manager: adminUser._id,
+        staff: [staffUser._id],
+        settings: {
+          allowRoomCharges: true,
+          requireSignature: true,
+          printReceipts: true,
+          allowDiscounts: false,
+          maxDiscountPercent: 0
+        }
+      },
+      {
+        outletId: 'outlet_room_service',
+        name: 'Room Service',
+        type: 'room_service',
+        location: 'Kitchen',
+        isActive: true,
+        operatingHours: {
+          monday: { open: '00:00', close: '23:59', closed: false },
+          tuesday: { open: '00:00', close: '23:59', closed: false },
+          wednesday: { open: '00:00', close: '23:59', closed: false },
+          thursday: { open: '00:00', close: '23:59', closed: false },
+          friday: { open: '00:00', close: '23:59', closed: false },
+          saturday: { open: '00:00', close: '23:59', closed: false },
+          sunday: { open: '00:00', close: '23:59', closed: false }
+        },
+        taxSettings: {
+          defaultTaxRate: 5,
+          serviceTaxRate: 15,
+          gstRate: 18
+        },
+        paymentMethods: ['room_charge'],
+        manager: adminUser._id,
+        staff: [staffUser._id],
+        settings: {
+          allowRoomCharges: true,
+          requireSignature: false,
+          printReceipts: true,
+          allowDiscounts: true,
+          maxDiscountPercent: 10
+        }
+      }
+    ];
+
+    const createdOutlets = await POSOutlet.insertMany(posOutlets);
+    logger.info(`🍽️ POS Outlets created: ${createdOutlets.length}`);
+
+    // Create POS Menus with items
+    const posMenus = [
+      {
+        menuId: 'menu_restaurant_all_day',
+        name: 'All Day Dining Menu',
+        outlet: createdOutlets[0]._id,
+        type: 'all_day',
+        isActive: true,
+        availableHours: {
+          start: '06:00',
+          end: '23:00'
+        },
+        categories: [
+          { name: 'Appetizers', displayOrder: 1, isActive: true },
+          { name: 'Main Course', displayOrder: 2, isActive: true },
+          { name: 'Desserts', displayOrder: 3, isActive: true },
+          { name: 'Beverages', displayOrder: 4, isActive: true }
+        ],
+        items: [
+          {
+            itemId: 'item_spring_rolls',
+            name: 'Vegetable Spring Rolls',
+            description: 'Crispy spring rolls with fresh vegetables and sweet chili sauce',
+            category: 'Appetizers',
+            price: 850,
+            costPrice: 300,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 15,
+            allergens: ['gluten'],
+            dietaryInfo: ['vegetarian'],
+            ingredients: ['cabbage', 'carrot', 'spring onion', 'flour'],
+            modifiers: [
+              {
+                name: 'Sauce',
+                options: [
+                  { name: 'Sweet Chili', price: 0 },
+                  { name: 'Soy Sauce', price: 0 },
+                  { name: 'Spicy Mayo', price: 50 }
+                ]
+              }
+            ]
+          },
+          {
+            itemId: 'item_chicken_tikka',
+            name: 'Chicken Tikka Masala',
+            description: 'Tender chicken pieces in rich tomato curry',
+            category: 'Main Course',
+            price: 1650,
+            costPrice: 650,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 25,
+            allergens: ['dairy'],
+            dietaryInfo: [],
+            ingredients: ['chicken', 'tomato', 'cream', 'spices'],
+            modifiers: [
+              {
+                name: 'Spice Level',
+                options: [
+                  { name: 'Mild', price: 0 },
+                  { name: 'Medium', price: 0 },
+                  { name: 'Hot', price: 0 }
+                ]
+              },
+              {
+                name: 'Bread',
+                options: [
+                  { name: 'Naan', price: 150 },
+                  { name: 'Roti', price: 100 },
+                  { name: 'Rice', price: 120 }
+                ]
+              }
+            ]
+          },
+          {
+            itemId: 'item_pasta_alfredo',
+            name: 'Fettuccine Alfredo',
+            description: 'Classic pasta with creamy parmesan sauce',
+            category: 'Main Course',
+            price: 1450,
+            costPrice: 500,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 20,
+            allergens: ['gluten', 'dairy'],
+            dietaryInfo: ['vegetarian'],
+            ingredients: ['pasta', 'cream', 'parmesan', 'butter'],
+            modifiers: [
+              {
+                name: 'Add Protein',
+                options: [
+                  { name: 'Chicken', price: 300 },
+                  { name: 'Prawns', price: 400 },
+                  { name: 'Mushroom', price: 150 }
+                ]
+              }
+            ]
+          },
+          {
+            itemId: 'item_chocolate_cake',
+            name: 'Dark Chocolate Cake',
+            description: 'Rich dark chocolate cake with vanilla ice cream',
+            category: 'Desserts',
+            price: 650,
+            costPrice: 200,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 10,
+            allergens: ['gluten', 'dairy', 'eggs'],
+            dietaryInfo: [],
+            ingredients: ['chocolate', 'flour', 'eggs', 'butter']
+          },
+          {
+            itemId: 'item_fresh_juice',
+            name: 'Fresh Orange Juice',
+            description: 'Freshly squeezed orange juice',
+            category: 'Beverages',
+            price: 350,
+            costPrice: 100,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 5,
+            allergens: [],
+            dietaryInfo: ['vegan'],
+            ingredients: ['fresh oranges']
+          }
+        ]
+      },
+      {
+        menuId: 'menu_bar_cocktails',
+        name: 'Cocktail Menu',
+        outlet: createdOutlets[1]._id,
+        type: 'beverages',
+        isActive: true,
+        availableHours: {
+          start: '18:00',
+          end: '02:00'
+        },
+        categories: [
+          { name: 'Cocktails', displayOrder: 1, isActive: true },
+          { name: 'Spirits', displayOrder: 2, isActive: true },
+          { name: 'Beer', displayOrder: 3, isActive: true }
+        ],
+        items: [
+          {
+            itemId: 'item_mojito',
+            name: 'Classic Mojito',
+            description: 'Fresh mint, lime, and white rum',
+            category: 'Cocktails',
+            price: 750,
+            costPrice: 200,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 8,
+            allergens: [],
+            dietaryInfo: ['vegan'],
+            ingredients: ['white rum', 'mint', 'lime', 'soda']
+          },
+          {
+            itemId: 'item_whiskey_neat',
+            name: 'Single Malt Whiskey',
+            description: 'Premium single malt served neat',
+            category: 'Spirits',
+            price: 1200,
+            costPrice: 400,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 2,
+            allergens: [],
+            dietaryInfo: ['vegan'],
+            ingredients: ['single malt whiskey']
+          }
+        ]
+      }
+    ];
+
+    const createdMenus = await POSMenu.insertMany(posMenus);
+    logger.info(`📋 POS Menus created: ${createdMenus.length}`);
+
+    // Create sample POS Orders for today's stats
+    const currentDate = new Date();
+    const yesterday = new Date(currentDate);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const posOrders = [
+      // Completed orders for today's sales
+      {
+        orderId: 'order_today_001',
+        orderNumber: `${currentDate.toISOString().slice(0, 10).replace(/-/g, '')}0001`,
+        outlet: createdOutlets[0]._id,
+        type: 'dine_in',
+        status: 'completed',
+        customer: {
+          guest: guests[0]._id,
+          roomNumber: '101'
+        },
+        items: [
+          {
+            itemId: 'item_spring_rolls',
+            name: 'Vegetable Spring Rolls',
+            price: 850,
+            quantity: 1,
+            status: 'served'
+          },
+          {
+            itemId: 'item_chicken_tikka',
+            name: 'Chicken Tikka Masala',
+            price: 1650,
+            quantity: 1,
+            modifiers: [
+              { name: 'Bread', option: 'Naan', price: 150 }
+            ],
+            status: 'served'
+          }
+        ],
+        subtotal: 2650,
+        taxes: {
+          serviceTax: 265,
+          gst: 477,
+          totalTax: 742
+        },
+        totalAmount: 3392,
+        payment: {
+          method: 'room_charge',
+          status: 'paid',
+          paidAmount: 3392
+        },
+        staff: {
+          server: staffUser._id,
+          cashier: staffUser._id
+        },
+        orderTime: new Date(currentDate.getTime() - 3 * 60 * 60 * 1000), // 3 hours ago
+        completedTime: new Date(currentDate.getTime() - 2.5 * 60 * 60 * 1000)
+      },
+      {
+        orderId: 'order_today_002',
+        orderNumber: `${currentDate.toISOString().slice(0, 10).replace(/-/g, '')}0002`,
+        outlet: createdOutlets[1]._id,
+        type: 'dine_in',
+        status: 'completed',
+        customer: {
+          walkIn: {
+            name: 'Sarah Wilson',
+            phone: '+91-9876543210',
+            email: 'sarah@example.com'
+          }
+        },
+        items: [
+          {
+            itemId: 'item_mojito',
+            name: 'Classic Mojito',
+            price: 750,
+            quantity: 2,
+            status: 'served'
+          },
+          {
+            itemId: 'item_whiskey_neat',
+            name: 'Single Malt Whiskey',
+            price: 1200,
+            quantity: 1,
+            status: 'served'
+          }
+        ],
+        subtotal: 2700,
+        taxes: {
+          serviceTax: 270,
+          gst: 486,
+          totalTax: 756
+        },
+        totalAmount: 3456,
+        payment: {
+          method: 'card',
+          status: 'paid',
+          paidAmount: 3456,
+          paymentDetails: {
+            transactionId: 'TXN123456789',
+            cardLast4: '1234'
+          }
+        },
+        staff: {
+          server: staffUser._id,
+          cashier: adminUser._id
+        },
+        orderTime: new Date(currentDate.getTime() - 2 * 60 * 60 * 1000), // 2 hours ago
+        completedTime: new Date(currentDate.getTime() - 1.5 * 60 * 60 * 1000)
+      },
+      // Active orders (currently preparing)
+      {
+        orderId: 'order_active_001',
+        orderNumber: `${currentDate.toISOString().slice(0, 10).replace(/-/g, '')}0003`,
+        outlet: createdOutlets[0]._id,
+        type: 'room_service',
+        status: 'preparing',
+        customer: {
+          guest: guests[1]._id,
+          roomNumber: '205'
+        },
+        items: [
+          {
+            itemId: 'item_pasta_alfredo',
+            name: 'Fettuccine Alfredo',
+            price: 1450,
+            quantity: 1,
+            modifiers: [
+              { name: 'Add Protein', option: 'Chicken', price: 300 }
+            ],
+            status: 'preparing'
+          },
+          {
+            itemId: 'item_fresh_juice',
+            name: 'Fresh Orange Juice',
+            price: 350,
+            quantity: 2,
+            status: 'ready'
+          }
+        ],
+        subtotal: 2450,
+        taxes: {
+          serviceTax: 367.5,
+          gst: 441,
+          totalTax: 808.5
+        },
+        totalAmount: 3258.5,
+        payment: {
+          method: 'room_charge',
+          status: 'pending'
+        },
+        staff: {
+          server: staffUser._id
+        },
+        orderTime: new Date(currentDate.getTime() - 30 * 60 * 1000), // 30 minutes ago
+        deliveryDetails: {
+          address: 'Room 205'
+        }
+      },
+      {
+        orderId: 'order_active_002',
+        orderNumber: `${currentDate.toISOString().slice(0, 10).replace(/-/g, '')}0004`,
+        outlet: createdOutlets[0]._id,
+        type: 'dine_in',
+        status: 'ready',
+        customer: {
+          walkIn: {
+            name: 'David Kumar',
+            phone: '+91-8765432109'
+          }
+        },
+        items: [
+          {
+            itemId: 'item_chocolate_cake',
+            name: 'Dark Chocolate Cake',
+            price: 650,
+            quantity: 1,
+            status: 'ready'
+          }
+        ],
+        subtotal: 650,
+        taxes: {
+          serviceTax: 65,
+          gst: 117,
+          totalTax: 182
+        },
+        totalAmount: 832,
+        payment: {
+          method: 'cash',
+          status: 'pending'
+        },
+        staff: {
+          server: staffUser._id
+        },
+        orderTime: new Date(currentDate.getTime() - 15 * 60 * 1000), // 15 minutes ago
+        tableNumber: 'T5'
+      }
+    ];
+
+    const createdOrders = await POSOrder.insertMany(posOrders);
+    logger.info(`🧾 POS Orders created: ${createdOrders.length}`);
+
+    logger.info(`🍽️ POS Outlets: ${createdOutlets.length}`);
+    logger.info(`📋 POS Menus: ${createdMenus.length}`);
+    logger.info(`🧾 POS Orders: ${createdOrders.length}`);
     
     logger.info('\n📋 Test Credentials:');
     logger.info('Admin: admin@hotel.com / admin123');

@@ -147,7 +147,7 @@ export function InventoryBillingIntegration({
               subtotal: 73.18,
               taxAmount: 7.32,
               totalAmount: 80.50,
-              currency: 'USD',
+              currency: 'INR',
               lineItems: [
                 {
                   description: 'TV Remote - damaged',
@@ -183,7 +183,7 @@ export function InventoryBillingIntegration({
               subtotal: 40.91,
               taxAmount: 4.09,
               totalAmount: 45.00,
-              currency: 'USD',
+              currency: 'INR',
               lineItems: [
                 {
                   description: 'Towel Set replacement - damaged',

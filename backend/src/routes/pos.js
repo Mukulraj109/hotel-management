@@ -1,0 +1,29 @@
+import express from 'express';
+import posController from '../controllers/posController.js';
+import { authenticate, authorize } from '../middleware/auth.js';
+
+const router = express.Router();
+
+// Outlet routes
+router.post('/outlets', authenticate, authorize(['admin', 'manager']), posController.createOutlet);
+router.get('/outlets', authenticate, posController.getOutlets);
+router.put('/outlets/:id', authenticate, authorize(['admin', 'manager']), posController.updateOutlet);
+
+// Menu routes
+router.post('/menus', authenticate, authorize(['admin', 'manager']), posController.createMenu);
+router.get('/menus/outlet/:outletId', authenticate, posController.getMenusByOutlet);
+router.post('/menus/:menuId/items', authenticate, authorize(['admin', 'manager']), posController.addMenuItem);
+
+// Order routes
+router.post('/orders', authenticate, posController.createOrder);
+router.get('/orders', authenticate, posController.getOrders);
+router.put('/orders/:id/status', authenticate, posController.updateOrderStatus);
+router.put('/orders/:id/payment', authenticate, posController.processPayment);
+
+// Dashboard routes
+router.get('/dashboard/stats', authenticate, posController.getDashboardStats);
+
+// Reporting routes
+router.get('/reports/sales', authenticate, authorize(['admin', 'manager']), posController.getSalesReport);
+
+export default router;

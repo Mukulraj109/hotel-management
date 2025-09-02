@@ -346,7 +346,7 @@ export function RoomServiceWidget({
                   <div>
                     <h3 className="font-semibold text-blue-900">Room Service Charges</h3>
                     <p className="text-sm text-blue-700">
-                      {summary.currentCharges.reduce((sum, charge) => sum + charge.totalPrice, 0).toFixed(2)} USD
+                      {formatCurrency(summary.currentCharges.reduce((sum, charge) => sum + charge.totalPrice, 0))}
                     </p>
                   </div>
                 </div>
@@ -370,12 +370,12 @@ export function RoomServiceWidget({
                   <div>
                     <h3 className="font-semibold text-orange-900">Inventory Charges</h3>
                     <p className="text-sm text-orange-700">
-                      Charges from damaged/missing items: ${summary.inventoryCharges.reduce((sum, charge) => sum + charge.cost, 0).toFixed(2)}
+                      Charges from damaged/missing items: {formatCurrency(summary.inventoryCharges.reduce((sum, charge) => sum + charge.cost, 0))}
                     </p>
                     <div className="mt-2 space-y-1">
                       {summary.inventoryCharges.map((charge, index) => (
                         <div key={index} className="text-xs text-orange-600">
-                          • {charge.itemName} - {charge.reason.replace('_', ' ')} (${charge.cost.toFixed(2)})
+                          • {charge.itemName} - {charge.reason.replace('_', ' ')} ({formatCurrency(charge.cost)})
                         </div>
                       ))}
                     </div>
@@ -405,8 +405,8 @@ export function RoomServiceWidget({
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-2xl font-bold text-gray-900">${summary.totalCharges.toFixed(2)}</p>
-                <p className="text-xs text-gray-500">USD</p>
+                                  <p className="text-2xl font-bold text-gray-900">{formatCurrency(summary.totalCharges)}</p>
+                  <p className="text-xs text-gray-500">INR</p>
               </div>
             </div>
           </Card>

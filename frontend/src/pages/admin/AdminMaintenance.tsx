@@ -28,6 +28,7 @@ import { StatusBadge } from '../../components/dashboard/StatusBadge';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import { formatNumber, getStatusColor } from '../../utils/dashboardUtils';
+import { formatCurrency } from '../../utils/formatters';
 import { adminMaintenanceService, MaintenanceTask, MaintenanceStats, CreateMaintenanceTaskData, MaintenanceFilters } from '../../services/adminMaintenanceService';
 import { useRealTime } from '../../services/realTimeService';
 import { useAuth } from '../../context/AuthContext';
@@ -859,7 +860,7 @@ export default function AdminMaintenance() {
               {selectedTask.estimatedCost && selectedTask.estimatedCost > 0 && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Estimated Cost</label>
-                  <div className="mt-1 text-sm text-gray-900">${selectedTask.estimatedCost.toFixed(2)}</div>
+                  <div className="mt-1 text-sm text-gray-900">{formatCurrency(selectedTask.estimatedCost)}</div>
                 </div>
               )}
             </div>

@@ -25,6 +25,7 @@ import GuestProfile from './pages/guest/GuestProfile';
 import GuestRequests from './pages/guest/GuestRequests';
 import InventoryRequests from './pages/guest/InventoryRequests';
 import LoyaltyDashboard from './pages/guest/LoyaltyDashboard';
+import { ContactlessGuestApp } from './components/guest/ContactlessGuestApp';
 import HotelServicesDashboard from './pages/guest/HotelServicesDashboard';
 import NotificationsDashboard from './pages/guest/NotificationsDashboard';
 import DigitalKeysDashboard from './pages/guest/DigitalKeysDashboard';
@@ -50,6 +51,14 @@ import AdminOTA from './pages/admin/AdminOTA';
 import BillingHistory from './pages/admin/BillingHistory';
 import AdminBypassCheckoutPage from './pages/admin/AdminBypassCheckout';
 import AdminCorporateDashboard from './pages/admin/AdminCorporateDashboard';
+import AdminTapeChart from './pages/admin/AdminTapeChart';
+import AdminPOS from './pages/admin/AdminPOS';
+import AdminRevenueManagement from './pages/admin/AdminRevenueManagement';
+import AdminBookingEngine from './pages/admin/AdminBookingEngine';
+import AdminFinancial from './pages/admin/AdminFinancial';
+import AdminMultiProperty from './pages/admin/AdminMultiProperty';
+import AdminMobileApps from './pages/admin/AdminMobileApps';
+import AdminAPIManagement from './pages/admin/AdminAPIManagement';
 import CorporateCreditManagement from './components/admin/CorporateCreditManagement';
 import GSTManagement from './components/admin/GSTManagement';
 import CorporateUserRegistration from './components/admin/CorporateUserRegistration';
@@ -123,6 +132,7 @@ function App() {
                         <Route path="requests" element={<GuestRequests />} />
             <Route path="inventory-requests" element={<InventoryRequests />} />
             <Route path="feedback" element={<GuestFeedback />} />
+            <Route path="mobile-app" element={<ContactlessGuestApp />} />
           </Route>
 
               {/* Admin Routes */}
@@ -152,6 +162,14 @@ function App() {
                 <Route path="bypass-checkout" element={<AdminBypassCheckoutPage />} />
                 <Route path="ota" element={<AdminOTA />} />
                 <Route path="billing" element={<BillingHistory />} />
+                <Route path="tape-chart" element={<AdminTapeChart />} />
+                <Route path="pos" element={<AdminPOS />} />
+                <Route path="revenue" element={<AdminRevenueManagement />} />
+                <Route path="booking-engine" element={<AdminBookingEngine />} />
+                <Route path="financial" element={<AdminFinancial />} />
+                <Route path="multi-property" element={<AdminMultiProperty />} />
+                <Route path="mobile-apps" element={<AdminMobileApps />} />
+                <Route path="api-management" element={<AdminAPIManagement />} />
               </Route>
 
               {/* Staff Routes */}

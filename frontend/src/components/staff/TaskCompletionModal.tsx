@@ -214,6 +214,42 @@ export const getDefaultSteps = (taskType: 'housekeeping' | 'maintenance' | 'gues
   }
 };
 
+// Helper function to generate steps based on actual service variations
+export const getServiceVariationSteps = (serviceVariations: string[], completedServiceVariations?: string[]) => {
+  const steps: TaskStep[] = [];
+  
+  // Base steps
+  steps.push({
+    id: 'understand_request',
+    label: 'Understand Request',
+    description: 'Clearly understand what the guest is requesting',
+    required: true,
+    completed: false
+  });
+
+  // Add each service variation as a step
+  serviceVariations.forEach((variation, index) => {
+    steps.push({
+      id: `service_${index}`,
+      label: variation,
+      description: `Complete: ${variation}`,
+      required: true,
+      completed: completedServiceVariations?.includes(variation) || false
+    });
+  });
+
+  // Final steps
+  steps.push({
+    id: 'follow_up',
+    label: 'Follow Up',
+    description: 'Check with guest to ensure satisfaction',
+    required: true,
+    completed: false
+  });
+
+  return steps;
+};
+
 const getHousekeepingSteps = (type?: string): TaskStep[] => {
   const baseSteps: TaskStep[] = [
     {

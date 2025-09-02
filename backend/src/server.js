@@ -57,6 +57,16 @@ import dailyRoutineCheckRoutes from './routes/dailyRoutineCheck.js';
 import testCheckoutsRoutes from './routes/testCheckouts.js';
 import attractionsRoutes from './routes/attractions.js';
 import analyticsRoutes from './routes/analytics.js';
+import posRoutes from './routes/pos.js';
+import revenueManagementRoutes from './routes/revenueManagement.js';
+import channelManagerRoutes from './routes/channelManager.js';
+import bookingEngineRoutes from './routes/bookingEngine.js';
+import financialRoutes from './routes/financial.js';
+import tapeChartRoutes from './routes/tapeChart.js';
+import dashboardRoutes from './routes/dashboard.js';
+import roomBlockRoutes from './routes/roomBlocks.js';
+import assignmentRulesRoutes from './routes/assignmentRules.js';
+import advancedReservationsRoutes from './routes/advancedReservations.js';
 
 const app = express();
 
@@ -192,6 +202,16 @@ app.use('/api/v1/test', testCheckoutsRoutes);
 app.use('/api/v1/attractions', attractionsRoutes);
 app.use('/api/v1/corporate', corporateRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
+app.use('/api/v1/pos', posRoutes);
+app.use('/api/v1/revenue-management', revenueManagementRoutes);
+app.use('/api/v1/channel-manager', channelManagerRoutes);
+app.use('/api/v1/booking-engine', bookingEngineRoutes);
+app.use('/api/v1/financial', financialRoutes);
+app.use('/api/v1/tape-chart', tapeChartRoutes);
+app.use('/api/v1/dashboard', dashboardRoutes);
+app.use('/api/v1/room-blocks', roomBlockRoutes);
+app.use('/api/v1/assignment-rules', assignmentRulesRoutes);
+app.use('/api/v1/advanced-reservations', advancedReservationsRoutes);
 
 // 404 handler
 app.all('*', (req, res) => {

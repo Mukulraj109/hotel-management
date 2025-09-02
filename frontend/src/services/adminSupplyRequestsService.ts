@@ -223,15 +223,31 @@ class AdminSupplyRequestsService {
       }
     }
     
-    // Always return fallback hotelId to avoid API calls and rate limiting
-    const fallbackHotelId = '68b43ce31a6ab7adb5764b6b';
-    console.log('Using fallback hotelId for supply requests:', fallbackHotelId);
+    // Try to get hotelId from user profile API
+    try {
+      console.log('Attempting to get hotelId from user profile...');
+      const response = await this.fetchWithAuth('/api/v1/auth/me');
+      const userData = response.data?.user;
+      
+      if (userData?.hotelId) {
+        console.log('Found hotelId from user profile:', userData.hotelId);
+        this.hotelIdCache = userData.hotelId;
+        this.hotelIdCacheExpiry = now + 10 * 60 * 1000;
+        return userData.hotelId;
+      }
+    } catch (error) {
+      console.warn('Could not get hotelId from user profile:', error);
+    }
     
-    // Cache the fallback for 10 minutes to avoid repeated lookups
-    this.hotelIdCache = fallbackHotelId;
+    // Use the correct hotelId that matches the database
+    const correctHotelId = '68b54c3ee4ece2394a618e2f';
+    console.log('Using correct hotelId for supply requests:', correctHotelId);
+    
+    // Cache the correct hotelId for 10 minutes to avoid repeated lookups
+    this.hotelIdCache = correctHotelId;
     this.hotelIdCacheExpiry = now + 10 * 60 * 1000;
     
-    return fallbackHotelId;
+    return correctHotelId;
   }
 
   async getRequests(filters: SupplyRequestFilters = {}): Promise<ApiResponse<{ requests: SupplyRequest[]; pagination: any }>> {

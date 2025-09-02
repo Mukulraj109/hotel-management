@@ -15,6 +15,7 @@ import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { LoadingSpinner } from '../LoadingSpinner';
 import { formatRelativeTime } from '../../utils/dashboardUtils';
+import { formatCurrency } from '../../utils/formatters';
 
 interface InventoryNotification {
   id: string;
@@ -243,7 +244,7 @@ export function InventoryNotifications({
                               <p>👤 Guest: {notification.metadata.guestName}</p>
                             )}
                             {notification.metadata.totalCharges && (
-                              <p>💰 Charges: ${notification.metadata.totalCharges.toFixed(2)}</p>
+                              <p>💰 Charges: {formatCurrency(notification.metadata.totalCharges)}</p>
                             )}
                             {notification.metadata.items && notification.metadata.items.length > 0 && (
                               <div className="mt-2">
@@ -252,7 +253,7 @@ export function InventoryNotifications({
                                   {notification.metadata.items.map((item, index) => (
                                     <li key={index} className="text-xs">
                                       • {item.itemName} - {item.condition || item.reason}
-                                      {item.cost && ` ($${item.cost.toFixed(2)})`}
+                                      {item.cost && ` (${formatCurrency(item.cost)})`}
                                     </li>
                                   ))}
                                 </ul>

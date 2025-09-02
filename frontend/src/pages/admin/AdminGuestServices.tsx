@@ -24,6 +24,7 @@ import { StatusBadge } from '../../components/dashboard/StatusBadge';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import { formatNumber } from '../../utils/dashboardUtils';
+import { formatCurrency } from '../../utils/currencyUtils';
 import toast from 'react-hot-toast';
 import { adminGuestServicesService, GuestService, GuestServiceStats, GuestServiceFilters } from '../../services/adminGuestServicesService';
 import { useRealTime } from '../../services/realTimeService';
@@ -330,16 +331,16 @@ export default function AdminGuestServices() {
         if (!service) return <div>No data</div>;
         return (
           <div className="text-sm">
-            {service.actualCost ? (
-              <div>
-                <div className="font-medium">${service.actualCost.toFixed(2)}</div>
-                {service.actualCost !== service.estimatedCost && (
-                  <div className="text-gray-500">Est: ${service.estimatedCost?.toFixed(2)}</div>
-                )}
-              </div>
-            ) : (
-              <div className="text-gray-600">${service.estimatedCost?.toFixed(2)}</div>
-            )}
+                         {service.actualCost ? (
+               <div>
+                 <div className="font-medium">{formatCurrency(service.actualCost)}</div>
+                 {service.actualCost !== service.estimatedCost && (
+                   <div className="text-gray-500">Est: {formatCurrency(service.estimatedCost || 0)}</div>
+                 )}
+               </div>
+             ) : (
+               <div className="text-gray-600">{formatCurrency(service.estimatedCost || 0)}</div>
+             )}
           </div>
         );
       }
@@ -673,8 +674,12 @@ export default function AdminGuestServices() {
               <div>
                 <label className="block text-sm font-medium text-gray-700">Room & Booking</label>
                 <div className="mt-1">
-                  <div className="font-medium">Room {selectedService.bookingId.rooms[0]?.roomId.roomNumber}</div>
-                  <div className="text-sm text-gray-500">{selectedService.bookingId.bookingNumber}</div>
+                  <div className="font-medium">
+                    Room {selectedService.bookingId?.rooms?.[0]?.roomId?.roomNumber || 'N/A'}
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    {selectedService.bookingId?.bookingNumber || 'N/A'}
+                  </div>
                 </div>
               </div>
             </div>
@@ -708,16 +713,16 @@ export default function AdminGuestServices() {
               <div>
                 <label className="block text-sm font-medium text-gray-700">Cost</label>
                 <div className="mt-1 text-sm text-gray-900">
-                  {selectedService.actualCost ? (
-                    <div>
-                      <div className="font-medium">${selectedService.actualCost.toFixed(2)} (Actual)</div>
-                      {selectedService.actualCost !== selectedService.estimatedCost && (
-                        <div className="text-gray-500">Estimated: ${selectedService.estimatedCost.toFixed(2)}</div>
-                      )}
-                    </div>
-                  ) : (
-                    <div>${selectedService.estimatedCost.toFixed(2)} (Estimated)</div>
-                  )}
+                                     {selectedService.actualCost ? (
+                     <div>
+                       <div className="font-medium">{formatCurrency(selectedService.actualCost)} (Actual)</div>
+                       {selectedService.actualCost !== selectedService.estimatedCost && (
+                         <div className="text-gray-500">Estimated: {formatCurrency(selectedService.estimatedCost)}</div>
+                       )}
+                     </div>
+                   ) : (
+                     <div>{formatCurrency(selectedService.estimatedCost)} (Estimated)</div>
+                   )}
                 </div>
               </div>
             </div>

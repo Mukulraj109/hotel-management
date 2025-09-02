@@ -17,6 +17,7 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import { LoadingSpinner } from '../LoadingSpinner';
+import { formatCurrency } from '../../utils/formatters';
 
 interface InventoryItem {
   _id: string;
@@ -321,7 +322,7 @@ export function InventoryTemplateManagement() {
                         <div className="flex items-center space-x-4 mt-2 text-sm text-gray-500">
                           <span>Room Type: {template.roomType}</span>
                           <span>Items: {template.totalItems}</span>
-                          <span>Est. Value: ${template.totalValue.toFixed(2)}</span>
+                          <span>Est. Value: {formatCurrency(template.totalValue)}</span>
                         </div>
                       </div>
                     </div>
@@ -375,7 +376,7 @@ export function InventoryTemplateManagement() {
                                 <div className="text-sm text-gray-600 space-y-1">
                                   <p>Category: {item?.category}</p>
                                   <p>Quantity: {templateItem.expectedQuantity}</p>
-                                  <p>Unit Price: ${item?.unitPrice.toFixed(2)}</p>
+                                  <p>Unit Price: {formatCurrency(item?.unitPrice || 0)}</p>
                                   {templateItem.isRequired && (
                                     <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 text-xs">
                                       Required
@@ -633,7 +634,7 @@ function TemplateModal({ template, availableItems, onSave, onClose }: TemplateMo
                         >
                           <div className="text-left">
                             <p className="font-medium text-gray-900">{item.name}</p>
-                            <p className="text-sm text-gray-600">{item.category} - ${item.unitPrice}</p>
+                            <p className="text-sm text-gray-600">{item.category} - {formatCurrency(item.unitPrice)}</p>
                           </div>
                           <Plus className="w-4 h-4 text-blue-600" />
                         </button>
@@ -735,7 +736,7 @@ function TemplateModal({ template, availableItems, onSave, onClose }: TemplateMo
                 </div>
                 <div>
                   <span className="text-gray-600">Estimated Value:</span>
-                  <span className="ml-2 font-semibold">${formData.totalValue.toFixed(2)}</span>
+                  <span className="ml-2 font-semibold">{formatCurrency(formData.totalValue)}</span>
                 </div>
                 <div>
                   <span className="text-gray-600">Required Items:</span>
