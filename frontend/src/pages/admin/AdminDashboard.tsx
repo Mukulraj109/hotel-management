@@ -29,7 +29,7 @@ export default function AdminDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   // Use user's hotelId, fallback to new seeded hotel ID if not available
-  const [selectedHotelId, setSelectedHotelId] = useState<string>(user?.hotelId || '68b19648e35a38ee7b1d1828');
+  const [selectedHotelId, setSelectedHotelId] = useState<string>(user?.hotelId || '68afe8080c02fcbe30092b8e');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [showRevenueBreakdown, setShowRevenueBreakdown] = useState(false);
   const [showOccupancyBreakdown, setShowOccupancyBreakdown] = useState(false);

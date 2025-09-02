@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { Plus, Edit, Settings, Users, Clock } from 'lucide-react';
+import { api } from '../../services/api';
 
 interface Outlet {
   _id: string;
@@ -26,11 +27,14 @@ const OutletManagement: React.FC = () => {
   const [selectedOutlet, setSelectedOutlet] = useState<Outlet | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [availableStaff, setAvailableStaff] = useState<any[]>([]);
   
   const [formData, setFormData] = useState({
     name: '',
     type: '',
     location: '',
+    manager: '',
+    staff: [] as string[],
     operatingHours: {
       monday: { open: '09:00', close: '22:00', closed: false },
       tuesday: { open: '09:00', close: '22:00', closed: false },
@@ -57,14 +61,32 @@ const OutletManagement: React.FC = () => {
 
   useEffect(() => {
     fetchOutlets();
+    fetchAvailableStaff();
   }, []);
+
+  const fetchAvailableStaff = async () => {
+    try {
+      const response = await api.get('/admin/users');
+      
+      if (response.data.status === 'success') {
+        const allUsers = response.data.data.users;
+        
+        // Filter staff members - include admin, manager, and staff roles
+        const staff = allUsers.filter((user: any) => 
+          user.role === 'staff' || user.role === 'manager' || user.role === 'admin'
+        );
+        setAvailableStaff(staff);
+      }
+    } catch (error) {
+      console.error('Error fetching staff:', error);
+    }
+  };
 
   const fetchOutlets = async () => {
     try {
-      const response = await fetch('/api/pos/outlets');
-      const data = await response.json();
-      if (data.success) {
-        setOutlets(data.data);
+      const response = await api.get('/pos/outlets');
+      if (response.data.success) {
+        setOutlets(response.data.data);
       }
     } catch (error) {
       console.error('Error fetching outlets:', error);
@@ -73,23 +95,15 @@ const OutletManagement: React.FC = () => {
 
   const handleCreateOutlet = async () => {
     try {
-      const response = await fetch('/api/pos/outlets', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData)
-      });
-
-      const data = await response.json();
+      const response = await api.post('/pos/outlets', formData);
       
-      if (data.success) {
+      if (response.data.success) {
         fetchOutlets();
         setIsCreateModalOpen(false);
         resetForm();
         alert('Outlet created successfully!');
       } else {
-        alert('Error creating outlet: ' + data.message);
+        alert('Error creating outlet: ' + response.data.message);
       }
     } catch (error) {
       console.error('Error creating outlet:', error);
@@ -101,24 +115,16 @@ const OutletManagement: React.FC = () => {
     if (!selectedOutlet) return;
 
     try {
-      const response = await fetch(`/api/pos/outlets/${selectedOutlet._id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData)
-      });
-
-      const data = await response.json();
+      const response = await api.put(`/pos/outlets/${selectedOutlet._id}`, formData);
       
-      if (data.success) {
+      if (response.data.success) {
         fetchOutlets();
         setIsEditModalOpen(false);
         setSelectedOutlet(null);
         resetForm();
         alert('Outlet updated successfully!');
       } else {
-        alert('Error updating outlet: ' + data.message);
+        alert('Error updating outlet: ' + response.data.message);
       }
     } catch (error) {
       console.error('Error updating outlet:', error);
@@ -131,6 +137,8 @@ const OutletManagement: React.FC = () => {
       name: '',
       type: '',
       location: '',
+      manager: '',
+      staff: [],
       operatingHours: {
         monday: { open: '09:00', close: '22:00', closed: false },
         tuesday: { open: '09:00', close: '22:00', closed: false },
@@ -162,6 +170,8 @@ const OutletManagement: React.FC = () => {
       name: outlet.name,
       type: outlet.type,
       location: outlet.location,
+      manager: outlet.manager?._id || outlet.manager || '',
+      staff: outlet.staff?.map((s: any) => s._id || s) || [],
       operatingHours: outlet.operatingHours,
       taxSettings: outlet.taxSettings || {
         defaultTaxRate: 18,
@@ -206,7 +216,7 @@ const OutletManagement: React.FC = () => {
               Create Outlet
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create New Outlet</DialogTitle>
             </DialogHeader>
@@ -215,6 +225,7 @@ const OutletManagement: React.FC = () => {
               setFormData={setFormData}
               onSubmit={handleCreateOutlet}
               onCancel={() => setIsCreateModalOpen(false)}
+              availableStaff={availableStaff}
             />
           </DialogContent>
         </Dialog>
@@ -273,7 +284,7 @@ const OutletManagement: React.FC = () => {
 
       {/* Edit Modal */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Outlet</DialogTitle>
           </DialogHeader>
@@ -283,6 +294,7 @@ const OutletManagement: React.FC = () => {
             onSubmit={handleUpdateOutlet}
             onCancel={() => setIsEditModalOpen(false)}
             isEdit
+            availableStaff={availableStaff}
           />
         </DialogContent>
       </Dialog>
@@ -296,7 +308,8 @@ const OutletForm: React.FC<{
   onSubmit: () => void;
   onCancel: () => void;
   isEdit?: boolean;
-}> = ({ formData, setFormData, onSubmit, onCancel, isEdit }) => {
+  availableStaff: any[];
+}> = ({ formData, setFormData, onSubmit, onCancel, isEdit, availableStaff }) => {
   const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
   
   const updateOperatingHours = (day: string, field: string, value: any) => {
@@ -316,6 +329,7 @@ const OutletForm: React.FC<{
     <Tabs defaultValue="basic" className="w-full">
       <TabsList>
         <TabsTrigger value="basic">Basic Info</TabsTrigger>
+        <TabsTrigger value="staff">Staff Management</TabsTrigger>
         <TabsTrigger value="hours">Operating Hours</TabsTrigger>
         <TabsTrigger value="settings">Settings</TabsTrigger>
       </TabsList>
@@ -359,6 +373,61 @@ const OutletForm: React.FC<{
               onChange={(e) => setFormData({ ...formData, location: e.target.value })}
               placeholder="Enter outlet location"
             />
+          </div>
+        </div>
+      </TabsContent>
+
+      <TabsContent value="staff" className="space-y-4">
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="manager">Manager</Label>
+            <select
+              id="manager"
+              className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={formData.manager}
+              onChange={(e) => setFormData({ ...formData, manager: e.target.value })}
+            >
+              <option value="">Select manager</option>
+              {availableStaff.filter(staff => staff.role === 'manager' || staff.role === 'admin').map((staff) => (
+                <option key={staff._id} value={staff._id}>
+                  {staff.name} - {staff.email} ({staff.role})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <Label>Staff Members</Label>
+            <div className="space-y-2 max-h-40 overflow-y-auto border rounded-md p-3">
+              {availableStaff.filter(staff => staff.role === 'staff').map((staff) => (
+                <label key={staff._id} className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={formData.staff.includes(staff._id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setFormData({
+                          ...formData,
+                          staff: [...formData.staff, staff._id]
+                        });
+                      } else {
+                        setFormData({
+                          ...formData,
+                          staff: formData.staff.filter(id => id !== staff._id)
+                        });
+                      }
+                    }}
+                  />
+                  <span>{staff.name} - {staff.email} ({staff.role})</span>
+                </label>
+              ))}
+              {availableStaff.filter(staff => staff.role === 'staff').length === 0 && (
+                <p className="text-gray-500 text-sm">No staff members available</p>
+              )}
+            </div>
+            <p className="text-sm text-gray-600 mt-1">
+              Selected: {formData.staff.length} staff members
+            </p>
           </div>
         </div>
       </TabsContent>

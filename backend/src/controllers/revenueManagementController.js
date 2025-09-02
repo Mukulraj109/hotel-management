@@ -2,6 +2,8 @@ import { PricingRule, DemandForecast, RateShopping, Package, CorporateRate, Reve
 import DynamicPricingEngine from '../services/dynamicPricingEngine.js';
 import { v4 as uuidv4 } from 'uuid';
 import mongoose from 'mongoose';
+import Booking from '../models/Booking.js';
+import Room from '../models/Room.js';
 
 const pricingEngine = new DynamicPricingEngine();
 
@@ -598,6 +600,138 @@ export const getOptimizationRecommendations = async (req, res) => {
   }
 };
 
+// Dashboard Metrics - Get real data from bookings
+export const getDashboardMetrics = async (req, res) => {
+  try {
+    console.log('Dashboard metrics endpoint called with query:', req.query);
+    
+    const { startDate, endDate } = req.query;
+    const today = new Date();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(today.getDate() - 30);
+    
+    const dateRange = {
+      $gte: startDate ? new Date(startDate) : thirtyDaysAgo,
+      $lte: endDate ? new Date(endDate) : today
+    };
+    
+    // Get bookings in date range
+    console.log('Querying bookings with date range:', dateRange);
+    const bookings = await Booking.find({
+      createdAt: dateRange,
+      status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+    }).populate('rooms.roomId');
+    
+    console.log(`Found ${bookings.length} bookings`);
+    
+    // Get total rooms for occupancy calculation
+    const totalRooms = await Room.countDocuments({ isActive: true });
+    console.log(`Total rooms: ${totalRooms}`);
+    
+    // Calculate metrics
+    const totalRevenue = bookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
+    const totalRoomNights = bookings.reduce((sum, booking) => {
+      const nights = Math.ceil((new Date(booking.checkOut) - new Date(booking.checkIn)) / (1000 * 60 * 60 * 24));
+      return sum + (nights * (booking.rooms?.length || 1));
+    }, 0);
+    
+    const totalBookings = bookings.length;
+    const adr = totalRoomNights > 0 ? totalRevenue / totalRoomNights : 3500; // Default ADR if no data
+    const dayCount = Math.max(1, Math.ceil((dateRange.$lte - dateRange.$gte) / (1000 * 60 * 60 * 24)));
+    const occupancyRate = totalRooms > 0 ? (totalRoomNights / (totalRooms * dayCount)) * 100 : 45; // Default occupancy
+    const revPAR = totalRooms > 0 ? totalRevenue / (totalRooms * dayCount) : adr * (occupancyRate / 100);
+    
+    console.log('Calculated metrics:', { totalRevenue, adr, occupancyRate, revPAR, totalBookings });
+    
+    // Get previous period for comparison
+    const prevPeriodStart = new Date(dateRange.$gte);
+    prevPeriodStart.setDate(prevPeriodStart.getDate() - dayCount);
+    const prevPeriodEnd = new Date(dateRange.$gte);
+    
+    const prevBookings = await Booking.find({
+      createdAt: { $gte: prevPeriodStart, $lte: prevPeriodEnd },
+      status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+    });
+    
+    const prevRevenue = prevBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
+    const revenueGrowth = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
+    
+    // Mock competitive index and demand capture (would need competitor data)
+    const competitiveIndex = 108; // Above market average
+    const demandCaptureRate = Math.min(95, occupancyRate + 15); // Simplified calculation
+    
+    // Create mock rate shopping data
+    const mockRateShopping = {
+      competitors: [
+        { hotelName: 'Grand Plaza', roomType: 'Standard', currentRate: Math.round(adr * 0.95), availability: 15, lastUpdated: new Date(), source: 'API' },
+        { hotelName: 'Royal Palace', roomType: 'Standard', currentRate: Math.round(adr * 1.07), availability: 8, lastUpdated: new Date(), source: 'Scraping' },
+        { hotelName: 'City Center', roomType: 'Standard', currentRate: Math.round(adr * 0.90), availability: 22, lastUpdated: new Date(), source: 'Manual' }
+      ],
+      marketPosition: 'competitive',
+      priceGap: Math.round(adr * 0.05),
+      recommendations: [
+        { action: 'Increase weekend rates by 10%', impact: `+₹${Math.round(totalRevenue * 0.1)}K revenue`, urgency: 'high' },
+        { action: 'Optimize corporate rates', impact: '+8% corporate revenue', urgency: 'medium' }
+      ]
+    };
+    
+    // Create demand forecast based on booking trends
+    const mockDemandForecast = [];
+    for (let i = 0; i < 7; i++) {
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + i);
+      
+      const isWeekend = futureDate.getDay() === 0 || futureDate.getDay() === 6;
+      const baseOccupancy = occupancyRate;
+      const predictedOccupancy = Math.min(95, baseOccupancy + (isWeekend ? 15 : -5) + Math.random() * 10);
+      
+      mockDemandForecast.push({
+        date: futureDate.toISOString().split('T')[0],
+        demandLevel: predictedOccupancy > 85 ? 'high' : predictedOccupancy > 70 ? 'medium' : 'low',
+        predictedOccupancy: Math.round(predictedOccupancy),
+        confidence: Math.round(85 + Math.random() * 10),
+        factors: isWeekend ? ['Weekend demand', 'Leisure travel'] : ['Corporate travel', 'Mid-week business'],
+        recommendedRateChange: predictedOccupancy > 85 ? 15 : predictedOccupancy < 60 ? -10 : 0,
+        potentialRevenue: Math.round(totalRevenue / dayCount * (1 + (predictedOccupancy - occupancyRate) / 100))
+      });
+    }
+    
+    const response = {
+      metrics: {
+        totalRevenue,
+        revPAR: Math.round(revPAR),
+        adr: Math.round(adr),
+        occupancyRate: Math.round(occupancyRate * 10) / 10,
+        rateOptimizationImpact: Math.round(revenueGrowth * 10) / 10,
+        competitiveIndex,
+        demandCaptureRate: Math.round(demandCaptureRate * 10) / 10,
+        priceElasticity: 0.75
+      },
+      rateShopping: mockRateShopping,
+      demandForecast: mockDemandForecast,
+      periodInfo: {
+        startDate: dateRange.$gte,
+        endDate: dateRange.$lte,
+        totalBookings,
+        totalRoomNights,
+        dayCount
+      }
+    };
+    
+    res.json({
+      success: true,
+      data: response
+    });
+    
+  } catch (error) {
+    console.error('Dashboard metrics error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
 export default {
   createPricingRule,
   getPricingRules,
@@ -616,5 +750,6 @@ export default {
   getCorporateRates,
   getRevenueAnalytics,
   getRevenueSummary,
-  getOptimizationRecommendations
+  getOptimizationRecommendations,
+  getDashboardMetrics
 };

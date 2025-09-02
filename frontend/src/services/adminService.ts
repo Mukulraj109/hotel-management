@@ -174,8 +174,21 @@ class AdminService {
     });
 
     try {
-      const response = await api.get(`/bookings?${params.toString()}`);
-      return response.data;
+      // Try admin endpoint first, fallback to regular endpoint if it fails
+      try {
+        console.log('🔍 ADMIN DEBUG - Trying admin endpoint');
+        const response = await api.get(`/admin/bookings?${params.toString()}`);
+        console.log('🔍 ADMIN DEBUG - Admin endpoint success:', response.data);
+        return response.data;
+      } catch (adminError: any) {
+        console.log('🔍 ADMIN DEBUG - Admin endpoint failed:', adminError.response?.status, adminError.message);
+        console.log('🔍 ADMIN DEBUG - Falling back to regular endpoint');
+        
+        // Fallback to regular endpoint
+        const response = await api.get(`/bookings?${params.toString()}`);
+        console.log('🔍 ADMIN DEBUG - Regular endpoint success:', response.data);
+        return response.data;
+      }
     } catch (error: any) {
       if (error.response?.status === 429) {
         // Wait a bit and retry once for rate limit errors

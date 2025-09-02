@@ -32,6 +32,7 @@ import {
   Percent
 } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
+import revenueManagementService, { RevenueMetrics, RateShopping, DemandForecast } from '@/services/revenueManagementService';
 
 interface RoomTypeRate {
   id: string;
@@ -46,46 +47,7 @@ interface RoomTypeRate {
   lastUpdated: Date;
 }
 
-interface DemandForecast {
-  date: string;
-  demandLevel: 'low' | 'medium' | 'high' | 'peak';
-  predictedOccupancy: number;
-  confidence: number;
-  factors: string[];
-  recommendedRateChange: number;
-  potentialRevenue: number;
-}
 
-interface CompetitorRate {
-  hotelName: string;
-  roomType: string;
-  currentRate: number;
-  availability: number;
-  lastUpdated: Date;
-  source: string;
-}
-
-interface RevenueMetrics {
-  totalRevenue: number;
-  revPAR: number;
-  adr: number;
-  occupancyRate: number;
-  rateOptimizationImpact: number;
-  competitiveIndex: number;
-  demandCaptureRate: number;
-  priceElasticity: number;
-}
-
-interface RateShopping {
-  competitors: CompetitorRate[];
-  marketPosition: 'leader' | 'competitive' | 'follower';
-  priceGap: number;
-  recommendations: Array<{
-    action: string;
-    impact: string;
-    urgency: 'low' | 'medium' | 'high';
-  }>;
-}
 
 const RevenueManagementDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState('overview');
@@ -105,113 +67,81 @@ const RevenueManagementDashboard: React.FC = () => {
   const fetchRevenueData = async () => {
     setIsLoading(true);
     try {
-      // Mock API calls - replace with actual services
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Calculate date range
+      const endDate = new Date();
+      const startDate = new Date();
       
-      // Mock rate types
+      switch (dateRange) {
+        case '7d':
+          startDate.setDate(endDate.getDate() - 7);
+          break;
+        case '30d':
+          startDate.setDate(endDate.getDate() - 30);
+          break;
+        case '90d':
+          startDate.setDate(endDate.getDate() - 90);
+          break;
+        default:
+          startDate.setDate(endDate.getDate() - 30);
+      }
+
+      // Fetch real data from API
+      const dashboardData = await revenueManagementService.getDashboardMetrics({
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0]
+      });
+
+      // Mock rate types (these would come from room management in a complete system)
       const mockRateTypes: RoomTypeRate[] = [
         {
           id: '1',
           roomType: 'Standard Room',
-          baseRate: 3500,
-          currentRate: 4200,
+          baseRate: Math.round(dashboardData.metrics.adr * 0.85),
+          currentRate: dashboardData.metrics.adr,
           demandMultiplier: 1.2,
           occupancyThreshold: 80,
-          minRate: 2800,
-          maxRate: 6000,
+          minRate: Math.round(dashboardData.metrics.adr * 0.7),
+          maxRate: Math.round(dashboardData.metrics.adr * 1.5),
           isActive: true,
           lastUpdated: new Date()
         },
         {
           id: '2',
           roomType: 'Deluxe Suite',
-          baseRate: 6500,
-          currentRate: 7800,
+          baseRate: Math.round(dashboardData.metrics.adr * 1.5),
+          currentRate: Math.round(dashboardData.metrics.adr * 1.8),
           demandMultiplier: 1.2,
           occupancyThreshold: 75,
-          minRate: 5200,
-          maxRate: 12000,
+          minRate: Math.round(dashboardData.metrics.adr * 1.2),
+          maxRate: Math.round(dashboardData.metrics.adr * 2.5),
           isActive: true,
           lastUpdated: new Date()
         },
         {
           id: '3',
           roomType: 'Executive Suite',
-          baseRate: 12000,
-          currentRate: 14400,
+          baseRate: Math.round(dashboardData.metrics.adr * 2.5),
+          currentRate: Math.round(dashboardData.metrics.adr * 3.0),
           demandMultiplier: 1.2,
           occupancyThreshold: 70,
-          minRate: 9600,
-          maxRate: 20000,
+          minRate: Math.round(dashboardData.metrics.adr * 2.0),
+          maxRate: Math.round(dashboardData.metrics.adr * 4.0),
           isActive: true,
           lastUpdated: new Date()
         }
       ];
 
-      // Mock demand forecast
-      const mockForecast: DemandForecast[] = [
-        {
-          date: '2024-01-15',
-          demandLevel: 'high',
-          predictedOccupancy: 85,
-          confidence: 92,
-          factors: ['Weekend demand', 'Local event', 'Historical trend'],
-          recommendedRateChange: 15,
-          potentialRevenue: 185000
-        },
-        {
-          date: '2024-01-16',
-          demandLevel: 'peak',
-          predictedOccupancy: 95,
-          confidence: 89,
-          factors: ['Holiday weekend', 'Conference bookings', 'Limited city inventory'],
-          recommendedRateChange: 25,
-          potentialRevenue: 220000
-        },
-        {
-          date: '2024-01-17',
-          demandLevel: 'medium',
-          predictedOccupancy: 72,
-          confidence: 85,
-          factors: ['Mid-week dip', 'Corporate travel'],
-          recommendedRateChange: -5,
-          potentialRevenue: 145000
-        }
-      ];
-
-      // Mock metrics
-      const mockMetrics: RevenueMetrics = {
-        totalRevenue: 2850000,
-        revPAR: 4650,
-        adr: 5850,
-        occupancyRate: 79.5,
-        rateOptimizationImpact: 12.3,
-        competitiveIndex: 108,
-        demandCaptureRate: 87.2,
-        priceElasticity: 0.75
-      };
-
-      // Mock rate shopping
-      const mockRateShopping: RateShopping = {
-        competitors: [
-          { hotelName: 'Grand Plaza', roomType: 'Standard', currentRate: 4000, availability: 15, lastUpdated: new Date(), source: 'API' },
-          { hotelName: 'Royal Palace', roomType: 'Standard', currentRate: 4500, availability: 8, lastUpdated: new Date(), source: 'Scraping' },
-          { hotelName: 'City Center', roomType: 'Standard', currentRate: 3800, availability: 22, lastUpdated: new Date(), source: 'Manual' }
-        ],
-        marketPosition: 'competitive',
-        priceGap: 200,
-        recommendations: [
-          { action: 'Increase weekend rates by 10%', impact: '+₹85K revenue', urgency: 'high' },
-          { action: 'Reduce mid-week rates by 5%', impact: '+12% occupancy', urgency: 'medium' }
-        ]
-      };
-
       setRateTypes(mockRateTypes);
-      setDemandForecast(mockForecast);
-      setMetrics(mockMetrics);
-      setRateShopping(mockRateShopping);
+      setDemandForecast(dashboardData.demandForecast);
+      setMetrics(dashboardData.metrics);
+      setRateShopping(dashboardData.rateShopping);
     } catch (error) {
       console.error('Failed to fetch revenue data:', error);
+      // Set empty/default state on error
+      setRateTypes([]);
+      setDemandForecast([]);
+      setMetrics(null);
+      setRateShopping(null);
     } finally {
       setIsLoading(false);
     }
@@ -625,7 +555,7 @@ const RevenueManagementDashboard: React.FC = () => {
                           </div>
                           <div className="text-right">
                             <p className="font-bold">{formatCurrency(comp.currentRate)}</p>
-                            <p className="text-xs text-gray-500">{comp.source} • {comp.lastUpdated.toLocaleTimeString()}</p>
+                            <p className="text-xs text-gray-500">{comp.source} • {new Date(comp.lastUpdated).toLocaleTimeString()}</p>
                           </div>
                         </div>
                       ))}

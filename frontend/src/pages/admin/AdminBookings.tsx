@@ -12,6 +12,7 @@ import { format, parseISO } from 'date-fns';
 import WalkInBooking from './WalkInBooking';
 import toast from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
+import { useAuth } from '../../context/AuthContext';
 import { 
   Calendar, 
   Coins, 
@@ -35,6 +36,7 @@ import {
 
 export default function AdminBookings() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [stats, setStats] = useState<BookingStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,7 +68,7 @@ export default function AdminBookings() {
   const [userSearch, setUserSearch] = useState('');
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState({
-    hotelId: '68ad76f62e0857c9bd2f65d0',
+    hotelId: '68afe8080c02fcbe30092b8e',
     userId: '',
     roomIds: [] as string[],
     checkIn: '',
@@ -86,9 +88,15 @@ export default function AdminBookings() {
   const fetchBookings = async () => {
     try {
       setLoading(true);
+      console.log('🔍 FETCH DEBUG - Calling admin service with filters:', filters);
       const response = await adminService.getBookings(filters);
+      console.log('🔍 FETCH DEBUG - Admin service response:', response);
+      
       // Handle both possible response structures
       const bookingsData = response.data?.bookings || response.data || [];
+      console.log('🔍 FETCH DEBUG - Extracted bookings data:', bookingsData);
+      console.log('🔍 FETCH DEBUG - First booking hotelId:', bookingsData[0]?.hotelId);
+      
       setBookings(Array.isArray(bookingsData) ? bookingsData : []);
       if (response.pagination) {
         setPagination(response.pagination);
@@ -178,12 +186,37 @@ export default function AdminBookings() {
       console.log('🔍 BOOKING DEBUG - Room type type:', typeof booking.roomType);
       console.log('🔍 BOOKING DEBUG - Rooms array:', booking.rooms);
       console.log('🔍 BOOKING DEBUG - Rooms length:', booking.rooms?.length);
+      console.log('🔍 BOOKING DEBUG - Hotel ID:', booking.hotelId);
+      console.log('🔍 BOOKING DEBUG - Hotel ID type:', typeof booking.hotelId);
+      console.log('🔍 BOOKING DEBUG - Hotel ID _id:', booking.hotelId?._id);
       
       // Check if hotel information is available
-      if (!booking.hotelId?._id) {
-        toast.error('Hotel information is missing for this booking');
-        return;
+      let hotelId = booking.hotelId?._id;
+      
+      // If hotelId is not populated as an object, try to use it as a string
+      if (!hotelId && typeof booking.hotelId === 'string') {
+        hotelId = booking.hotelId;
+        console.log('🔍 BOOKING DEBUG - Using hotelId as string:', hotelId);
       }
+      
+      // If still no hotelId, try to get it from the user context or use a fallback
+      if (!hotelId) {
+        console.log('🔍 BOOKING DEBUG - No hotel ID found in booking, trying fallback');
+        
+        // Try to get hotelId from user context (if user is logged in and has hotelId)
+        const userHotelId = user?.hotelId || '68afe8080c02fcbe30092b8e';
+        
+        if (userHotelId) {
+          hotelId = userHotelId;
+          console.log('🔍 BOOKING DEBUG - Using fallback hotel ID from user context:', hotelId);
+        } else {
+          console.log('🔍 BOOKING DEBUG - No fallback hotel ID available');
+          toast.error('Hotel information is missing for this booking');
+          return;
+        }
+      }
+      
+      console.log('🔍 BOOKING DEBUG - Final hotel ID to use:', hotelId);
       
       // Fetch available rooms for the booking dates
       const checkInDate = new Date(booking.checkIn).toISOString().split('T')[0];
@@ -197,7 +230,7 @@ export default function AdminBookings() {
       });
       
       const response = await adminService.getAvailableRooms(
-        booking.hotelId._id, 
+        hotelId, 
         checkInDate, 
         checkOutDate
       );
@@ -303,7 +336,7 @@ export default function AdminBookings() {
       
       // Reset form and close modal
       setCreateForm({
-        hotelId: '68ad76f62e0857c9bd2f65d0',
+        hotelId: '68afe8080c02fcbe30092b8e',
         userId: '',
         roomIds: [],
         checkIn: '',
@@ -826,16 +859,18 @@ export default function AdminBookings() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <h3 className="text-sm font-medium text-gray-500">Guest</h3>
-                <p className="text-sm text-gray-900">{selectedBooking.userId.name}</p>
-                <p className="text-sm text-gray-600">{selectedBooking.userId.email}</p>
-                {selectedBooking.userId.phone && (
+                <p className="text-sm text-gray-900">{selectedBooking.userId?.name || 'Guest name not available'}</p>
+                <p className="text-sm text-gray-600">{selectedBooking.userId?.email || 'Email not available'}</p>
+                {selectedBooking.userId?.phone && (
                   <p className="text-sm text-gray-600">{selectedBooking.userId.phone}</p>
                 )}
               </div>
               <div>
                 <h3 className="text-sm font-medium text-gray-500">Hotel</h3>
-                <p className="text-sm text-gray-900">{selectedBooking.hotelId.name}</p>
-                {selectedBooking.hotelId.address && typeof selectedBooking.hotelId.address === 'object' && (
+                <p className="text-sm text-gray-900">
+                  {selectedBooking.hotelId?.name || 'Hotel name not available'}
+                </p>
+                {selectedBooking.hotelId?.address && typeof selectedBooking.hotelId.address === 'object' && (
                   <p className="text-sm text-gray-600">
                     {selectedBooking.hotelId.address.street}, {selectedBooking.hotelId.address.city}, {selectedBooking.hotelId.address.state}
                   </p>
@@ -873,38 +908,48 @@ export default function AdminBookings() {
             <div>
               <h3 className="text-sm font-medium text-gray-500 mb-2">Rooms</h3>
               <div className="space-y-2">
-                {selectedBooking.rooms.map((room, index) => (
-                  <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium">{room.roomId.roomNumber}</p>
-                      <p className="text-sm text-gray-600">{room.roomId.type}</p>
+                {selectedBooking.rooms && selectedBooking.rooms.length > 0 ? (
+                  selectedBooking.rooms.map((room, index) => (
+                    <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="text-sm font-medium">{room.roomId?.roomNumber || 'Room number not available'}</p>
+                        <p className="text-sm text-gray-600">{room.roomId?.type || 'Room type not available'}</p>
+                      </div>
+                      <p className="text-sm font-medium">
+                        {formatCurrency(room.rate, selectedBooking.currency)}/night
+                      </p>
                     </div>
-                    <p className="text-sm font-medium">
-                      {formatCurrency(room.rate, selectedBooking.currency)}/night
-                    </p>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500">No rooms assigned</p>
+                )}
               </div>
             </div>
 
             {/* Guest Details */}
             <div>
               <h3 className="text-sm font-medium text-gray-500 mb-2">Guest Details</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600">Adults</p>
-                  <p className="text-sm font-medium">{selectedBooking.guestDetails.adults}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Children</p>
-                  <p className="text-sm font-medium">{selectedBooking.guestDetails.children}</p>
-                </div>
-              </div>
-              {selectedBooking.guestDetails.specialRequests && (
-                <div className="mt-2">
-                  <p className="text-sm text-gray-600">Special Requests</p>
-                  <p className="text-sm text-gray-900">{selectedBooking.guestDetails.specialRequests}</p>
-                </div>
+              {selectedBooking.guestDetails ? (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-600">Adults</p>
+                      <p className="text-sm font-medium">{selectedBooking.guestDetails.adults || 0}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Children</p>
+                      <p className="text-sm font-medium">{selectedBooking.guestDetails.children || 0}</p>
+                    </div>
+                  </div>
+                  {selectedBooking.guestDetails.specialRequests && (
+                    <div className="mt-2">
+                      <p className="text-sm text-gray-600">Special Requests</p>
+                      <p className="text-sm text-gray-900">{selectedBooking.guestDetails.specialRequests}</p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-gray-500">Guest details not available</p>
               )}
             </div>
 
@@ -1009,24 +1054,24 @@ export default function AdminBookings() {
       {/* Create New Booking Modal */}
       <Modal
         isOpen={showCreateModal}
-        onClose={() => {
-          setShowCreateModal(false);
-          setCreateForm({
-            hotelId: '68ad76f62e0857c9bd2f65d0',
-            userId: '',
-            roomIds: [],
-            checkIn: '',
-            checkOut: '',
-            guestDetails: {
-              adults: 1,
-              children: 0,
-              specialRequests: ''
-            },
-            totalAmount: 0,
-            currency: 'INR',
-            paymentStatus: 'pending',
-            status: 'pending'
-          });
+                 onClose={() => {
+           setShowCreateModal(false);
+           setCreateForm({
+             hotelId: '68afe8080c02fcbe30092b8e',
+             userId: '',
+             roomIds: [],
+             checkIn: '',
+             checkOut: '',
+             guestDetails: {
+               adults: 1,
+               children: 0,
+               specialRequests: ''
+             },
+             totalAmount: 0,
+             currency: 'INR',
+             paymentStatus: 'pending',
+             status: 'pending'
+           });
           setAvailableRooms([]);
           setUsers([]);
           setUserSearch('');

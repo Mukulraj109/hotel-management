@@ -5,6 +5,9 @@ import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from '../../utils/toast';
 import {
   ShoppingCart,
@@ -29,9 +32,13 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  Search
 } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
+import billingSessionService, { BillingSession as BackendBillingSession, CreateBillingSessionRequest } from '../../services/billingSessionService';
+import guestLookupService from '../../services/guestLookupService';
+import { useAuth } from '../../context/AuthContext';
 
 interface OutletItem {
   id: string;
@@ -76,7 +83,37 @@ interface Outlet {
 }
 
 const UnifiedBillingSystem: React.FC = () => {
+  const { user } = useAuth();
   const [currentSession, setCurrentSession] = useState<BillingSession | null>(null);
+  const [backendOutlets, setBackendOutlets] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  
+  // Add custom CSS for scrollbar hiding
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      .scrollbar-hide {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+      }
+      .line-clamp-2 {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+    `;
+    document.head.appendChild(style);
+    
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
+  
+  // Fallback outlets if backend data is not available
   const [outlets] = useState<Outlet[]>([
     { id: 'restaurant', name: 'Main Restaurant', type: 'restaurant', icon: <Coffee className="w-4 h-4" />, isActive: true, location: 'Ground Floor' },
     { id: 'spa', name: 'Wellness Spa', type: 'spa', icon: <Scissors className="w-4 h-4" />, isActive: true, location: '2nd Floor' },
@@ -86,63 +123,290 @@ const UnifiedBillingSystem: React.FC = () => {
   ]);
 
   const [selectedOutlet, setSelectedOutlet] = useState<string>('restaurant');
-  const [guestInfo, setGuestInfo] = useState({ name: '', roomNumber: '', bookingId: '' });
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [isPercentage, setIsPercentage] = useState(true);
   const [splitPayments, setSplitPayments] = useState<Array<{ method: string; amount: number }>>([]);
 
-  // Mock items for different outlets
-  const outletItems = {
-    restaurant: [
-      { id: 'food-1', name: 'Club Sandwich', category: 'Main Course', price: 850, outlet: 'restaurant' },
-      { id: 'food-2', name: 'Caesar Salad', category: 'Appetizer', price: 650, outlet: 'restaurant' },
-      { id: 'drink-1', name: 'Fresh Orange Juice', category: 'Beverages', price: 350, outlet: 'restaurant' },
-      { id: 'food-3', name: 'Grilled Salmon', category: 'Main Course', price: 1450, outlet: 'restaurant' }
-    ],
-    spa: [
-      { id: 'spa-1', name: 'Swedish Massage (60 min)', category: 'Massage', price: 3500, outlet: 'spa' },
-      { id: 'spa-2', name: 'Facial Treatment', category: 'Skincare', price: 2800, outlet: 'spa' },
-      { id: 'spa-3', name: 'Aromatherapy Session', category: 'Wellness', price: 2200, outlet: 'spa' }
-    ],
-    gym: [
-      { id: 'gym-1', name: 'Personal Training (1 hr)', category: 'Training', price: 2000, outlet: 'gym' },
-      { id: 'gym-2', name: 'Day Pass', category: 'Access', price: 500, outlet: 'gym' },
-      { id: 'gym-3', name: 'Equipment Rental', category: 'Rental', price: 200, outlet: 'gym' }
-    ],
-    shop: [
-      { id: 'shop-1', name: 'Hotel Branded T-Shirt', category: 'Apparel', price: 1200, outlet: 'shop' },
-      { id: 'shop-2', name: 'Local Handicrafts', category: 'Souvenirs', price: 800, outlet: 'shop' },
-      { id: 'shop-3', name: 'Premium Chocolates', category: 'Food', price: 950, outlet: 'shop' }
-    ],
-    parking: [
-      { id: 'park-1', name: 'Valet Service (per day)', category: 'Service', price: 500, outlet: 'parking' },
-      { id: 'park-2', name: 'Car Wash', category: 'Service', price: 800, outlet: 'parking' }
-    ]
+  // Load backend data on component mount
+  useEffect(() => {
+    loadBackendData();
+  }, []);
+
+  const loadBackendData = async () => {
+    if (!user?.hotelId) return;
+    
+    try {
+      setLoading(true);
+      setLoadingItems(true);
+      setLoadingGuests(true);
+      
+                   // For now, use sample guest data since we don't have an active guests endpoint
+       // In production, this would fetch from a real API endpoint
+       setGuests([
+         {
+           _id: 'guest-1',
+           name: 'John Smith',
+           email: 'john.smith@email.com',
+           phone: '+91 98765 43210',
+           roomNumber: '101',
+           roomType: 'standard',
+           bookingId: 'BK-2024-001',
+           checkIn: '2024-01-15',
+           checkOut: '2024-01-18',
+           status: 'checked-in'
+         },
+         {
+           _id: 'guest-2',
+           name: 'Sarah Johnson',
+           email: 'sarah.j@email.com',
+           phone: '+91 87654 32109',
+           roomNumber: '205',
+           roomType: 'deluxe',
+           bookingId: 'BK-2024-002',
+           checkIn: '2024-01-16',
+           checkOut: '2024-01-20',
+           status: 'checked-in'
+         },
+         {
+           _id: 'guest-3',
+           name: 'Michael Brown',
+           email: 'michael.b@email.com',
+           phone: '+91 76543 21098',
+           roomNumber: '312',
+           roomType: 'suite',
+           bookingId: 'BK-2024-003',
+           checkIn: '2024-01-14',
+           checkOut: '2024-01-17',
+           status: 'checked-in'
+         },
+         {
+           _id: 'guest-4',
+           name: 'Emily Davis',
+           email: 'emily.d@email.com',
+           phone: '+91 65432 10987',
+           roomNumber: '408',
+           roomType: 'deluxe',
+           bookingId: 'BK-2024-004',
+           checkIn: '2024-01-17',
+           checkOut: '2024-01-22',
+           status: 'checked-in'
+         },
+         {
+           _id: 'guest-5',
+           name: 'David Wilson',
+           email: 'david.w@email.com',
+           phone: '+91 54321 09876',
+           roomNumber: '512',
+           roomType: 'presidential',
+           bookingId: 'BK-2024-005',
+           checkIn: '2024-01-18',
+           checkOut: '2024-01-25',
+           status: 'checked-in'
+         },
+         {
+           _id: 'guest-6',
+           name: 'Lisa Anderson',
+           email: 'lisa.a@email.com',
+           phone: '+91 43210 98765',
+           roomNumber: '001',
+           roomType: 'standard',
+           bookingId: 'BK-2024-006',
+           checkIn: '2024-01-19',
+           checkOut: '2024-01-21',
+           status: 'confirmed'
+         },
+         {
+           _id: 'guest-7',
+           name: 'Robert Taylor',
+           email: 'robert.t@email.com',
+           phone: '+91 32109 87654',
+           roomNumber: '002',
+           roomType: 'standard',
+           bookingId: 'BK-2024-007',
+           checkIn: '2024-01-20',
+           checkOut: '2024-01-23',
+           status: 'checked-out'
+         }
+       ]);
+      
+      // Fetch POS outlets and menu items from backend using authenticated API
+      try {
+        const outletsResponse = await fetch(`http://localhost:4000/api/v1/pos/outlets`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (!outletsResponse.ok) {
+          throw new Error(`POS outlets request failed: ${outletsResponse.status}`);
+        }
+        
+        const outletsData = await outletsResponse.json();
+        
+        // Fetch menu items for each outlet
+        const itemsData: {[key: string]: any[]} = {};
+        
+        for (const outlet of outletsData.data || []) {
+          try {
+            const menuResponse = await fetch(`http://localhost:4000/api/v1/pos/menus/outlet/${outlet._id}`, {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            
+            if (menuResponse.ok) {
+              const menuData = await menuResponse.json();
+              itemsData[outlet.type] = menuData.data || [];
+            } else {
+              console.error(`Menu request failed for ${outlet.type}:`, menuResponse.status);
+              itemsData[outlet.type] = [];
+            }
+          } catch (error) {
+            console.error(`Error fetching menu for ${outlet.type}:`, error);
+            itemsData[outlet.type] = [];
+          }
+        }
+        
+        // Store the fetched data
+        setOutletItems(itemsData);
+        setBackendOutlets(outletsData.data || []);
+        
+             } catch (error) {
+         console.error('Error fetching POS data:', error);
+         // If no data from backend, use fallback data
+         const fallbackData = {
+           restaurant: [
+             { _id: 'food-1', name: 'Club Sandwich', category: 'Food', price: 850, outlet: 'restaurant' },
+             { _id: 'food-2', name: 'Caesar Salad', category: 'Food', price: 650, outlet: 'restaurant' },
+             { _id: 'drink-1', name: 'Fresh Orange Juice', category: 'Beverages', price: 350, outlet: 'restaurant' },
+             { _id: 'food-3', name: 'Grilled Salmon', category: 'Food', price: 1450, outlet: 'restaurant' }
+           ],
+           spa: [
+             { _id: 'spa-1', name: 'Swedish Massage (60 min)', category: 'Massage', price: 3500, outlet: 'spa' },
+             { _id: 'spa-2', name: 'Facial Treatment', category: 'Skincare', price: 2800, outlet: 'spa' },
+             { _id: 'spa-3', name: 'Aromatherapy Session', category: 'Wellness', price: 2200, outlet: 'spa' }
+           ],
+           gym: [
+             { _id: 'gym-1', name: 'Personal Training (1 hr)', category: 'Training', price: 2000, outlet: 'gym' },
+             { _id: 'gym-2', name: 'Day Pass', category: 'Access', price: 500, outlet: 'gym' },
+             { _id: 'gym-3', name: 'Equipment Rental', category: 'Rental', price: 200, outlet: 'gym' }
+           ],
+           shop: [
+             { _id: 'shop-1', name: 'Hotel Branded T-Shirt', category: 'Apparel', price: 1200, outlet: 'shop' },
+             { _id: 'shop-2', name: 'Local Handicrafts', category: 'Souvenirs', price: 800, outlet: 'shop' },
+             { _id: 'shop-3', name: 'Premium Chocolates', category: 'Food', price: 950, outlet: 'shop' }
+           ],
+           parking: [
+             { _id: 'park-1', name: 'Valet Service (per day)', category: 'Service', price: 500, outlet: 'parking' },
+             { _id: 'park-2', name: 'Car Wash', category: 'Service', price: 800, outlet: 'parking' }
+           ]
+         };
+         setOutletItems(fallbackData);
+       }
+      
+      setLoadingItems(false);
+      setLoadingGuests(false);
+      setLoading(false);
+    } catch (error) {
+      console.error('Error loading backend data:', error);
+      setLoadingItems(false);
+      setLoadingGuests(false);
+      setLoading(false);
+    }
   };
 
+
+
+  // State for outlet items from backend
+  const [outletItems, setOutletItems] = useState<{[key: string]: any[]}>({});
+  const [loadingItems, setLoadingItems] = useState(false);
+  
+  // State for guest data
+  const [guests, setGuests] = useState<any[]>([]);
+  const [loadingGuests, setLoadingGuests] = useState(false);
+  const [selectedGuest, setSelectedGuest] = useState<any>(null);
+  
+  // Filter states
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [roomTypeFilter, setRoomTypeFilter] = useState<string>('all');
+  const [floorFilter, setFloorFilter] = useState<string>('all');
+  
+  // Filtered guests based on selected filters
+  const filteredGuests = guests.filter(guest => {
+    if (statusFilter !== 'all' && guest.status !== statusFilter) return false;
+    if (roomTypeFilter !== 'all' && guest.roomType !== roomTypeFilter) return false;
+    if (floorFilter !== 'all') {
+      const guestFloor = guest.roomNumber.charAt(0);
+      if (floorFilter === 'ground' && guestFloor !== '0') return false;
+      if (floorFilter !== 'ground' && guestFloor !== floorFilter) return false;
+    }
+    return true;
+  });
+
   useEffect(() => {
-    if (!currentSession && guestInfo.name && guestInfo.roomNumber) {
+    if (!currentSession && selectedGuest) {
+      // Automatically start billing session when guest is selected
       initializeSession();
     }
-  }, [guestInfo]);
+  }, [selectedGuest, user?.hotelId]);
 
-  const initializeSession = () => {
-    const newSession: BillingSession = {
-      id: Date.now().toString(),
-      guestName: guestInfo.name,
-      roomNumber: guestInfo.roomNumber,
-      bookingId: guestInfo.bookingId,
-      items: [],
-      subtotal: 0,
-      totalDiscount: 0,
-      totalTax: 0,
-      grandTotal: 0,
-      paymentMethod: 'room_charge',
-      status: 'draft',
-      createdAt: new Date()
-    };
-    setCurrentSession(newSession);
+  const initializeSession = async () => {
+    if (!user?.hotelId || !selectedGuest) {
+      toast.error('Hotel ID or guest not found');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      const sessionData: CreateBillingSessionRequest = {
+        guestName: selectedGuest.name,
+        roomNumber: selectedGuest.roomNumber,
+        bookingNumber: selectedGuest.bookingId || undefined,
+        hotelId: user.hotelId
+      };
+
+      const response = await billingSessionService.createSession(sessionData);
+      const newSession = response.data.billingSession;
+      
+      // Convert backend session to frontend format
+      const frontendSession: BillingSession = {
+        id: newSession._id,
+        guestName: newSession.guestName,
+        roomNumber: newSession.roomNumber,
+        bookingId: newSession.bookingId,
+        bookingNumber: newSession.bookingNumber,
+        items: newSession.items.map(item => ({
+          id: item.itemId,
+          name: item.name,
+          category: item.category,
+          price: item.price,
+          outlet: item.outlet,
+          quantity: item.quantity,
+          discount: item.discount,
+          tax: item.tax,
+          timestamp: new Date(item.timestamp)
+        })),
+        subtotal: newSession.subtotal,
+        totalDiscount: newSession.totalDiscount,
+        totalTax: newSession.totalTax,
+        grandTotal: newSession.grandTotal,
+        paymentMethod: newSession.paymentMethod,
+        status: newSession.status,
+        createdAt: new Date(newSession.createdAt)
+      };
+
+      setCurrentSession(frontendSession);
+      toast.success(`Billing session started for ${selectedGuest.name}`);
+    } catch (error) {
+      console.error('Error creating billing session:', error);
+      toast.error('Failed to create billing session');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const addItemToSession = (item: any) => {
@@ -314,7 +578,7 @@ const UnifiedBillingSystem: React.FC = () => {
 
   const clearSession = () => {
     setCurrentSession(null);
-    setGuestInfo({ name: '', roomNumber: '', bookingId: '' });
+    setSelectedGuest(null);
     setDiscountAmount(0);
     setSplitPayments([]);
   };
@@ -348,48 +612,140 @@ const UnifiedBillingSystem: React.FC = () => {
     <div className="h-screen flex">
       {/* Left Panel - Guest Info & Items */}
       <div className="flex-1 p-4 space-y-4">
-        {/* Guest Information */}
-        {!currentSession && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="w-5 h-5" />
-                Guest Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <Label htmlFor="guestName">Guest Name *</Label>
-                  <Input
-                    id="guestName"
-                    value={guestInfo.name}
-                    onChange={(e) => setGuestInfo(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="John Doe"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="roomNumber">Room Number *</Label>
-                  <Input
-                    id="roomNumber"
-                    value={guestInfo.roomNumber}
-                    onChange={(e) => setGuestInfo(prev => ({ ...prev, roomNumber: e.target.value }))}
-                    placeholder="101"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="bookingId">Booking ID</Label>
-                  <Input
-                    id="bookingId"
-                    value={guestInfo.bookingId}
-                    onChange={(e) => setGuestInfo(prev => ({ ...prev, bookingId: e.target.value }))}
-                    placeholder="BK-2024-001"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+                 {/* Guest Selection with Dropdown Filters */}
+         {!currentSession && (
+           <Card>
+             <CardHeader>
+               <CardTitle className="flex items-center gap-2">
+                 <User className="w-5 h-5" />
+                 Select Guest
+                 {loadingGuests && <RefreshCw className="w-4 h-4 animate-spin" />}
+               </CardTitle>
+             </CardHeader>
+             <CardContent className="space-y-6">
+               {/* Filter Dropdowns */}
+               <div className="grid grid-cols-3 gap-4">
+                 <div>
+                   <Label htmlFor="statusFilter">Status</Label>
+                   <Select value={statusFilter} onValueChange={setStatusFilter}>
+                     <SelectTrigger className="w-full">
+                       <SelectValue placeholder="All Status" />
+                     </SelectTrigger>
+                     <SelectContent>
+                       <SelectItem value="all">All Status</SelectItem>
+                       <SelectItem value="checked-in">Checked In</SelectItem>
+                       <SelectItem value="confirmed">Confirmed</SelectItem>
+                       <SelectItem value="checked-out">Checked Out</SelectItem>
+                     </SelectContent>
+                   </Select>
+                 </div>
+                 
+                 <div>
+                   <Label htmlFor="roomTypeFilter">Room Type</Label>
+                   <Select value={roomTypeFilter} onValueChange={setRoomTypeFilter}>
+                     <SelectTrigger className="w-full">
+                       <SelectValue placeholder="All Types" />
+                     </SelectTrigger>
+                     <SelectContent>
+                       <SelectItem value="all">All Types</SelectItem>
+                       <SelectItem value="standard">Standard</SelectItem>
+                       <SelectItem value="deluxe">Deluxe</SelectItem>
+                       <SelectItem value="suite">Suite</SelectItem>
+                       <SelectItem value="presidential">Presidential</SelectItem>
+                     </SelectContent>
+                   </Select>
+                 </div>
+                 
+                 <div>
+                   <Label htmlFor="floorFilter">Floor</Label>
+                   <Select value={floorFilter} onValueChange={setFloorFilter}>
+                     <SelectTrigger className="w-full">
+                       <SelectValue placeholder="All Floors" />
+                     </SelectTrigger>
+                     <SelectContent>
+                       <SelectItem value="all">All Floors</SelectItem>
+                       <SelectItem value="ground">Ground Floor</SelectItem>
+                       <SelectItem value="1">1st Floor</SelectItem>
+                       <SelectItem value="2">2nd Floor</SelectItem>
+                       <SelectItem value="3">3rd Floor</SelectItem>
+                       <SelectItem value="4">4th Floor</SelectItem>
+                       <SelectItem value="5">5th Floor</SelectItem>
+                     </SelectContent>
+                   </Select>
+                 </div>
+               </div>
+
+               {/* Guest Selection Dropdown */}
+               <div>
+                 <Label htmlFor="guestSelect">Select Guest</Label>
+                 <Select value={selectedGuest?._id || ''} onValueChange={(guestId) => {
+                   const guest = guests.find(g => g._id === guestId);
+                   setSelectedGuest(guest || null);
+                 }}>
+                   <SelectTrigger className="w-full">
+                     <SelectValue placeholder="Choose a guest..." />
+                   </SelectTrigger>
+                   <SelectContent>
+                     {filteredGuests.map((guest) => (
+                       <SelectItem key={guest._id} value={guest._id}>
+                         <div className="flex items-center gap-3">
+                           <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                             <span className="text-blue-600 font-semibold text-sm">
+                               {guest.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                             </span>
+                           </div>
+                           <div className="flex-1">
+                             <div className="font-medium">{guest.name}</div>
+                             <div className="text-sm text-gray-500">
+                               Room {guest.roomNumber} • {guest.bookingId}
+                             </div>
+                           </div>
+                         </div>
+                       </SelectItem>
+                     ))}
+                   </SelectContent>
+                 </Select>
+               </div>
+
+               {/* Selected Guest Info */}
+               {selectedGuest && (
+                 <Card className="bg-blue-50 border-blue-200">
+                   <CardContent className="p-4">
+                     <div className="flex items-center gap-4">
+                       <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
+                         <span className="text-blue-600 font-bold text-xl">
+                           {selectedGuest.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                         </span>
+                       </div>
+                       <div className="flex-1">
+                         <h4 className="font-semibold text-lg text-gray-900 mb-1">{selectedGuest.name}</h4>
+                         <div className="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                           <div>
+                             <span className="font-medium">Room:</span> {selectedGuest.roomNumber}
+                           </div>
+                           <div>
+                             <span className="font-medium">Booking:</span> {selectedGuest.bookingId}
+                           </div>
+                           <div>
+                             <span className="font-medium">Check-in:</span> {selectedGuest.checkIn}
+                           </div>
+                           <div>
+                             <span className="font-medium">Check-out:</span> {selectedGuest.checkOut}
+                           </div>
+                         </div>
+                       </div>
+                       <div className="text-right">
+                         <Badge className="bg-green-100 text-green-800">
+                           {selectedGuest.status}
+                         </Badge>
+                       </div>
+                     </div>
+                   </CardContent>
+                 </Card>
+               )}
+             </CardContent>
+           </Card>
+         )}
 
         {/* Session Header */}
         {currentSession && (
@@ -449,22 +805,74 @@ const UnifiedBillingSystem: React.FC = () => {
               </Select>
             </div>
           </CardHeader>
-          <CardContent className="space-y-2 max-h-96 overflow-y-auto">
-            {outletItems[selectedOutlet as keyof typeof outletItems]?.map(item => (
-              <div key={item.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                <div className="flex-1">
-                  <h4 className="font-medium">{item.name}</h4>
-                  <p className="text-sm text-gray-500">{item.category}</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="font-medium">{formatCurrency(item.price)}</span>
-                  <Button size="sm" onClick={() => addItemToSession(item)}>
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </CardContent>
+                     <CardContent>
+             {loadingItems ? (
+               <div className="flex items-center justify-center py-8">
+                 <RefreshCw className="w-6 h-6 animate-spin text-gray-500" />
+                 <span className="ml-2 text-gray-500">Loading items...</span>
+               </div>
+             ) : outletItems[selectedOutlet]?.length > 0 ? (
+               <div className="relative">
+                 {/* Slider Container */}
+                 <div className="flex overflow-x-auto gap-4 pb-4 scrollbar-hide">
+                   {outletItems[selectedOutlet]?.map((item) => (
+                     <div 
+                       key={item._id || item.id} 
+                       className="flex-shrink-0 w-64 bg-white border rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                       onClick={() => addItemToSession(item)}
+                     >
+                       {/* Item Image Placeholder */}
+                       <div className="h-32 bg-gradient-to-br from-gray-100 to-gray-200 rounded-t-lg flex items-center justify-center">
+                         <div className="text-gray-400 text-4xl">
+                           {item.category === 'Food' ? '🍽️' : 
+                            item.category === 'Beverages' ? '🥤' : 
+                            item.category === 'Massage' ? '💆' : 
+                            item.category === 'Training' ? '💪' : 
+                            item.category === 'Apparel' ? '👕' : '🛍️'}
+                         </div>
+                       </div>
+                       
+                       {/* Item Details */}
+                       <div className="p-4">
+                         <h4 className="font-semibold text-gray-900 mb-1 line-clamp-2">{item.name}</h4>
+                         <p className="text-sm text-gray-500 mb-2">{item.category}</p>
+                         <div className="flex items-center justify-between">
+                           <span className="text-lg font-bold text-green-600">{formatCurrency(item.price)}</span>
+                           <Button 
+                             size="sm" 
+                             className="bg-blue-600 hover:bg-blue-700 text-white"
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               addItemToSession(item);
+                             }}
+                           >
+                             <Plus className="w-4 h-4 mr-1" />
+                             Add
+                           </Button>
+                         </div>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+                 
+                 {/* Scroll Indicators */}
+                 <div className="flex justify-center mt-4 space-x-2">
+                   {outletItems[selectedOutlet]?.map((_, index) => (
+                     <div 
+                       key={index}
+                       className="w-2 h-2 rounded-full bg-gray-300"
+                     />
+                   ))}
+                 </div>
+               </div>
+             ) : (
+               <div className="text-center py-8 text-gray-500">
+                 <div className="text-4xl mb-2">🍽️</div>
+                 <p>No items available for this outlet</p>
+                 <p className="text-sm">Items will be loaded from the database</p>
+               </div>
+             )}
+           </CardContent>
         </Card>
       </div>
 

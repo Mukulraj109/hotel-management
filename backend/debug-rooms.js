@@ -59,7 +59,7 @@ if (allBookings.length > 0) {
 }
 
 // Test the specific hotelId we're using
-const testHotelId = '68ad53aabf854d3c206b8555';
+const testHotelId = '68afe8080c02fcbe30092b8e';
 console.log(`\n=== TESTING HOTEL ID: ${testHotelId} ===`);
 
 const roomsForHotel = await Room.find({ hotelId: testHotelId });

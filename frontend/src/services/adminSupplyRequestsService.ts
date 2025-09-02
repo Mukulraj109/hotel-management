@@ -240,7 +240,7 @@ class AdminSupplyRequestsService {
     }
     
     // Use the correct hotelId that matches the database
-    const correctHotelId = '68b54c3ee4ece2394a618e2f';
+    const correctHotelId = '68afe8080c02fcbe30092b8e';
     console.log('Using correct hotelId for supply requests:', correctHotelId);
     
     // Cache the correct hotelId for 10 minutes to avoid repeated lookups

@@ -21,7 +21,7 @@ export default function AdminReports() {
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   
   // Test both hotel IDs to see which has data
-  const hotelId = user?.hotelId || '68b036db9f87a72c2d171a91';
+  const hotelId = user?.hotelId || '68afe8080c02fcbe30092b8e';
   console.log('User hotelId:', user?.hotelId, 'Using hotelId:', hotelId);
   
   const dateRanges = useReportDateRanges();

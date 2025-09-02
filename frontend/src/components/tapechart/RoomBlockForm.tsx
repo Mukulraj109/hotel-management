@@ -87,7 +87,7 @@ const RoomBlockForm: React.FC<RoomBlockFormProps> = ({
         try {
           // For now, use the hotel ID from the seeded data
           // In a real app, this would be fetched from an API
-          setFormData(prev => ({ ...prev, hotelId: '68b69df67c781c7d7d2cb36b' }));
+          setFormData(prev => ({ ...prev, hotelId: '68afe8080c02fcbe30092b8e' }));
         } catch (error) {
           console.error('Failed to fetch default hotel:', error);
         }
@@ -258,7 +258,7 @@ const RoomBlockForm: React.FC<RoomBlockFormProps> = ({
         ...formData,
         startDate: startDate!.toISOString(),
         endDate: endDate!.toISOString(),
-        hotelId: '68b6888bf87639d70dd7b0d3' // Hardcoded hotel ID for demo
+        hotelId: '68afe8080c02fcbe30092b8e' // Hardcoded hotel ID for demo
       };
 
       const newRoomBlock = await roomBlockService.createRoomBlock(submitData);

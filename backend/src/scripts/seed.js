@@ -24,6 +24,7 @@ import TapeChartModels from '../models/TapeChart.js';
 import POSOutlet from '../models/POSOutlet.js';
 import POSMenu from '../models/POSMenu.js';
 import POSOrder from '../models/POSOrder.js';
+import CheckoutInventory from '../models/CheckoutInventory.js';
 import logger from '../utils/logger.js';
 
 const { RoomBlock, RoomAssignmentRules, AdvancedReservation } = TapeChartModels;
@@ -68,6 +69,7 @@ const seedData = async () => {
     await POSOutlet.deleteMany({});
     await POSMenu.deleteMany({});
     await POSOrder.deleteMany({});
+    await CheckoutInventory.deleteMany({});
 
     logger.info('Cleared existing data');
 
@@ -119,7 +121,9 @@ const seedData = async () => {
 
     // Create admin user with hotel ID
     const adminUser = await User.create({
-      name: 'Admin User',
+      firstName: 'Hotel',
+      lastName: 'Admin',
+      name: 'Hotel Admin',
       email: 'admin@hotel.com',
       password: 'admin123',
       role: 'admin',
@@ -133,8 +137,52 @@ const seedData = async () => {
 
     // Create staff user
     const staffUser = await User.create({
-      name: 'Staff User',
+      firstName: 'General',
+      lastName: 'Staff',
+      name: 'General Staff',
       email: 'staff@hotel.com',
+      password: 'staff123',
+      role: 'staff',
+      hotelId: hotel._id
+    });
+
+    // Create manager users
+    const managerUser = await User.create({
+      firstName: 'Restaurant',
+      lastName: 'Manager',
+      name: 'Restaurant Manager',
+      email: 'manager@hotel.com',
+      password: 'manager123',
+      role: 'manager',
+      hotelId: hotel._id
+    });
+
+    const barManagerUser = await User.create({
+      firstName: 'Bar',
+      lastName: 'Manager',
+      name: 'Bar Manager',
+      email: 'barmanager@hotel.com',
+      password: 'manager123',
+      role: 'manager',
+      hotelId: hotel._id
+    });
+
+    // Create additional staff users
+    const frontDeskStaff = await User.create({
+      firstName: 'Front Desk',
+      lastName: 'Staff',
+      name: 'Front Desk Staff',
+      email: 'frontdesk@hotel.com',
+      password: 'staff123',
+      role: 'staff',
+      hotelId: hotel._id
+    });
+
+    const kitchenStaff = await User.create({
+      firstName: 'Kitchen',
+      lastName: 'Staff',
+      name: 'Kitchen Staff',
+      email: 'kitchen@hotel.com',
       password: 'staff123',
       role: 'staff',
       hotelId: hotel._id
@@ -2164,9 +2212,103 @@ const seedData = async () => {
     const createdOrders = await POSOrder.insertMany(posOrders);
     logger.info(`🧾 POS Orders created: ${createdOrders.length}`);
 
+    // Create Checkout Inventory samples
+    const checkoutInventories = [
+      {
+        bookingId: createdBookings[0]._id, // John's confirmed booking
+        roomId: createdRooms[0]._id, // Room 101
+        checkedBy: staffUser._id,
+        items: [
+          {
+            itemName: 'Bath Towel',
+            category: 'bathroom',
+            quantity: 1,
+            unitPrice: 500,
+            totalPrice: 500,
+            status: 'damaged',
+            notes: 'Small tear noticed'
+          },
+          {
+            itemName: 'Mini Bar Bottle - Water',
+            category: 'other',
+            quantity: 2,
+            unitPrice: 50,
+            totalPrice: 100,
+            status: 'used'
+          },
+          {
+            itemName: 'TV Remote',
+            category: 'electronics',
+            quantity: 1,
+            unitPrice: 800,
+            totalPrice: 800,
+            status: 'missing',
+            notes: 'Remote not found during checkout'
+          }
+        ],
+        status: 'completed',
+        paymentStatus: 'pending',
+        paymentMethod: 'card',
+        notes: 'Guest checkout inspection completed'
+      },
+      {
+        bookingId: createdBookings[1]._id, // Jane's confirmed booking
+        roomId: createdRooms[1]._id, // Room 102
+        checkedBy: adminUser._id,
+        items: [
+          {
+            itemName: 'Coffee Mug',
+            category: 'other',
+            quantity: 1,
+            unitPrice: 200,
+            totalPrice: 200,
+            status: 'damaged',
+            notes: 'Handle broken'
+          },
+          {
+            itemName: 'Hair Dryer',
+            category: 'electronics',
+            quantity: 1,
+            unitPrice: 1500,
+            totalPrice: 1500,
+            status: 'intact'
+          }
+        ],
+        status: 'paid',
+        paymentStatus: 'paid',
+        paymentMethod: 'upi',
+        paidAt: new Date(),
+        notes: 'Payment completed via UPI'
+      },
+      {
+        bookingId: createdBookings[2]._id, // Mike's confirmed booking  
+        roomId: createdRooms[2]._id, // Room 103
+        checkedBy: staffUser._id,
+        items: [
+          {
+            itemName: 'Pillow',
+            category: 'bedroom',
+            quantity: 1,
+            unitPrice: 800,
+            totalPrice: 800,
+            status: 'missing',
+            notes: 'Pillow missing from room'
+          }
+        ],
+        status: 'pending',
+        paymentStatus: 'pending',
+        paymentMethod: 'cash',
+        notes: 'Checkout in progress'
+      }
+    ];
+
+    const createdCheckoutInventories = await CheckoutInventory.insertMany(checkoutInventories);
+    logger.info(`📦 Checkout Inventories created: ${createdCheckoutInventories.length}`);
+
     logger.info(`🍽️ POS Outlets: ${createdOutlets.length}`);
     logger.info(`📋 POS Menus: ${createdMenus.length}`);
     logger.info(`🧾 POS Orders: ${createdOrders.length}`);
+    logger.info(`📦 Checkout Inventories: ${createdCheckoutInventories.length}`);
     
     logger.info('\n📋 Test Credentials:');
     logger.info('Admin: admin@hotel.com / admin123');

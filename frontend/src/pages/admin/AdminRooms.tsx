@@ -31,7 +31,7 @@ export default function AdminRooms() {
   const [selectedRoomForStatus, setSelectedRoomForStatus] = useState<Room | null>(null);
   
   // Use user's hotel ID or fallback
-  const hotelId = user?.hotelId || '68b036db9f87a72c2d171a91';
+  const hotelId = user?.hotelId || '68afe8080c02fcbe30092b8e';
   
   // Helper function to get room status (computed or fallback to static)
   const getRoomStatus = (room: Room) => {

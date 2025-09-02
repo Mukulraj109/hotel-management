@@ -27,7 +27,7 @@ import bcrypt from 'bcryptjs';
  *           description: User's phone number
  *         role:
  *           type: string
- *           enum: [guest, staff, admin]
+ *           enum: [guest, staff, admin, manager]
  *           default: guest
  *           description: User role
  *         preferences:
@@ -85,7 +85,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['guest', 'staff', 'admin'],
+    enum: ['guest', 'staff', 'admin', 'manager'],
     default: 'guest'
   },
   guestType: {

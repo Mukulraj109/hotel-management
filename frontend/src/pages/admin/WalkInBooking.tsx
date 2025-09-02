@@ -79,7 +79,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
   });
 
   const [bookingForm, setBookingForm] = useState<BookingForm>({
-    hotelId: '68b19648e35a38ee7b1d1828', // Default hotel ID
+    hotelId: '68afe8080c02fcbe30092b8e', // Default hotel ID
     roomIds: [],
     checkIn: new Date().toISOString().split('T')[0],
     checkOut: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Set to 2 days later
@@ -364,7 +364,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
       idNumber: ''
     });
     setBookingForm({
-      hotelId: '68b19648e35a38ee7b1d1828', // Default hotel ID
+      hotelId: '68afe8080c02fcbe30092b8e', // Default hotel ID
       roomIds: [],
       checkIn: new Date().toISOString().split('T')[0],
       checkOut: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Set to 2 days later

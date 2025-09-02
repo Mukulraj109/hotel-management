@@ -580,7 +580,7 @@ const BookingPage: React.FC = () => {
 
                   // Create booking request with room type info but no specific room assignment
                   const bookingRequest = {
-                    hotelId: '68b54c3ee4ece2394a618e2f', // Default hotel ID - should match admin dashboard
+                    hotelId: '68afe8080c02fcbe30092b8e', // Default hotel ID - should match admin dashboard
                     roomIds: [], // No specific rooms assigned - admin will assign later
                     checkIn: new Date(bookingData.checkIn).toISOString(),
                     checkOut: new Date(bookingData.checkOut).toISOString(),

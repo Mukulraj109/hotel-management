@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
-import { Plus, Clock, DollarSign, Users, TrendingUp } from 'lucide-react';
+import { Plus, Clock, IndianRupee, Users, TrendingUp } from 'lucide-react';
 import { posService, POSStats, POSOrder } from '../../services/posService';
 
 interface Order {
@@ -16,7 +16,11 @@ interface Order {
   orderTime: string;
 }
 
-const POSDashboard: React.FC = () => {
+interface POSDashboardProps {
+  onNewOrderClick?: () => void;
+}
+
+const POSDashboard: React.FC<POSDashboardProps> = ({ onNewOrderClick }) => {
   const [stats, setStats] = useState<POSStats>({
     todaysSales: 0,
     todaysOrders: 0,
@@ -88,7 +92,7 @@ const POSDashboard: React.FC = () => {
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">POS Dashboard</h1>
-        <Button>
+        <Button onClick={onNewOrderClick}>
           <Plus className="w-4 h-4 mr-2" />
           New Order
         </Button>
@@ -98,7 +102,7 @@ const POSDashboard: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardContent className="flex items-center p-6">
-            <DollarSign className="w-8 h-8 text-green-600 mr-4" />
+            <IndianRupee className="w-8 h-8 text-green-600 mr-4" />
             <div>
               <p className="text-sm font-medium text-gray-600">Today's Sales</p>
               <p className="text-2xl font-bold">{formatCurrency(stats.todaysSales)}</p>

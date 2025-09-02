@@ -6,8 +6,9 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { Separator } from '@/components/ui/separator';
-import { Plus, Minus, ShoppingCart, CreditCard, Banknote, Home } from 'lucide-react';
+import { Plus, Minus, ShoppingCart, CreditCard, Banknote, Home, Coffee, Pizza, Soup, Cake } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
+import { api } from '../../services/api';
 
 interface MenuItem {
   itemId: string;
@@ -85,10 +86,9 @@ const POSOrderEntry: React.FC = () => {
 
   const fetchOutlets = async () => {
     try {
-      const response = await fetch('/api/pos/outlets');
-      const data = await response.json();
-      if (data.success) {
-        setOutlets(data.data);
+      const response = await api.get('/pos/outlets');
+      if (response.data.success) {
+        setOutlets(response.data.data);
       }
     } catch (error) {
       console.error('Error fetching outlets:', error);
@@ -97,16 +97,15 @@ const POSOrderEntry: React.FC = () => {
 
   const fetchMenus = async () => {
     try {
-      const response = await fetch(`/api/pos/menus/outlet/${selectedOutlet}`);
-      const data = await response.json();
-      if (data.success) {
-        setMenus(data.data);
+      const response = await api.get(`/pos/menus/outlet/${selectedOutlet}`);
+      if (response.data.success) {
+        setMenus(response.data.data);
         
         // Combine all menu items
         const allItems: MenuItem[] = [];
         const allCategories = new Set<string>();
         
-        data.data.forEach((menu: any) => {
+        response.data.data.forEach((menu: any) => {
           menu.items.forEach((item: MenuItem) => {
             allItems.push(item);
             allCategories.add(item.category);
@@ -188,6 +187,22 @@ const POSOrderEntry: React.FC = () => {
     setTotal(newTotal);
   };
 
+  const getSelectedOutletName = () => {
+    const outlet = outlets.find(o => o._id === selectedOutlet);
+    return outlet ? outlet.name : 'Select Outlet';
+  };
+
+  const getCategoryIcon = (category: string) => {
+    const icons = {
+      beverages: Coffee,
+      appetizers: Pizza,
+      'main course': Soup,
+      desserts: Cake,
+    };
+    const IconComponent = icons[category.toLowerCase() as keyof typeof icons] || Pizza;
+    return <IconComponent className="w-12 h-12 text-gray-400" />;
+  };
+
   const processOrder = async (paymentMethod: string) => {
     if (!selectedOutlet || orderItems.length === 0) {
       alert('Please select outlet and add items to order');
@@ -213,24 +228,16 @@ const POSOrderEntry: React.FC = () => {
         tableNumber
       };
 
-      const response = await fetch('/api/pos/orders', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(orderData)
-      });
-
-      const data = await response.json();
+      const response = await api.post('/pos/orders', orderData);
       
-      if (data.success) {
+      if (response.data.success) {
         alert('Order created successfully!');
         // Reset form
         setOrderItems([]);
         setCustomer({ type: 'walkin' });
         setTableNumber('');
       } else {
-        alert('Error creating order: ' + data.message);
+        alert('Error creating order: ' + response.data.message);
       }
     } catch (error) {
       console.error('Error processing order:', error);
@@ -243,18 +250,22 @@ const POSOrderEntry: React.FC = () => {
       {/* Left Panel - Menu Items */}
       <div className="flex-1 p-4 overflow-y-auto">
         <div className="mb-4 space-y-4">
-          <Select value={selectedOutlet} onValueChange={setSelectedOutlet}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select Outlet" />
-            </SelectTrigger>
-            <SelectContent>
-              {outlets.map((outlet) => (
-                <SelectItem key={outlet._id} value={outlet._id}>
-                  {outlet.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="relative">
+            <Select value={selectedOutlet} onValueChange={setSelectedOutlet}>
+              <SelectTrigger>
+                <span className="block truncate">
+                  {selectedOutlet ? getSelectedOutletName() : "Select Outlet"}
+                </span>
+              </SelectTrigger>
+              <SelectContent>
+                {outlets.map((outlet) => (
+                  <SelectItem key={outlet._id} value={outlet._id}>
+                    {outlet.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           <Input
             placeholder="Search items..."
@@ -285,7 +296,9 @@ const POSOrderEntry: React.FC = () => {
           {filteredItems.map((item) => (
             <Card key={item.itemId} className="cursor-pointer hover:shadow-lg transition-shadow">
               <CardContent className="p-4" onClick={() => addToOrder(item)}>
-                <div className="aspect-square bg-gray-200 rounded-lg mb-3"></div>
+                <div className="aspect-square bg-gray-100 rounded-lg mb-3 flex items-center justify-center">
+                  {getCategoryIcon(item.category)}
+                </div>
                 <h3 className="font-semibold text-sm mb-1">{item.name}</h3>
                 <p className="text-xs text-gray-600 mb-2">{item.description}</p>
                 <p className="font-bold text-green-600">{formatCurrency(item.price)}</p>

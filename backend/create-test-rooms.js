@@ -4,7 +4,7 @@ import Room from './src/models/Room.js';
 // Connect to MongoDB
 await mongoose.connect('mongodb://localhost:27017/hotel_management');
 
-const hotelId = '68ad53aabf854d3c206b8555';
+const hotelId = '68afe8080c02fcbe30092b8e';
 
 // Create test rooms
 const testRooms = [

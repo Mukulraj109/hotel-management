@@ -38,4 +38,7 @@ router.get('/analytics/summary', authenticate, authorize(['admin', 'revenue_mana
 // Optimization Routes
 router.get('/optimization/recommendations', authenticate, authorize(['admin', 'revenue_manager']), revenueController.getOptimizationRecommendations);
 
+// Dashboard Metrics Route
+router.get('/dashboard/metrics', authenticate, authorize(['admin', 'revenue_manager', 'manager']), revenueController.getDashboardMetrics);
+
 export default router;

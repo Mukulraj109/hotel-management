@@ -67,6 +67,8 @@ import dashboardRoutes from './routes/dashboard.js';
 import roomBlockRoutes from './routes/roomBlocks.js';
 import assignmentRulesRoutes from './routes/assignmentRules.js';
 import advancedReservationsRoutes from './routes/advancedReservations.js';
+import billingSessionRoutes from './routes/billingSessions.js';
+import guestLookupRoutes from './routes/guestLookup.js';
 
 const app = express();
 
@@ -212,6 +214,8 @@ app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/room-blocks', roomBlockRoutes);
 app.use('/api/v1/assignment-rules', assignmentRulesRoutes);
 app.use('/api/v1/advanced-reservations', advancedReservationsRoutes);
+app.use('/api/v1/billing-sessions', billingSessionRoutes);
+app.use('/api/v1/guest-lookup', guestLookupRoutes);
 
 // 404 handler
 app.all('*', (req, res) => {

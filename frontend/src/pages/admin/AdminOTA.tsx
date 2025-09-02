@@ -92,7 +92,7 @@ export default function AdminOTA() {
     status: ''
   });
 
-  const hotelId = user?.hotelId || '68b036db9f87a72c2d171a91';
+      const hotelId = user?.hotelId || '68afe8080c02fcbe30092b8e';
 
   // Fetch data
   const fetchData = async () => {
