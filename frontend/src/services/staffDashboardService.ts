@@ -1,4 +1,5 @@
 import { ApiResponse } from '../types/api';
+import { api } from './api';
 
 export interface StaffTodayData {
   checkIns: number;
@@ -80,118 +81,46 @@ export interface StaffActivityData {
 }
 
 class StaffDashboardService {
-  private baseURL = '/api/v1/staff-dashboard';
-  
-  private async fetchWithAuth<T>(endpoint: string): Promise<ApiResponse<T>> {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-
-    const response = await fetch(`${this.baseURL}${endpoint}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        // Token expired or invalid
-        localStorage.removeItem('token');
-        window.location.href = '/login';
-        throw new Error('Authentication required');
-      }
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    return response.json();
-  }
+  private baseURL = '/staff-dashboard';
 
   async getTodayOverview(): Promise<ApiResponse<{ today: StaffTodayData; lastUpdated: string }>> {
     // Add timestamp to prevent caching issues
     const timestamp = new Date().getTime();
-    return this.fetchWithAuth(`/today?t=${timestamp}`);
+    const response = await api.get(`${this.baseURL}/today?t=${timestamp}`);
+    return response.data;
   }
 
   async getRoomStatus(): Promise<ApiResponse<RoomStatusData>> {
-    return this.fetchWithAuth('/rooms/status');
+    const response = await api.get(`${this.baseURL}/rooms/status`);
+    return response.data;
   }
 
   async getInventorySummary(): Promise<ApiResponse<StaffInventoryData>> {
-    return this.fetchWithAuth('/inventory/summary');
+    const response = await api.get(`${this.baseURL}/inventory/summary`);
+    return response.data;
   }
 
   async getRecentActivity(): Promise<ApiResponse<StaffActivityData>> {
-    return this.fetchWithAuth('/activity');
+    const response = await api.get(`${this.baseURL}/activity`);
+    return response.data;
   }
 
   // Room status update
   async updateRoomStatus(roomId: string, status: string): Promise<ApiResponse<any>> {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-
-    const response = await fetch(`/api/v1/rooms/${roomId}/status`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ status }),
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to update room status');
-    }
-
-    return response.json();
+    const response = await api.patch(`/rooms/${roomId}/status`, { status });
+    return response.data;
   }
 
   // Mark room as inspected
   async markRoomInspected(roomId: string): Promise<ApiResponse<any>> {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-
-    const response = await fetch(`${this.baseURL}/rooms/${roomId}/inspect`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to mark room as inspected');
-    }
-
-    return response.json();
+    const response = await api.patch(`${this.baseURL}/rooms/${roomId}/inspect`);
+    return response.data;
   }
 
   // Order inventory item
   async orderInventoryItem(itemId: string, quantity: number = 50): Promise<ApiResponse<any>> {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-
-    const response = await fetch(`${this.baseURL}/inventory/${itemId}/order`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ quantity }),
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to order inventory item');
-    }
-
-    return response.json();
+    const response = await api.post(`${this.baseURL}/inventory/${itemId}/order`, { quantity });
+    return response.data;
   }
 }
 
