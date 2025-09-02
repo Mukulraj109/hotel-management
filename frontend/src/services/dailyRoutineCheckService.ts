@@ -1,4 +1,5 @@
 import { ApiResponse } from '../types/api';
+import { api } from './api';
 
 export interface RoomInventoryItem {
   _id: string;
@@ -49,33 +50,7 @@ interface DailyCheckFilters {
 }
 
 class DailyRoutineCheckService {
-  private baseURL = '/api/v1/daily-routine-check';
-  
-  private async fetchWithAuth<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      throw new Error('No authentication token found');
-    }
-
-    const response = await fetch(`${this.baseURL}${endpoint}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      ...options,
-    });
-
-    if (!response.ok) {
-      if (response.status === 401) {
-        localStorage.removeItem('token');
-        window.location.href = '/login';
-        throw new Error('Authentication required');
-      }
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    return response.json();
-  }
+  private baseURL = '/daily-routine-check';
 
   /**
    * Get rooms that need daily routine check
@@ -90,31 +65,32 @@ class DailyRoutineCheckService {
     if (filters.page) queryParams.append('page', filters.page.toString());
     if (filters.limit) queryParams.append('limit', filters.limit.toString());
 
-    return this.fetchWithAuth(`/rooms?${queryParams.toString()}`);
+    const response = await api.get(`${this.baseURL}/rooms?${queryParams.toString()}`);
+    return response.data;
   }
 
   /**
    * Get detailed inventory for a specific room
    */
   async getRoomInventory(roomId: string): Promise<ApiResponse<DailyCheckData>> {
-    return this.fetchWithAuth(`/rooms/${roomId}/inventory`);
+    const response = await api.get(`${this.baseURL}/rooms/${roomId}/inventory`);
+    return response.data;
   }
 
   /**
    * Complete daily routine check for a room
    */
   async completeDailyCheck(roomId: string, checkData: { cart: any[] }): Promise<ApiResponse<DailyCheckResult>> {
-    return this.fetchWithAuth(`/rooms/${roomId}/complete`, {
-      method: 'POST',
-      body: JSON.stringify(checkData),
-    });
+    const response = await api.post(`${this.baseURL}/rooms/${roomId}/complete`, checkData);
+    return response.data;
   }
 
   /**
    * Get daily check history for a room
    */
   async getRoomCheckHistory(roomId: string, page: number = 1, limit: number = 10): Promise<ApiResponse<{ checks: DailyCheckResult[] }>> {
-    return this.fetchWithAuth(`/rooms/${roomId}/history?page=${page}&limit=${limit}`);
+    const response = await api.get(`${this.baseURL}/rooms/${roomId}/history?page=${page}&limit=${limit}`);
+    return response.data;
   }
 
   /**
@@ -127,34 +103,32 @@ class DailyRoutineCheckService {
     overdueChecks: number;
     estimatedTimeRemaining: number;
   }>> {
-    return this.fetchWithAuth('/summary');
+    const response = await api.get(`${this.baseURL}/summary`);
+    return response.data;
   }
 
   /**
    * Assign daily checks to staff members
    */
   async assignDailyChecks(assignments: Array<{ roomId: string; staffId: string }>): Promise<ApiResponse<{ message: string }>> {
-    return this.fetchWithAuth('/assign', {
-      method: 'POST',
-      body: JSON.stringify({ assignments }),
-    });
+    const response = await api.post(`${this.baseURL}/assign`, { assignments });
+    return response.data;
   }
 
   /**
    * Get staff member's assigned rooms for today
    */
   async getMyAssignedRooms(): Promise<ApiResponse<{ rooms: DailyCheckData[] }>> {
-    return this.fetchWithAuth('/my-assignments');
+    const response = await api.get(`${this.baseURL}/my-assignments`);
+    return response.data;
   }
 
   /**
    * Mark room as checked without detailed inventory
    */
   async markRoomAsChecked(roomId: string, notes?: string): Promise<ApiResponse<{ message: string }>> {
-    return this.fetchWithAuth(`/rooms/${roomId}/mark-checked`, {
-      method: 'POST',
-      body: JSON.stringify({ notes }),
-    });
+    const response = await api.post(`${this.baseURL}/rooms/${roomId}/mark-checked`, { notes });
+    return response.data;
   }
 
   /**
@@ -167,7 +141,8 @@ class DailyRoutineCheckService {
       dailyInventory: RoomInventoryItem[];
     }>;
   }>> {
-    return this.fetchWithAuth('/inventory-templates');
+    const response = await api.get(`${this.baseURL}/inventory-templates`);
+    return response.data;
   }
 
   /**
@@ -177,10 +152,8 @@ class DailyRoutineCheckService {
     fixedInventory: Partial<RoomInventoryItem>[];
     dailyInventory: Partial<RoomInventoryItem>[];
   }): Promise<ApiResponse<{ message: string }>> {
-    return this.fetchWithAuth(`/inventory-templates/${roomType}`, {
-      method: 'PUT',
-      body: JSON.stringify(template),
-    });
+    const response = await api.put(`${this.baseURL}/inventory-templates/${roomType}`, template);
+    return response.data;
   }
 
   /**
@@ -196,7 +169,8 @@ class DailyRoutineCheckService {
     averageCheckDuration: number;
     roomsByStatus: Record<string, number>;
   }>> {
-    return this.fetchWithAuth(`/stats?startDate=${startDate}&endDate=${endDate}`);
+    const response = await api.get(`${this.baseURL}/stats?startDate=${startDate}&endDate=${endDate}`);
+    return response.data;
   }
 }
 
