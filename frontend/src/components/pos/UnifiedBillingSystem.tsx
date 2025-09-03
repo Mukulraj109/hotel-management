@@ -113,16 +113,10 @@ const UnifiedBillingSystem: React.FC = () => {
     };
   }, []);
   
-  // Fallback outlets if backend data is not available
-  const [outlets] = useState<Outlet[]>([
-    { id: 'restaurant', name: 'Main Restaurant', type: 'restaurant', icon: <Coffee className="w-4 h-4" />, isActive: true, location: 'Ground Floor' },
-    { id: 'spa', name: 'Wellness Spa', type: 'spa', icon: <Scissors className="w-4 h-4" />, isActive: true, location: '2nd Floor' },
-    { id: 'gym', name: 'Fitness Center', type: 'gym', icon: <Dumbbell className="w-4 h-4" />, isActive: true, location: 'Basement' },
-    { id: 'shop', name: 'Gift Shop', type: 'shop', icon: <ShoppingBag className="w-4 h-4" />, isActive: true, location: 'Lobby' },
-    { id: 'parking', name: 'Valet Parking', type: 'parking', icon: <Car className="w-4 h-4" />, isActive: true, location: 'Ground Floor' }
-  ]);
+  // Backend outlets data
+  const [outlets, setOutlets] = useState<Outlet[]>([]);
 
-  const [selectedOutlet, setSelectedOutlet] = useState<string>('restaurant');
+  const [selectedOutlet, setSelectedOutlet] = useState<string>('');
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [discountAmount, setDiscountAmount] = useState(0);
   const [isPercentage, setIsPercentage] = useState(true);
@@ -141,96 +135,49 @@ const UnifiedBillingSystem: React.FC = () => {
       setLoadingItems(true);
       setLoadingGuests(true);
       
-                   // For now, use sample guest data since we don't have an active guests endpoint
-       // In production, this would fetch from a real API endpoint
-       setGuests([
-         {
-           _id: 'guest-1',
-           name: 'John Smith',
-           email: 'john.smith@email.com',
-           phone: '+91 98765 43210',
-           roomNumber: '101',
-           roomType: 'standard',
-           bookingId: 'BK-2024-001',
-           checkIn: '2024-01-15',
-           checkOut: '2024-01-18',
-           status: 'checked-in'
-         },
-         {
-           _id: 'guest-2',
-           name: 'Sarah Johnson',
-           email: 'sarah.j@email.com',
-           phone: '+91 87654 32109',
-           roomNumber: '205',
-           roomType: 'deluxe',
-           bookingId: 'BK-2024-002',
-           checkIn: '2024-01-16',
-           checkOut: '2024-01-20',
-           status: 'checked-in'
-         },
-         {
-           _id: 'guest-3',
-           name: 'Michael Brown',
-           email: 'michael.b@email.com',
-           phone: '+91 76543 21098',
-           roomNumber: '312',
-           roomType: 'suite',
-           bookingId: 'BK-2024-003',
-           checkIn: '2024-01-14',
-           checkOut: '2024-01-17',
-           status: 'checked-in'
-         },
-         {
-           _id: 'guest-4',
-           name: 'Emily Davis',
-           email: 'emily.d@email.com',
-           phone: '+91 65432 10987',
-           roomNumber: '408',
-           roomType: 'deluxe',
-           bookingId: 'BK-2024-004',
-           checkIn: '2024-01-17',
-           checkOut: '2024-01-22',
-           status: 'checked-in'
-         },
-         {
-           _id: 'guest-5',
-           name: 'David Wilson',
-           email: 'david.w@email.com',
-           phone: '+91 54321 09876',
-           roomNumber: '512',
-           roomType: 'presidential',
-           bookingId: 'BK-2024-005',
-           checkIn: '2024-01-18',
-           checkOut: '2024-01-25',
-           status: 'checked-in'
-         },
-         {
-           _id: 'guest-6',
-           name: 'Lisa Anderson',
-           email: 'lisa.a@email.com',
-           phone: '+91 43210 98765',
-           roomNumber: '001',
-           roomType: 'standard',
-           bookingId: 'BK-2024-006',
-           checkIn: '2024-01-19',
-           checkOut: '2024-01-21',
-           status: 'confirmed'
-         },
-         {
-           _id: 'guest-7',
-           name: 'Robert Taylor',
-           email: 'robert.t@email.com',
-           phone: '+91 32109 87654',
-           roomNumber: '002',
-           roomType: 'standard',
-           bookingId: 'BK-2024-007',
-           checkIn: '2024-01-20',
-           checkOut: '2024-01-23',
-           status: 'checked-out'
-         }
-       ]);
+                   // Fetch active guests from backend
+      try {
+        const guestsResponse = await fetch(`http://localhost:4000/api/v1/admin-dashboard/checked-in-bookings`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (guestsResponse.ok) {
+          const guestsData = await guestsResponse.json();
+          console.log('Fetched guests:', guestsData);
+          
+          // Transform booking data to guest format
+          const transformedGuests = guestsData.data?.bookings?.map(booking => ({
+            _id: booking._id,
+            name: booking.guest?.name || 'Guest',
+            email: booking.guest?.email || '',
+            phone: booking.guest?.phone || '',
+            roomNumber: booking.room?.number || 'N/A',
+            roomType: booking.room?.type || 'standard',
+            bookingId: booking.bookingNumber || booking._id,
+            checkIn: booking.checkIn,
+            checkOut: booking.checkOut,
+            status: 'checked-in' // All bookings from this endpoint are checked-in
+          })) || [];
+          
+          setGuests(transformedGuests);
+          console.log('Transformed guests:', transformedGuests);
+        } else {
+          console.log('Failed to fetch guests:', guestsResponse.status);
+          setGuests([]); // Set empty array instead of sample data
+        }
+      } catch (error) {
+        console.log('Error fetching guests:', error);
+        setGuests([]); // Set empty array instead of sample data  
+      }
       
-      // Fetch POS outlets and menu items from backend using authenticated API
+      
+      // Initialize empty data structure
+      const initialData: {[key: string]: any[]} = {};
+
+      // Then try to fetch from backend to enhance the data
       try {
         const outletsResponse = await fetch(`http://localhost:4000/api/v1/pos/outlets`, {
           headers: {
@@ -240,13 +187,15 @@ const UnifiedBillingSystem: React.FC = () => {
         });
         
         if (!outletsResponse.ok) {
-          throw new Error(`POS outlets request failed: ${outletsResponse.status}`);
+          console.log(`POS outlets request failed: ${outletsResponse.status}, using fallback data`);
+          return; // Keep fallback data
         }
         
         const outletsData = await outletsResponse.json();
+        console.log('Fetched outlets:', outletsData);
         
         // Fetch menu items for each outlet
-        const itemsData: {[key: string]: any[]} = {};
+        const itemsData: {[key: string]: any[]} = {...initialData}; // Start with initial data
         
         for (const outlet of outletsData.data || []) {
           try {
@@ -259,53 +208,75 @@ const UnifiedBillingSystem: React.FC = () => {
             
             if (menuResponse.ok) {
               const menuData = await menuResponse.json();
-              itemsData[outlet.type] = menuData.data || [];
+              console.log(`Menu data for ${outlet.type}:`, menuData);
+              
+              // Flatten menu items from all menus for this outlet
+              const allItems = [];
+              for (const menu of menuData.data || []) {
+                if (menu.items && menu.items.length > 0) {
+                  const formattedItems = menu.items.map(item => ({
+                    _id: item.itemId || item._id,
+                    name: item.name,
+                    category: item.category,
+                    price: item.price,
+                    outlet: outlet.type
+                  }));
+                  allItems.push(...formattedItems);
+                }
+              }
+              
+              if (allItems.length > 0) {
+                itemsData[outlet.type] = allItems;
+              }
             } else {
-              console.error(`Menu request failed for ${outlet.type}:`, menuResponse.status);
-              itemsData[outlet.type] = [];
+              console.log(`Menu request failed for ${outlet.type}:`, menuResponse.status);
             }
           } catch (error) {
-            console.error(`Error fetching menu for ${outlet.type}:`, error);
-            itemsData[outlet.type] = [];
+            console.log(`Error fetching menu for ${outlet.type}:`, error);
           }
         }
         
-        // Store the fetched data
+        // Transform backend outlets to frontend format
+        const getOutletIcon = (type: string) => {
+          switch (type) {
+            case 'restaurant': return <Coffee className="w-4 h-4" />;
+            case 'spa': return <Scissors className="w-4 h-4" />;
+            case 'gym': return <Dumbbell className="w-4 h-4" />;
+            case 'shop': return <ShoppingBag className="w-4 h-4" />;
+            case 'parking': return <Car className="w-4 h-4" />;
+            default: return <Building className="w-4 h-4" />;
+          }
+        };
+        
+        const transformedOutlets = outletsData.data?.map(outlet => ({
+          id: outlet.type,
+          name: outlet.name,
+          type: outlet.type,
+          icon: getOutletIcon(outlet.type),
+          isActive: outlet.isActive,
+          location: outlet.location
+        })) || [];
+        
+        // Store the enhanced data
         setOutletItems(itemsData);
         setBackendOutlets(outletsData.data || []);
+        setOutlets(transformedOutlets);
         
-             } catch (error) {
-         console.error('Error fetching POS data:', error);
-         // If no data from backend, use fallback data
-         const fallbackData = {
-           restaurant: [
-             { _id: 'food-1', name: 'Club Sandwich', category: 'Food', price: 850, outlet: 'restaurant' },
-             { _id: 'food-2', name: 'Caesar Salad', category: 'Food', price: 650, outlet: 'restaurant' },
-             { _id: 'drink-1', name: 'Fresh Orange Juice', category: 'Beverages', price: 350, outlet: 'restaurant' },
-             { _id: 'food-3', name: 'Grilled Salmon', category: 'Food', price: 1450, outlet: 'restaurant' }
-           ],
-           spa: [
-             { _id: 'spa-1', name: 'Swedish Massage (60 min)', category: 'Massage', price: 3500, outlet: 'spa' },
-             { _id: 'spa-2', name: 'Facial Treatment', category: 'Skincare', price: 2800, outlet: 'spa' },
-             { _id: 'spa-3', name: 'Aromatherapy Session', category: 'Wellness', price: 2200, outlet: 'spa' }
-           ],
-           gym: [
-             { _id: 'gym-1', name: 'Personal Training (1 hr)', category: 'Training', price: 2000, outlet: 'gym' },
-             { _id: 'gym-2', name: 'Day Pass', category: 'Access', price: 500, outlet: 'gym' },
-             { _id: 'gym-3', name: 'Equipment Rental', category: 'Rental', price: 200, outlet: 'gym' }
-           ],
-           shop: [
-             { _id: 'shop-1', name: 'Hotel Branded T-Shirt', category: 'Apparel', price: 1200, outlet: 'shop' },
-             { _id: 'shop-2', name: 'Local Handicrafts', category: 'Souvenirs', price: 800, outlet: 'shop' },
-             { _id: 'shop-3', name: 'Premium Chocolates', category: 'Food', price: 950, outlet: 'shop' }
-           ],
-           parking: [
-             { _id: 'park-1', name: 'Valet Service (per day)', category: 'Service', price: 500, outlet: 'parking' },
-             { _id: 'park-2', name: 'Car Wash', category: 'Service', price: 800, outlet: 'parking' }
-           ]
-         };
-         setOutletItems(fallbackData);
-       }
+        // Set the first active outlet as selected if not already set
+        if (transformedOutlets.length > 0 && !selectedOutlet) {
+          const firstActiveOutlet = transformedOutlets.find(outlet => outlet.isActive);
+          if (firstActiveOutlet) {
+            setSelectedOutlet(firstActiveOutlet.id);
+          }
+        }
+        
+        console.log('Final outlet items:', itemsData);
+        console.log('Transformed outlets:', transformedOutlets);
+        
+      } catch (error) {
+        console.log('Error fetching POS data, using fallback:', error);
+        // Fallback data already set above
+      }
       
       setLoadingItems(false);
       setLoadingGuests(false);
@@ -369,7 +340,44 @@ const UnifiedBillingSystem: React.FC = () => {
         hotelId: user.hotelId
       };
 
-      const response = await billingSessionService.createSession(sessionData);
+      // Try to create a new session
+      let response;
+      let wasExistingSession = false;
+      try {
+        response = await billingSessionService.createSession(sessionData);
+      } catch (createError: any) {
+        // Handle 409 conflict - active session already exists for this room
+        if (createError.response?.status === 409) {
+          console.log('Active session exists for room, fetching existing session...');
+          wasExistingSession = true;
+          
+          // Fetch existing active sessions for this hotel and room
+          const sessionsResponse = await billingSessionService.getHotelSessions(user.hotelId, {
+            status: 'draft',
+            limit: 50
+          });
+          
+          // Find the active session for this specific room
+          const existingSession = sessionsResponse.data.find(
+            session => session.roomNumber === selectedGuest.roomNumber && 
+                      (session.status === 'draft' || session.status === 'room_charged')
+          );
+          
+          if (existingSession) {
+            // Use the existing session
+            response = { data: { billingSession: existingSession } };
+            toast.success(`Resumed existing billing session for Room ${selectedGuest.roomNumber}`);
+          } else {
+            // Couldn't find the conflicting session, show error
+            toast.error('An active billing session exists for this room but could not be retrieved');
+            return;
+          }
+        } else {
+          // Re-throw other errors
+          throw createError;
+        }
+      }
+      
       const newSession = response.data.billingSession;
       
       // Convert backend session to frontend format
@@ -400,38 +408,64 @@ const UnifiedBillingSystem: React.FC = () => {
       };
 
       setCurrentSession(frontendSession);
-      toast.success(`Billing session started for ${selectedGuest.name}`);
+      if (!wasExistingSession) {
+        toast.success(`Billing session started for ${selectedGuest.name}`);
+      }
     } catch (error) {
-      console.error('Error creating billing session:', error);
-      toast.error('Failed to create billing session');
+      console.error('Error initializing billing session:', error);
+      toast.error('Failed to initialize billing session');
     } finally {
       setLoading(false);
     }
   };
 
-  const addItemToSession = (item: any) => {
+  const addItemToSession = async (item: any) => {
     if (!currentSession) {
       toast.error('Please start a billing session first');
       return;
     }
 
-    const newItem: OutletItem = {
-      id: `${item.id}-${Date.now()}`,
-      name: item.name,
-      category: item.category,
-      price: item.price,
-      outlet: item.outlet,
-      quantity: 1,
-      tax: item.price * 0.18, // 18% GST
-      timestamp: new Date()
-    };
+    try {
+      setLoading(true);
+      
+      // Call backend API to add item to session
+      const response = await billingSessionService.addItem(currentSession.id, {
+        item: {
+          id: item._id || item.id,
+          name: item.name,
+          category: item.category,
+          price: item.price,
+          outlet: selectedOutlet || item.outlet
+        }
+      });
 
-    const updatedSession = {
-      ...currentSession,
-      items: [...currentSession.items, newItem]
-    };
+      // Update local session state with backend response
+      const backendSession = response.data.billingSession;
+      const updatedSession = {
+        ...currentSession,
+        items: backendSession.items.map((backendItem: any) => ({
+          id: backendItem.itemId,
+          name: backendItem.name,
+          category: backendItem.category,
+          price: backendItem.price,
+          outlet: backendItem.outlet,
+          quantity: backendItem.quantity,
+          tax: backendItem.tax,
+          timestamp: new Date(backendItem.timestamp)
+        })),
+        subtotal: backendSession.subtotal,
+        totalTax: backendSession.totalTax,
+        grandTotal: backendSession.grandTotal
+      };
 
-    calculateTotals(updatedSession);
+      setCurrentSession(updatedSession);
+      toast.success(`${item.name} added to bill`);
+    } catch (error) {
+      console.error('Error adding item to session:', error);
+      toast.error(`Failed to add ${item.name}: ${error.response?.data?.message || 'Please try again'}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const updateItemQuantity = (itemId: string, quantity: number) => {
@@ -494,31 +528,61 @@ const UnifiedBillingSystem: React.FC = () => {
   const processPayment = async (paymentMethod: string) => {
     if (!currentSession) return;
 
+    // Validate session before processing
+    if (!currentSession.items || currentSession.items.length === 0) {
+      toast.error('Cannot process payment for empty bill. Please add items first.');
+      return;
+    }
+
+    if (currentSession.status !== 'draft') {
+      toast.error('Cannot process payment. This session has already been processed.');
+      return;
+    }
+
     try {
-      // Mock API call for payment processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      setLoading(true);
+      
+      // Call real backend API for payment processing
+      const response = await billingSessionService.checkoutSession(currentSession.id, {
+        paymentMethod: paymentMethod as any,
+        notes: `Payment processed via ${paymentMethod} through POS system`
+      });
 
       const updatedSession = {
         ...currentSession,
-        paymentMethod: paymentMethod as any,
-        status: paymentMethod === 'room_charge' ? 'room_charged' : 'paid',
-        paidAt: new Date()
+        paymentMethod: response.data.billingSession.paymentMethod,
+        status: response.data.billingSession.status,
+        paidAt: new Date(response.data.billingSession.paidAt)
       };
 
       setCurrentSession(updatedSession);
       setPaymentDialogOpen(false);
       
-      toast.success(`Payment processed successfully via ${paymentMethod}`);
+      toast.success(`Payment processed successfully via ${paymentMethod}${paymentMethod === 'room_charge' ? ' - Charged to room' : ''}`);
       
       // Generate receipt
       generateReceipt(updatedSession);
     } catch (error) {
-      toast.error('Payment processing failed');
+      console.error('Payment processing failed:', error);
+      toast.error(`Payment processing failed: ${error.response?.data?.message || 'Please try again'}`);
+    } finally {
+      setLoading(false);
     }
   };
 
   const processSplitPayment = async () => {
     if (!currentSession || splitPayments.length === 0) return;
+
+    // Validate session before processing
+    if (!currentSession.items || currentSession.items.length === 0) {
+      toast.error('Cannot process payment for empty bill. Please add items first.');
+      return;
+    }
+
+    if (currentSession.status !== 'draft') {
+      toast.error('Cannot process payment. This session has already been processed.');
+      return;
+    }
 
     const totalSplitAmount = splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
     
@@ -528,14 +592,20 @@ const UnifiedBillingSystem: React.FC = () => {
     }
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      setLoading(true);
+      // Call real backend API for split payment processing
+      const response = await billingSessionService.checkoutSession(currentSession.id, {
+        paymentMethod: 'split',
+        splitPayments,
+        notes: `Split payment processed via POS system with ${splitPayments.length} payment methods`
+      });
 
       const updatedSession = {
         ...currentSession,
-        paymentMethod: 'split',
-        splitPayments,
-        status: 'paid',
-        paidAt: new Date()
+        paymentMethod: response.data.billingSession.paymentMethod,
+        splitPayments: response.data.billingSession.splitPayments,
+        status: response.data.billingSession.status,
+        paidAt: new Date(response.data.billingSession.paidAt)
       };
 
       setCurrentSession(updatedSession);
@@ -543,7 +613,10 @@ const UnifiedBillingSystem: React.FC = () => {
       toast.success('Split payment processed successfully');
       generateReceipt(updatedSession);
     } catch (error) {
-      toast.error('Split payment processing failed');
+      console.error('Split payment processing failed:', error);
+      toast.error(`Split payment processing failed: ${error.response?.data?.message || 'Please try again'}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -568,12 +641,30 @@ const UnifiedBillingSystem: React.FC = () => {
     toast.success('Receipt generated and sent to printer');
   };
 
-  const voidTransaction = () => {
+  const voidTransaction = async () => {
     if (!currentSession) return;
     
-    const updatedSession = { ...currentSession, status: 'void' as const };
-    setCurrentSession(updatedSession);
-    toast.success('Transaction voided successfully');
+    try {
+      setLoading(true);
+      // Call real backend API to void the transaction
+      const response = await billingSessionService.voidSession(currentSession.id, {
+        reason: 'Transaction voided via POS system'
+      });
+      
+      const updatedSession = {
+        ...currentSession,
+        status: response.data.billingSession.status,
+        notes: response.data.billingSession.notes
+      };
+      
+      setCurrentSession(updatedSession);
+      toast.success('Transaction voided successfully');
+    } catch (error) {
+      console.error('Void transaction failed:', error);
+      toast.error(`Failed to void transaction: ${error.response?.data?.message || 'Please try again'}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const clearSession = () => {
@@ -813,40 +904,45 @@ const UnifiedBillingSystem: React.FC = () => {
                </div>
              ) : outletItems[selectedOutlet]?.length > 0 ? (
                <div className="relative">
-                 {/* Slider Container */}
-                 <div className="flex overflow-x-auto gap-4 pb-4 scrollbar-hide">
+                 {/* Grid Container */}
+                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                    {outletItems[selectedOutlet]?.map((item) => (
                      <div 
                        key={item._id || item.id} 
-                       className="flex-shrink-0 w-64 bg-white border rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+                       className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer overflow-hidden group"
                        onClick={() => addItemToSession(item)}
                      >
                        {/* Item Image Placeholder */}
-                       <div className="h-32 bg-gradient-to-br from-gray-100 to-gray-200 rounded-t-lg flex items-center justify-center">
-                         <div className="text-gray-400 text-4xl">
-                           {item.category === 'Food' ? '🍽️' : 
+                       <div className="h-40 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center group-hover:from-blue-100 group-hover:to-indigo-200 transition-colors">
+                         <div className="text-5xl">
+                           {item.category === 'Appetizers' ? '🥗' :
+                            item.category === 'Main Course' ? '🍽️' : 
+                            item.category === 'Desserts' ? '🍰' :
                             item.category === 'Beverages' ? '🥤' : 
                             item.category === 'Massage' ? '💆' : 
                             item.category === 'Training' ? '💪' : 
-                            item.category === 'Apparel' ? '👕' : '🛍️'}
+                            item.category === 'Apparel' ? '👕' : 
+                            item.category === 'Services' ? '🛎️' : '🛍️'}
                          </div>
                        </div>
                        
                        {/* Item Details */}
                        <div className="p-4">
-                         <h4 className="font-semibold text-gray-900 mb-1 line-clamp-2">{item.name}</h4>
-                         <p className="text-sm text-gray-500 mb-2">{item.category}</p>
+                         <div className="mb-3">
+                           <h4 className="font-semibold text-gray-900 mb-1 text-sm leading-tight line-clamp-2">{item.name}</h4>
+                           <span className="inline-block px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">{item.category}</span>
+                         </div>
                          <div className="flex items-center justify-between">
-                           <span className="text-lg font-bold text-green-600">{formatCurrency(item.price)}</span>
+                           <span className="text-lg font-bold text-emerald-600">{formatCurrency(item.price)}</span>
                            <Button 
                              size="sm" 
-                             className="bg-blue-600 hover:bg-blue-700 text-white"
+                             className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 text-xs font-medium shadow-sm"
                              onClick={(e) => {
                                e.stopPropagation();
                                addItemToSession(item);
                              }}
                            >
-                             <Plus className="w-4 h-4 mr-1" />
+                             <Plus className="w-3 h-3 mr-1" />
                              Add
                            </Button>
                          </div>
@@ -854,22 +950,12 @@ const UnifiedBillingSystem: React.FC = () => {
                      </div>
                    ))}
                  </div>
-                 
-                 {/* Scroll Indicators */}
-                 <div className="flex justify-center mt-4 space-x-2">
-                   {outletItems[selectedOutlet]?.map((_, index) => (
-                     <div 
-                       key={index}
-                       className="w-2 h-2 rounded-full bg-gray-300"
-                     />
-                   ))}
-                 </div>
                </div>
              ) : (
-               <div className="text-center py-8 text-gray-500">
-                 <div className="text-4xl mb-2">🍽️</div>
-                 <p>No items available for this outlet</p>
-                 <p className="text-sm">Items will be loaded from the database</p>
+               <div className="text-center py-16 text-gray-500">
+                 <div className="text-6xl mb-4">🍽️</div>
+                 <h3 className="text-lg font-medium text-gray-700 mb-2">No items available</h3>
+                 <p className="text-sm">Items for this outlet will be loaded from the backend</p>
                </div>
              )}
            </CardContent>

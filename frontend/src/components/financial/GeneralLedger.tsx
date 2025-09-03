@@ -73,7 +73,22 @@ const GeneralLedger: React.FC = () => {
       if (dateRange.end) filters.endDate = dateRange.end;
       
       const response = await financialService.getJournalEntries(filters);
-      setJournalEntries(response.data);
+      console.log('📝 Journal Entries response:', response);
+      
+      // Handle different response structures
+      let entriesData = [];
+      if (Array.isArray(response)) {
+        entriesData = response;
+      } else if (response.data && response.data.entries && Array.isArray(response.data.entries)) {
+        entriesData = response.data.entries;
+      } else if (response.data && Array.isArray(response.data)) {
+        entriesData = response.data;
+      } else if (response.entries && Array.isArray(response.entries)) {
+        entriesData = response.entries;
+      }
+      
+      console.log('💰 Setting journal entries data:', entriesData);
+      setJournalEntries(entriesData);
     } catch (error: any) {
       toast.error('Failed to fetch journal entries: ' + error.message);
     } finally {
@@ -84,7 +99,22 @@ const GeneralLedger: React.FC = () => {
   const fetchAccounts = async () => {
     try {
       const response = await financialService.getAccounts({ active: true });
-      setAccounts(response.data);
+      console.log('📊 Accounts response:', response);
+      
+      // Handle different response structures
+      let accountsData = [];
+      if (Array.isArray(response)) {
+        accountsData = response;
+      } else if (response.data && Array.isArray(response.data)) {
+        accountsData = response.data;
+      } else if (response.data && response.data.accounts && Array.isArray(response.data.accounts)) {
+        accountsData = response.data.accounts;
+      } else if (response.accounts && Array.isArray(response.accounts)) {
+        accountsData = response.accounts;
+      }
+      
+      console.log('💰 Setting accounts data:', accountsData);
+      setAccounts(accountsData);
     } catch (error: any) {
       toast.error('Failed to fetch accounts: ' + error.message);
     }
@@ -172,10 +202,10 @@ const GeneralLedger: React.FC = () => {
     });
   };
 
-  const filteredEntries = journalEntries.filter(entry =>
-    entry.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    entry.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    entry.entryId.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredEntries = (Array.isArray(journalEntries) ? journalEntries : []).filter(entry =>
+    entry.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (entry.referenceNumber || entry.reference)?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (entry.entryNumber || entry.entryId)?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getTotalDebits = () => {
@@ -312,7 +342,7 @@ const GeneralLedger: React.FC = () => {
                                 <SelectValue placeholder="Select account" />
                               </SelectTrigger>
                               <SelectContent>
-                                {accounts.map(account => (
+                                {(Array.isArray(accounts) ? accounts : []).map(account => (
                                   <SelectItem key={account._id} value={account._id}>
                                     {account.accountCode} - {account.accountName}
                                   </SelectItem>
@@ -481,43 +511,43 @@ const GeneralLedger: React.FC = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredEntries.map((entry) => (
-                <TableRow key={entry._id}>
-                  <TableCell className="font-mono">{entry.entryId}</TableCell>
-                  <TableCell>{new Date(entry.date).toLocaleDateString()}</TableCell>
-                  <TableCell>{entry.reference}</TableCell>
-                  <TableCell className="max-w-xs truncate">{entry.description}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {journalTypes.find(t => t.value === entry.journal)?.label}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{formatCurrency(entry.totalDebit)}</TableCell>
-                  <TableCell>
-                    <Badge 
-                      variant={
-                        entry.status === 'posted' ? 'default' : 
-                        entry.status === 'draft' ? 'secondary' : 
-                        'destructive'
-                      }
-                    >
-                      {entry.status.toUpperCase()}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex space-x-2">
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        onClick={() => setReverseEntry(entry)}
-                        disabled={entry.status !== 'posted'}
-                      >
-                        <RotateCcw className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+                             {filteredEntries.map((entry) => (
+                 <TableRow key={entry._id}>
+                   <TableCell className="font-mono">{entry.entryNumber || entry.entryId}</TableCell>
+                   <TableCell>{entry.entryDate ? new Date(entry.entryDate).toLocaleDateString() : 'N/A'}</TableCell>
+                   <TableCell>{entry.referenceNumber || entry.reference || 'N/A'}</TableCell>
+                   <TableCell className="max-w-xs truncate">{entry.description}</TableCell>
+                   <TableCell>
+                     <Badge variant="outline">
+                       {entry.entryType || 'Manual'}
+                     </Badge>
+                   </TableCell>
+                   <TableCell>{formatCurrency(entry.totalDebit || 0)}</TableCell>
+                   <TableCell>
+                     <Badge 
+                       variant={
+                         entry.status === 'Posted' ? 'default' : 
+                         entry.status === 'Draft' ? 'secondary' : 
+                         'destructive'
+                       }
+                     >
+                       {entry.status || 'Unknown'}
+                     </Badge>
+                   </TableCell>
+                   <TableCell>
+                     <div className="flex space-x-2">
+                       <Button 
+                         size="sm" 
+                         variant="outline" 
+                         onClick={() => setReverseEntry(entry)}
+                         disabled={entry.status !== 'Posted'}
+                       >
+                         <RotateCcw className="w-4 h-4" />
+                       </Button>
+                     </div>
+                   </TableCell>
+                 </TableRow>
+               ))}
             </TableBody>
           </Table>
         </CardContent>

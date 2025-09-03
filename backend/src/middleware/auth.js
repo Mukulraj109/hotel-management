@@ -24,6 +24,7 @@ export const authenticate = catchAsync(async (req, res, next) => {
   }
 
   if (!currentUser.isActive) {
+    
     return next(new AppError('Your account has been deactivated. Please contact support.', 401));
   }
 

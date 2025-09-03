@@ -25,6 +25,12 @@ import POSOutlet from '../models/POSOutlet.js';
 import POSMenu from '../models/POSMenu.js';
 import POSOrder from '../models/POSOrder.js';
 import CheckoutInventory from '../models/CheckoutInventory.js';
+import BillingSession from '../models/BillingSession.js';
+import ChartOfAccounts from '../models/ChartOfAccounts.js';
+import GeneralLedger from '../models/GeneralLedger.js';
+import JournalEntry from '../models/JournalEntry.js';
+import BankAccount from '../models/BankAccount.js';
+import Budget from '../models/Budget.js';
 import logger from '../utils/logger.js';
 
 const { RoomBlock, RoomAssignmentRules, AdvancedReservation } = TapeChartModels;
@@ -70,6 +76,12 @@ const seedData = async () => {
     await POSMenu.deleteMany({});
     await POSOrder.deleteMany({});
     await CheckoutInventory.deleteMany({});
+    await BillingSession.deleteMany({});
+    await ChartOfAccounts.deleteMany({});
+    await GeneralLedger.deleteMany({});
+    await JournalEntry.deleteMany({});
+    await BankAccount.deleteMany({});
+    await Budget.deleteMany({});
 
     logger.info('Cleared existing data');
 
@@ -1827,6 +1839,98 @@ const seedData = async () => {
           allowDiscounts: true,
           maxDiscountPercent: 10
         }
+      },
+      {
+        outletId: 'outlet_wellness_spa',
+        name: 'Wellness Spa',
+        type: 'spa',
+        location: '2nd Floor',
+        isActive: true,
+        operatingHours: {
+          monday: { open: '09:00', close: '21:00', isOpen: true },
+          tuesday: { open: '09:00', close: '21:00', isOpen: true },
+          wednesday: { open: '09:00', close: '21:00', isOpen: true },
+          thursday: { open: '09:00', close: '21:00', isOpen: true },
+          friday: { open: '09:00', close: '21:00', isOpen: true },
+          saturday: { open: '09:00', close: '22:00', isOpen: true },
+          sunday: { open: '09:00', close: '22:00', isOpen: true }
+        },
+        phoneExtension: '304',
+        settings: {
+          acceptsWalkIns: true,
+          requiresReservation: true,
+          allowDiscounts: true,
+          maxDiscountPercent: 15
+        }
+      },
+      {
+        outletId: 'outlet_fitness_center',
+        name: 'Fitness Center',
+        type: 'gym',
+        location: 'Basement',
+        isActive: true,
+        operatingHours: {
+          monday: { open: '05:00', close: '23:00', isOpen: true },
+          tuesday: { open: '05:00', close: '23:00', isOpen: true },
+          wednesday: { open: '05:00', close: '23:00', isOpen: true },
+          thursday: { open: '05:00', close: '23:00', isOpen: true },
+          friday: { open: '05:00', close: '23:00', isOpen: true },
+          saturday: { open: '06:00', close: '24:00', isOpen: true },
+          sunday: { open: '06:00', close: '24:00', isOpen: true }
+        },
+        phoneExtension: '305',
+        settings: {
+          acceptsWalkIns: true,
+          requiresReservation: false,
+          allowDiscounts: true,
+          maxDiscountPercent: 10
+        }
+      },
+      {
+        outletId: 'outlet_gift_shop',
+        name: 'Gift Shop',
+        type: 'shop',
+        location: 'Lobby',
+        isActive: true,
+        operatingHours: {
+          monday: { open: '08:00', close: '22:00', isOpen: true },
+          tuesday: { open: '08:00', close: '22:00', isOpen: true },
+          wednesday: { open: '08:00', close: '22:00', isOpen: true },
+          thursday: { open: '08:00', close: '22:00', isOpen: true },
+          friday: { open: '08:00', close: '22:00', isOpen: true },
+          saturday: { open: '08:00', close: '22:00', isOpen: true },
+          sunday: { open: '08:00', close: '22:00', isOpen: true }
+        },
+        phoneExtension: '306',
+        settings: {
+          acceptsWalkIns: true,
+          requiresReservation: false,
+          allowDiscounts: true,
+          maxDiscountPercent: 5
+        }
+      },
+      {
+        outletId: 'outlet_valet_parking',
+        name: 'Valet Parking',
+        type: 'parking',
+        location: 'Ground Floor',
+        isActive: true,
+        operatingHours: {
+          monday: { open: '00:00', close: '23:59', isOpen: true },
+          tuesday: { open: '00:00', close: '23:59', isOpen: true },
+          wednesday: { open: '00:00', close: '23:59', isOpen: true },
+          thursday: { open: '00:00', close: '23:59', isOpen: true },
+          friday: { open: '00:00', close: '23:59', isOpen: true },
+          saturday: { open: '00:00', close: '23:59', isOpen: true },
+          sunday: { open: '00:00', close: '23:59', isOpen: true }
+        },
+        phoneExtension: '307',
+        settings: {
+          acceptsWalkIns: true,
+          requiresReservation: false,
+          allowDiscounts: false,
+          maxDiscountPercent: 0
+        }
       }
     ];
 
@@ -2005,6 +2109,332 @@ const seedData = async () => {
             allergens: [],
             dietaryInfo: ['vegan'],
             ingredients: ['single malt whiskey']
+          }
+        ]
+      },
+      {
+        menuId: 'menu_spa_services',
+        name: 'Wellness Spa Services',
+        outlet: createdOutlets[3]._id, // Spa outlet
+        type: 'services',
+        isActive: true,
+        availableHours: {
+          start: '09:00',
+          end: '21:00'
+        },
+        categories: [
+          { name: 'Massage', displayOrder: 1, isActive: true },
+          { name: 'Skincare', displayOrder: 2, isActive: true },
+          { name: 'Wellness', displayOrder: 3, isActive: true },
+          { name: 'Packages', displayOrder: 4, isActive: true }
+        ],
+        items: [
+          {
+            itemId: 'spa_swedish_massage',
+            name: 'Swedish Massage (60 min)',
+            description: 'Full body relaxing Swedish massage with aromatic oils',
+            category: 'Massage',
+            price: 3500,
+            costPrice: 1200,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 60,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: ['essential oils', 'massage oil']
+          },
+          {
+            itemId: 'spa_facial_treatment',
+            name: 'Facial Treatment',
+            description: 'Deep cleansing facial with organic products',
+            category: 'Skincare',
+            price: 2800,
+            costPrice: 800,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 45,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: ['organic cleanser', 'moisturizer']
+          },
+          {
+            itemId: 'spa_aromatherapy',
+            name: 'Aromatherapy Session',
+            description: 'Relaxing aromatherapy treatment with essential oils',
+            category: 'Wellness',
+            price: 2200,
+            costPrice: 700,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 30,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: ['lavender oil', 'eucalyptus oil']
+          },
+          {
+            itemId: 'spa_hot_stone',
+            name: 'Hot Stone Massage',
+            description: 'Therapeutic massage with heated volcanic stones',
+            category: 'Massage',
+            price: 4000,
+            costPrice: 1300,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 75,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: ['volcanic stones', 'massage oil']
+          },
+          {
+            itemId: 'spa_body_wrap',
+            name: 'Body Wrap Treatment',
+            description: 'Detoxifying body wrap with natural ingredients',
+            category: 'Skincare',
+            price: 3200,
+            costPrice: 900,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 50,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: ['seaweed', 'clay', 'essential oils']
+          }
+        ]
+      },
+      {
+        menuId: 'menu_gym_services',
+        name: 'Fitness Center Services',
+        outlet: createdOutlets[4]._id, // Gym outlet
+        type: 'services',
+        isActive: true,
+        availableHours: {
+          start: '05:00',
+          end: '23:00'
+        },
+        categories: [
+          { name: 'Training', displayOrder: 1, isActive: true },
+          { name: 'Access', displayOrder: 2, isActive: true },
+          { name: 'Classes', displayOrder: 3, isActive: true },
+          { name: 'Equipment', displayOrder: 4, isActive: true }
+        ],
+        items: [
+          {
+            itemId: 'gym_personal_training',
+            name: 'Personal Training (1 hr)',
+            description: 'One-on-one training session with certified trainer',
+            category: 'Training',
+            price: 2000,
+            costPrice: 800,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 0,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: []
+          },
+          {
+            itemId: 'gym_day_pass',
+            name: 'Day Pass',
+            description: 'Full day access to gym facilities',
+            category: 'Access',
+            price: 500,
+            costPrice: 100,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 0,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: []
+          },
+          {
+            itemId: 'gym_group_class',
+            name: 'Group Fitness Class',
+            description: 'Participate in yoga, aerobics, or strength training classes',
+            category: 'Classes',
+            price: 800,
+            costPrice: 200,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 0,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: []
+          },
+          {
+            itemId: 'gym_weekly_pass',
+            name: 'Weekly Membership',
+            description: 'Seven days unlimited access to all gym facilities',
+            category: 'Access',
+            price: 2500,
+            costPrice: 500,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 0,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: []
+          },
+          {
+            itemId: 'gym_equipment_rental',
+            name: 'Equipment Rental',
+            description: 'Rent specialized equipment like heart rate monitors',
+            category: 'Equipment',
+            price: 200,
+            costPrice: 50,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 0,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: []
+          }
+        ]
+      },
+      {
+        menuId: 'menu_shop_items',
+        name: 'Gift Shop Items',
+        outlet: createdOutlets[5]._id, // Shop outlet
+        type: 'retail',
+        isActive: true,
+        availableHours: {
+          start: '08:00',
+          end: '22:00'
+        },
+        categories: [
+          { name: 'Apparel', displayOrder: 1, isActive: true },
+          { name: 'Souvenirs', displayOrder: 2, isActive: true },
+          { name: 'Food', displayOrder: 3, isActive: true },
+          { name: 'Home', displayOrder: 4, isActive: true }
+        ],
+        items: [
+          {
+            itemId: 'shop_tshirt',
+            name: 'Hotel Branded T-Shirt',
+            description: 'Premium cotton t-shirt with hotel logo',
+            category: 'Apparel',
+            price: 1200,
+            costPrice: 400,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 0,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: []
+          },
+          {
+            itemId: 'shop_handicrafts',
+            name: 'Local Handicrafts',
+            description: 'Authentic local handmade crafts and artifacts',
+            category: 'Souvenirs',
+            price: 800,
+            costPrice: 300,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 0,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: []
+          },
+          {
+            itemId: 'shop_chocolates',
+            name: 'Premium Chocolates',
+            description: 'Luxury chocolate box with assorted flavors',
+            category: 'Food',
+            price: 950,
+            costPrice: 400,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 0,
+            allergens: ['dairy', 'nuts'],
+            dietaryInfo: [],
+            ingredients: ['cocoa', 'milk', 'nuts']
+          },
+          {
+            itemId: 'shop_candles',
+            name: 'Luxury Candles',
+            description: 'Scented candles with relaxing fragrances',
+            category: 'Home',
+            price: 1500,
+            costPrice: 500,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 0,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: ['soy wax', 'essential oils']
+          },
+          {
+            itemId: 'shop_coffee_beans',
+            name: 'Artisan Coffee Beans',
+            description: 'Premium locally roasted coffee beans',
+            category: 'Food',
+            price: 1800,
+            costPrice: 600,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 0,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: ['coffee beans']
+          }
+        ]
+      },
+      {
+        menuId: 'menu_parking_services',
+        name: 'Parking Services',
+        outlet: createdOutlets[6]._id, // Parking outlet
+        type: 'services',
+        isActive: true,
+        availableHours: {
+          start: '00:00',
+          end: '23:59'
+        },
+        categories: [
+          { name: 'Service', displayOrder: 1, isActive: true },
+          { name: 'Parking', displayOrder: 2, isActive: true }
+        ],
+        items: [
+          {
+            itemId: 'parking_valet',
+            name: 'Valet Service (per day)',
+            description: 'Professional valet parking service',
+            category: 'Service',
+            price: 500,
+            costPrice: 100,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 0,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: []
+          },
+          {
+            itemId: 'parking_wash',
+            name: 'Car Wash',
+            description: 'Complete exterior and interior car wash',
+            category: 'Service',
+            price: 800,
+            costPrice: 200,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 30,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: []
+          },
+          {
+            itemId: 'parking_premium',
+            name: 'Premium Parking (per day)',
+            description: 'Covered parking in premium location',
+            category: 'Parking',
+            price: 300,
+            costPrice: 50,
+            isActive: true,
+            isAvailable: true,
+            preparationTime: 0,
+            allergens: [],
+            dietaryInfo: [],
+            ingredients: []
           }
         ]
       }
@@ -2305,10 +2735,625 @@ const seedData = async () => {
     const createdCheckoutInventories = await CheckoutInventory.insertMany(checkoutInventories);
     logger.info(`📦 Checkout Inventories created: ${createdCheckoutInventories.length}`);
 
+    // Create POS billing sessions with various dates for reporting
+    const todaysDate = new Date();
+    const billingSessionsData = [
+      {
+        sessionId: `BS-${Date.now()}-001`,
+        hotelId: hotel._id,
+        guestName: 'John Smith',
+        roomNumber: '101',
+        bookingId: createdBookings[0]._id,
+        bookingNumber: 'BK-2024-001',
+        items: [
+          {
+            itemId: createdMenus[0].items[0]._id.toString(),
+            name: 'Butter Chicken',
+            category: 'Main Course',
+            price: 450,
+            outlet: 'Main Restaurant',
+            quantity: 2,
+            discount: 0,
+            tax: 81,
+            timestamp: new Date(todaysDate.getTime() - 2 * 24 * 60 * 60 * 1000) // 2 days ago
+          },
+          {
+            itemId: createdMenus[0].items[1]._id.toString(),
+            name: 'Dal Makhani',
+            category: 'Main Course',
+            price: 350,
+            outlet: 'Main Restaurant',
+            quantity: 1,
+            discount: 0,
+            tax: 63,
+            timestamp: new Date(currentDate.getTime() - 2 * 24 * 60 * 60 * 1000)
+          }
+        ],
+        subtotal: 1250,
+        totalDiscount: 0,
+        totalTax: 225,
+        grandTotal: 1475,
+        paymentMethod: 'cash',
+        status: 'paid',
+        staffName: 'Admin User',
+        staffEmail: 'admin@hotel.com',
+        createdBy: adminUser._id,
+        paidAt: new Date(todaysDate.getTime() - 2 * 24 * 60 * 60 * 1000),
+        notes: 'Delicious meal, guest was satisfied'
+      },
+      {
+        sessionId: `BS-${Date.now()}-002`,
+        hotelId: hotel._id,
+        guestName: 'Jane Doe',
+        roomNumber: '102',
+        bookingId: createdBookings[1]._id,
+        bookingNumber: 'BK-2024-002',
+        items: [
+          {
+            itemId: createdMenus[1].items[0]._id.toString(),
+            name: 'Cappuccino',
+            category: 'Beverages',
+            price: 150,
+            outlet: 'Coffee Shop',
+            quantity: 3,
+            discount: 0,
+            tax: 81,
+            timestamp: new Date(todaysDate.getTime() - 1 * 24 * 60 * 60 * 1000) // 1 day ago
+          }
+        ],
+        subtotal: 450,
+        totalDiscount: 0,
+        totalTax: 81,
+        grandTotal: 531,
+        paymentMethod: 'card',
+        status: 'paid',
+        staffName: 'Staff User',
+        staffEmail: 'staff@hotel.com',
+        createdBy: staffUser._id,
+        paidAt: new Date(todaysDate.getTime() - 1 * 24 * 60 * 60 * 1000),
+        notes: 'Morning coffee order'
+      },
+      {
+        sessionId: `BS-${Date.now()}-003`,
+        hotelId: hotel._id,
+        guestName: 'Mike Johnson',
+        roomNumber: '103',
+        bookingId: createdBookings[2]._id,
+        bookingNumber: 'BK-2024-003',
+        items: [
+          {
+            itemId: createdMenus[0].items[3]._id.toString(),
+            name: 'Gulab Jamun',
+            category: 'Dessert',
+            price: 200,
+            outlet: 'Main Restaurant',
+            quantity: 2,
+            discount: 20,
+            tax: 64.8,
+            timestamp: todaysDate // Today
+          }
+        ],
+        subtotal: 400,
+        totalDiscount: 20,
+        totalTax: 68.4,
+        grandTotal: 448.4,
+        paymentMethod: 'room_charge',
+        status: 'paid',
+        staffName: 'Admin User',
+        staffEmail: 'admin@hotel.com',
+        createdBy: adminUser._id,
+        paidAt: todaysDate,
+        notes: 'Room service delivery'
+      },
+      {
+        sessionId: `BS-${Date.now()}-004`,
+        hotelId: hotel._id,
+        guestName: 'Sarah Wilson',
+        roomNumber: '201',
+        bookingId: createdBookings[3]._id,
+        bookingNumber: 'BK-2024-004',
+        items: [
+          {
+            itemId: createdMenus[2].items[0]._id.toString(),
+            name: 'Swedish Massage',
+            category: 'Wellness',
+            price: 2500,
+            outlet: 'Spa',
+            quantity: 1,
+            discount: 250,
+            tax: 405,
+            timestamp: new Date(todaysDate.getTime() - 3 * 24 * 60 * 60 * 1000) // 3 days ago
+          }
+        ],
+        subtotal: 2500,
+        totalDiscount: 250,
+        totalTax: 405,
+        grandTotal: 2655,
+        paymentMethod: 'corporate',
+        status: 'paid',
+        staffName: 'Staff User',
+        staffEmail: 'staff@hotel.com',
+        createdBy: staffUser._id,
+        paidAt: new Date(todaysDate.getTime() - 3 * 24 * 60 * 60 * 1000),
+        notes: 'Corporate booking, wellness package'
+      }
+    ];
+
+    const createdBillingSessions = await BillingSession.insertMany(billingSessionsData);
+    logger.info(`💳 Billing Sessions created: ${createdBillingSessions.length}`);
+
+    // Create Chart of Accounts
+    const chartOfAccountsData = [
+      // Assets
+      {
+        hotelId: hotel._id,
+        accountCode: '1000',
+        accountName: 'Assets',
+        accountType: 'Asset',
+        accountSubType: 'Other Asset',
+        parentAccount: null,
+        currentBalance: 0,
+        isActive: true,
+        normalBalance: 'Debit',
+        description: 'All company assets',
+        createdBy: adminUser._id,
+        isSystemAccount: true
+      },
+      {
+        hotelId: hotel._id,
+        accountCode: '1100',
+        accountName: 'Current Assets',
+        accountType: 'Asset',
+        accountSubType: 'Current Asset',
+        parentAccount: null,
+        currentBalance: 0,
+        isActive: true,
+        normalBalance: 'Debit',
+        description: 'Short-term assets',
+        createdBy: adminUser._id,
+        isSystemAccount: true
+      },
+      {
+        hotelId: hotel._id,
+        accountCode: '1110',
+        accountName: 'Cash and Bank',
+        accountType: 'Asset',
+        accountSubType: 'Current Asset',
+        parentAccount: null,
+        currentBalance: 850000,
+        isActive: true,
+        normalBalance: 'Debit',
+        description: 'Cash in hand and bank accounts',
+        createdBy: adminUser._id
+      },
+      {
+        hotelId: hotel._id,
+        accountCode: '1120',
+        accountName: 'Accounts Receivable',
+        accountType: 'Asset',
+        accountSubType: 'Current Asset',
+        parentAccount: null,
+        currentBalance: 1193000,
+        isActive: true,
+        normalBalance: 'Debit',
+        description: 'Amount owed by customers',
+        createdBy: adminUser._id
+      },
+      {
+        hotelId: hotel._id,
+        accountCode: '1130',
+        accountName: 'Inventory',
+        accountType: 'Asset',
+        accountSubType: 'Current Asset',
+        parentAccount: null,
+        currentBalance: 425000,
+        isActive: true,
+        normalBalance: 'Debit',
+        description: 'Food, beverages, and supplies',
+        createdBy: adminUser._id
+      },
+      
+      // Liabilities
+      {
+        hotelId: hotel._id,
+        accountCode: '2000',
+        accountName: 'Liabilities',
+        accountType: 'Liability',
+        accountSubType: 'Current Liability',
+        parentAccount: null,
+        currentBalance: 0,
+        isActive: true,
+        normalBalance: 'Credit',
+        description: 'All company liabilities',
+        createdBy: adminUser._id,
+        isSystemAccount: true
+      },
+      {
+        hotelId: hotel._id,
+        accountCode: '2100',
+        accountName: 'Current Liabilities',
+        accountType: 'Liability',
+        accountSubType: 'Current Liability',
+        parentAccount: null,
+        currentBalance: 0,
+        isActive: true,
+        normalBalance: 'Credit',
+        description: 'Short-term liabilities',
+        createdBy: adminUser._id,
+        isSystemAccount: true
+      },
+      {
+        hotelId: hotel._id,
+        accountCode: '2110',
+        accountName: 'Accounts Payable',
+        accountType: 'Liability',
+        accountSubType: 'Current Liability',
+        parentAccount: null,
+        currentBalance: 385000,
+        isActive: true,
+        normalBalance: 'Credit',
+        description: 'Amount owed to suppliers',
+        createdBy: adminUser._id
+      },
+      {
+        hotelId: hotel._id,
+        accountCode: '2120',
+        accountName: 'Taxes Payable',
+        accountType: 'Liability',
+        accountSubType: 'Current Liability',
+        parentAccount: null,
+        currentBalance: 125000,
+        isActive: true,
+        normalBalance: 'Credit',
+        description: 'GST and other taxes payable',
+        createdBy: adminUser._id
+      },
+      
+      // Revenue
+      {
+        hotelId: hotel._id,
+        accountCode: '4000',
+        accountName: 'Revenue',
+        accountType: 'Revenue',
+        accountSubType: 'Operating Revenue',
+        parentAccount: null,
+        currentBalance: 0,
+        isActive: true,
+        normalBalance: 'Credit',
+        description: 'All revenue accounts',
+        createdBy: adminUser._id,
+        isSystemAccount: true
+      },
+      {
+        hotelId: hotel._id,
+        accountCode: '4100',
+        accountName: 'Room Revenue',
+        accountType: 'Revenue',
+        accountSubType: 'Operating Revenue',
+        parentAccount: null,
+        currentBalance: 2100000,
+        isActive: true,
+        normalBalance: 'Credit',
+        description: 'Revenue from room bookings',
+        createdBy: adminUser._id
+      },
+      {
+        hotelId: hotel._id,
+        accountCode: '4200',
+        accountName: 'Food & Beverage Revenue',
+        accountType: 'Revenue',
+        accountSubType: 'Operating Revenue',
+        parentAccount: null,
+        currentBalance: 750000,
+        isActive: true,
+        normalBalance: 'Credit',
+        description: 'Revenue from restaurant and bar',
+        createdBy: adminUser._id
+      },
+      
+      // Expenses
+      {
+        hotelId: hotel._id,
+        accountCode: '6000',
+        accountName: 'Expenses',
+        accountType: 'Expense',
+        accountSubType: 'Operating Expense',
+        parentAccount: null,
+        currentBalance: 0,
+        isActive: true,
+        normalBalance: 'Debit',
+        description: 'All expense accounts',
+        createdBy: adminUser._id,
+        isSystemAccount: true
+      },
+      {
+        hotelId: hotel._id,
+        accountCode: '6100',
+        accountName: 'Operating Expenses',
+        accountType: 'Expense',
+        accountSubType: 'Operating Expense',
+        parentAccount: null,
+        currentBalance: 850000,
+        isActive: true,
+        normalBalance: 'Debit',
+        description: 'Day-to-day operating costs',
+        createdBy: adminUser._id
+      },
+      {
+        hotelId: hotel._id,
+        accountCode: '6200',
+        accountName: 'Staff Expenses',
+        accountType: 'Expense',
+        accountSubType: 'Operating Expense',
+        parentAccount: null,
+        currentBalance: 650000,
+        isActive: true,
+        normalBalance: 'Debit',
+        description: 'Salaries and staff-related costs',
+        createdBy: adminUser._id
+      }
+    ];
+
+    const createdAccounts = await ChartOfAccounts.insertMany(chartOfAccountsData);
+    logger.info(`📊 Chart of Accounts created: ${createdAccounts.length}`);
+
+    // Create Journal Entries
+    const cashAccount = createdAccounts.find(acc => acc.accountCode === '1110');
+    const revenueAccount = createdAccounts.find(acc => acc.accountCode === '4100');
+    const expenseAccount = createdAccounts.find(acc => acc.accountCode === '6100'); // Fixed: was '5100'
+    const receivableAccount = createdAccounts.find(acc => acc.accountCode === '1120');
+    const payableAccount = createdAccounts.find(acc => acc.accountCode === '2110');
+
+    const journalEntriesData = [
+      {
+        hotelId: hotel._id,
+        entryNumber: `JE-${new Date().getFullYear()}-001`,
+        entryDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+        entryType: 'Manual',
+        description: 'Weekly room revenue booking',
+        referenceType: 'Invoice',
+        referenceNumber: 'INV-001',
+        fiscalYear: new Date().getFullYear(),
+        fiscalPeriod: new Date().getMonth() + 1,
+        status: 'Posted',
+        lines: [
+          {
+            accountId: receivableAccount._id,
+            debitAmount: 450000,
+            creditAmount: 0,
+            description: 'Room charges to be collected',
+            currency: 'INR'
+          },
+          {
+            accountId: revenueAccount._id,
+            debitAmount: 0,
+            creditAmount: 450000,
+            description: 'Room revenue earned',
+            currency: 'INR'
+          }
+        ],
+        totalDebit: 450000,
+        totalCredit: 450000,
+        createdBy: adminUser._id,
+        postedDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+      },
+      {
+        hotelId: hotel._id,
+        entryNumber: `JE-${new Date().getFullYear()}-002`,
+        entryDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+        entryType: 'Manual',
+        description: 'Cash collection for room bookings',
+        referenceType: 'Payment',
+        referenceNumber: 'PAY-001',
+        fiscalYear: new Date().getFullYear(),
+        fiscalPeriod: new Date().getMonth() + 1,
+        status: 'Posted',
+        lines: [
+          {
+            accountId: cashAccount._id,
+            debitAmount: 350000,
+            creditAmount: 0,
+            description: 'Cash received',
+            currency: 'INR'
+          },
+          {
+            accountId: receivableAccount._id,
+            debitAmount: 0,
+            creditAmount: 350000,
+            description: 'Accounts receivable collection',
+            currency: 'INR'
+          }
+        ],
+        totalDebit: 350000,
+        totalCredit: 350000,
+        createdBy: adminUser._id,
+        postedDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)
+      },
+      {
+        hotelId: hotel._id,
+        entryNumber: `JE-${new Date().getFullYear()}-003`,
+        entryDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+        entryType: 'Manual',
+        description: 'Kitchen and housekeeping supplies',
+        referenceType: 'Expense',
+        referenceNumber: 'EXP-001',
+        fiscalYear: new Date().getFullYear(),
+        fiscalPeriod: new Date().getMonth() + 1,
+        status: 'Posted',
+        lines: [
+          {
+            accountId: expenseAccount._id,
+            debitAmount: 125000,
+            creditAmount: 0,
+            description: 'Operating supplies expense',
+            currency: 'INR'
+          },
+          {
+            accountId: payableAccount._id,
+            debitAmount: 0,
+            creditAmount: 125000,
+            description: 'Amount owed to suppliers',
+            currency: 'INR'
+          }
+        ],
+        totalDebit: 125000,
+        totalCredit: 125000,
+        createdBy: adminUser._id,
+        postedDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+      },
+      {
+        hotelId: hotel._id,
+        entryNumber: `JE-${new Date().getFullYear()}-004`,
+        entryDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+        entryType: 'Manual',
+        description: 'Payment to suppliers for purchases',
+        referenceType: 'Payment',
+        referenceNumber: 'PAY-002',
+        fiscalYear: new Date().getFullYear(),
+        fiscalPeriod: new Date().getMonth() + 1,
+        status: 'Posted',
+        lines: [
+          {
+            accountId: payableAccount._id,
+            debitAmount: 100000,
+            creditAmount: 0,
+            description: 'Supplier payment',
+            currency: 'INR'
+          },
+          {
+            accountId: cashAccount._id,
+            debitAmount: 0,
+            creditAmount: 100000,
+            description: 'Cash payment to suppliers',
+            currency: 'INR'
+          }
+        ],
+        totalDebit: 100000,
+        totalCredit: 100000,
+        createdBy: adminUser._id,
+        postedDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000)
+      }
+    ];
+
+    const createdJournalEntries = await JournalEntry.insertMany(journalEntriesData);
+    logger.info(`📓 Journal Entries created: ${createdJournalEntries.length}`);
+
+    // Create General Ledger entries from Journal Entries
+    // Temporarily skipping General Ledger creation to focus on basic financial data
+    logger.info(`📒 General Ledger entries creation skipped for now`);
+
+    // Create Bank Accounts
+    const bankAccountsData = [
+      {
+        hotelId: hotel._id,
+        accountName: 'Primary Current Account',
+        bankName: 'HDFC Bank',
+        accountNumber: '12345678901',
+        routingNumber: 'HDFC0001234',
+        accountType: 'Checking',
+        currency: 'INR',
+        currentBalance: 850000,
+        availableBalance: 825000,
+        isActive: true,
+        isPrimary: true,
+        description: 'Main operating account',
+        lastReconciledDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+        lastReconciledBalance: 832000,
+        glAccountId: cashAccount._id,
+        createdBy: adminUser._id,
+        transactions: []
+      },
+      {
+        hotelId: hotel._id,
+        accountName: 'Savings Account',
+        bankName: 'ICICI Bank',
+        accountNumber: '98765432109',
+        routingNumber: 'ICIC0009876',
+        accountType: 'Savings',
+        currency: 'INR',
+        currentBalance: 500000,
+        availableBalance: 500000,
+        isActive: true,
+        isPrimary: false,
+        description: 'Emergency fund and savings',
+        lastReconciledDate: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
+        lastReconciledBalance: 485000,
+        glAccountId: cashAccount._id,
+        createdBy: adminUser._id,
+        transactions: []
+      }
+    ];
+
+    const createdBankAccounts = await BankAccount.insertMany(bankAccountsData);
+    logger.info(`🏦 Bank Accounts created: ${createdBankAccounts.length}`);
+
+    // Create Budget for current year
+    const currentYear = new Date().getFullYear();
+    const budgetData = [
+      {
+        hotelId: hotel._id,
+        budgetName: `Annual Budget ${currentYear}`,
+        fiscalYear: currentYear,
+        period: {
+          startDate: new Date(currentYear, 0, 1), // January 1st
+          endDate: new Date(currentYear, 11, 31)  // December 31st
+        },
+        currency: 'INR',
+        status: 'active',
+        budgetCategories: [
+          {
+            categoryName: 'Room Revenue',
+            accountId: null, // Will be linked to account
+            budgetedAmount: 25000000, // 2.5 Crore
+            actualAmount: 21000000,   // 2.1 Crore YTD
+            variance: -4000000,
+            variancePercentage: -16
+          },
+          {
+            categoryName: 'F&B Revenue',
+            accountId: null,
+            budgetedAmount: 8000000,  // 80 Lakh
+            actualAmount: 7500000,    // 75 Lakh YTD
+            variance: -500000,
+            variancePercentage: -6.25
+          },
+          {
+            categoryName: 'Operating Expenses',
+            accountId: null,
+            budgetedAmount: 12000000, // 1.2 Crore
+            actualAmount: 8500000,    // 85 Lakh YTD
+            variance: 3500000,        // Under budget
+            variancePercentage: 29.17
+          },
+          {
+            categoryName: 'Staff Expenses',
+            accountId: null,
+            budgetedAmount: 8000000,  // 80 Lakh
+            actualAmount: 6500000,    // 65 Lakh YTD
+            variance: 1500000,        // Under budget
+            variancePercentage: 18.75
+          }
+        ],
+        totalBudgetedAmount: 41000000,
+        totalActualAmount: 28500000,
+        approvedBy: adminUser._id,
+        approvedDate: new Date(currentYear - 1, 11, 15), // Approved in December
+        createdBy: adminUser._id,
+        lastUpdated: new Date()
+      }
+    ];
+
+    const createdBudgets = await Budget.insertMany(budgetData);
+    logger.info(`💰 Budgets created: ${createdBudgets.length}`);
+
     logger.info(`🍽️ POS Outlets: ${createdOutlets.length}`);
     logger.info(`📋 POS Menus: ${createdMenus.length}`);
     logger.info(`🧾 POS Orders: ${createdOrders.length}`);
+    logger.info(`💳 Billing Sessions: ${createdBillingSessions.length}`);
     logger.info(`📦 Checkout Inventories: ${createdCheckoutInventories.length}`);
+    logger.info(`📊 Chart of Accounts: ${createdAccounts.length}`);
+    logger.info(`🏦 Bank Accounts: ${createdBankAccounts.length}`);
+    logger.info(`💰 Budgets: ${createdBudgets.length}`);
     
     logger.info('\n📋 Test Credentials:');
     logger.info('Admin: admin@hotel.com / admin123');

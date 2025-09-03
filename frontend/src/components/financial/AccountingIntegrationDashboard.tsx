@@ -40,9 +40,18 @@ import {
   Smartphone,
   Zap,
   Target,
-  Eye
+  Eye,
+  Plus
 } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
+import financialService from '@/services/financialService';
+import ChartOfAccounts from './ChartOfAccounts';
+import GeneralLedger from './GeneralLedger';
+import InvoiceManagement from './InvoiceManagement';
+import PaymentManagement from './PaymentManagement';
+import BankAccountManagement from './BankAccountManagement';
+import BudgetManagement from './BudgetManagement';
+import FinancialReports from './FinancialReports';
 
 interface AccountingIntegration {
   id: string;
@@ -132,17 +141,56 @@ const AccountingIntegrationDashboard: React.FC = () => {
   const fetchFinancialData = async () => {
     setIsLoading(true);
     try {
-      // Mock API calls
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      console.log('🔍 Fetching financial data...');
       
+      // Fetch real financial data from backend APIs
+      const [dashboardData, journalEntries, invoicesData, paymentsData, bankAccountsData] = await Promise.all([
+        financialService.getFinancialDashboard(fiscalPeriod).catch((error) => {
+          console.error('❌ Dashboard API failed:', error);
+          return null;
+        }),
+        financialService.getJournalEntries({ 
+          startDate: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
+          endDate: new Date().toISOString().split('T')[0]
+        }).catch((error) => {
+          console.error('❌ Journal Entries API failed:', error);
+          return [];
+        }),
+        financialService.getInvoices({ 
+          startDate: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
+          endDate: new Date().toISOString().split('T')[0]
+        }).catch((error) => {
+          console.error('❌ Invoices API failed:', error);
+          return [];
+        }),
+        financialService.getPayments({
+          startDate: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
+          endDate: new Date().toISOString().split('T')[0]
+        }).catch((error) => {
+          console.error('❌ Payments API failed:', error);
+          return [];
+        }),
+        financialService.getBankAccounts().catch((error) => {
+          console.error('❌ Bank Accounts API failed:', error);
+          return [];
+        })
+      ]);
+
+      console.log('📊 Dashboard Data:', dashboardData);
+      console.log('📝 Journal Entries:', journalEntries);
+      console.log('💰 Invoices:', invoicesData);
+      console.log('💳 Payments:', paymentsData);
+      console.log('🏦 Bank Accounts:', bankAccountsData);
+
+      // Set integrations (static for now, but connected to backend data availability)
       const mockIntegrations: AccountingIntegration[] = [
         {
           id: 'quickbooks',
           name: 'QuickBooks Online',
           type: 'accounting',
           logo: '/logos/quickbooks.png',
-          isConnected: true,
-          status: 'active',
+          isConnected: !!(dashboardData?.data || dashboardData),
+          status: (dashboardData?.data || dashboardData) ? 'active' : 'inactive',
           lastSync: new Date(Date.now() - 300000),
           autoSync: true,
           syncInterval: 60,
@@ -170,169 +218,168 @@ const AccountingIntegrationDashboard: React.FC = () => {
           }
         },
         {
-          id: 'sap',
-          name: 'SAP Business One',
-          type: 'erp',
-          logo: '/logos/sap.png',
+          id: 'financial_system',
+          name: 'Hotel Financial System',
+          type: 'accounting',
+          logo: '/logos/system.png',
           isConnected: true,
           status: 'active',
-          lastSync: new Date(Date.now() - 600000),
+          lastSync: new Date(),
           autoSync: true,
-          syncInterval: 120,
+          syncInterval: 30,
           settings: {
             companyCode: 'HOTEL',
             chartOfAccounts: {
-              'room_revenue': '40000000',
-              'fb_revenue': '40100000',
-              'accounts_receivable': '11000000',
-              'accounts_payable': '21000000'
+              'room_revenue': '4000',
+              'fb_revenue': '4100',
+              'accounts_receivable': '1200',
+              'accounts_payable': '2100'
             },
             taxSettings: {
               defaultTaxRate: 18,
               taxAccounts: {
-                'input_tax': '15410000',
-                'output_tax': '23410000'
+                'input_tax': '2400',
+                'output_tax': '2300'
               }
             },
             currencies: ['INR', 'USD'],
             fiscalYearStart: '04-01'
           }
-        },
-        {
-          id: 'razorpay',
-          name: 'Razorpay',
-          type: 'payment',
-          logo: '/logos/razorpay.png',
-          isConnected: true,
-          status: 'active',
-          lastSync: new Date(Date.now() - 180000),
-          autoSync: true,
-          syncInterval: 30,
-          settings: {
-            chartOfAccounts: {
-              'payment_gateway': '1110',
-              'gateway_charges': '6200'
-            },
-            taxSettings: {
-              defaultTaxRate: 18,
-              taxAccounts: {}
-            },
-            currencies: ['INR'],
-            fiscalYearStart: '04-01'
-          }
-        },
-        {
-          id: 'hdfc_bank',
-          name: 'HDFC Bank',
-          type: 'banking',
-          logo: '/logos/hdfc.png',
-          isConnected: false,
-          status: 'inactive',
-          lastSync: new Date(Date.now() - 86400000),
-          autoSync: false,
-          syncInterval: 1440,
-          settings: {
-            chartOfAccounts: {
-              'bank_account': '1001'
-            },
-            taxSettings: {
-              defaultTaxRate: 0,
-              taxAccounts: {}
-            },
-            currencies: ['INR'],
-            fiscalYearStart: '04-01'
-          }
         }
       ];
 
-      const mockTransactions: FinancialTransaction[] = [
-        {
-          id: '1',
-          type: 'revenue',
-          date: new Date('2024-01-10'),
-          amount: 15750,
-          currency: 'INR',
-          description: 'Room Revenue - Deluxe Suite',
-          account: '4000',
-          reference: 'BK-2024-001',
-          status: 'posted',
-          guestName: 'John Doe',
-          bookingId: 'BK-2024-001',
-          departmentId: 'ROOMS',
-          paymentMethod: 'Credit Card',
-          taxAmount: 2835
-        },
-        {
-          id: '2',
-          type: 'receivable',
-          date: new Date('2024-01-09'),
-          amount: 25000,
-          currency: 'INR',
-          description: 'Corporate Booking - ABC Corp',
-          account: '1200',
-          reference: 'INV-2024-045',
-          status: 'pending',
-          guestName: 'ABC Corporation',
-          bookingId: 'BK-2024-002',
-          departmentId: 'ROOMS',
-          paymentMethod: 'Corporate Credit'
-        },
-        {
-          id: '3',
-          type: 'expense',
-          date: new Date('2024-01-08'),
-          amount: 8500,
-          currency: 'INR',
-          description: 'Housekeeping Supplies',
-          account: '6000',
-          reference: 'PO-2024-123',
-          status: 'posted',
-          departmentId: 'HOUSEKEEPING'
-        }
-      ];
+      // Transform journal entries to transactions
+      const transformedTransactions: FinancialTransaction[] = [];
+      if (Array.isArray(journalEntries)) {
+        journalEntries.slice(0, 10).forEach((entry: any) => {
+          if (entry.entries && Array.isArray(entry.entries)) {
+            entry.entries.forEach((line: any, index: number) => {
+              transformedTransactions.push({
+                id: `${entry._id}-${index}`,
+                type: line.debit > 0 ? 'expense' : 'revenue',
+                date: new Date(entry.date || entry.entryDate),
+                amount: line.debit || line.credit || 0,
+                currency: 'INR',
+                description: line.description || entry.description || 'General Entry',
+                account: line.account || entry.accountId || '1000',
+                reference: entry.entryId || entry.referenceNumber || 'N/A',
+                status: entry.status === 'posted' ? 'posted' : 'pending'
+              });
+            });
+          }
+        });
+      }
 
-      const mockAgingReport: AgingReport[] = [
+      // Transform invoices to receivables
+      if (Array.isArray(invoicesData)) {
+        invoicesData.slice(0, 5).forEach((invoice: any) => {
+          if (invoice.status !== 'paid') {
+            transformedTransactions.push({
+              id: `inv-${invoice._id}`,
+              type: 'receivable',
+              date: new Date(invoice.issueDate || invoice.createdAt),
+              amount: invoice.balanceAmount || invoice.totalAmount || 0,
+              currency: invoice.currency || 'INR',
+              description: `Invoice - ${invoice.invoiceNumber || invoice.invoiceId}`,
+              account: '1200',
+              reference: invoice.invoiceNumber || invoice.invoiceId,
+              status: invoice.status === 'sent' ? 'pending' : 'posted',
+              guestName: invoice.customer?.details?.name
+            });
+          }
+        });
+      }
+
+      // Calculate aging report from invoices
+      const agingReport: AgingReport[] = [
         {
           category: 'Guest Folios',
-          current: 125000,
-          days30: 85000,
-          days60: 45000,
-          days90: 25000,
-          over90: 15000,
-          total: 295000
+          current: 0,
+          days30: 0,
+          days60: 0,
+          days90: 0,
+          over90: 0,
+          total: 0
         },
         {
-          category: 'Corporate Accounts',
-          current: 450000,
-          days30: 125000,
-          days60: 85000,
-          days90: 35000,
-          over90: 25000,
-          total: 720000
-        },
-        {
-          category: 'Travel Agents',
-          current: 85000,
-          days30: 45000,
-          days60: 25000,
-          days90: 15000,
-          over90: 8000,
-          total: 178000
+          category: 'Corporate Accounts', 
+          current: 0,
+          days30: 0,
+          days60: 0,
+          days90: 0,
+          over90: 0,
+          total: 0
         }
       ];
 
-      const mockMetrics: FinancialMetrics = {
-        totalRevenue: 2850000,
-        totalExpenses: 1750000,
-        netIncome: 1100000,
-        accountsReceivable: 1193000,
-        accountsPayable: 385000,
-        cashFlow: 850000,
-        currentRatio: 1.85,
-        revenueGrowth: 12.5,
-        expenseRatio: 61.4,
-        dsoRatio: 28.5
-      };
+      if (Array.isArray(invoicesData)) {
+        invoicesData.forEach((invoice: any) => {
+          if (invoice.status !== 'paid' && invoice.balanceAmount > 0) {
+            const daysDiff = Math.floor((new Date().getTime() - new Date(invoice.issueDate || invoice.createdAt).getTime()) / (1000 * 3600 * 24));
+            const amount = invoice.balanceAmount || 0;
+            const categoryIndex = invoice.customer?.type === 'corporate' ? 1 : 0;
+            
+            if (daysDiff <= 30) {
+              agingReport[categoryIndex].current += amount;
+            } else if (daysDiff <= 60) {
+              agingReport[categoryIndex].days30 += amount;
+            } else if (daysDiff <= 90) {
+              agingReport[categoryIndex].days60 += amount;
+            } else if (daysDiff <= 120) {
+              agingReport[categoryIndex].days90 += amount;
+            } else {
+              agingReport[categoryIndex].over90 += amount;
+            }
+            agingReport[categoryIndex].total += amount;
+          }
+        });
+      }
+
+      // Calculate metrics from dashboard data
+      let calculatedMetrics: FinancialMetrics;
+      console.log('📈 Dashboard Summary Check:', dashboardData?.data?.summary || dashboardData?.summary);
+      
+      // Handle both response formats - with or without success wrapper
+      const actualDashboardData = dashboardData?.data || dashboardData;
+      
+      if (actualDashboardData && actualDashboardData.summary) {
+        console.log('✅ Using dashboard data for metrics');
+        calculatedMetrics = {
+          totalRevenue: actualDashboardData.summary.totalRevenue || 0,
+          totalExpenses: actualDashboardData.summary.totalExpenses || 0,
+          netIncome: (actualDashboardData.summary.totalRevenue || 0) - (actualDashboardData.summary.totalExpenses || 0),
+          accountsReceivable: actualDashboardData.summary.accountsReceivable || agingReport.reduce((sum, cat) => sum + cat.total, 0),
+          accountsPayable: actualDashboardData.summary.accountsPayable || 0,
+          cashFlow: actualDashboardData.summary.cashFlow || 0,
+          currentRatio: actualDashboardData.ratios?.currentRatio || 1.0,
+          revenueGrowth: actualDashboardData.growth?.revenueGrowth || 0,
+          expenseRatio: actualDashboardData.ratios?.expenseRatio || 0,
+          dsoRatio: actualDashboardData.ratios?.dsoRatio || 30
+        };
+        console.log('💰 Calculated Metrics from Dashboard:', calculatedMetrics);
+      } else {
+        // Fallback calculation from available data
+        const totalRevenue = transformedTransactions
+          .filter(t => t.type === 'revenue')
+          .reduce((sum, t) => sum + t.amount, 0);
+        const totalExpenses = transformedTransactions
+          .filter(t => t.type === 'expense')
+          .reduce((sum, t) => sum + t.amount, 0);
+        const totalReceivables = agingReport.reduce((sum, cat) => sum + cat.total, 0);
+        
+        calculatedMetrics = {
+          totalRevenue,
+          totalExpenses,
+          netIncome: totalRevenue - totalExpenses,
+          accountsReceivable: totalReceivables,
+          accountsPayable: 0,
+          cashFlow: totalRevenue - totalExpenses,
+          currentRatio: 1.0,
+          revenueGrowth: 0,
+          expenseRatio: totalRevenue > 0 ? (totalExpenses / totalRevenue) * 100 : 0,
+          dsoRatio: 30
+        };
+      }
 
       const mockCurrencyRates: CurrencyRate[] = [
         { currency: 'USD', rate: 83.15, lastUpdated: new Date(), trend: 'up' },
@@ -341,9 +388,9 @@ const AccountingIntegrationDashboard: React.FC = () => {
       ];
 
       setIntegrations(mockIntegrations);
-      setTransactions(mockTransactions);
-      setAgingReport(mockAgingReport);
-      setMetrics(mockMetrics);
+      setTransactions(transformedTransactions);
+      setAgingReport(agingReport);
+      setMetrics(calculatedMetrics);
       setCurrencyRates(mockCurrencyRates);
     } catch (error) {
       console.error('Failed to fetch financial data:', error);
@@ -580,16 +627,19 @@ const AccountingIntegrationDashboard: React.FC = () => {
         </div>
       )}
 
-      <Tabs defaultValue="integrations" className="space-y-4">
+      <Tabs defaultValue="dashboard" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="integrations">Integrations</TabsTrigger>
-          <TabsTrigger value="transactions">Transactions</TabsTrigger>
-          <TabsTrigger value="aging">Aging Report</TabsTrigger>
-          <TabsTrigger value="currencies">Multi-Currency</TabsTrigger>
+          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+          <TabsTrigger value="chart-of-accounts">Chart of Accounts</TabsTrigger>
+          <TabsTrigger value="general-ledger">General Ledger</TabsTrigger>
+          <TabsTrigger value="invoices">Invoices</TabsTrigger>
+          <TabsTrigger value="payments">Payments</TabsTrigger>
+          <TabsTrigger value="bank-accounts">Bank Accounts</TabsTrigger>
+          <TabsTrigger value="budgets">Budgets</TabsTrigger>
           <TabsTrigger value="reports">Reports</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="integrations">
+        <TabsContent value="dashboard">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {integrations.map(integration => (
               <Card key={integration.id}>
@@ -661,6 +711,30 @@ const AccountingIntegrationDashboard: React.FC = () => {
               </Card>
             ))}
           </div>
+        </TabsContent>
+
+        <TabsContent value="chart-of-accounts">
+          <ChartOfAccounts />
+        </TabsContent>
+
+        <TabsContent value="general-ledger">
+          <GeneralLedger />
+        </TabsContent>
+
+        <TabsContent value="invoices">
+          <InvoiceManagement />
+        </TabsContent>
+
+        <TabsContent value="payments">
+          <PaymentManagement />
+        </TabsContent>
+
+        <TabsContent value="bank-accounts">
+          <BankAccountManagement />
+        </TabsContent>
+
+        <TabsContent value="budgets">
+          <BudgetManagement />
         </TabsContent>
 
         <TabsContent value="transactions">
@@ -865,70 +939,7 @@ const AccountingIntegrationDashboard: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="reports">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Financial Reports</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {[
-                  { name: 'Profit & Loss Statement', description: 'Revenue and expense summary' },
-                  { name: 'Balance Sheet', description: 'Assets, liabilities, and equity' },
-                  { name: 'Cash Flow Statement', description: 'Cash inflows and outflows' },
-                  { name: 'Trial Balance', description: 'Account balances verification' },
-                  { name: 'General Ledger', description: 'Detailed transaction history' },
-                  { name: 'Tax Summary', description: 'Tax collected and payable' }
-                ].map(report => (
-                  <div key={report.name} className="flex items-center justify-between p-3 border rounded">
-                    <div>
-                      <h4 className="font-medium">{report.name}</h4>
-                      <p className="text-sm text-gray-600">{report.description}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline">
-                        <Eye className="w-3 h-3 mr-1" />
-                        View
-                      </Button>
-                      <Button size="sm" variant="outline">
-                        <Download className="w-3 h-3 mr-1" />
-                        Export
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Scheduled Reports</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="space-y-3">
-                  {[
-                    { name: 'Daily Sales Report', frequency: 'Daily at 11 PM', status: 'Active' },
-                    { name: 'Weekly P&L', frequency: 'Monday 9 AM', status: 'Active' },
-                    { name: 'Monthly Financial Pack', frequency: '1st of month', status: 'Active' }
-                  ].map(schedule => (
-                    <div key={schedule.name} className="flex items-center justify-between p-3 border rounded">
-                      <div>
-                        <h4 className="font-medium">{schedule.name}</h4>
-                        <p className="text-sm text-gray-600">{schedule.frequency}</p>
-                      </div>
-                      <Badge className="bg-green-100 text-green-700">
-                        {schedule.status}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-                
-                <Button variant="outline" className="w-full">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Schedule
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+          <FinancialReports />
         </TabsContent>
       </Tabs>
 

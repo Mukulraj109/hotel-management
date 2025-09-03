@@ -73,17 +73,41 @@ const ChartOfAccounts: React.FC = () => {
   const fetchAccounts = async () => {
     try {
       setLoading(true);
-      const filters: any = {};
-      if (filterType) filters.type = filterType;
-      if (filterCategory) filters.category = filterCategory;
       
-      const response = await financialService.getAccounts(filters);
-      setAccounts(response.data);
+      console.log('🔍 Fetching chart of accounts tree...');
+      const response = await financialService.getAccountTree();
+      console.log('📊 Chart of Accounts Tree response:', response);
+      
+      // Flatten the tree structure to get all accounts
+      let accountsData = [];
+      if (response.data && response.data.accountTree) {
+        accountsData = flattenAccountTree(response.data.accountTree);
+      }
+      
+      console.log('💰 Setting flattened accounts data:', accountsData);
+      setAccounts(accountsData);
     } catch (error: any) {
+      console.error('❌ Failed to fetch accounts:', error);
       toast.error('Failed to fetch accounts: ' + error.message);
+      setAccounts([]); // Ensure accounts is always an array
     } finally {
       setLoading(false);
     }
+  };
+
+  // Helper function to flatten the account tree into a flat array
+  const flattenAccountTree = (accounts: any[]): any[] => {
+    let flattened: any[] = [];
+    
+    const flatten = (account: any) => {
+      flattened.push(account);
+      if (account.children && Array.isArray(account.children)) {
+        account.children.forEach(flatten);
+      }
+    };
+    
+    accounts.forEach(flatten);
+    return flattened;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -154,15 +178,16 @@ const ChartOfAccounts: React.FC = () => {
     });
   };
 
-  const filteredAccounts = accounts.filter(account =>
-    account.accountName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    account.accountCode.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredAccounts = (Array.isArray(accounts) ? accounts : []).filter(account =>
+    account.accountName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    account.accountCode?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getBalanceColor = (account: ChartOfAccount) => {
+    const balance = account.currentBalance || 0;
     const isNormalBalance = 
-      (account.normalBalance === 'debit' && account.balance >= 0) ||
-      (account.normalBalance === 'credit' && account.balance < 0);
+      (account.normalBalance === 'Debit' && balance >= 0) ||
+      (account.normalBalance === 'Credit' && balance < 0);
     return isNormalBalance ? 'text-green-600' : 'text-red-600';
   };
 
@@ -400,10 +425,10 @@ const ChartOfAccounts: React.FC = () => {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm">
-                    {account.category.replace('_', ' ').toUpperCase()}
+                    {(account.accountSubType || account.category || '').replace('_', ' ').toUpperCase()}
                   </TableCell>
                   <TableCell className={getBalanceColor(account)}>
-                    {formatCurrency(account.balance)}
+                    {formatCurrency(account.currentBalance || 0)}
                   </TableCell>
                   <TableCell>
                     <Badge variant={account.isActive ? "default" : "secondary"}>

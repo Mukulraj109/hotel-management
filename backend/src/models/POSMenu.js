@@ -82,7 +82,7 @@ const posMenuSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['breakfast', 'lunch', 'dinner', 'all_day', 'beverages', 'room_service', 'spa', 'retail'],
+    enum: ['breakfast', 'lunch', 'dinner', 'all_day', 'beverages', 'room_service', 'spa', 'retail', 'services'],
     required: true
   },
   isActive: {

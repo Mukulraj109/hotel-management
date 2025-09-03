@@ -5,6 +5,7 @@ import POSOrderEntry from '../../components/pos/POSOrderEntry';
 import OutletManagement from '../../components/pos/OutletManagement';
 import MenuManagement from '../../components/pos/MenuManagement';
 import UnifiedBillingSystem from '../../components/pos/UnifiedBillingSystem';
+import POSReports from '../../components/pos/POSReports';
 
 const AdminPOS: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -46,10 +47,7 @@ const AdminPOS: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="reports">
-          <div className="p-6">
-            <h2 className="text-2xl font-bold mb-4">POS Reports</h2>
-            <p className="text-gray-600">POS reporting features coming soon...</p>
-          </div>
+          <POSReports />
         </TabsContent>
       </Tabs>
     </div>

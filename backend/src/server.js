@@ -68,7 +68,10 @@ import roomBlockRoutes from './routes/roomBlocks.js';
 import assignmentRulesRoutes from './routes/assignmentRules.js';
 import advancedReservationsRoutes from './routes/advancedReservations.js';
 import billingSessionRoutes from './routes/billingSessions.js';
+import posReportsRoutes from './routes/posReports.js';
 import guestLookupRoutes from './routes/guestLookup.js';
+import availabilityRoutes from './routes/availability.js';
+import rateManagementRoutes from './routes/rateManagement.js';
 
 const app = express();
 
@@ -215,7 +218,10 @@ app.use('/api/v1/room-blocks', roomBlockRoutes);
 app.use('/api/v1/assignment-rules', assignmentRulesRoutes);
 app.use('/api/v1/advanced-reservations', advancedReservationsRoutes);
 app.use('/api/v1/billing-sessions', billingSessionRoutes);
+app.use('/api/v1/pos/reports', posReportsRoutes);
 app.use('/api/v1/guest-lookup', guestLookupRoutes);
+app.use('/api/v1/availability', availabilityRoutes);
+app.use('/api/v1/rates', rateManagementRoutes);
 
 // 404 handler
 app.all('*', (req, res) => {

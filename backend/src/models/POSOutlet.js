@@ -12,7 +12,7 @@ const posOutletSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['restaurant', 'bar', 'spa', 'gym', 'shop', 'room_service', 'minibar', 'banquet'],
+    enum: ['restaurant', 'bar', 'spa', 'gym', 'shop', 'room_service', 'minibar', 'banquet', 'parking'],
     required: true
   },
   location: {

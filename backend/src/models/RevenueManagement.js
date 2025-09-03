@@ -268,12 +268,12 @@ const revenueAnalyticsSchema = new mongoose.Schema({
   timestamps: true
 });
 
-const PricingRule = mongoose.model('PricingRule', pricingRuleSchema);
-const RateShopping = mongoose.model('RateShopping', rateShoppingSchema);
-const DemandForecast = mongoose.model('DemandForecast', demandForecastSchema);
-const Package = mongoose.model('Package', packageSchema);
-const CorporateRate = mongoose.model('CorporateRate', corporateRateSchema);
-const RevenueAnalytics = mongoose.model('RevenueAnalytics', revenueAnalyticsSchema);
+const PricingRule = mongoose.models.PricingRule || mongoose.model('PricingRule', pricingRuleSchema);
+const RateShopping = mongoose.models.RateShopping || mongoose.model('RateShopping', rateShoppingSchema);
+const DemandForecast = mongoose.models.DemandForecast || mongoose.model('DemandForecast', demandForecastSchema);
+const Package = mongoose.models.Package || mongoose.model('Package', packageSchema);
+const CorporateRate = mongoose.models.CorporateRate || mongoose.model('CorporateRate', corporateRateSchema);
+const RevenueAnalytics = mongoose.models.RevenueAnalytics || mongoose.model('RevenueAnalytics', revenueAnalyticsSchema);
 
 export {
   PricingRule,

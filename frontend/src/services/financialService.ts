@@ -1,53 +1,62 @@
 import { api as apiClient } from './api';
 
+const API_BASE = '/api/financial';
+
 export interface ChartOfAccount {
   _id: string;
-  accountId: string;
   accountCode: string;
   accountName: string;
-  accountType: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense' | 'cost_of_goods_sold';
-  category: string;
-  subCategory?: string;
+  accountType: 'Asset' | 'Liability' | 'Equity' | 'Revenue' | 'Expense';
+  accountSubType: 'Current Asset' | 'Fixed Asset' | 'Other Asset' | 'Current Liability' | 'Long-term Liability' | 'Owner Equity' | 'Retained Earnings' | 'Operating Revenue' | 'Other Revenue' | 'Operating Expense' | 'Cost of Goods Sold' | 'Other Expense';
   parentAccount?: string;
-  isActive: boolean;
-  balance: number;
-  normalBalance: 'debit' | 'credit';
-  taxReportingCategory?: string;
   description?: string;
+  normalBalance: 'Debit' | 'Credit';
+  currentBalance: number;
+  currency?: string;
+  isActive: boolean;
+  isSystemAccount?: boolean;
+  taxCode?: string;
+  hotelId: string;
+  createdBy: string;
+  updatedBy?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface JournalEntry {
   _id: string;
-  entryId: string;
-  date: string;
-  reference: string;
+  entryNumber: string;
+  entryDate: string;
+  entryType: 'Manual' | 'Automatic' | 'Adjusting' | 'Closing' | 'Reversing' | 'Opening';
   description: string;
-  sourceDocument?: {
-    type: string;
-    sourceId: string;
-  };
-  journal: 'general' | 'sales' | 'purchase' | 'cash_receipts' | 'cash_disbursements' | 'payroll';
-  entries: Array<{
-    account: string;
-    debit: number;
-    credit: number;
-    description?: string;
+  lines: Array<{
+    accountId: string;
+    description: string;
+    debitAmount: number;
+    creditAmount: number;
+    currency?: string;
+    exchangeRate?: number;
   }>;
   totalDebit: number;
   totalCredit: number;
-  isBalanced: boolean;
-  period: {
-    month: number;
-    year: number;
-  };
-  postedBy: string;
-  status: 'draft' | 'posted' | 'reversed';
+  referenceType: 'Invoice' | 'Payment' | 'Expense' | 'BankTransaction' | 'POS' | 'Payroll' | 'Manual' | 'SystemGenerated';
+  referenceId?: string;
+  referenceNumber?: string;
+  status: 'Draft' | 'Posted' | 'Approved' | 'Rejected' | 'Void' | 'Reversed';
+  fiscalYear: number;
+  fiscalPeriod: number;
+  hotelId: string;
+  createdBy: string;
+  postedDate?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Invoice {
   _id: string;
   invoiceId: string;
   invoiceNumber: string;
+  hotelId: string;
   type: 'guest_folio' | 'corporate_billing' | 'group_billing' | 'vendor_invoice' | 'pro_forma';
   customer: {
     type: 'guest' | 'corporate' | 'vendor';
@@ -110,19 +119,21 @@ export interface Invoice {
 export interface Payment {
   _id: string;
   paymentId: string;
+  hotelId: string;
   type: 'receipt' | 'payment' | 'refund' | 'adjustment';
-  method: 'cash' | 'check' | 'credit_card' | 'debit_card' | 'bank_transfer' | 'online' | 'mobile_payment';
+  method: 'cash' | 'check' | 'credit_card' | 'debit_card' | 'bank_transfer' | 'online' | 'mobile_payment' | 'upi';
   date: string;
   amount: number;
   currency: string;
   exchangeRate: number;
   customer: {
-    type: string;
+    type: 'guest' | 'corporate' | 'vendor';
     guestId?: string;
     corporateId?: string;
     name: string;
   };
   invoice?: string;
+  booking?: string;
   reference?: string;
   bankAccount?: string;
   paymentDetails?: {
@@ -232,22 +243,27 @@ class FinancialService {
     if (filters?.category) params.append('category', filters.category);
     if (filters?.active !== undefined) params.append('active', filters.active.toString());
     
-    const response = await apiClient.get(`/financial/accounts?${params}`);
+    const response = await apiClient.get(`/financial/chart-of-accounts?${params}`);
+    return response.data;
+  }
+
+  async getAccountTree() {
+    const response = await apiClient.get('/financial/chart-of-accounts/tree');
     return response.data;
   }
 
   async createAccount(accountData: Partial<ChartOfAccount>) {
-    const response = await apiClient.post('/financial/accounts', accountData);
+    const response = await apiClient.post('/financial/chart-of-accounts', accountData);
     return response.data;
   }
 
   async updateAccount(id: string, accountData: Partial<ChartOfAccount>) {
-    const response = await apiClient.put(`/financial/accounts/${id}`, accountData);
+    const response = await apiClient.patch(`/financial/chart-of-accounts/${id}`, accountData);
     return response.data;
   }
 
   async deleteAccount(id: string) {
-    const response = await apiClient.delete(`/financial/accounts/${id}`);
+    const response = await apiClient.delete(`/financial/chart-of-accounts/${id}`);
     return response.data;
   }
 
@@ -400,6 +416,136 @@ class FinancialService {
     return response.data;
   }
 
+  // Trial Balance
+  async getTrialBalance(filters?: { startDate?: string; endDate?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+    
+    const response = await apiClient.get(`/financial/reports/trial-balance?${params}`);
+    return response.data;
+  }
+
+  // Income Statement (P&L)
+  async getIncomeStatement(filters?: { startDate?: string; endDate?: string; currency?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (filters?.currency) params.append('currency', filters.currency);
+    
+    const response = await apiClient.get(`/financial/reports/income-statement?${params}`);
+    return response.data;
+  }
+
+  // Balance Sheet
+  async getBalanceSheet(filters?: { asOfDate?: string; currency?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.asOfDate) params.append('asOfDate', filters.asOfDate);
+    if (filters?.currency) params.append('currency', filters.currency);
+    
+    const response = await apiClient.get(`/financial/reports/balance-sheet?${params}`);
+    return response.data;
+  }
+
+  // Cash Flow Statement
+  async getCashFlowStatement(filters?: { startDate?: string; endDate?: string; currency?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (filters?.currency) params.append('currency', filters.currency);
+    
+    const response = await apiClient.get(`/financial/reports/cash-flow?${params}`);
+    return response.data;
+  }
+
+  // Financial Ratios
+  async getFinancialRatios(filters?: { startDate?: string; endDate?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+    
+    const response = await apiClient.get(`/financial/reports/financial-ratios?${params}`);
+    return response.data;
+  }
+
+  // Account Summary
+  async getAccountSummary(accountId: string, filters?: { startDate?: string; endDate?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+    
+    const response = await apiClient.get(`/financial/accounts/${accountId}/summary?${params}`);
+    return response.data;
+  }
+
+  // Aged Receivables
+  async getAgedReceivables(asOfDate?: string) {
+    const params = new URLSearchParams();
+    if (asOfDate) params.append('asOfDate', asOfDate);
+    
+    const response = await apiClient.get(`/financial/reports/aged-receivables?${params}`);
+    return response.data;
+  }
+
+  // Aged Payables
+  async getAgedPayables(asOfDate?: string) {
+    const params = new URLSearchParams();
+    if (asOfDate) params.append('asOfDate', asOfDate);
+    
+    const response = await apiClient.get(`/financial/reports/aged-payables?${params}`);
+    return response.data;
+  }
+
+  // Budget vs Actual Report
+  async getBudgetVariance(filters?: { budgetId?: string; startDate?: string; endDate?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.budgetId) params.append('budgetId', filters.budgetId);
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+    
+    const response = await apiClient.get(`/financial/reports/budget-variance?${params}`);
+    return response.data;
+  }
+
+  // Revenue by Source
+  async getRevenueBySource(filters?: { startDate?: string; endDate?: string; groupBy?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (filters?.groupBy) params.append('groupBy', filters.groupBy);
+    
+    const response = await apiClient.get(`/financial/reports/revenue-by-source?${params}`);
+    return response.data;
+  }
+
+  // Expense Analysis
+  async getExpenseAnalysis(filters?: { startDate?: string; endDate?: string; category?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (filters?.category) params.append('category', filters.category);
+    
+    const response = await apiClient.get(`/financial/reports/expense-analysis?${params}`);
+    return response.data;
+  }
+
+  // Account Transactions
+  async getAccountTransactions(accountId: string, filters?: { 
+    startDate?: string; 
+    endDate?: string; 
+    limit?: number;
+    offset?: number;
+  }) {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (filters?.limit) params.append('limit', filters.limit.toString());
+    if (filters?.offset) params.append('offset', filters.offset.toString());
+    
+    const response = await apiClient.get(`/financial/chart-of-accounts/${accountId}/transactions?${params}`);
+    return response.data;
+  }
+
   // Bank Reconciliation
   async performBankReconciliation(data: {
     bankAccountId: string;
@@ -413,6 +559,48 @@ class FinancialService {
     }>;
   }) {
     const response = await apiClient.post('/financial/reconciliation/bank', data);
+    return response.data;
+  }
+
+  // Get Bank Transactions
+  async getBankTransactions(accountId: string, filters?: { 
+    startDate?: string; 
+    endDate?: string; 
+    limit?: number;
+    offset?: number;
+  }) {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (filters?.limit) params.append('limit', filters.limit.toString());
+    if (filters?.offset) params.append('offset', filters.offset.toString());
+    
+    const response = await apiClient.get(`/financial/bank-accounts/${accountId}/transactions?${params}`);
+    return response.data;
+  }
+
+  // Get Unreconciled Transactions
+  async getUnreconciledTransactions(accountId: string) {
+    const response = await apiClient.get(`/financial/bank-accounts/${accountId}/transactions?isReconciled=false`);
+    return response.data;
+  }
+
+  // Create Bank Transaction
+  async createBankTransaction(accountId: string, transactionData: {
+    transactionDate: Date;
+    description: string;
+    referenceNumber?: string;
+    transactionType: string;
+    creditAmount: number;
+    debitAmount: number;
+  }) {
+    const response = await apiClient.post(`/financial/bank-accounts/${accountId}/transactions`, transactionData);
+    return response.data;
+  }
+
+  // Reconcile Bank Account
+  async reconcileBankAccount(accountId: string, reconciliationData: any) {
+    const response = await apiClient.post(`/financial/bank-accounts/${accountId}/reconcile`, reconciliationData);
     return response.data;
   }
 }
