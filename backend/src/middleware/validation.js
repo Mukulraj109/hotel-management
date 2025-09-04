@@ -1,4 +1,5 @@
 import Joi from 'joi';
+import mongoose from 'mongoose';
 import { AppError } from '../utils/appError.js';
 
 export const validate = (schema) => {
@@ -350,3 +351,51 @@ export const schemas = {
                 })
               })
             };
+
+// Additional validation middlewares
+
+/**
+ * Validate MongoDB ObjectId format
+ */
+export const validateObjectId = (paramName) => {
+  return (req, res, next) => {
+    const id = req.params[paramName];
+    
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(new AppError(`Invalid ${paramName} format`, 400));
+    }
+    
+    next();
+  };
+};
+
+/**
+ * Validate booking ID specifically
+ */
+export const validateBookingId = validateObjectId('bookingId');
+
+/**
+ * Validate amendment ID specifically  
+ */
+export const validateAmendmentId = validateObjectId('amendmentId');
+
+/**
+ * Validate multiple IDs in request body array
+ */
+export const validateIdArray = (fieldName) => {
+  return (req, res, next) => {
+    const ids = req.body[fieldName];
+    
+    if (!Array.isArray(ids)) {
+      return next(new AppError(`${fieldName} must be an array`, 400));
+    }
+    
+    for (const id of ids) {
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return next(new AppError(`Invalid ID format in ${fieldName}: ${id}`, 400));
+      }
+    }
+    
+    next();
+  };
+};

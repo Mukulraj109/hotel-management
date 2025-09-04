@@ -1,16 +1,18 @@
 import availabilityService from '../services/availabilityService.js';
 import rateManagementService from '../services/rateManagementService.js';
+import RoomType from '../models/RoomType.js';
 
 class AvailabilityController {
   /**
-   * Check room availability for given dates
+   * Check room availability for given dates (V2 - OTA-ready)
    */
   async checkAvailability(req, res) {
     try {
       const {
         checkInDate,
         checkOutDate,
-        roomType,
+        roomType,     // Legacy: room type string
+        roomTypeId,   // New: room type ObjectId
         guestCount = 1,
         hotelId
       } = req.query;
@@ -22,28 +24,53 @@ class AvailabilityController {
         });
       }
 
-      const availability = await availabilityService.checkAvailability(
-        checkInDate,
-        checkOutDate,
-        roomType,
-        parseInt(guestCount),
-        hotelId
-      );
+      let finalRoomTypeId = roomTypeId;
 
-      // Get rates for available rooms
-      if (availability.available) {
-        const rates = await rateManagementService.getAllAvailableRates(
-          roomType || 'single',
-          checkInDate,
-          checkOutDate
-        );
-        availability.rates = rates;
+      // Handle legacy roomType parameter
+      if (!finalRoomTypeId && roomType && hotelId) {
+        const roomTypeObj = await RoomType.findByLegacyType(hotelId, roomType);
+        finalRoomTypeId = roomTypeObj?._id;
       }
 
-      res.json({
-        success: true,
-        data: availability
-      });
+      // Use new V2 availability checking if we have roomTypeId
+      if (finalRoomTypeId && hotelId) {
+        const availability = await availabilityService.checkAvailabilityV2({
+          hotelId,
+          roomTypeId: finalRoomTypeId,
+          checkIn: checkInDate,
+          checkOut: checkOutDate,
+          roomsRequested: parseInt(guestCount)
+        });
+
+        res.json({
+          success: true,
+          data: availability
+        });
+      } else {
+        // Fall back to legacy method for backward compatibility
+        const availability = await availabilityService.checkAvailability(
+          checkInDate,
+          checkOutDate,
+          roomType,
+          parseInt(guestCount),
+          hotelId
+        );
+
+        // Get rates for available rooms
+        if (availability.available) {
+          const rates = await rateManagementService.getAllAvailableRates(
+            roomType || 'single',
+            checkInDate,
+            checkOutDate
+          );
+          availability.rates = rates;
+        }
+
+        res.json({
+          success: true,
+          data: availability
+        });
+      }
 
     } catch (error) {
       console.error('Error checking availability:', error);

@@ -1,1 +1,14 @@
-import express from 'express';\nimport searchController from '../controllers/searchController.js';\nimport { authenticate, authorize } from '../middleware/auth.js';\n\nconst router = express.Router();\n\n// Global search - accessible to all authenticated users\nrouter.get('/global', authenticate, searchController.globalSearch);\n\n// Quick search for autocomplete\nrouter.get('/quick', authenticate, searchController.quickSearch);\n\n// Search suggestions\nrouter.get('/suggestions', authenticate, searchController.getSearchSuggestions);\n\n// Recent searches for user\nrouter.get('/recent', authenticate, searchController.getRecentSearches);\n\n// Advanced search with detailed filters\nrouter.post('/advanced', authenticate, searchController.advancedSearch);\n\n// Search within specific entity type\nrouter.get('/entity/:entityType', authenticate, searchController.searchEntity);\n\n// Search analytics - admin only\nrouter.get('/analytics', authenticate, authorize(['admin', 'manager']), searchController.getSearchAnalytics);\n\nexport default router;
+import express from 'express';
+import searchController from '../controllers/searchController.js';
+import { authenticate } from '../middleware/auth.js';
+
+const router = express.Router();
+
+// Public search routes (no auth required)
+router.get('/global', searchController.globalSearch);
+router.get('/suggestions', searchController.getSearchSuggestions);
+
+// Protected routes
+router.use(authenticate);
+
+export default router;

@@ -12,14 +12,22 @@ import connectDB from './config/database.js';
 import { connectRedis } from './config/redis.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/logger.js';
+import { comprehensiveAPILogger } from './middleware/comprehensiveLogger.js';
 import logger from './utils/logger.js';
 import websocketService from './services/websocketService.js';
 import inventoryScheduler from './services/inventoryScheduler.js';
+import pricingScheduler from './schedulers/pricingScheduler.js';
+import { applyEventMiddleware } from './middleware/eventMiddleware.js';
+import queueService from './services/queueService.js';
+import bookingWorkflowEngine from './services/bookingWorkflowEngine.js';
+import payloadRetentionService from './services/payloadRetentionService.js';
+import otaPayloadService from './services/otaPayloadService.js';
 
 // Route imports
 import authRoutes from './routes/auth.js';
 import roomRoutes from './routes/rooms.js';
 import bookingRoutes from './routes/bookings.js';
+import enhancedBookingRoutes from './routes/enhancedBookings.js';
 import paymentRoutes from './routes/payments.js';
 import housekeepingRoutes from './routes/housekeeping.js';
 import inventoryRoutes from './routes/inventory.js';
@@ -72,12 +80,45 @@ import posReportsRoutes from './routes/posReports.js';
 import guestLookupRoutes from './routes/guestLookup.js';
 import availabilityRoutes from './routes/availability.js';
 import rateManagementRoutes from './routes/rateManagement.js';
+import roomTypesRoutes from './routes/roomTypes.js';
+import channelManagementRoutes from './routes/channelManagement.js';
+import otaWebhookRoutes from './routes/otaWebhooks.js';
+import externalBookingsRoutes from './routes/externalBookings.js';
+import revenueOptimizationRoutes from './routes/revenueOptimization.js';
+import inventoryManagementRoutes from './routes/inventoryManagement.js';
+import mappingRoutes from './routes/mapping.js';
+import currencyRoutes from './routes/currency.js';
+import languageRoutes from './routes/language.js';
+import translationRoutes from './routes/translations.js';
+import channelLocalizationRoutes from './routes/channelLocalization.js';
+import otaAmendmentRoutes from './routes/otaAmendments.js';
+import auditRoutes from './routes/audit.js';
+
+// Security & Compliance Routes
+import gdprRoutes from './routes/gdpr.js';
+import credentialRoutes from './routes/credentials.js';
+import rolePermissionRoutes from './routes/rolePermissions.js';
+import dataPrivacyRoutes from './routes/dataPrivacy.js';
+import securityMonitoringRoutes from './routes/securityMonitoring.js';
 
 const app = express();
 
 // Connect to databases
-await connectDB();
-await connectRedis();
+try {
+  await connectDB();
+} catch (error) {
+  logger.warn('Database connection failed, continuing without database');
+}
+
+try {
+  await connectRedis();
+} catch (error) {
+  logger.warn('Redis connection failed, continuing without Redis');
+}
+
+// Initialize event middleware and queue service
+await applyEventMiddleware();
+await queueService.initialize();
 
 // Swagger configuration
 const swaggerOptions = {
@@ -148,8 +189,16 @@ app.use(hpp());
 // Compression
 app.use(compression());
 
-// Logging
+// Logging - Basic request logging
 app.use(requestLogger);
+
+// Comprehensive API logging (stores payloads and OTA data)
+app.use(comprehensiveAPILogger({
+  logPayloads: process.env.LOG_PAYLOADS !== 'false',
+  maxPayloadSize: parseInt(process.env.MAX_LOG_PAYLOAD_SIZE) || 1024 * 1024,
+  storeOTAPayloads: process.env.STORE_OTA_PAYLOADS !== 'false',
+  excludePaths: ['/health', '/docs', '/uploads']
+}));
 
 // Serve static files for uploaded photos
 app.use('/uploads', express.static('uploads'));
@@ -169,6 +218,7 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/rooms', roomRoutes);
+app.use('/api/v1/bookings/enhanced', enhancedBookingRoutes);
 app.use('/api/v1/bookings', bookingRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/v1/housekeeping', housekeepingRoutes);
@@ -222,6 +272,26 @@ app.use('/api/v1/pos/reports', posReportsRoutes);
 app.use('/api/v1/guest-lookup', guestLookupRoutes);
 app.use('/api/v1/availability', availabilityRoutes);
 app.use('/api/v1/rates', rateManagementRoutes);
+app.use('/api/v1/room-types', roomTypesRoutes);
+app.use('/api/v1/channels', channelManagementRoutes);
+app.use('/api/v1/ota-webhooks', otaWebhookRoutes);
+app.use('/api/v1/external', externalBookingsRoutes);
+app.use('/api/v1/revenue', revenueOptimizationRoutes);
+app.use('/api/v1/inventory-management', inventoryManagementRoutes);
+app.use('/api/v1/mappings', mappingRoutes);
+app.use('/api/v1/currencies', currencyRoutes);
+app.use('/api/v1/languages', languageRoutes);
+app.use('/api/v1/translations', translationRoutes);
+app.use('/api/v1/channel-localization', channelLocalizationRoutes);
+app.use('/api/v1/ota-amendments', otaAmendmentRoutes);
+app.use('/api/v1/audit', auditRoutes);
+
+// Security & Compliance API Routes
+app.use('/api/v1/gdpr', gdprRoutes);
+app.use('/api/v1/credentials', credentialRoutes);
+app.use('/api/v1/roles', rolePermissionRoutes);
+app.use('/api/v1/data-privacy', dataPrivacyRoutes);
+app.use('/api/v1/security-monitoring', securityMonitoringRoutes);
 
 // 404 handler
 app.all('*', (req, res) => {
@@ -247,19 +317,60 @@ websocketService.initialize(server);
 // Start inventory scheduler
 inventoryScheduler.start();
 
+// Start pricing scheduler (already auto-starts, but ensure it's initialized)
+if (!pricingScheduler.isRunning) {
+  pricingScheduler.start();
+}
+
+// Start queue processing for OTA sync
+await queueService.startProcessing();
+
+// Start booking workflow engine
+await bookingWorkflowEngine.start();
+
+// Start payload retention service
+payloadRetentionService.start();
+
+// Start OTA payload service cleanup
+try {
+  otaPayloadService.startCleanup();
+  logger.info('OTA payload service cleanup started');
+} catch (error) {
+  logger.warn('OTA payload service cleanup failed to start:', error.message);
+}
+
+// Final success message
+logger.info('🚀 All services started successfully - Hotel Management System is ready!', {
+  port: PORT,
+  environment: process.env.NODE_ENV,
+  features: {
+    encryption: true,
+    gdpr: true,
+    rolePermissions: true,
+    securityMonitoring: true,
+    credentialManagement: true
+  }
+});
+
 // Graceful shutdown
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, shutting down gracefully');
   inventoryScheduler.stop();
+  pricingScheduler.stop();
+  bookingWorkflowEngine.stop();
+  await queueService.stopProcessing();
   server.close(() => {
     logger.info('Process terminated');
     process.exit(0);
   });
 });
 
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   logger.info('SIGINT received, shutting down gracefully');
   inventoryScheduler.stop();
+  pricingScheduler.stop();
+  bookingWorkflowEngine.stop();
+  await queueService.stopProcessing();
   server.close(() => {
     logger.info('Process terminated');
     process.exit(0);

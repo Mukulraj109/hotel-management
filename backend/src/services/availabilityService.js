@@ -1,11 +1,77 @@
 import Room from '../models/Room.js';
 import Booking from '../models/Booking.js';
 import TapeChart from '../models/TapeChart.js';
+import RoomAvailability from '../models/RoomAvailability.js';
+import RoomType from '../models/RoomType.js';
+import AuditLog from '../models/AuditLog.js';
 import mongoose from 'mongoose';
 
 class AvailabilityService {
   /**
-   * Check room availability for given dates and room type
+   * NEW: Check availability using the new RoomAvailability system (preferred method)
+   * @param {Object} params - { hotelId, roomTypeId, checkIn, checkOut, roomsRequested }
+   * @returns {Object} - availability details
+   */
+  async checkAvailabilityV2({ hotelId, roomTypeId, checkIn, checkOut, roomsRequested = 1 }) {
+    try {
+      // Convert dates
+      const checkInDate = new Date(checkIn);
+      const checkOutDate = new Date(checkOut);
+      
+      // Get availability records for the date range
+      const availabilityRecords = await RoomAvailability.find({
+        hotelId,
+        roomTypeId,
+        date: { $gte: checkInDate, $lt: checkOutDate }
+      }).populate('roomTypeId', 'name code basePrice').sort({ date: 1 });
+      
+      if (availabilityRecords.length === 0) {
+        return {
+          available: false,
+          reason: 'No availability data found for requested dates',
+          details: null
+        };
+      }
+      
+      // Check each day for minimum availability
+      const dailyAvailability = availabilityRecords.map(record => ({
+        date: record.date,
+        totalRooms: record.totalRooms,
+        availableRooms: record.availableRooms,
+        soldRooms: record.soldRooms,
+        rate: record.sellingRate || record.baseRate,
+        sufficient: record.availableRooms >= roomsRequested
+      }));
+      
+      const allDaysAvailable = dailyAvailability.every(day => day.sufficient);
+      const minAvailable = Math.min(...dailyAvailability.map(day => day.availableRooms));
+      const totalRate = dailyAvailability.reduce((sum, day) => sum + day.rate, 0);
+      const avgRate = totalRate / dailyAvailability.length;
+      
+      return {
+        available: allDaysAvailable && minAvailable >= roomsRequested,
+        roomsAvailable: minAvailable,
+        roomsRequested,
+        nights: dailyAvailability.length,
+        averageRate: avgRate,
+        totalAmount: avgRate * dailyAvailability.length * roomsRequested,
+        roomType: availabilityRecords[0].roomTypeId,
+        dailyBreakdown: dailyAvailability,
+        reason: allDaysAvailable ? null : `Only ${minAvailable} rooms available, ${roomsRequested} requested`
+      };
+      
+    } catch (error) {
+      console.error('Availability check failed:', error);
+      return {
+        available: false,
+        reason: 'System error during availability check',
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * LEGACY: Check room availability for given dates and room type (backward compatibility)
    * @param {Date} checkInDate 
    * @param {Date} checkOutDate 
    * @param {String} roomType - optional
@@ -388,6 +454,212 @@ class AvailabilityService {
     } catch (error) {
       console.error('Error handling overbooking:', error);
       throw error;
+    }
+  }
+
+  /**
+   * NEW: Reserve rooms and update availability
+   * @param {Object} params - { hotelId, roomTypeId, checkIn, checkOut, roomsCount, bookingId, source, userId }
+   * @returns {Object} - reservation result
+   */
+  async reserveRooms({ hotelId, roomTypeId, checkIn, checkOut, roomsCount, bookingId, source = 'direct', userId }) {
+    try {
+      const checkInDate = new Date(checkIn);
+      const checkOutDate = new Date(checkOut);
+      
+      // Get all availability records for the date range
+      const availabilityRecords = await RoomAvailability.find({
+        hotelId,
+        roomTypeId,
+        date: { $gte: checkInDate, $lt: checkOutDate }
+      }).sort({ date: 1 });
+      
+      // Check if reservation is possible
+      const canReserve = availabilityRecords.every(record => 
+        record.availableRooms >= roomsCount
+      );
+      
+      if (!canReserve) {
+        throw new Error('Insufficient availability for requested dates');
+      }
+      
+      // Update each day's availability
+      const updatedRecords = [];
+      for (const record of availabilityRecords) {
+        // Book the rooms
+        await record.bookRooms(roomsCount, bookingId, source);
+        updatedRecords.push(record);
+        
+        // Log the inventory change
+        await AuditLog.logInventoryChange(record, 'booking', userId, {
+          source: 'booking_service',
+          bookingDetails: {
+            bookingId,
+            roomsBooked: roomsCount,
+            source
+          }
+        });
+      }
+      
+      return {
+        success: true,
+        message: 'Rooms reserved successfully',
+        reservedRooms: roomsCount,
+        nights: availabilityRecords.length,
+        updatedRecords: updatedRecords.length
+      };
+      
+    } catch (error) {
+      console.error('Room reservation failed:', error);
+      return {
+        success: false,
+        message: 'Failed to reserve rooms',
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * NEW: Release rooms and update availability (for cancellations)
+   * @param {Object} params - { hotelId, roomTypeId, checkIn, checkOut, roomsCount, bookingId, userId }
+   * @returns {Object} - release result
+   */
+  async releaseRooms({ hotelId, roomTypeId, checkIn, checkOut, roomsCount, bookingId, userId }) {
+    try {
+      const checkInDate = new Date(checkIn);
+      const checkOutDate = new Date(checkOut);
+      
+      const availabilityRecords = await RoomAvailability.find({
+        hotelId,
+        roomTypeId,
+        date: { $gte: checkInDate, $lt: checkOutDate },
+        'reservations.bookingId': bookingId
+      }).sort({ date: 1 });
+      
+      // Release rooms from each day
+      const releasedRecords = [];
+      for (const record of availabilityRecords) {
+        await record.releaseRooms(roomsCount, bookingId);
+        releasedRecords.push(record);
+        
+        // Log the inventory change
+        await AuditLog.logInventoryChange(record, 'cancellation', userId, {
+          source: 'booking_service',
+          bookingDetails: {
+            bookingId,
+            roomsReleased: roomsCount
+          }
+        });
+      }
+      
+      return {
+        success: true,
+        message: 'Rooms released successfully',
+        releasedRooms: roomsCount,
+        nights: availabilityRecords.length,
+        updatedRecords: releasedRecords.length
+      };
+      
+    } catch (error) {
+      console.error('Room release failed:', error);
+      return {
+        success: false,
+        message: 'Failed to release rooms',
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * NEW: Get room type options for a hotel
+   * @param {string} hotelId - Hotel ID
+   * @returns {Array} - room type options
+   */
+  async getRoomTypeOptions(hotelId) {
+    try {
+      const roomTypes = await RoomType.find({ hotelId, isActive: true })
+        .select('_id name code basePrice maxOccupancy legacyType')
+        .sort({ name: 1 });
+      
+      return roomTypes.map(rt => ({
+        id: rt._id,
+        roomTypeId: rt.roomTypeId,
+        name: rt.name,
+        code: rt.code,
+        basePrice: rt.basePrice,
+        maxOccupancy: rt.maxOccupancy,
+        legacyType: rt.legacyType
+      }));
+      
+    } catch (error) {
+      console.error('Failed to get room type options:', error);
+      return [];
+    }
+  }
+
+  /**
+   * NEW: Get availability summary for a hotel
+   * @param {string} hotelId - Hotel ID
+   * @param {Date} startDate - Start date
+   * @param {Date} endDate - End date
+   * @returns {Object} - availability summary
+   */
+  async getAvailabilitySummary(hotelId, startDate = new Date(), endDate = null) {
+    try {
+      if (!endDate) {
+        endDate = new Date(startDate);
+        endDate.setDate(endDate.getDate() + 30); // Default 30 days
+      }
+      
+      const summary = await RoomAvailability.aggregate([
+        {
+          $match: {
+            hotelId: hotelId,
+            date: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $lookup: {
+            from: 'roomtypes',
+            localField: 'roomTypeId',
+            foreignField: '_id',
+            as: 'roomType'
+          }
+        },
+        {
+          $unwind: '$roomType'
+        },
+        {
+          $group: {
+            _id: '$roomTypeId',
+            roomTypeName: { $first: '$roomType.name' },
+            roomTypeCode: { $first: '$roomType.code' },
+            totalDays: { $sum: 1 },
+            totalRoomsAvailable: { $sum: '$availableRooms' },
+            totalRoomsSold: { $sum: '$soldRooms' },
+            totalRoomsBlocked: { $sum: '$blockedRooms' },
+            averageRate: { $avg: '$baseRate' },
+            occupancyRate: {
+              $avg: {
+                $divide: ['$soldRooms', '$totalRooms']
+              }
+            }
+          }
+        }
+      ]);
+      
+      return {
+        success: true,
+        dateRange: { startDate, endDate },
+        roomTypes: summary
+      };
+      
+    } catch (error) {
+      console.error('Failed to get availability summary:', error);
+      return {
+        success: false,
+        error: error.message
+      };
     }
   }
 }

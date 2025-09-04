@@ -1,4 +1,5 @@
 import cron from 'node-cron';
+import mongoose from 'mongoose';
 import InventoryItem from '../models/InventoryItem.js';
 import inventoryNotificationService from './inventoryNotificationService.js';
 import logger from '../utils/logger.js';
@@ -120,10 +121,23 @@ class InventoryScheduler {
   }
 
   /**
+   * Check database connectivity before operations
+   */
+  isDbConnected() {
+    return mongoose.connection.readyState === 1;
+  }
+
+  /**
    * Check for low stock items across all hotels
    */
   async checkLowStockItems() {
     try {
+      // Skip if database is not connected
+      if (!this.isDbConnected()) {
+        logger.debug('Database not connected, skipping low stock check');
+        return { totalNotifications: 0, hotelCount: 0 };
+      }
+
       // Get all hotels that have inventory
       const hotelIds = await InventoryItem.distinct('hotelId');
       
@@ -167,6 +181,12 @@ class InventoryScheduler {
    */
   async performDailyInventoryAudit() {
     try {
+      // Skip if database is not connected
+      if (!this.isDbConnected()) {
+        logger.debug('Database not connected, skipping daily inventory audit');
+        return;
+      }
+
       const hotelIds = await InventoryItem.distinct('hotelId');
       
       for (const hotelId of hotelIds) {
@@ -236,6 +256,12 @@ class InventoryScheduler {
    */
   async generateWeeklyInventoryReport() {
     try {
+      // Skip if database is not connected
+      if (!this.isDbConnected()) {
+        logger.debug('Database not connected, skipping weekly inventory report');
+        return;
+      }
+
       const hotelIds = await InventoryItem.distinct('hotelId');
       
       for (const hotelId of hotelIds) {
@@ -265,6 +291,17 @@ class InventoryScheduler {
    * Get weekly inventory statistics
    */
   async getWeeklyInventoryStats(hotelId) {
+    // Skip if database is not connected
+    if (!this.isDbConnected()) {
+      return {
+        totalItems: 0,
+        totalStock: 0,
+        totalValue: 0,
+        lowStockItems: 0,
+        categories: []
+      };
+    }
+
     // This would typically compare current stock levels with previous week
     // For now, return current stats
     const stats = await InventoryItem.aggregate([

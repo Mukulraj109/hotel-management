@@ -8,6 +8,8 @@ import {
   Package
 } from '../models/RateManagement.js';
 import { v4 as uuidv4 } from 'uuid';
+import eventPublisher from '../services/eventPublisher.js';
+import currencyUtils from '../utils/currencyUtils.js';
 
 class RateManagementController {
   /**
@@ -20,13 +22,23 @@ class RateManagementController {
         checkIn,
         checkOut,
         guestCount = 1,
-        promoCode
+        promoCode,
+        currency = 'USD'
       } = req.query;
 
       if (!roomType || !checkIn || !checkOut) {
         return res.status(400).json({
           success: false,
           message: 'Room type, check-in, and check-out dates are required'
+        });
+      }
+
+      // Validate currency
+      const isValidCurrency = await currencyUtils.validateCurrencyCode(currency);
+      if (!isValidCurrency) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid currency code: ${currency}`
         });
       }
 
@@ -37,6 +49,19 @@ class RateManagementController {
         parseInt(guestCount),
         promoCode
       );
+
+      // Convert rate to requested currency if different from base
+      if (bestRate && bestRate.finalRate && currency !== bestRate.currency) {
+        const convertedRate = await currencyUtils.convertCurrency(
+          bestRate.finalRate,
+          bestRate.currency || 'USD',
+          currency
+        );
+        
+        bestRate.finalRate = convertedRate;
+        bestRate.currency = currency;
+        bestRate.formattedRate = await currencyUtils.formatCurrency(convertedRate, currency);
+      }
 
       res.json({
         success: true,
@@ -97,7 +122,53 @@ class RateManagementController {
    */
   async createRatePlan(req, res) {
     try {
+      // Auto-generate currency rates for active currencies if requested
+      if (req.body.autoGenerateCurrencyRates) {
+        const activeCurrencies = await currencyUtils.getActiveCurrencies();
+        const targetCurrencies = activeCurrencies
+          .filter(c => c.code !== (req.body.baseCurrency || 'USD'))
+          .map(c => c.code);
+        
+        if (req.body.baseRates) {
+          for (let baseRate of req.body.baseRates) {
+            const convertedRates = await currencyUtils.convertRateToMultipleCurrencies({
+              rate: baseRate.rate,
+              currency: req.body.baseCurrency || 'USD'
+            }, targetCurrencies);
+            
+            baseRate.currencyRates = convertedRates;
+          }
+        }
+      }
+
       const ratePlan = await rateManagementService.upsertRatePlan(req.body);
+
+      // Publish rate update event to queue for OTA sync
+      if (ratePlan.isActive && req.body.publishToOTA !== false) {
+        try {
+          await eventPublisher.publishRateUpdate({
+            hotelId: ratePlan.hotel || req.user.hotel,
+            roomTypeId: ratePlan.roomType,
+            ratePlanId: ratePlan._id.toString(),
+            dateRange: {
+              startDate: ratePlan.validFrom || new Date().toISOString().split('T')[0],
+              endDate: ratePlan.validTo || new Date(Date.now() + 365*24*60*60*1000).toISOString().split('T')[0]
+            },
+            rates: [{
+              date: new Date().toISOString().split('T')[0],
+              rate: ratePlan.baseRate,
+              currency: ratePlan.baseCurrency || 'USD'
+            }],
+            source: 'rate_plan_creation',
+            reason: `Rate plan created: ${ratePlan.name}`
+          }, {
+            userId: req.user?._id,
+            source: 'rate_management'
+          });
+        } catch (publishError) {
+          console.warn('Failed to publish rate update event:', publishError.message);
+        }
+      }
 
       res.status(201).json({
         success: true,
@@ -159,6 +230,33 @@ class RateManagementController {
           success: false,
           message: 'Rate plan not found'
         });
+      }
+
+      // Publish rate update event to queue for OTA sync
+      if (ratePlan.isActive && req.body.publishToOTA !== false) {
+        try {
+          await eventPublisher.publishRateUpdate({
+            hotelId: ratePlan.hotel || req.user.hotel,
+            roomTypeId: ratePlan.roomType,
+            ratePlanId: ratePlan._id.toString(),
+            dateRange: {
+              startDate: ratePlan.validFrom || new Date().toISOString().split('T')[0],
+              endDate: ratePlan.validTo || new Date(Date.now() + 365*24*60*60*1000).toISOString().split('T')[0]
+            },
+            rates: [{
+              date: new Date().toISOString().split('T')[0],
+              rate: ratePlan.baseRate,
+              currency: ratePlan.currency || 'USD'
+            }],
+            source: 'rate_plan_update',
+            reason: `Rate plan updated: ${ratePlan.name}`
+          }, {
+            userId: req.user?._id,
+            source: 'rate_management'
+          });
+        } catch (publishError) {
+          console.warn('Failed to publish rate update event:', publishError.message);
+        }
       }
 
       res.json({
@@ -312,6 +410,34 @@ class RateManagementController {
         ...req.body,
         approvedBy: req.user.id
       });
+
+      // Publish rate update event for the specific override date
+      if (override.isActive && req.body.publishToOTA !== false) {
+        try {
+          await eventPublisher.publishRateUpdate({
+            hotelId: req.user.hotel,
+            roomTypeId: override.roomType,
+            ratePlanId: override.ratePlan?.toString() || 'override',
+            dateRange: {
+              startDate: new Date(override.date).toISOString().split('T')[0],
+              endDate: new Date(override.date).toISOString().split('T')[0]
+            },
+            rates: [{
+              date: new Date(override.date).toISOString().split('T')[0],
+              rate: override.rate,
+              currency: override.currency || 'USD'
+            }],
+            source: 'rate_override',
+            reason: `Rate override: ${override.reason || 'Manual rate adjustment'}`
+          }, {
+            userId: req.user?._id,
+            source: 'rate_management',
+            priority: 2 // Higher priority for overrides
+          });
+        } catch (publishError) {
+          console.warn('Failed to publish rate override event:', publishError.message);
+        }
+      }
 
       res.status(201).json({
         success: true,
@@ -717,6 +843,7 @@ class RateManagementController {
       }
 
       const results = [];
+      const batchEvents = [];
 
       for (const update of updates) {
         try {
@@ -725,8 +852,44 @@ class RateManagementController {
             approvedBy: req.user.id
           });
           results.push({ success: true, data: override });
+
+          // Prepare event for batch publishing
+          if (override.isActive && req.body.publishToOTA !== false) {
+            batchEvents.push({
+              type: 'rate_update',
+              data: {
+                hotelId: req.user.hotel,
+                roomTypeId: override.roomType,
+                ratePlanId: override.ratePlan?.toString() || 'bulk_override',
+                dateRange: {
+                  startDate: new Date(override.date).toISOString().split('T')[0],
+                  endDate: new Date(override.date).toISOString().split('T')[0]
+                },
+                rates: [{
+                  date: new Date(override.date).toISOString().split('T')[0],
+                  rate: override.rate,
+                  currency: override.currency || 'USD'
+                }],
+                source: 'bulk_rate_update',
+                reason: `Bulk rate update: ${override.reason || 'Batch rate adjustment'}`
+              },
+              priority: 3
+            });
+          }
         } catch (error) {
           results.push({ success: false, error: error.message, update });
+        }
+      }
+
+      // Publish all rate update events as a batch
+      if (batchEvents.length > 0) {
+        try {
+          await eventPublisher.publishBatch(batchEvents, {
+            userId: req.user?._id,
+            source: 'bulk_rate_management'
+          });
+        } catch (publishError) {
+          console.warn('Failed to publish bulk rate update events:', publishError.message);
         }
       }
 

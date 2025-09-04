@@ -17,6 +17,15 @@ const ratePlanSchema = new mongoose.Schema({
     enum: ['BAR', 'Corporate', 'Package', 'Promotional', 'Group', 'Government', 'Member'],
     required: true
   },
+  // Base currency for all rates in this plan
+  baseCurrency: {
+    type: String,
+    required: true,
+    uppercase: true,
+    default: 'USD',
+    ref: 'Currency'
+  },
+  
   baseRates: [{
     roomType: {
       type: String,
@@ -27,7 +36,30 @@ const ratePlanSchema = new mongoose.Schema({
       type: Number,
       required: true,
       min: 0
-    }
+    },
+    // Multi-currency rates for this room type
+    currencyRates: [{
+      currency: {
+        type: String,
+        required: true,
+        uppercase: true,
+        ref: 'Currency'
+      },
+      rate: {
+        type: Number,
+        required: true,
+        min: 0
+      },
+      lastUpdated: {
+        type: Date,
+        default: Date.now
+      },
+      source: {
+        type: String,
+        enum: ['manual', 'auto_conversion', 'channel_specific'],
+        default: 'auto_conversion'
+      }
+    }]
   }],
   validity: {
     startDate: Date,
@@ -246,10 +278,37 @@ const rateOverrideSchema = new mongoose.Schema({
     required: true
   },
   ratePlanId: String,
+  // Base rate in base currency
   overrideRate: {
     type: Number,
     required: true,
     min: 0
+  },
+  // Multi-currency override rates
+  currencyRates: [{
+    currency: {
+      type: String,
+      required: true,
+      uppercase: true,
+      ref: 'Currency'
+    },
+    rate: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    source: {
+      type: String,
+      enum: ['manual', 'auto_conversion'],
+      default: 'auto_conversion'
+    }
+  }],
+  baseCurrency: {
+    type: String,
+    required: true,
+    uppercase: true,
+    default: 'USD',
+    ref: 'Currency'
   },
   reason: String,
   approvedBy: {
@@ -329,7 +388,35 @@ const packageSchema = new mongoose.Schema({
   pricing: {
     basePrice: Number,
     additionalGuestPrice: Number,
-    childPrice: Number
+    childPrice: Number,
+    // Multi-currency pricing
+    baseCurrency: {
+      type: String,
+      required: true,
+      uppercase: true,
+      default: 'USD',
+      ref: 'Currency'
+    },
+    currencyPrices: [{
+      currency: {
+        type: String,
+        required: true,
+        uppercase: true,
+        ref: 'Currency'
+      },
+      basePrice: Number,
+      additionalGuestPrice: Number,
+      childPrice: Number,
+      lastUpdated: {
+        type: Date,
+        default: Date.now
+      },
+      source: {
+        type: String,
+        enum: ['manual', 'auto_conversion'],
+        default: 'auto_conversion'
+      }
+    }]
   },
   validity: {
     startDate: Date,

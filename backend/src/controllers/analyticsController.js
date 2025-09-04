@@ -10,6 +10,10 @@ import {
 } from '../models/analytics/DataWarehouse.js';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
+import RoomType from '../models/RoomType.js';
+import Hotel from '../models/Hotel.js';
+import User from '../models/User.js';
+import logger from '../utils/logger.js';
 
 const reportingService = new AdvancedReportingService();
 const etlService = new ETLService();
@@ -20,10 +24,14 @@ const guestSegmentationService = new GuestSegmentationService();
 let servicesInitialized = false;
 const initializeServices = async () => {
   if (!servicesInitialized) {
-    await reportingService.initialize();
-    await predictiveEngine.initialize();
-    await guestSegmentationService.initialize();
-    servicesInitialized = true;
+    try {
+      await reportingService.initialize();
+      await predictiveEngine.initialize();
+      await guestSegmentationService.initialize();
+      servicesInitialized = true;
+    } catch (error) {
+      logger.warn('Some analytics services failed to initialize:', error.message);
+    }
   }
 };
 
@@ -50,20 +58,19 @@ export const generateReport = async (req, res) => {
     }
 
     const report = await reportingService.generateReport(reportType, parameters, options);
-    
+
     res.json({
       success: true,
       data: report,
       metadata: {
         reportType,
         parameters,
-        generatedAt: new Date().toISOString(),
-        cached: report.cached || false
+        generatedAt: new Date().toISOString()
       }
     });
 
   } catch (error) {
-    console.error('Report generation error:', error);
+    logger.error('Report generation failed:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to generate report',
@@ -74,17 +81,16 @@ export const generateReport = async (req, res) => {
 
 export const getReportStatus = async (req, res) => {
   try {
-    await initializeServices();
-    
     const { reportId } = req.params;
     const status = await reportingService.getReportStatus(reportId);
-    
+
     res.json({
       success: true,
       data: status
     });
 
   } catch (error) {
+    logger.error('Failed to get report status:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get report status',
@@ -95,31 +101,26 @@ export const getReportStatus = async (req, res) => {
 
 export const getCachedReport = async (req, res) => {
   try {
-    await initializeServices();
-    
     const { cacheKey } = req.params;
-    const cachedReport = await reportingService.getCachedReport(cacheKey);
-    
-    if (!cachedReport) {
+    const report = await reportingService.getCachedReport(cacheKey);
+
+    if (!report) {
       return res.status(404).json({
         success: false,
-        message: 'Cached report not found'
+        message: 'Report not found in cache'
       });
     }
 
     res.json({
       success: true,
-      data: cachedReport,
-      metadata: {
-        cached: true,
-        retrievedAt: new Date().toISOString()
-      }
+      data: report
     });
 
   } catch (error) {
+    logger.error('Failed to get cached report:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to retrieve cached report',
+      message: 'Failed to get cached report',
       error: error.message
     });
   }
@@ -127,21 +128,19 @@ export const getCachedReport = async (req, res) => {
 
 export const clearReportCache = async (req, res) => {
   try {
-    await initializeServices();
-    
     const { reportType } = req.params;
     await reportingService.clearCache(reportType);
-    
+
     res.json({
       success: true,
-      message: reportType ? `Cache cleared for ${reportType}` : 'All report caches cleared',
-      timestamp: new Date().toISOString()
+      message: `Cache cleared for ${reportType || 'all reports'}`
     });
 
   } catch (error) {
+    logger.error('Failed to clear report cache:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to clear cache',
+      message: 'Failed to clear report cache',
       error: error.message
     });
   }
@@ -149,17 +148,15 @@ export const clearReportCache = async (req, res) => {
 
 export const getReportTemplates = async (req, res) => {
   try {
-    await initializeServices();
-    
-    const templates = reportingService.getAvailableReports();
-    
+    const templates = await reportingService.getReportTemplates();
+
     res.json({
       success: true,
-      data: templates,
-      count: Object.keys(templates).length
+      data: templates
     });
 
   } catch (error) {
+    logger.error('Failed to get report templates:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get report templates',
@@ -170,9 +167,7 @@ export const getReportTemplates = async (req, res) => {
 
 export const scheduleReport = async (req, res) => {
   try {
-    await initializeServices();
-    
-    const { reportType, schedule, parameters = {}, recipients = [] } = req.body;
+    const { reportType, schedule, parameters = {} } = req.body;
     
     if (!reportType || !schedule) {
       return res.status(400).json({
@@ -181,23 +176,16 @@ export const scheduleReport = async (req, res) => {
       });
     }
 
-    const scheduledJob = await reportingService.scheduleReport({
-      reportType,
-      schedule,
-      parameters,
-      recipients,
-      createdBy: req.user.id
-    });
-    
+    const jobId = await reportingService.scheduleReport(reportType, schedule, parameters);
+
     res.json({
       success: true,
-      data: {
-        jobId: scheduledJob.id,
-        message: 'Report scheduled successfully'
-      }
+      data: { jobId },
+      message: 'Report scheduled successfully'
     });
 
   } catch (error) {
+    logger.error('Failed to schedule report:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to schedule report',
@@ -208,24 +196,16 @@ export const scheduleReport = async (req, res) => {
 
 export const exportReport = async (req, res) => {
   try {
-    await initializeServices();
-    
     const { reportId, format } = req.params;
-    
-    if (!['pdf', 'excel', 'csv'].includes(format)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid export format. Supported: pdf, excel, csv'
-      });
-    }
+    const report = await reportingService.exportReport(reportId, format);
 
-    const exportResult = await reportingService.exportReport(reportId, format);
+    res.setHeader('Content-Type', format === 'pdf' ? 'application/pdf' : 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="report-${reportId}.${format}"`);
     
-    res.setHeader('Content-Type', exportResult.contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${exportResult.filename}"`);
-    res.send(exportResult.data);
+    res.send(report);
 
   } catch (error) {
+    logger.error('Failed to export report:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to export report',
@@ -236,8 +216,6 @@ export const exportReport = async (req, res) => {
 
 export const getDashboardMetrics = async (req, res) => {
   try {
-    await initializeServices();
-    
     const { period = '30d', hotel_id } = req.query;
     
     // Calculate date range based on period
@@ -259,12 +237,8 @@ export const getDashboardMetrics = async (req, res) => {
         startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    // Generate executive summary for dashboard
-    const dashboardData = await reportingService.generateReport('executive_summary', {
-      start_date: startDate,
-      end_date: endDate,
-      hotel_id
-    });
+    // Get real data from database
+    const dashboardData = await getRealDashboardData(startDate, endDate, hotel_id);
 
     res.json({
       success: true,
@@ -277,6 +251,7 @@ export const getDashboardMetrics = async (req, res) => {
     });
 
   } catch (error) {
+    console.error('Error in getDashboardMetrics:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get dashboard metrics',
@@ -285,78 +260,252 @@ export const getDashboardMetrics = async (req, res) => {
   }
 };
 
+// Helper function to get real dashboard data
+async function getRealDashboardData(startDate, endDate, hotelId) {
+  try {
+    // Build filter for hotel and date range
+    const filter = {
+      checkIn: { $gte: startDate, $lte: endDate }
+    };
+    
+    if (hotelId) {
+      filter.hotelId = hotelId;
+    }
+
+    // Get bookings data with proper population
+    const bookings = await Booking.find(filter)
+      .populate('hotelId', 'name')
+      .populate('userId', 'name email')
+      .populate('rooms.roomId', 'roomNumber type currentRate');
+    
+    // Calculate KPIs
+    const totalRevenue = bookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
+    const totalBookings = bookings.length;
+    const averageDailyRate = totalBookings > 0 ? totalRevenue / totalBookings : 0;
+
+    // Calculate RevPAR (Revenue Per Available Room)
+    const totalRooms = await Room.countDocuments({ 
+      hotelId: hotelId, 
+      isActive: true 
+    });
+    const revpar = totalRooms > 0 ? totalRevenue / totalRooms : 0;
+
+    // Get occupancy data
+    const occupiedRooms = await Booking.countDocuments({
+      ...filter,
+      status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+    });
+    const occupancyRate = totalRooms > 0 ? (occupiedRooms / totalRooms) * 100 : 0;
+
+    // Get cancellation data
+    const cancellations = await Booking.countDocuments({
+      ...filter,
+      status: 'cancelled'
+    });
+
+    // Revenue by channel (using source field or default to 'direct')
+    const revenueByChannel = await Booking.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: { $ifNull: ['$source', 'direct'] },
+          revenue: { $sum: '$totalAmount' },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { revenue: -1 } }
+    ]);
+
+    // Guest segmentation (by guest type or booking characteristics)
+    const guestSegmentation = await Booking.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: { $ifNull: ['$guestDetails.adults', 1] },
+          count: { $sum: 1 },
+          revenue: { $sum: '$totalAmount' }
+        }
+      },
+      { $sort: { count: -1 } }
+    ]);
+
+    // Top performing room types
+    const topPerformingRoomTypes = await Booking.aggregate([
+      { $match: filter },
+      { $unwind: '$rooms' },
+      {
+        $group: {
+          _id: '$rooms.roomId',
+          revenue: { $sum: '$rooms.rate' },
+          bookings: { $sum: 1 }
+        }
+      },
+      { $lookup: {
+        from: 'rooms',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'room'
+      }},
+      { $unwind: '$room' },
+      { $sort: { revenue: -1 } },
+      { $limit: 5 }
+    ]);
+
+    // Calculate previous period for comparison
+    const previousPeriodStart = new Date(startDate.getTime() - (endDate.getTime() - startDate.getTime()));
+    const previousPeriodEnd = new Date(startDate);
+    
+    const previousBookings = await Booking.find({
+      ...filter,
+      checkIn: { $gte: previousPeriodStart, $lt: previousPeriodEnd }
+    });
+
+    const previousRevenue = previousBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
+    const previousBookingsCount = previousBookings.length;
+    const previousOccupancy = await Booking.countDocuments({
+      checkIn: { $gte: previousPeriodStart, $lt: previousPeriodEnd },
+      status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+    });
+    const previousCancellations = await Booking.countDocuments({
+      checkIn: { $gte: previousPeriodStart, $lt: previousPeriodEnd },
+      status: 'cancelled'
+    });
+
+    // Calculate changes
+    const revenueChange = previousRevenue > 0 ? ((totalRevenue - previousRevenue) / previousRevenue) * 100 : 0;
+    const bookingsChange = previousBookingsCount > 0 ? ((totalBookings - previousBookingsCount) / previousBookingsCount) * 100 : 0;
+    const occupancyChange = previousOccupancy > 0 ? ((occupiedRooms - previousOccupancy) / previousOccupancy) * 100 : 0;
+    const cancellationChange = previousCancellations > 0 ? ((cancellations - previousCancellations) / previousCancellations) * 100 : 0;
+
+    // Format guest segmentation data
+    const formattedGuestSegmentation = guestSegmentation.map(item => {
+      let segmentName = 'Unknown';
+      if (item._id === 1) segmentName = 'Solo';
+      else if (item._id === 2) segmentName = 'Couple';
+      else if (item._id === 3) segmentName = 'Family';
+      else if (item._id >= 4) segmentName = 'Group';
+      
+      return {
+        segment: segmentName,
+        count: item.count,
+        revenue: item.revenue,
+        percentage: totalBookings > 0 ? (item.count / totalBookings) * 100 : 0
+      };
+    });
+
+    // Format top performing room types
+    const formattedTopPerformingRoomTypes = topPerformingRoomTypes.map(item => ({
+      roomType: item.room.roomNumber || 'Unknown',
+      revenue: item.revenue,
+      occupancy: 0, // Could calculate this if needed
+      performance: item.revenue > 10000 ? 'excellent' : item.revenue > 5000 ? 'good' : 'average'
+    }));
+
+    return {
+      kpis: {
+        revenue: {
+          label: 'Total Revenue',
+          value: totalRevenue,
+          change: revenueChange,
+          changeType: revenueChange >= 0 ? 'increase' : 'decrease',
+          format: 'currency'
+        },
+        occupancy: {
+          label: 'Occupancy Rate',
+          value: occupancyRate,
+          change: occupancyChange,
+          changeType: occupancyChange >= 0 ? 'increase' : 'decrease',
+          format: 'percentage'
+        },
+        adr: {
+          label: 'Average Daily Rate',
+          value: averageDailyRate,
+          change: 0, // Could calculate this if needed
+          changeType: 'neutral',
+          format: 'currency'
+        },
+        revpar: {
+          label: 'RevPAR',
+          value: revpar,
+          change: 0, // Could calculate this if needed
+          changeType: 'neutral',
+          format: 'currency'
+        },
+        bookings: {
+          label: 'Total Bookings',
+          value: totalBookings,
+          change: bookingsChange,
+          changeType: bookingsChange >= 0 ? 'increase' : 'decrease',
+          format: 'number'
+        },
+        cancellations: {
+          label: 'Cancellations',
+          value: cancellations,
+          change: cancellationChange,
+          changeType: cancellationChange >= 0 ? 'increase' : 'decrease',
+          format: 'number'
+        }
+      },
+      revenueByChannel: revenueByChannel.map(item => ({
+        channel: item._id || 'Unknown',
+        revenue: item.revenue,
+        percentage: totalRevenue > 0 ? (item.revenue / totalRevenue) * 100 : 0
+      })),
+      guestSegmentation: formattedGuestSegmentation,
+      topPerformingRooms: formattedTopPerformingRoomTypes,
+      alerts: [] // Could add system alerts here
+    };
+
+  } catch (error) {
+    console.error('Error getting real dashboard data:', error);
+    throw error;
+  }
+}
+
 export const getRealtimeKPIs = async (req, res) => {
   try {
     const today = new Date();
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    
-    // Get real-time metrics from operational data
-    const [
-      todayBookings,
-      todayRevenue,
-      currentOccupancy,
-      totalRooms
-    ] = await Promise.all([
-      Booking.countDocuments({
-        createdAt: { $gte: startOfDay },
-        status: { $in: ['confirmed', 'checked_in'] }
-      }),
-      
-      Booking.aggregate([
-        {
-          $match: {
-            createdAt: { $gte: startOfDay },
-            status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            totalRevenue: { $sum: '$totalAmount' }
-          }
-        }
-      ]),
-      
-      Booking.countDocuments({
-        checkInDate: { $lte: today },
-        checkOutDate: { $gt: today },
-        status: 'checked_in'
-      }),
-      
-      Room.countDocuments({ status: { $ne: 'maintenance' } })
-    ]);
+    const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
 
-    const revenue = todayRevenue.length > 0 ? todayRevenue[0].totalRevenue : 0;
-    const occupancyRate = totalRooms > 0 ? (currentOccupancy / totalRooms) * 100 : 0;
-    
-    // Calculate ADR (Average Daily Rate)
-    const adr = todayBookings > 0 ? revenue / todayBookings : 0;
-    
-    // Calculate RevPAR (Revenue Per Available Room)
-    const revpar = totalRooms > 0 ? revenue / totalRooms : 0;
+    // Get today's bookings
+    const todayBookings = await Booking.find({
+      checkIn: { $gte: startOfDay, $lt: endOfDay }
+    });
 
-    const realtimeKPIs = {
-      today: {
-        bookings: todayBookings,
-        revenue: revenue,
-        occupancy: {
-          occupied_rooms: currentOccupancy,
-          total_rooms: totalRooms,
-          occupancy_rate: Math.round(occupancyRate * 100) / 100
-        },
-        adr: Math.round(adr * 100) / 100,
-        revpar: Math.round(revpar * 100) / 100
-      },
-      timestamp: new Date().toISOString(),
-      nextUpdate: new Date(Date.now() + 5 * 60 * 1000).toISOString() // 5 minutes
-    };
+    const todayRevenue = todayBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
+    const todayBookingsCount = todayBookings.length;
+    const todayADR = todayBookingsCount > 0 ? todayRevenue / todayBookingsCount : 0;
+
+    // Get total rooms for occupancy calculation
+    const totalRooms = await Room.countDocuments({ isActive: true });
+    const todayOccupiedRooms = await Booking.countDocuments({
+      checkIn: { $gte: startOfDay, $lt: endOfDay },
+      status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+    });
+    const todayOccupancyRate = totalRooms > 0 ? (todayOccupiedRooms / totalRooms) * 100 : 0;
+    const todayRevpar = totalRooms > 0 ? todayRevenue / totalRooms : 0;
 
     res.json({
       success: true,
-      data: realtimeKPIs
+      data: {
+        today: {
+          revenue: todayRevenue,
+          bookings: todayBookingsCount,
+          adr: todayADR,
+          occupancy: {
+            occupancy_rate: todayOccupancyRate,
+            occupied_rooms: todayOccupiedRooms,
+            total_rooms: totalRooms
+          },
+          revpar: todayRevpar
+        },
+        timestamp: new Date().toISOString()
+      }
     });
 
   } catch (error) {
+    logger.error('Error getting real-time KPIs:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get real-time KPIs',
@@ -365,29 +514,25 @@ export const getRealtimeKPIs = async (req, res) => {
   }
 };
 
-// PREDICTIVE ANALYTICS ENDPOINTS
 export const forecastOccupancy = async (req, res) => {
   try {
     await initializeServices();
     
     const { hotelId } = req.params;
-    const { forecastDays = 30, ...options } = req.query;
+    const { days = 30 } = req.query;
     
-    const forecast = await predictiveEngine.forecastOccupancy(
-      hotelId, 
-      parseInt(forecastDays), 
-      options
-    );
-    
+    const forecast = await predictiveEngine.forecastOccupancy(hotelId, parseInt(days));
+
     res.json({
       success: true,
       data: forecast
     });
 
   } catch (error) {
+    logger.error('Error forecasting occupancy:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to generate occupancy forecast',
+      message: 'Failed to forecast occupancy',
       error: error.message
     });
   }
@@ -398,27 +543,17 @@ export const predictDemand = async (req, res) => {
     await initializeServices();
     
     const { hotelId } = req.params;
-    const { targetDate, ...options } = req.query;
+    const { period = '30d' } = req.query;
     
-    if (!targetDate) {
-      return res.status(400).json({
-        success: false,
-        message: 'Target date is required'
-      });
-    }
-    
-    const prediction = await predictiveEngine.predictDemand(
-      hotelId,
-      targetDate,
-      options
-    );
-    
+    const prediction = await predictiveEngine.predictDemand(hotelId, period);
+
     res.json({
       success: true,
       data: prediction
     });
 
   } catch (error) {
+    logger.error('Error predicting demand:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to predict demand',
@@ -432,19 +567,17 @@ export const analyzeMarketTrends = async (req, res) => {
     await initializeServices();
     
     const { hotelId } = req.params;
-    const options = req.query;
+    const { period = '90d' } = req.query;
     
-    const marketAnalysis = await predictiveEngine.analyzeMarketTrends(
-      hotelId,
-      options
-    );
-    
+    const trends = await predictiveEngine.analyzeMarketTrends(hotelId, period);
+
     res.json({
       success: true,
-      data: marketAnalysis
+      data: trends
     });
 
   } catch (error) {
+    logger.error('Error analyzing market trends:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to analyze market trends',

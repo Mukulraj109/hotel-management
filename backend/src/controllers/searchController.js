@@ -1,1 +1,85 @@
-import SearchService from '../services/searchService.js';\n\nconst searchService = new SearchService();\n\nclass SearchController {\n  /**\n   * Global search endpoint\n   */\n  async globalSearch(req, res) {\n    try {\n      const { q: query } = req.query;\n      \n      if (!query || query.trim().length < 2) {\n        return res.status(400).json({\n          success: false,\n          message: 'Search query must be at least 2 characters long'\n        });\n      }\n\n      const options = {\n        limit: parseInt(req.query.limit) || 50,\n        offset: parseInt(req.query.offset) || 0,\n        entities: req.query.entities ? req.query.entities.split(',') : ['reservations', 'guests', 'invoices', 'rooms', 'services'],\n        sortBy: req.query.sortBy || 'relevance',\n        sortOrder: req.query.sortOrder || 'desc',\n        dateRange: req.query.dateFrom || req.query.dateTo ? {\n          start: req.query.dateFrom,\n          end: req.query.dateTo\n        } : null,\n        filters: {\n          reservations: this.parseFilters(req.query.reservationFilters),\n          guests: this.parseFilters(req.query.guestFilters),\n          invoices: this.parseFilters(req.query.invoiceFilters),\n          rooms: this.parseFilters(req.query.roomFilters),\n          services: this.parseFilters(req.query.serviceFilters)\n        }\n      };\n\n      const results = await searchService.globalSearch(query, options);\n      \n      // Save search to user's history if user is authenticated\n      if (req.user) {\n        await searchService.saveSearchHistory(req.user.id, query, results.total);\n      }\n\n      res.json({\n        success: true,\n        data: results\n      });\n      \n    } catch (error) {\n      console.error('Global search error:', error);\n      res.status(500).json({\n        success: false,\n        message: 'Internal server error during search'\n      });\n    }\n  }\n\n  /**\n   * Get search suggestions\n   */\n  async getSearchSuggestions(req, res) {\n    try {\n      const { q: query } = req.query;\n      \n      if (!query || query.length < 2) {\n        return res.json({\n          success: true,\n          data: []\n        });\n      }\n\n      const limit = parseInt(req.query.limit) || 10;\n      const suggestions = await searchService.getSearchSuggestions(query, limit);\n\n      res.json({\n        success: true,\n        data: suggestions\n      });\n      \n    } catch (error) {\n      console.error('Search suggestions error:', error);\n      res.status(500).json({\n        success: false,\n        message: 'Failed to get search suggestions'\n      });\n    }\n  }\n\n  /**\n   * Get recent searches for user\n   */\n  async getRecentSearches(req, res) {\n    try {\n      const limit = parseInt(req.query.limit) || 10;\n      const recentSearches = await searchService.getRecentSearches(req.user.id, limit);\n\n      res.json({\n        success: true,\n        data: recentSearches\n      });\n      \n    } catch (error) {\n      console.error('Recent searches error:', error);\n      res.status(500).json({\n        success: false,\n        message: 'Failed to get recent searches'\n      });\n    }\n  }\n\n  /**\n   * Advanced search with detailed filters\n   */\n  async advancedSearch(req, res) {\n    try {\n      const {\n        query,\n        entityType,\n        dateFrom,\n        dateTo,\n        status,\n        minAmount,\n        maxAmount,\n        roomType,\n        floor,\n        vipStatus,\n        paymentStatus\n      } = req.body;\n\n      if (!query || query.trim().length < 2) {\n        return res.status(400).json({\n          success: false,\n          message: 'Search query must be at least 2 characters long'\n        });\n      }\n\n      const options = {\n        limit: parseInt(req.body.limit) || 50,\n        offset: parseInt(req.body.offset) || 0,\n        entities: entityType ? [entityType] : ['reservations', 'guests', 'invoices', 'rooms', 'services'],\n        sortBy: req.body.sortBy || 'relevance',\n        sortOrder: req.body.sortOrder || 'desc',\n        dateRange: dateFrom || dateTo ? { start: dateFrom, end: dateTo } : null,\n        filters: {\n          reservations: {\n            ...(status && { status }),\n            ...(minAmount && { 'paymentInfo.totalAmount': { $gte: minAmount } }),\n            ...(maxAmount && { 'paymentInfo.totalAmount': { $lte: maxAmount } }),\n            ...(roomType && { roomType }),\n            ...(vipStatus && { 'guestInfo.vipStatus': vipStatus })\n          },\n          invoices: {\n            ...(status && { status }),\n            ...(minAmount && { totalAmount: { $gte: minAmount } }),\n            ...(maxAmount && { totalAmount: { $lte: maxAmount } }),\n            ...(paymentStatus && { paymentStatus })\n          },\n          rooms: {\n            ...(roomType && { roomType }),\n            ...(floor && { floor }),\n            ...(status && { status })\n          },\n          guests: {\n            ...(vipStatus && { vipStatus })\n          },\n          services: {\n            ...(status && { status })\n          }\n        }\n      };\n\n      const results = await searchService.globalSearch(query, options);\n      \n      // Save advanced search to user's history\n      if (req.user) {\n        await searchService.saveSearchHistory(req.user.id, query, results.total);\n      }\n\n      res.json({\n        success: true,\n        data: results\n      });\n      \n    } catch (error) {\n      console.error('Advanced search error:', error);\n      res.status(500).json({\n        success: false,\n        message: 'Internal server error during advanced search'\n      });\n    }\n  }\n\n  /**\n   * Search within specific entity type\n   */\n  async searchEntity(req, res) {\n    try {\n      const { entityType } = req.params;\n      const { q: query } = req.query;\n      \n      if (!query || query.trim().length < 2) {\n        return res.status(400).json({\n          success: false,\n          message: 'Search query must be at least 2 characters long'\n        });\n      }\n\n      const validEntities = ['reservations', 'guests', 'invoices', 'rooms', 'services'];\n      if (!validEntities.includes(entityType)) {\n        return res.status(400).json({\n          success: false,\n          message: `Invalid entity type. Must be one of: ${validEntities.join(', ')}`\n        });\n      }\n\n      const options = {\n        limit: parseInt(req.query.limit) || 50,\n        offset: parseInt(req.query.offset) || 0,\n        entities: [entityType],\n        sortBy: req.query.sortBy || 'relevance',\n        sortOrder: req.query.sortOrder || 'desc',\n        dateRange: req.query.dateFrom || req.query.dateTo ? {\n          start: req.query.dateFrom,\n          end: req.query.dateTo\n        } : null,\n        filters: {\n          [entityType]: this.parseFilters(req.query.filters)\n        }\n      };\n\n      const results = await searchService.globalSearch(query, options);\n\n      res.json({\n        success: true,\n        data: results\n      });\n      \n    } catch (error) {\n      console.error(`Search ${req.params.entityType} error:`, error);\n      res.status(500).json({\n        success: false,\n        message: `Failed to search ${req.params.entityType}`\n      });\n    }\n  }\n\n  /**\n   * Quick search for autocomplete\n   */\n  async quickSearch(req, res) {\n    try {\n      const { q: query, type } = req.query;\n      \n      if (!query || query.length < 1) {\n        return res.json({\n          success: true,\n          data: []\n        });\n      }\n\n      const options = {\n        limit: 10,\n        offset: 0,\n        entities: type ? [type] : ['reservations', 'guests'],\n        sortBy: 'relevance',\n        sortOrder: 'desc'\n      };\n\n      const results = await searchService.globalSearch(query, options);\n      \n      // Format for autocomplete\n      const quickResults = results.results.map(item => ({\n        id: item._id,\n        type: item.entityType,\n        label: this.formatQuickSearchLabel(item),\n        value: this.extractSearchValue(item)\n      }));\n\n      res.json({\n        success: true,\n        data: quickResults\n      });\n      \n    } catch (error) {\n      console.error('Quick search error:', error);\n      res.status(500).json({\n        success: false,\n        message: 'Failed to perform quick search'\n      });\n    }\n  }\n\n  /**\n   * Get search analytics\n   */\n  async getSearchAnalytics(req, res) {\n    try {\n      // This would typically aggregate search history data\n      // For now, return mock analytics\n      const analytics = {\n        totalSearches: 0,\n        popularQueries: [],\n        searchTrends: [],\n        averageResultsPerSearch: 0,\n        searchSuccessRate: 0\n      };\n\n      res.json({\n        success: true,\n        data: analytics\n      });\n      \n    } catch (error) {\n      console.error('Search analytics error:', error);\n      res.status(500).json({\n        success: false,\n        message: 'Failed to get search analytics'\n      });\n    }\n  }\n\n  // Helper methods\n  parseFilters(filtersString) {\n    if (!filtersString) return {};\n    \n    try {\n      return JSON.parse(filtersString);\n    } catch (error) {\n      console.error('Error parsing filters:', error);\n      return {};\n    }\n  }\n\n  formatQuickSearchLabel(item) {\n    switch (item.entityType) {\n      case 'reservation':\n        return `${item.guestInfo?.firstName || ''} ${item.guestInfo?.lastName || ''} - ${item.bookingId || ''}`;\n      case 'guest':\n        return `${item.firstName || ''} ${item.lastName || ''} - ${item.email || ''}`;\n      case 'invoice':\n        return `${item.invoiceNumber} - ${item.guestInfo?.firstName || ''} ${item.guestInfo?.lastName || ''}`;\n      case 'room':\n        return `Room ${item.roomNumber} - ${item.roomType}`;\n      case 'service':\n        return `${item.serviceName} - ${item.guestInfo?.firstName || ''} ${item.guestInfo?.lastName || ''}`;\n      default:\n        return 'Unknown item';\n    }\n  }\n\n  extractSearchValue(item) {\n    switch (item.entityType) {\n      case 'reservation':\n        return item.bookingId || item.confirmationNumber;\n      case 'guest':\n        return `${item.firstName || ''} ${item.lastName || ''}`.trim();\n      case 'invoice':\n        return item.invoiceNumber;\n      case 'room':\n        return item.roomNumber;\n      case 'service':\n        return item.serviceName;\n      default:\n        return '';\n    }\n  }\n}\n\nexport default new SearchController();
+import SearchService from '../services/searchService.js';
+
+const searchService = new SearchService();
+
+class SearchController {
+  async globalSearch(req, res) {
+    try {
+      const { q: query } = req.query;
+      
+      if (!query || query.trim().length < 2) {
+        return res.status(400).json({
+          success: false,
+          message: 'Search query must be at least 2 characters long'
+        });
+      }
+
+      const options = {
+        limit: parseInt(req.query.limit) || 50,
+        offset: parseInt(req.query.offset) || 0,
+        entities: req.query.entities ? req.query.entities.split(',') : ['reservations', 'guests', 'invoices', 'rooms', 'services'],
+        sortBy: req.query.sortBy || 'relevance',
+        sortOrder: req.query.sortOrder || 'desc'
+      };
+
+      const results = await searchService.globalSearch(query, options);
+      
+      if (req.user) {
+        await searchService.saveSearchHistory(req.user.id, query, results.total);
+      }
+
+      res.json({
+        success: true,
+        data: results
+      });
+      
+    } catch (error) {
+      console.error('Global search error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error during search'
+      });
+    }
+  }
+
+  async getSearchSuggestions(req, res) {
+    try {
+      const { q: query } = req.query;
+      
+      if (!query || query.length < 2) {
+        return res.json({
+          success: true,
+          data: []
+        });
+      }
+
+      const limit = parseInt(req.query.limit) || 10;
+      const suggestions = await searchService.getSearchSuggestions(query, limit);
+
+      res.json({
+        success: true,
+        data: suggestions
+      });
+      
+    } catch (error) {
+      console.error('Search suggestions error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to get search suggestions'
+      });
+    }
+  }
+
+  parseFilters(filtersString) {
+    if (!filtersString) return {};
+    
+    try {
+      return JSON.parse(filtersString);
+    } catch (error) {
+      console.error('Error parsing filters:', error);
+      return {};
+    }
+  }
+}
+
+export default new SearchController();

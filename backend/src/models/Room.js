@@ -70,9 +70,15 @@ const roomSchema = new mongoose.Schema({
     required: [true, 'Room number is required'],
     trim: true
   },
+  // NEW: Reference to RoomType entity
+  roomTypeId: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'RoomType',
+    index: true
+  },
+  // LEGACY: Keep for backward compatibility during transition
   type: {
     type: String,
-    required: [true, 'Room type is required'],
     enum: {
       values: ['single', 'double', 'suite', 'deluxe'],
       message: 'Room type must be single, double, suite, or deluxe'
@@ -153,6 +159,14 @@ roomSchema.virtual('currentBookings', {
   }
 });
 
+// Virtual for room type details (NEW)
+roomSchema.virtual('roomTypeDetails', {
+  ref: 'RoomType',
+  localField: 'roomTypeId',
+  foreignField: '_id',
+  justOne: true
+});
+
 // Instance method to check availability for date range
 roomSchema.methods.isAvailable = async function(checkIn, checkOut) {
   const Booking = mongoose.model('Booking');
@@ -170,15 +184,109 @@ roomSchema.methods.isAvailable = async function(checkIn, checkOut) {
   return conflictingBookings.length === 0 && this.status === 'vacant' && this.isActive;
 };
 
-// Static method to find available rooms
-roomSchema.statics.findAvailable = async function(hotelId, checkInDate, checkOutDate, roomType = null) {
+// NEW: Get room type (works with both legacy and new structure)
+roomSchema.methods.getRoomType = async function() {
+  // If we have roomTypeId, use the new structure
+  if (this.roomTypeId) {
+    const RoomType = mongoose.model('RoomType');
+    return await RoomType.findById(this.roomTypeId);
+  }
+  
+  // Fallback to legacy structure
+  if (this.type) {
+    const RoomType = mongoose.model('RoomType');
+    return await RoomType.findOne({ 
+      hotelId: this.hotelId, 
+      legacyType: this.type 
+    });
+  }
+  
+  return null;
+};
+
+// NEW: Get effective room type string (backward compatible)
+roomSchema.methods.getTypeString = function() {
+  // Return legacy type if available (for backward compatibility)
+  return this.type || 'unknown';
+};
+
+// NEW: Link room to RoomType entity
+roomSchema.methods.linkToRoomType = async function() {
+  if (this.roomTypeId || !this.type) {
+    return; // Already linked or no type to link
+  }
+  
+  const RoomType = mongoose.model('RoomType');
+  const roomType = await RoomType.findOne({
+    hotelId: this.hotelId,
+    legacyType: this.type
+  });
+  
+  if (roomType) {
+    this.roomTypeId = roomType._id;
+    await this.save();
+  }
+};
+
+// Static method to find available rooms (ENHANCED for new structure)
+roomSchema.statics.findAvailable = async function(hotelId, checkInDate, checkOutDate, roomTypeFilter = null) {
   const Booking = mongoose.model('Booking');
+  const RoomAvailability = mongoose.model('RoomAvailability');
   
   // Ensure dates are properly formatted
   const checkIn = new Date(checkInDate);
   const checkOut = new Date(checkOutDate);
   
-  // Find all bookings that conflict with the date range
+  // NEW: Try to use RoomAvailability for more accurate results
+  if (roomTypeFilter) {
+    // If we have roomTypeFilter, try to use the new availability system
+    const RoomType = mongoose.model('RoomType');
+    let roomTypeId = roomTypeFilter;
+    
+    // Handle both ObjectId and legacy string types
+    if (typeof roomTypeFilter === 'string') {
+      const roomType = await RoomType.findOne({
+        hotelId,
+        $or: [
+          { legacyType: roomTypeFilter },
+          { _id: mongoose.Types.ObjectId.isValid(roomTypeFilter) ? roomTypeFilter : null }
+        ]
+      });
+      if (roomType) roomTypeId = roomType._id;
+    }
+    
+    // Check availability using the new system
+    const availabilityRecords = await RoomAvailability.find({
+      hotelId,
+      roomTypeId,
+      date: { $gte: checkIn, $lt: checkOut },
+      availableRooms: { $gt: 0 }
+    });
+    
+    // If we have availability data, use it
+    if (availabilityRecords.length > 0) {
+      const minAvailable = Math.min(...availabilityRecords.map(r => r.availableRooms));
+      if (minAvailable > 0) {
+        // Find actual room instances
+        const query = {
+          hotelId,
+          status: 'vacant',
+          isActive: true
+        };
+        
+        if (roomTypeId) {
+          query.$or = [
+            { roomTypeId },
+            { type: roomTypeFilter } // Fallback to legacy
+          ];
+        }
+        
+        return await this.find(query).populate('roomTypeDetails').sort({ roomNumber: 1 });
+      }
+    }
+  }
+  
+  // FALLBACK: Use legacy booking-based availability check
   const conflictingBookings = await Booking.find({
     hotelId,
     status: { $in: ['confirmed', 'checked_in'] },
@@ -189,14 +297,9 @@ roomSchema.statics.findAvailable = async function(hotelId, checkInDate, checkOut
     ]
   }).select('rooms.roomId');
 
-  // Extract room IDs from conflicting bookings
   const occupiedRoomIds = conflictingBookings.flatMap(booking => 
     booking.rooms.map(room => room.roomId.toString())
   );
-
-  // Debug logging
-  console.log('Conflicting bookings found:', conflictingBookings.length);
-  console.log('Occupied room IDs:', occupiedRoomIds);
 
   // Build query for available rooms
   const query = {
@@ -206,18 +309,18 @@ roomSchema.statics.findAvailable = async function(hotelId, checkInDate, checkOut
     isActive: true
   };
 
-  if (roomType) {
-    query.type = roomType;
+  // Handle room type filtering (both new and legacy)
+  if (roomTypeFilter) {
+    if (mongoose.Types.ObjectId.isValid(roomTypeFilter)) {
+      query.roomTypeId = roomTypeFilter;
+    } else {
+      query.type = roomTypeFilter; // Legacy string type
+    }
   }
 
-  // Debug logging
-  console.log('Room query:', JSON.stringify(query, null, 2));
-
-  // Return the executed query results, not a query object
-  const availableRooms = await this.find(query).sort({ roomNumber: 1 });
-  
-  // Debug logging
-  console.log('Available rooms query result:', availableRooms.length);
+  const availableRooms = await this.find(query)
+    .populate('roomTypeDetails')
+    .sort({ roomNumber: 1 });
   
   return availableRooms;
 };

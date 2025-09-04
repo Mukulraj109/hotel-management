@@ -100,6 +100,41 @@ const hotelSchema = new mongoose.Schema({
     type: mongoose.Schema.ObjectId,
     ref: 'User',
     required: true
+  },
+  propertyGroupId: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'PropertyGroup',
+    index: true
+  },
+  
+  // Multi-property specific settings
+  groupSettings: {
+    inheritSettings: {
+      type: Boolean,
+      default: true
+    },
+    lastSyncAt: Date,
+    version: Date,
+    overrides: {
+      policies: mongoose.Schema.Types.Mixed,
+      branding: mongoose.Schema.Types.Mixed,
+      currencies: [String],
+      languages: [String]
+    }
+  },
+  
+  // Property hierarchy
+  hierarchy: {
+    level: {
+      type: String,
+      enum: ['corporate', 'region', 'property'],
+      default: 'property'
+    },
+    parentId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'Hotel'
+    },
+    path: String // For hierarchical queries
   }
 }, {
   timestamps: true,
