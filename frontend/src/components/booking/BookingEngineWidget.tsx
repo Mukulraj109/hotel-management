@@ -43,17 +43,23 @@ import {
   Share2,
   Edit,
   Copy,
-  Settings
+  Settings,
+  RefreshCw,
+  CheckCircle
 } from 'lucide-react';
 import { format, addDays, differenceInDays } from 'date-fns';
 import { formatCurrency } from '@/utils/currencyUtils';
+import { bookingService } from '@/services/bookingService';
+import { bookingEngineService } from '@/services/bookingEngineService';
 
 interface Room {
-  id: string;
-  name: string;
+  _id: string;
+  roomNumber: string;
   type: string;
+  name: string;
   description: string;
   baseRate: number;
+  currentRate: number;
   discountedRate?: number;
   images: string[];
   amenities: string[];
@@ -63,26 +69,43 @@ interface Room {
   availability: number;
   isPopular: boolean;
   cancellationPolicy: string;
+  isActive: boolean;
 }
 
 interface PromoCode {
-  id: string;
+  _id: string;
   code: string;
+  name: string;
   description: string;
-  discountType: 'percentage' | 'fixed' | 'free_night' | 'upgrade';
-  discountValue: number;
-  validFrom: Date;
-  validUntil: Date;
+  type: 'percentage' | 'fixed_amount' | 'free_night' | 'upgrade';
+  discount: {
+    value: number;
+    maxAmount?: number;
+    freeNights?: number;
+    upgradeRoomType?: string;
+  };
+  conditions: {
+    minBookingValue?: number;
+    minNights?: number;
+    maxNights?: number;
+    applicableRoomTypes?: string[];
+    firstTimeGuests?: boolean;
+    maxUsagePerGuest?: number;
+    combinableWithOtherOffers?: boolean;
+  };
+  validity: {
+    startDate: string;
+    endDate: string;
+  };
+  usage: {
+    totalUsageLimit?: number;
+    currentUsage: number;
+  };
   isActive: boolean;
-  usageLimit: number;
-  usageCount: number;
-  minimumStay?: number;
-  applicableRooms: string[];
-  termsConditions: string;
 }
 
 interface UpsellOffer {
-  id: string;
+  _id: string;
   title: string;
   description: string;
   type: 'room_upgrade' | 'package' | 'amenity' | 'service';
@@ -155,6 +178,7 @@ const BookingEngineWidget: React.FC = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [promoInput, setPromoInput] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [widgetSettings, setWidgetSettings] = useState<WidgetSettings>({
     theme: 'light',
     primaryColor: '#3b82f6',
@@ -171,126 +195,34 @@ const BookingEngineWidget: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [widgetCode, setWidgetCode] = useState('');
 
-  // Mock data
-  const mockRooms: Room[] = [
-    {
-      id: '1',
-      name: 'Deluxe Garden View',
-      type: 'Deluxe',
-      description: 'Spacious room with beautiful garden views and modern amenities.',
-      baseRate: 4500,
-      discountedRate: 3800,
-      images: ['/rooms/deluxe-1.jpg', '/rooms/deluxe-2.jpg'],
-      amenities: ['wifi', 'ac', 'tv', 'minibar', 'balcony'],
-      maxOccupancy: 3,
-      size: 35,
-      bedType: 'King',
-      availability: 8,
-      isPopular: true,
-      cancellationPolicy: 'Free cancellation until 24 hours before check-in'
-    },
-    {
-      id: '2',
-      name: 'Executive Suite',
-      type: 'Suite',
-      description: 'Luxurious suite with separate living area and executive lounge access.',
-      baseRate: 8500,
-      discountedRate: 7200,
-      images: ['/rooms/suite-1.jpg', '/rooms/suite-2.jpg'],
-      amenities: ['wifi', 'ac', 'tv', 'minibar', 'living_room', 'executive_lounge'],
-      maxOccupancy: 4,
-      size: 65,
-      bedType: 'King + Sofa Bed',
-      availability: 3,
-      isPopular: false,
-      cancellationPolicy: 'Free cancellation until 48 hours before check-in'
-    }
-  ];
-
-  const mockPromoCodes: PromoCode[] = [
-    {
-      id: '1',
-      code: 'WELCOME20',
-      description: '20% off your first booking',
-      discountType: 'percentage',
-      discountValue: 20,
-      validFrom: new Date('2024-01-01'),
-      validUntil: new Date('2024-12-31'),
-      isActive: true,
-      usageLimit: 100,
-      usageCount: 45,
-      minimumStay: 2,
-      applicableRooms: ['1', '2'],
-      termsConditions: 'Valid for new customers only. Minimum 2 nights stay required.'
-    },
-    {
-      id: '2',
-      code: 'WEEKEND15',
-      description: '15% off weekend bookings',
-      discountType: 'percentage',
-      discountValue: 15,
-      validFrom: new Date('2024-01-01'),
-      validUntil: new Date('2024-12-31'),
-      isActive: true,
-      usageLimit: 500,
-      usageCount: 123,
-      applicableRooms: ['1'],
-      termsConditions: 'Valid for Friday-Sunday stays only.'
-    }
-  ];
-
-  const mockUpsells: UpsellOffer[] = [
-    {
-      id: '1',
-      title: 'Early Check-in',
-      description: 'Check in as early as 12 PM instead of 3 PM',
-      type: 'service',
-      originalPrice: 1500,
-      discountedPrice: 900,
-      savings: 600,
-      isPopular: true,
-      validDuration: 24,
-      category: 'Service',
-      image: '/upsells/early-checkin.jpg'
-    },
-    {
-      id: '2',
-      title: 'Spa Package',
-      description: '90-minute couples massage with complimentary refreshments',
-      type: 'package',
-      originalPrice: 8500,
-      discountedPrice: 6500,
-      savings: 2000,
-      isPopular: false,
-      validDuration: 48,
-      category: 'Wellness',
-      image: '/upsells/spa-package.jpg'
-    },
-    {
-      id: '3',
-      title: 'Romantic Dinner',
-      description: 'Private candlelit dinner for two at our rooftop restaurant',
-      type: 'package',
-      originalPrice: 5500,
-      discountedPrice: 4200,
-      savings: 1300,
-      isPopular: true,
-      validDuration: 72,
-      category: 'Dining',
-      image: '/upsells/romantic-dinner.jpg'
-    }
-  ];
-
+  // Load initial data
   useEffect(() => {
-    setAvailableRooms(mockRooms);
-    setPromoCodes(mockPromoCodes);
-    setUpsellOffers(mockUpsells);
-    generateWidgetCode();
+    loadInitialData();
   }, []);
 
   useEffect(() => {
     calculateTotal();
   }, [bookingData.selectedRoom, bookingData.appliedPromo, bookingData.selectedUpsells, bookingData.checkIn, bookingData.checkOut]);
+
+  const loadInitialData = async () => {
+    setIsLoading(true);
+    try {
+      // Load promo codes
+      const promoResponse = await bookingEngineService.getPromoCodes();
+      setPromoCodes(promoResponse);
+
+      // Load upsell offers (you may need to create this endpoint)
+      // For now, we'll use an empty array
+      setUpsellOffers([]);
+
+      generateWidgetCode();
+    } catch (error) {
+      console.error('Error loading initial data:', error);
+      toast.error('Failed to load initial data');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const searchRooms = async () => {
     if (!bookingData.checkIn || !bookingData.checkOut) {
@@ -300,14 +232,27 @@ const BookingEngineWidget: React.FC = () => {
 
     setIsSearching(true);
     try {
-      // Mock API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Real API call to search rooms
+      const filters = {
+        checkIn: format(bookingData.checkIn, 'yyyy-MM-dd'),
+        checkOut: format(bookingData.checkOut, 'yyyy-MM-dd'),
+        adults: bookingData.adults,
+        children: bookingData.children,
+        rooms: bookingData.rooms
+      };
+
+      const response = await bookingService.getRooms(filters);
+      const rooms = response.data.rooms || [];
+      
+      setAvailableRooms(rooms);
       
       // Auto-apply best available rate if enabled
-      if (widgetSettings.autoApplyBestRate) {
-        const bestPromo = mockPromoCodes.find(promo => 
+      if (widgetSettings.autoApplyBestRate && rooms.length > 0) {
+        const bestPromo = promoCodes.find(promo => 
           promo.isActive && 
-          (!promo.minimumStay || differenceInDays(bookingData.checkOut!, bookingData.checkIn!) >= promo.minimumStay)
+          new Date() >= new Date(promo.validity.startDate) &&
+          new Date() <= new Date(promo.validity.endDate) &&
+          (!promo.conditions.minNights || differenceInDays(bookingData.checkOut!, bookingData.checkIn!) >= promo.conditions.minNights)
         );
         if (bestPromo) {
           applyPromoCode(bestPromo);
@@ -315,21 +260,23 @@ const BookingEngineWidget: React.FC = () => {
       }
       
       setCurrentStep(2);
-      toast.success(`Found ${mockRooms.length} available rooms`);
+      toast.success(`Found ${rooms.length} available rooms`);
     } catch (error) {
+      console.error('Error searching rooms:', error);
       toast.error('Failed to search rooms');
     } finally {
       setIsSearching(false);
     }
   };
 
-  const applyPromoCode = (promo?: PromoCode) => {
+  const applyPromoCode = async (promo?: PromoCode) => {
     if (!promo) {
+      // Find promo code by input
       const foundPromo = promoCodes.find(p => 
         p.code.toLowerCase() === promoInput.toLowerCase() && 
         p.isActive &&
-        new Date() >= p.validFrom &&
-        new Date() <= p.validUntil
+        new Date() >= new Date(p.validity.startDate) &&
+        new Date() <= new Date(p.validity.endDate)
       );
       
       if (!foundPromo) {
@@ -339,16 +286,43 @@ const BookingEngineWidget: React.FC = () => {
       promo = foundPromo;
     }
 
-    setBookingData(prev => ({ ...prev, appliedPromo: promo }));
-    setPromoInput('');
-    toast.success(`Promo code ${promo.code} applied successfully!`);
+    // Validate promo code with backend
+    try {
+      if (bookingData.selectedRoom) {
+        const roomTotal = (bookingData.selectedRoom.currentRate || bookingData.selectedRoom.baseRate) * 
+          differenceInDays(bookingData.checkOut!, bookingData.checkIn!) * bookingData.rooms;
+        
+        const validation = await bookingEngineService.validatePromoCode(
+          promo.code,
+          roomTotal,
+          format(bookingData.checkIn!, 'yyyy-MM-dd'),
+          format(bookingData.checkOut!, 'yyyy-MM-dd')
+        );
+
+        if (validation.valid) {
+          setBookingData(prev => ({ ...prev, appliedPromo: promo }));
+          setPromoInput('');
+          toast.success(`Promo code ${promo.code} applied successfully!`);
+        } else {
+          toast.error(validation.message || 'Promo code validation failed');
+        }
+      } else {
+        // Apply promo without room selection (will be validated later)
+        setBookingData(prev => ({ ...prev, appliedPromo: promo }));
+        setPromoInput('');
+        toast.success(`Promo code ${promo.code} applied successfully!`);
+      }
+    } catch (error) {
+      console.error('Error validating promo code:', error);
+      toast.error('Failed to validate promo code');
+    }
   };
 
   const toggleUpsell = (upsell: UpsellOffer) => {
     setBookingData(prev => ({
       ...prev,
-      selectedUpsells: prev.selectedUpsells.find(u => u.id === upsell.id)
-        ? prev.selectedUpsells.filter(u => u.id !== upsell.id)
+      selectedUpsells: prev.selectedUpsells.find(u => u._id === upsell._id)
+        ? prev.selectedUpsells.filter(u => u._id !== upsell._id)
         : [...prev.selectedUpsells, upsell]
     }));
   };
@@ -359,16 +333,19 @@ const BookingEngineWidget: React.FC = () => {
     }
 
     const nights = differenceInDays(bookingData.checkOut, bookingData.checkIn);
-    const roomRate = bookingData.selectedRoom.discountedRate || bookingData.selectedRoom.baseRate;
+    const roomRate = bookingData.selectedRoom.discountedRate || bookingData.selectedRoom.currentRate || bookingData.selectedRoom.baseRate;
     let subtotal = roomRate * nights * bookingData.rooms;
 
     // Apply promo code discount
     let promoDiscount = 0;
     if (bookingData.appliedPromo) {
-      if (bookingData.appliedPromo.discountType === 'percentage') {
-        promoDiscount = (subtotal * bookingData.appliedPromo.discountValue) / 100;
-      } else if (bookingData.appliedPromo.discountType === 'fixed') {
-        promoDiscount = bookingData.appliedPromo.discountValue;
+      if (bookingData.appliedPromo.type === 'percentage') {
+        promoDiscount = (subtotal * bookingData.appliedPromo.discount.value) / 100;
+        if (bookingData.appliedPromo.discount.maxAmount) {
+          promoDiscount = Math.min(promoDiscount, bookingData.appliedPromo.discount.maxAmount);
+        }
+      } else if (bookingData.appliedPromo.type === 'fixed_amount') {
+        promoDiscount = bookingData.appliedPromo.discount.value;
       }
     }
 
@@ -552,7 +529,7 @@ const BookingEngineWidget: React.FC = () => {
             {/* Show available promos */}
             <div className="mt-2 space-y-1">
               {promoCodes.filter(promo => promo.isActive).slice(0, 2).map(promo => (
-                <div key={promo.id} className="text-xs text-blue-600 cursor-pointer hover:underline" 
+                <div key={promo._id} className="text-xs text-blue-600 cursor-pointer hover:underline" 
                      onClick={() => applyPromoCode(promo)}>
                   <Tag className="w-3 h-3 inline mr-1" />
                   {promo.code} - {promo.description}
@@ -599,9 +576,9 @@ const BookingEngineWidget: React.FC = () => {
         <CardContent className="space-y-4">
           {availableRooms.map(room => (
             <div 
-              key={room.id} 
+              key={room._id} 
               className={`border rounded-lg p-4 cursor-pointer transition-all ${
-                bookingData.selectedRoom?.id === room.id 
+                bookingData.selectedRoom?._id === room._id 
                   ? 'border-blue-500 bg-blue-50' 
                   : 'border-gray-200 hover:border-gray-300'
               }`}
@@ -610,7 +587,7 @@ const BookingEngineWidget: React.FC = () => {
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <h3 className="font-medium text-lg">{room.name}</h3>
+                    <h3 className="font-medium text-lg">{room.name || `${room.type} - ${room.roomNumber}`}</h3>
                     {room.isPopular && (
                       <Badge className="bg-orange-100 text-orange-700">
                         <Star className="w-3 h-3 mr-1" />
@@ -659,20 +636,20 @@ const BookingEngineWidget: React.FC = () => {
                 
                 <div className="text-right">
                   <div className="space-y-1">
-                    {room.discountedRate && room.discountedRate < room.baseRate && (
+                    {room.discountedRate && room.discountedRate < room.currentRate && (
                       <div className="text-sm text-gray-500 line-through">
-                        {formatCurrency(room.baseRate)}
+                        {formatCurrency(room.currentRate)}
                       </div>
                     )}
                     <div className="text-2xl font-bold text-green-600">
-                      {formatCurrency(room.discountedRate || room.baseRate)}
+                      {formatCurrency(room.discountedRate || room.currentRate || room.baseRate)}
                     </div>
                     <div className="text-xs text-gray-500">per night</div>
                   </div>
                   
-                  {room.discountedRate && room.discountedRate < room.baseRate && (
+                  {room.discountedRate && room.discountedRate < room.currentRate && (
                     <Badge className="bg-red-100 text-red-700 mt-2">
-                      Save {formatCurrency(room.baseRate - room.discountedRate)}
+                      Save {formatCurrency(room.currentRate - room.discountedRate)}
                     </Badge>
                   )}
                 </div>
@@ -693,11 +670,11 @@ const BookingEngineWidget: React.FC = () => {
           </CardHeader>
           <CardContent className="space-y-3">
             {upsellOffers.map(upsell => (
-              <div key={upsell.id} className="border rounded-lg p-3">
+              <div key={upsell._id} className="border rounded-lg p-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Checkbox
-                      checked={bookingData.selectedUpsells.some(u => u.id === upsell.id)}
+                      checked={bookingData.selectedUpsells.some(u => u._id === upsell._id)}
                       onCheckedChange={() => toggleUpsell(upsell)}
                     />
                     
@@ -742,8 +719,8 @@ const BookingEngineWidget: React.FC = () => {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex justify-between">
-              <span>Room: {bookingData.selectedRoom.name}</span>
-              <span>{formatCurrency((bookingData.selectedRoom.discountedRate || bookingData.selectedRoom.baseRate) * differenceInDays(bookingData.checkOut!, bookingData.checkIn!) * bookingData.rooms)}</span>
+              <span>Room: {bookingData.selectedRoom.name || `${bookingData.selectedRoom.type} - ${bookingData.selectedRoom.roomNumber}`}</span>
+              <span>{formatCurrency((bookingData.selectedRoom.discountedRate || bookingData.selectedRoom.currentRate || bookingData.selectedRoom.baseRate) * differenceInDays(bookingData.checkOut!, bookingData.checkIn!) * bookingData.rooms)}</span>
             </div>
             
             {bookingData.appliedPromo && (
@@ -754,7 +731,7 @@ const BookingEngineWidget: React.FC = () => {
             )}
             
             {bookingData.selectedUpsells.map(upsell => (
-              <div key={upsell.id} className="flex justify-between">
+              <div key={upsell._id} className="flex justify-between">
                 <span>{upsell.title}</span>
                 <span>{formatCurrency(upsell.discountedPrice)}</span>
               </div>

@@ -225,7 +225,7 @@ class AdminMaintenanceService {
     // Try to get hotelId from user profile API
     try {
       console.log('Attempting to get hotelId from user profile...');
-      const response = await this.fetchWithAuth('/api/v1/auth/me');
+      const response = await this.fetchWithAuth('/auth/me', { baseURL: '/api/v1' });
       const userData = response.data?.user;
       
       if (userData?.hotelId) {

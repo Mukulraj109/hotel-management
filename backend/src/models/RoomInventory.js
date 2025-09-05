@@ -148,13 +148,24 @@ const roomInventorySchema = new mongoose.Schema({
     },
     replacementReason: {
       type: String,
-      enum: ['damaged', 'worn', 'missing', 'hygiene', 'guest_request', 'maintenance']
+      enum: ['damaged', 'worn', 'missing', 'hygiene', 'guest_request', 'maintenance', 'laundry', 'lost']
     },
     replacementRequested: {
       type: Boolean,
       default: false
     },
     replacementRequestedDate: Date,
+    // Laundry tracking fields
+    laundryStatus: {
+      type: String,
+      enum: ['none', 'sent_to_laundry', 'in_laundry', 'returned_from_laundry', 'lost_in_laundry', 'damaged_in_laundry'],
+      default: 'none'
+    },
+    laundryTransactionId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'LaundryTransaction'
+    },
+    lastLaundryDate: Date,
     notes: {
       type: String,
       maxlength: [500, 'Notes cannot exceed 500 characters']

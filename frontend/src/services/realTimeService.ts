@@ -1,4 +1,5 @@
 import React from 'react';
+import { io, Socket } from 'socket.io-client';
 
 // Browser-compatible EventEmitter implementation
 class EventEmitter {
@@ -53,7 +54,7 @@ export interface RealTimeConfig {
 }
 
 class RealTimeService extends EventEmitter {
-  private ws: WebSocket | null = null;
+  private socket: Socket | null = null;
   private config: Required<RealTimeConfig>;
   private reconnectAttempts = 0;
   private reconnectTimer: number | null = null;
@@ -68,24 +69,17 @@ class RealTimeService extends EventEmitter {
     super();
     
     this.config = {
-      url: config.url || this.getWebSocketUrl(),
+      url: config.url || this.getSocketUrl(),
       reconnectInterval: config.reconnectInterval || 3000,
       maxReconnectAttempts: config.maxReconnectAttempts || 10,
       heartbeatInterval: config.heartbeatInterval || 30000,
       debug: config.debug || false,
     };
-
-    // Bind methods to preserve context
-    this.handleOpen = this.handleOpen.bind(this);
-    this.handleMessage = this.handleMessage.bind(this);
-    this.handleError = this.handleError.bind(this);
-    this.handleClose = this.handleClose.bind(this);
   }
 
-  private getWebSocketUrl(): string {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    return `${protocol}//${host}/ws/notifications`;
+  private getSocketUrl(): string {
+    // Connect to backend server using Socket.IO
+    return 'http://localhost:4000';
   }
 
   private log(message: string, ...args: any[]) {
@@ -115,27 +109,78 @@ class RealTimeService extends EventEmitter {
       this.shouldReconnect = true;
 
       try {
-        // Add auth token to WebSocket URL
-        const url = `${this.config.url}?token=${encodeURIComponent(token)}`;
-        this.ws = new WebSocket(url);
+        // Create Socket.IO connection
+        this.socket = io(this.config.url, {
+          path: '/ws/notifications',
+          auth: {
+            token
+          },
+          autoConnect: false,
+          reconnection: true,
+          reconnectionAttempts: this.config.maxReconnectAttempts,
+          reconnectionDelay: this.config.reconnectInterval,
+          timeout: 10000
+        });
 
-        this.ws.onopen = () => {
-          this.handleOpen();
+        // Connection event handlers
+        this.socket.on('connect', () => {
+          this.handleConnect();
           resolve();
-        };
-        this.ws.onmessage = this.handleMessage;
-        this.ws.onerror = (error) => {
+        });
+
+        this.socket.on('event', (data) => {
+          this.handleRealTimeEvent(data.data);
+        });
+
+        this.socket.on('connected', (data) => {
+          this.log('Received connection confirmation:', data);
+        });
+
+        this.socket.on('subscribed', (data) => {
+          this.log('Subscribed to:', data.subscription);
+        });
+
+        this.socket.on('unsubscribed', (data) => {
+          this.log('Unsubscribed from:', data.subscription);
+        });
+
+        this.socket.on('pong', () => {
+          // Heartbeat response
+        });
+
+        this.socket.on('connect_error', (error) => {
           this.handleError(error);
           if (this.isConnecting) {
             reject(error);
           }
-        };
-        this.ws.onclose = this.handleClose;
+        });
+
+        this.socket.on('disconnect', (reason) => {
+          this.handleDisconnect(reason);
+        });
+
+        this.socket.on('reconnect', (attemptNumber) => {
+          this.log(`Reconnected after ${attemptNumber} attempts`);
+          this.handleConnect();
+        });
+
+        this.socket.on('reconnect_attempt', (attemptNumber) => {
+          this.reconnectAttempts = attemptNumber;
+          this.emit('reconnecting', attemptNumber);
+        });
+
+        this.socket.on('reconnect_failed', () => {
+          this.log('Max reconnection attempts reached');
+          this.emit('maxReconnectAttemptsReached');
+        });
+
+        // Start connection
+        this.socket.connect();
 
         // Connection timeout
         setTimeout(() => {
           if (this.isConnecting && !this.isConnected) {
-            reject(new Error('WebSocket connection timeout'));
+            reject(new Error('Socket connection timeout'));
             this.disconnect();
           }
         }, 10000);
@@ -161,9 +206,10 @@ class RealTimeService extends EventEmitter {
       this.heartbeatTimer = null;
     }
 
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket.removeAllListeners();
+      this.socket = null;
     }
 
     this.isConnected = false;
@@ -172,15 +218,15 @@ class RealTimeService extends EventEmitter {
     this.messageQueue = [];
 
     this.emit('disconnected');
-    this.log('Disconnected from WebSocket');
+    this.log('Disconnected from Socket.IO');
   }
 
-  private handleOpen(): void {
+  private handleConnect(): void {
     this.isConnected = true;
     this.isConnecting = false;
     this.reconnectAttempts = 0;
 
-    this.log('Connected to WebSocket');
+    this.log('Connected to Socket.IO');
     this.emit('connected');
 
     // Start heartbeat
@@ -198,34 +244,19 @@ class RealTimeService extends EventEmitter {
     }
   }
 
-  private handleMessage(event: MessageEvent): void {
-    try {
-      const message = JSON.parse(event.data);
-      this.log('Received message:', message);
+  private handleDisconnect(reason: string): void {
+    this.isConnected = false;
+    this.isConnecting = false;
 
-      switch (message.type) {
-        case 'pong':
-          // Heartbeat response
-          break;
-        case 'event':
-          this.handleRealTimeEvent(message.data);
-          break;
-        case 'error':
-          this.log('Server error:', message.error);
-          this.emit('error', new Error(message.error));
-          break;
-        case 'subscribed':
-          this.log('Subscribed to:', message.subscription);
-          break;
-        case 'unsubscribed':
-          this.log('Unsubscribed from:', message.subscription);
-          break;
-        default:
-          this.log('Unknown message type:', message.type);
-      }
-    } catch (error) {
-      this.log('Error parsing message:', error);
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
     }
+
+    this.log('Socket.IO disconnected:', reason);
+    this.emit('disconnected', { reason });
+
+    // Socket.IO handles reconnection automatically
   }
 
   private handleRealTimeEvent(eventData: RealTimeEvent): void {
@@ -240,49 +271,9 @@ class RealTimeService extends EventEmitter {
     this.emit('*', eventData);
   }
 
-  private handleError(error: Event): void {
-    this.log('WebSocket error:', error);
+  private handleError(error: any): void {
+    this.log('Socket.IO error:', error);
     this.emit('error', error);
-  }
-
-  private handleClose(event: CloseEvent): void {
-    this.isConnected = false;
-    this.isConnecting = false;
-
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
-    }
-
-    this.log('WebSocket closed:', event.code, event.reason);
-    this.emit('disconnected', { code: event.code, reason: event.reason });
-
-    // Attempt reconnection if should reconnect and within limits
-    if (this.shouldReconnect && this.reconnectAttempts < this.config.maxReconnectAttempts) {
-      this.scheduleReconnect();
-    } else if (this.reconnectAttempts >= this.config.maxReconnectAttempts) {
-      this.log('Max reconnection attempts reached');
-      this.emit('maxReconnectAttemptsReached');
-    }
-  }
-
-  private scheduleReconnect(): void {
-    if (this.reconnectTimer) {
-      return;
-    }
-
-    const delay = this.config.reconnectInterval * Math.pow(2, Math.min(this.reconnectAttempts, 5));
-    this.log(`Scheduling reconnect in ${delay}ms (attempt ${this.reconnectAttempts + 1})`);
-
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      this.reconnectAttempts++;
-      this.emit('reconnecting', this.reconnectAttempts);
-      
-      this.connect().catch(error => {
-        this.log('Reconnection failed:', error);
-      });
-    }, delay);
   }
 
   private startHeartbeat(): void {
@@ -298,13 +289,21 @@ class RealTimeService extends EventEmitter {
   }
 
   private sendMessage(message: any): void {
-    if (!this.isConnected || !this.ws) {
+    if (!this.isConnected || !this.socket) {
       this.messageQueue.push(message);
       return;
     }
 
     try {
-      this.ws.send(JSON.stringify(message));
+      if (message.type === 'subscribe') {
+        this.socket.emit('subscribe', { subscription: message.subscription });
+      } else if (message.type === 'unsubscribe') {
+        this.socket.emit('unsubscribe', { subscription: message.subscription });
+      } else if (message.type === 'ping') {
+        this.socket.emit('ping');
+      } else {
+        this.socket.emit('message', message);
+      }
       this.log('Sent message:', message);
     } catch (error) {
       this.log('Error sending message:', error);

@@ -9,38 +9,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { Plus, Edit, Code, Eye, MousePointer, ShoppingCart, Settings } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
+import { bookingEngineService, BookingWidget, CreateWidgetData } from '@/services/bookingEngineService';
 
-interface BookingWidget {
-  _id: string;
-  widgetId: string;
-  name: string;
-  type: string;
-  isActive: boolean;
-  config: {
-    theme: {
-      primaryColor: string;
-      secondaryColor: string;
-      borderRadius: string;
-    };
-    layout: {
-      showImages: boolean;
-      showPrices: boolean;
-      columns: number;
-    };
-    behavior: {
-      autoSearch: boolean;
-      minStayNights: number;
-      maxStayNights: number;
-    };
-  };
-  performance: {
-    impressions: number;
-    clicks: number;
-    conversions: number;
-    conversionRate: number;
-  };
-  createdAt: string;
-}
+
 
 const BookingWidgetManager: React.FC = () => {
   const [widgets, setWidgets] = useState<BookingWidget[]>([]);
@@ -51,7 +22,7 @@ const BookingWidgetManager: React.FC = () => {
   const [widgetCode, setWidgetCode] = useState('');
   const [loading, setLoading] = useState(true);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<CreateWidgetData>({
     name: '',
     type: 'inline',
     config: {
@@ -90,12 +61,8 @@ const BookingWidgetManager: React.FC = () => {
   const fetchWidgets = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/v1/booking-engine/widgets');
-      const data = await response.json();
-      
-      if (data.success) {
-        setWidgets(data.data);
-      }
+      const data = await bookingEngineService.getBookingWidgets();
+      setWidgets(data);
     } catch (error) {
       console.error('Error fetching widgets:', error);
     } finally {
@@ -105,24 +72,11 @@ const BookingWidgetManager: React.FC = () => {
 
   const handleCreateWidget = async () => {
     try {
-      const response = await fetch('/api/v1/booking-engine/widgets', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData)
-      });
-
-      const data = await response.json();
-      
-      if (data.success) {
-        fetchWidgets();
-        setIsCreateModalOpen(false);
-        resetForm();
-        alert('Widget created successfully!');
-      } else {
-        alert('Error creating widget: ' + data.message);
-      }
+      await bookingEngineService.createBookingWidget(formData);
+      fetchWidgets();
+      setIsCreateModalOpen(false);
+      resetForm();
+      alert('Widget created successfully!');
     } catch (error) {
       console.error('Error creating widget:', error);
       alert('Error creating widget');
@@ -133,25 +87,12 @@ const BookingWidgetManager: React.FC = () => {
     if (!selectedWidget) return;
 
     try {
-      const response = await fetch(`/api/v1/booking-engine/widgets/${selectedWidget._id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData)
-      });
-
-      const data = await response.json();
-      
-      if (data.success) {
-        fetchWidgets();
-        setIsEditModalOpen(false);
-        setSelectedWidget(null);
-        resetForm();
-        alert('Widget updated successfully!');
-      } else {
-        alert('Error updating widget: ' + data.message);
-      }
+      await bookingEngineService.updateBookingWidget(selectedWidget._id, formData);
+      fetchWidgets();
+      setIsEditModalOpen(false);
+      setSelectedWidget(null);
+      resetForm();
+      alert('Widget updated successfully!');
     } catch (error) {
       console.error('Error updating widget:', error);
       alert('Error updating widget');
@@ -160,13 +101,9 @@ const BookingWidgetManager: React.FC = () => {
 
   const handleGetWidgetCode = async (widgetId: string) => {
     try {
-      const response = await fetch(`/api/v1/booking-engine/widgets/${widgetId}/code`);
-      const data = await response.json();
-      
-      if (data.success) {
-        setWidgetCode(data.data.code);
-        setIsCodeModalOpen(true);
-      }
+      const data = await bookingEngineService.getWidgetCode(widgetId);
+      setWidgetCode(data.code);
+      setIsCodeModalOpen(true);
     } catch (error) {
       console.error('Error fetching widget code:', error);
     }

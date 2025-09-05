@@ -93,6 +93,8 @@ import translationRoutes from './routes/translations.js';
 import channelLocalizationRoutes from './routes/channelLocalization.js';
 import otaAmendmentRoutes from './routes/otaAmendments.js';
 import auditRoutes from './routes/audit.js';
+import laundryRoutes from './routes/laundry.js';
+import aiRoutes from './routes/ai.js';
 
 // Security & Compliance Routes
 import gdprRoutes from './routes/gdpr.js';
@@ -285,6 +287,8 @@ app.use('/api/v1/translations', translationRoutes);
 app.use('/api/v1/channel-localization', channelLocalizationRoutes);
 app.use('/api/v1/ota-amendments', otaAmendmentRoutes);
 app.use('/api/v1/audit', auditRoutes);
+app.use('/api/v1/laundry', laundryRoutes);
+app.use('/api/v1/ai', aiRoutes);
 
 // Security & Compliance API Routes
 app.use('/api/v1/gdpr', gdprRoutes);

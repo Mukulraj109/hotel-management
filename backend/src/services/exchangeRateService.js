@@ -457,6 +457,45 @@ class ExchangeRateService {
   }
 
   /**
+   * Get exchange rate between two currencies
+   * @param {string} fromCurrency - Source currency code
+   * @param {string} toCurrency - Target currency code
+   * @returns {Promise<number>} Exchange rate
+   */
+  async getExchangeRate(fromCurrency, toCurrency) {
+    try {
+      if (fromCurrency === toCurrency) {
+        return 1.0;
+      }
+
+      const [fromCurrencyData, toCurrencyData] = await Promise.all([
+        Currency.getCurrencyByCode(fromCurrency),
+        Currency.getCurrencyByCode(toCurrency)
+      ]);
+
+      if (!fromCurrencyData) {
+        throw new Error(`Currency ${fromCurrency} not found`);
+      }
+
+      if (!toCurrencyData) {
+        throw new Error(`Currency ${toCurrency} not found`);
+      }
+
+      // Calculate rate using stored exchange rates (both relative to base currency)
+      const rate = toCurrencyData.exchangeRate / fromCurrencyData.exchangeRate;
+      return Number(rate.toFixed(6));
+
+    } catch (error) {
+      logger.error('Failed to get exchange rate', {
+        fromCurrency,
+        toCurrency,
+        error: error.message
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Get cached exchange rates
    * @param {string} cacheKey - Cache key
    * @returns {Promise<Object|null>} Cached rates or null

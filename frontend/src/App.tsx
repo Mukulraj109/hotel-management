@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import ErrorBoundary from './components/ui/ErrorBoundary';
 
 // Public Pages
 import HomePage from './pages/public/HomePage';
@@ -43,6 +44,7 @@ import AdminBookings from './pages/admin/AdminBookings';
 import AdminStaffManagement from './pages/admin/AdminStaffManagement';
 import AdminHousekeeping from './pages/admin/AdminHousekeeping';
 import AdminInventory from './pages/admin/AdminInventory';
+import AdminLaundryManagement from './pages/admin/AdminLaundryManagement';
 import AdminMaintenance from './pages/admin/AdminMaintenance';
 import AdminGuestServices from './pages/admin/AdminGuestServices';
 import AdminSupplyRequests from './pages/admin/AdminSupplyRequests';
@@ -59,10 +61,13 @@ import AdminFinancial from './pages/admin/AdminFinancial';
 import AdminMultiProperty from './pages/admin/AdminMultiProperty';
 import AdminMobileApps from './pages/admin/AdminMobileApps';
 import AdminAPIManagement from './pages/admin/AdminAPIManagement';
+import AdminRoomTypes from './pages/admin/AdminRoomTypes';
+import AdminInventoryManagement from './pages/admin/AdminInventoryManagement';
 import CorporateCreditManagement from './components/admin/CorporateCreditManagement';
 import GSTManagement from './components/admin/GSTManagement';
 import CorporateUserRegistration from './components/admin/CorporateUserRegistration';
 import { InventoryTemplateManagement } from './components/admin/InventoryTemplateManagement';
+import AIDashboard from './components/analytics/AIDashboard';
 
 // Staff Pages
 import StaffDashboard from './pages/staff/StaffDashboard';
@@ -97,8 +102,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <Router>
         <AuthProvider>
-          <div className="min-h-screen bg-gray-50">
-            <Routes>
+          <ErrorBoundary>
+            <div className="min-h-screen bg-gray-50">
+              <Routes>
               {/* Public Routes - Accessible to all users */}
               <Route path="/" element={<PublicLayout />}>
                 <Route index element={<HomePage />} />
@@ -158,6 +164,9 @@ function App() {
                 <Route path="supply-requests" element={<AdminSupplyRequests />} />
                 <Route path="inventory" element={<AdminInventory />} />
                 <Route path="inventory/templates" element={<InventoryTemplateManagement />} />
+                <Route path="inventory-management" element={<AdminInventoryManagement />} />
+                <Route path="laundry" element={<AdminLaundryManagement />} />
+                <Route path="room-types" element={<AdminRoomTypes />} />
                 <Route path="reports" element={<AdminReports />} />
                 <Route path="bypass-checkout" element={<AdminBypassCheckoutPage />} />
                 <Route path="ota" element={<AdminOTA />} />
@@ -170,6 +179,7 @@ function App() {
                 <Route path="multi-property" element={<AdminMultiProperty />} />
                 <Route path="mobile-apps" element={<AdminMobileApps />} />
                 <Route path="api-management" element={<AdminAPIManagement />} />
+                <Route path="ai-dashboard" element={<AIDashboard />} />
               </Route>
 
               {/* Staff Routes */}
@@ -192,7 +202,7 @@ function App() {
                 <Route path="reports" element={<StaffReports />} />
               </Route>
 
-              {/* Catch all route */}
+                            {/* Catch all route */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
             
@@ -203,14 +213,15 @@ function App() {
                 style: {
                   background: '#363636',
                   color: '#fff',
-                },
-              }}
-            />
-          </div>
-        </AuthProvider>
-      </Router>
-    </QueryClientProvider>
-  );
+              },
+            }}
+          />
+        </div>
+      </ErrorBoundary>
+    </AuthProvider>
+  </Router>
+</QueryClientProvider>
+);
 }
 
 export default App;

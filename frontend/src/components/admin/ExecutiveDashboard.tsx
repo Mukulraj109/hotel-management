@@ -13,6 +13,7 @@ import {
   Filter,
   AlertCircle
 } from 'lucide-react';
+import { api } from '../../services/api';
 
 interface KPIMetric {
   label: string;
@@ -69,14 +70,10 @@ const ExecutiveDashboard: React.FC = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/v1/analytics/dashboard/metrics?period=${selectedPeriod}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
+      const response = await api.get(`/analytics/dashboard/metrics?period=${selectedPeriod}`);
       
-      if (response.ok) {
-        const result = await response.json();
+      if (response.data) {
+        const result = response.data;
         setDashboardData(result.data);
         setLastUpdated(new Date());
       }

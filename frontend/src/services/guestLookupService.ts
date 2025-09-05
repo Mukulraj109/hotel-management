@@ -77,7 +77,7 @@ export interface GuestBillingHistoryResponse {
 }
 
 class GuestLookupService {
-  private baseUrl = '/api/v1/guest-lookup';
+  private baseUrl = '/guest-lookup';
 
   // Get guest by room number
   async getGuestByRoom(roomNumber: string, hotelId: string): Promise<GuestByRoomResponse> {

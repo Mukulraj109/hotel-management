@@ -167,18 +167,21 @@ class AdminSupplyRequestsService {
   private hotelIdCache: string | null = null;
   private hotelIdCacheExpiry: number = 0;
   
-  private async fetchWithAuth<T>(endpoint: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+  private async fetchWithAuth<T>(endpoint: string, options: RequestInit & { baseURL?: string } = {}): Promise<ApiResponse<T>> {
     const token = localStorage.getItem('token');
     if (!token) {
       throw new Error('No authentication token found');
     }
 
-    const response = await fetch(`${this.baseURL}${endpoint}`, {
-      ...options,
+    const baseURL = options.baseURL || this.baseURL;
+    const { baseURL: _, ...fetchOptions } = options;
+
+    const response = await fetch(`${baseURL}${endpoint}`, {
+      ...fetchOptions,
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
-        ...options.headers,
+        ...fetchOptions.headers,
       },
     });
 
@@ -226,7 +229,7 @@ class AdminSupplyRequestsService {
     // Try to get hotelId from user profile API
     try {
       console.log('Attempting to get hotelId from user profile...');
-      const response = await this.fetchWithAuth('/api/v1/auth/me');
+      const response = await this.fetchWithAuth('/auth/me', { baseURL: 'http://localhost:4000/api/v1' });
       const userData = response.data?.user;
       
       if (userData?.hotelId) {

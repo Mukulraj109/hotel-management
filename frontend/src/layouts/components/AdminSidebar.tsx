@@ -25,7 +25,10 @@ import {
   Zap,
   Building,
   Smartphone,
-  Settings
+  Settings,
+  Layers,
+  CalendarDays,
+  Brain
 } from 'lucide-react';
 
 const navigation = [
@@ -33,6 +36,7 @@ const navigation = [
   { name: 'Dashboard', href: '/admin', icon: Home },
   { name: 'Tape Chart', href: '/admin/tape-chart', icon: Grid3X3 },
   { name: 'Rooms', href: '/admin/rooms', icon: Bed },
+  { name: 'Room Types', href: '/admin/room-types', icon: Layers },
   { name: 'Bookings', href: '/admin/bookings', icon: Calendar },
   { name: 'Corporate', href: '/admin/corporate', icon: Users },
   { name: 'Staff Management', href: '/admin/staff', icon: UserCheck },
@@ -46,12 +50,14 @@ const navigation = [
   { name: 'Guest Services', href: '/admin/guest-services', icon: Headphones },
   { name: 'Supply Requests', href: '/admin/supply-requests', icon: FileText },
   { name: 'Inventory', href: '/admin/inventory', icon: Package },
+  { name: 'Inventory Management', href: '/admin/inventory-management', icon: CalendarDays },
   { name: 'Reports', href: '/admin/reports', icon: BarChart3 },
   { name: 'Multi-Property', href: '/admin/multi-property', icon: Building },
   { name: 'Mobile Apps', href: '/admin/mobile-apps', icon: Smartphone },
   { name: 'API Management', href: '/admin/api-management', icon: Settings },
+  { name: 'AI Dashboard', href: '/admin/ai-dashboard', icon: Brain },
   { name: 'Bypass Checkout', href: '/admin/bypass-checkout', icon: AlertTriangle },
-  { name: 'OTA Sync', href: '/admin/ota', icon: Wifi },
+  { name: 'OTA Analytics', href: '/admin/ota', icon: Wifi },
 ];
 
 interface AdminSidebarProps {

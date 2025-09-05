@@ -31,6 +31,7 @@ import GeneralLedger from '../models/GeneralLedger.js';
 import JournalEntry from '../models/JournalEntry.js';
 import BankAccount from '../models/BankAccount.js';
 import Budget from '../models/Budget.js';
+import RoomType from '../models/RoomType.js';
 import logger from '../utils/logger.js';
 
 const { RoomBlock, RoomAssignmentRules, AdvancedReservation } = TapeChartModels;
@@ -82,6 +83,7 @@ const seedData = async () => {
     await JournalEntry.deleteMany({});
     await BankAccount.deleteMany({});
     await Budget.deleteMany({});
+    await RoomType.deleteMany({});
 
     logger.info('Cleared existing data');
 
@@ -146,6 +148,195 @@ const seedData = async () => {
     hotel.ownerId = adminUser._id;
     await hotel.save();
     await User.findByIdAndDelete(tempUser._id);
+
+    // Create room types
+    const roomTypes = [
+      {
+        hotelId: hotel._id,
+        code: 'STD',
+        name: 'Standard Room',
+        description: 'Comfortable standard room with city view',
+        shortDescription: 'Standard room with city view',
+        specifications: {
+          maxOccupancy: 2,
+          bedType: 'double',
+          bedCount: 1,
+          roomSize: 25,
+          view: 'city',
+          smokingPolicy: 'non_smoking'
+        },
+        amenities: [
+          { code: 'WIFI', name: 'WiFi', category: 'technology', isHighlight: false },
+          { code: 'TV', name: 'TV', category: 'entertainment', isHighlight: false },
+          { code: 'AC', name: 'Air Conditioning', category: 'comfort', isHighlight: false },
+          { code: 'MINIBAR', name: 'Mini Bar', category: 'comfort', isHighlight: false }
+        ],
+        totalRooms: 25,
+        baseRate: 2500,
+        baseCurrency: 'USD',
+        category: 'standard',
+        rank: 1,
+        isActive: true,
+        isPublished: true,
+        content: {
+          baseLanguage: 'EN',
+          contentKeys: {
+            name: 'room.type.std.name',
+            description: 'room.type.std.description',
+            shortDescription: 'room.type.std.short_description',
+            amenities: 'room.type.std.amenities'
+          },
+          autoTranslate: true,
+          translationPriority: 'medium',
+          translations: []
+        },
+        channels: [],
+        images: [],
+        translationCompleteness: 0
+      },
+      {
+        hotelId: hotel._id,
+        code: 'DLX',
+        name: 'Deluxe Room',
+        description: 'Spacious deluxe room with premium amenities and city view',
+        shortDescription: 'Deluxe room with premium amenities',
+        specifications: {
+          maxOccupancy: 3,
+          bedType: 'queen',
+          bedCount: 1,
+          roomSize: 35,
+          view: 'city',
+          smokingPolicy: 'non_smoking'
+        },
+        amenities: [
+          { code: 'WIFI', name: 'WiFi', category: 'technology', isHighlight: false },
+          { code: 'TV', name: 'TV', category: 'entertainment', isHighlight: false },
+          { code: 'AC', name: 'Air Conditioning', category: 'comfort', isHighlight: false },
+          { code: 'MINIBAR', name: 'Mini Bar', category: 'comfort', isHighlight: true },
+          { code: 'ROOMSERVICE', name: 'Room Service', category: 'other', isHighlight: false },
+          { code: 'BALCONY', name: 'Balcony', category: 'comfort', isHighlight: true }
+        ],
+        totalRooms: 20,
+        baseRate: 3500,
+        baseCurrency: 'USD',
+        category: 'deluxe',
+        rank: 2,
+        isActive: true,
+        isPublished: true,
+        content: {
+          baseLanguage: 'EN',
+          contentKeys: {
+            name: 'room.type.dlx.name',
+            description: 'room.type.dlx.description',
+            shortDescription: 'room.type.dlx.short_description',
+            amenities: 'room.type.dlx.amenities'
+          },
+          autoTranslate: true,
+          translationPriority: 'medium',
+          translations: []
+        },
+        channels: [],
+        images: [],
+        translationCompleteness: 0
+      },
+      {
+        hotelId: hotel._id,
+        code: 'STE',
+        name: 'Premium Suite',
+        description: 'Luxurious suite with separate living area and premium amenities',
+        shortDescription: 'Luxury suite with living area',
+        specifications: {
+          maxOccupancy: 4,
+          bedType: 'king',
+          bedCount: 1,
+          roomSize: 60,
+          view: 'city',
+          smokingPolicy: 'non_smoking'
+        },
+        amenities: [
+          { code: 'WIFI', name: 'WiFi', category: 'technology', isHighlight: false },
+          { code: 'TV', name: 'TV', category: 'entertainment', isHighlight: false },
+          { code: 'AC', name: 'Air Conditioning', category: 'comfort', isHighlight: false },
+          { code: 'MINIBAR', name: 'Mini Bar', category: 'comfort', isHighlight: true },
+          { code: 'ROOMSERVICE', name: 'Room Service', category: 'other', isHighlight: false },
+          { code: 'BALCONY', name: 'Balcony', category: 'comfort', isHighlight: true },
+          { code: 'JACUZZI', name: 'Jacuzzi', category: 'comfort', isHighlight: true },
+          { code: 'LIVINGAREA', name: 'Living Area', category: 'comfort', isHighlight: true }
+        ],
+        totalRooms: 10,
+        baseRate: 8000,
+        baseCurrency: 'USD',
+        category: 'suite',
+        rank: 4,
+        isActive: true,
+        isPublished: true,
+        content: {
+          baseLanguage: 'EN',
+          contentKeys: {
+            name: 'room.type.ste.name',
+            description: 'room.type.ste.description',
+            shortDescription: 'room.type.ste.short_description',
+            amenities: 'room.type.ste.amenities'
+          },
+          autoTranslate: true,
+          translationPriority: 'high',
+          translations: []
+        },
+        channels: [],
+        images: [],
+        translationCompleteness: 0
+      },
+      {
+        hotelId: hotel._id,
+        code: 'EXE',
+        name: 'Executive Deluxe',
+        description: 'Executive room with business amenities and premium city view',
+        shortDescription: 'Executive room with business amenities',
+        specifications: {
+          maxOccupancy: 4,
+          bedType: 'queen',
+          bedCount: 1,
+          roomSize: 45,
+          view: 'city',
+          smokingPolicy: 'non_smoking'
+        },
+        amenities: [
+          { code: 'WIFI', name: 'WiFi', category: 'technology', isHighlight: false },
+          { code: 'TV', name: 'TV', category: 'entertainment', isHighlight: false },
+          { code: 'AC', name: 'Air Conditioning', category: 'comfort', isHighlight: false },
+          { code: 'MINIBAR', name: 'Mini Bar', category: 'comfort', isHighlight: true },
+          { code: 'ROOMSERVICE', name: 'Room Service', category: 'other', isHighlight: false },
+          { code: 'CITYVIEW', name: 'City View', category: 'comfort', isHighlight: true },
+          { code: 'WORKDESK', name: 'Work Desk', category: 'business', isHighlight: false },
+          { code: 'BREAKFAST', name: 'Complimentary Breakfast', category: 'other', isHighlight: true }
+        ],
+        totalRooms: 15,
+        baseRate: 6000,
+        baseCurrency: 'USD',
+        category: 'executive',
+        rank: 3,
+        isActive: true,
+        isPublished: true,
+        content: {
+          baseLanguage: 'EN',
+          contentKeys: {
+            name: 'room.type.exe.name',
+            description: 'room.type.exe.description',
+            shortDescription: 'room.type.exe.short_description',
+            amenities: 'room.type.exe.amenities'
+          },
+          autoTranslate: true,
+          translationPriority: 'medium',
+          translations: []
+        },
+        channels: [],
+        images: [],
+        translationCompleteness: 0
+      }
+    ];
+
+    const createdRoomTypes = await RoomType.create(roomTypes);
+    logger.info(`Created ${createdRoomTypes.length} room types`);
 
     // Create staff user
     const staffUser = await User.create({
@@ -243,13 +434,13 @@ const seedData = async () => {
     ]);
 
     // Create rooms
-    const roomTypes = ['single', 'double', 'suite', 'deluxe'];
+    const legacyRoomTypes = ['single', 'double', 'suite', 'deluxe'];
     const rooms = [];
 
     for (let floor = 1; floor <= 10; floor++) {
       for (let roomNum = 1; roomNum <= 10; roomNum++) {
         const roomNumber = `${floor}${roomNum.toString().padStart(2, '0')}`;
-        const type = roomTypes[Math.floor(Math.random() * roomTypes.length)];
+        const type = legacyRoomTypes[Math.floor(Math.random() * legacyRoomTypes.length)];
         let baseRate;
 
         switch (type) {
@@ -348,6 +539,8 @@ const seedData = async () => {
           specialRequests: Math.random() > 0.7 ? 'Late check-in requested' : null
         },
         bookingNumber: `BK${Date.now()}${i.toString().padStart(3, '0')}`,
+        source: 'direct',
+        channelBookingId: `DIRECT-${Date.now()}-${i}`,
         idempotencyKey: `seed-${i}-${Date.now()}`,
         reservedUntil: ['confirmed', 'checked_in', 'checked_out'].includes(status) ? null : undefined
       });
@@ -730,9 +923,14 @@ const seedData = async () => {
     // Create Supply Requests
     const supplyData = [];
     for (let i = 0; i < 15; i++) {
+      const timestamp = Date.now() + i * 1000; // Add offset to prevent duplicates
+      const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+      const requestNumber = `SR${timestamp.toString().slice(-8)}${random}${i.toString().padStart(2, '0')}`;
+      
       supplyData.push({
         hotelId: hotel._id,
         title: 'Supply Request for Housekeeping',
+        requestNumber,
         requestedBy: staffUser._id,
         requesterId: staffUser._id,
         department: ['housekeeping', 'maintenance', 'kitchen', 'front_desk'][Math.floor(Math.random() * 4)],

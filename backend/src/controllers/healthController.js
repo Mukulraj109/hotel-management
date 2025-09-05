@@ -197,12 +197,17 @@ export const getLiveness = async (req, res, next) => {
 
 export const getVersion = async (req, res, next) => {
   try {
-    const packageJson = await import('../../../package.json', { assert: { type: 'json' } });
+    // Using static values to avoid import assertion syntax issues
+    const packageInfo = {
+      name: 'hotel-backend',
+      version: '1.0.0',
+      description: 'Hotel Management System Backend API'
+    };
     
     const versionInfo = {
-      name: packageJson.default.name,
-      version: packageJson.default.version,
-      description: packageJson.default.description,
+      name: packageInfo.name,
+      version: packageInfo.version,
+      description: packageInfo.description,
       node: process.version,
       environment: process.env.NODE_ENV || 'development',
       buildTime: process.env.BUILD_TIME || 'unknown',

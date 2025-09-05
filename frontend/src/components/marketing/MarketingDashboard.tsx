@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { Mail, Globe, Users, Star, TrendingUp, Eye, MousePointer, ShoppingCart, Target } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
 import { formatCurrency } from '@/utils/currencyUtils';
+import { bookingEngineService, MarketingDashboardData } from '@/services/bookingEngineService';
 
 interface MarketingStats {
   widgetPerformance: {
@@ -47,12 +48,8 @@ const MarketingDashboard: React.FC = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/v1/booking-engine/dashboard');
-      const data = await response.json();
-      
-      if (data.success) {
-        setStats(data.data);
-      }
+      const data = await bookingEngineService.getMarketingDashboard();
+      setStats(data);
     } catch (error) {
       console.error('Error fetching marketing dashboard:', error);
     } finally {
