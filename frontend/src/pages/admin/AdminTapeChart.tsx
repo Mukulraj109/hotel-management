@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import TapeChartView from '../../components/tapechart/TapeChartView';
 import RoomBlocks from '../../components/tapechart/RoomBlocks';
 import AdvancedReservations from '../../components/tapechart/AdvancedReservations';

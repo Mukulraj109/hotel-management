@@ -6,7 +6,9 @@
       "Bash(MONGO_URI=\"mongodb+srv://mukulraj756:Zk8q2W4uDCaUWRh3@cluster0.thahvbk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0\" node src/scripts/seed.js)",
       "Read(//c/Users/Mukul raj/OneDrive/Pictures/Screenshots/**)",
       "Bash(npm run seed:*)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(grep:*)",
+      "Bash(xargs sed:*)"
     ],
     "deny": [],
     "ask": []

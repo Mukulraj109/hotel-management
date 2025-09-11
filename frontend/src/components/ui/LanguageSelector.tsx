@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Check, ChevronDown, Globe, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
+import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
-import { Badge } from '@/components/ui/Badge';
+import { Badge } from '@/components/ui/badge';
 import { useLanguageSwitch, useTranslation } from '@/context/LocalizationContext';
 import { cn } from '@/utils/cn';
 

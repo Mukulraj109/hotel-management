@@ -13,10 +13,10 @@ import {
   Calendar,
   Eye
 } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { Modal } from '@/components/ui/Modal';
-import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Modal } from '@/components/ui/modal';
+import { Input } from '@/components/ui/input';
 import reviewsService, { Review, ReviewSummary } from '../../services/reviewsService';
 import { cn } from '../../utils/cn';
 import { useAuth } from '../../context/AuthContext';

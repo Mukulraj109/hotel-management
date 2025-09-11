@@ -16,8 +16,8 @@ import { OccupancyBreakdownPopup } from '../../components/dashboard/OccupancyBre
 import { BookingsBreakdownPopup } from '../../components/dashboard/BookingsBreakdownPopup';
 import { SatisfactionBreakdownPopup } from '../../components/dashboard/SatisfactionBreakdownPopup';
 import { StatusBadge } from '../../components/dashboard/StatusBadge';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { useDashboardOverview, useOccupancyData, useRevenueData } from '../../hooks/useDashboard';
 import { formatCurrency, formatPercentage, formatRelativeTime } from '../../utils/dashboardUtils';
 import { useAuth } from '../../context/AuthContext';

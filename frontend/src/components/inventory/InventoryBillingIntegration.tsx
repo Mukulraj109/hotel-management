@@ -15,9 +15,9 @@ import {
   Eye,
   RefreshCw
 } from 'lucide-react';
-import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '../LoadingSpinner';
 import { roomInventoryService } from '../../services/roomInventoryService';
 import { formatCurrency, formatDate } from '../../utils/formatters';

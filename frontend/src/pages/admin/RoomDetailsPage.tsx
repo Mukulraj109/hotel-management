@@ -3,8 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useRoom, useRoomMetrics, useUpdateRoomStatus } from '../../hooks/useRooms';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
-import { Card, CardHeader, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
+import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency, formatPercentage } from '../../utils/dashboardUtils';
 import { 

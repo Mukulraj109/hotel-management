@@ -1,7 +1,7 @@
 import React from 'react';
 import { Search } from 'lucide-react';
 import { cn } from '@/utils/cn';
-import { Input } from '@/components/ui/Input';
+import { Input } from '@/components/ui/input';
 
 // Command Context
 const CommandContext = React.createContext<{

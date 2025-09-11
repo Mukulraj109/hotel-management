@@ -15,9 +15,9 @@ import {
   Upload,
   X
 } from 'lucide-react';
-import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '../LoadingSpinner';
 import { useAuth } from '../../context/AuthContext';
 import { formatRelativeTime } from '../../utils/dashboardUtils';

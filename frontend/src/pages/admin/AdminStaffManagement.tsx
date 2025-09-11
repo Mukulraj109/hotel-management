@@ -16,12 +16,12 @@ import {
   Filter,
   MoreHorizontal
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Badge } from '@/components/ui/Badge';
-import { Modal } from '@/components/ui/Modal';
-import { Select } from '@/components/ui/Select';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Modal } from '@/components/ui/modal';
+import { Select } from '@/components/ui/select';
 import { DataTable } from '../../components/dashboard/DataTable';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { staffService } from '../../services/staffService';

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import FinancialDashboard from '../../components/financial/FinancialDashboard';
 import ChartOfAccounts from '../../components/financial/ChartOfAccounts';
 import GeneralLedger from '../../components/financial/GeneralLedger';

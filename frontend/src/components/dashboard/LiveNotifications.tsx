@@ -1,9 +1,9 @@
 import React from 'react';
 import { Bell, User, CreditCard, Calendar, AlertTriangle, CheckCircle } from 'lucide-react';
 import { useDashboardUpdates } from '../../hooks/useDashboardUpdates';
-import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 interface LiveNotificationsProps {
   className?: string;

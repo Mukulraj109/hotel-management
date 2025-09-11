@@ -12,10 +12,10 @@ import {
   PieChart,
   LineChart,
 } from '../../../components/dashboard';
-import { Button } from '@/components/ui/Button';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Modal } from '@/components/ui/modal';
 import { useAlerts } from '../../../hooks/useDashboard';
 import { formatRelativeTime, sortAlerts } from '../../../utils/dashboardUtils';
 import type { Alert } from '../../../types/dashboard';

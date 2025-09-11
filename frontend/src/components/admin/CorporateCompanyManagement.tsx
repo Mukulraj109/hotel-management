@@ -21,8 +21,8 @@ import {
   DollarSign
 } from 'lucide-react';
 import { cn } from '../../utils/cn';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '../LoadingSpinner';
 import { formatCurrency, formatDate } from '../../utils/dashboardUtils';
 import toast from 'react-hot-toast';

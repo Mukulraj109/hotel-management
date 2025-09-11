@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '../../utils/cn';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 interface ChartCardProps {
   title: string;

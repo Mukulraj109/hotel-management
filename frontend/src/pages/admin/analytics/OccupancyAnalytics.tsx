@@ -13,8 +13,8 @@ import {
   ProgressBar,
 } from '../../../components/dashboard';
 import { StatusBadge } from '../../../components/dashboard/StatusBadge';
-import { Button } from '@/components/ui/Button';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { useOccupancyData, useOperationsData } from '../../../hooks/useDashboard';
 import { formatPercentage, calculateOccupancyRate } from '../../../utils/dashboardUtils';
 

@@ -17,8 +17,8 @@ import {
   Edit,
   Trash2
 } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatDate, formatCurrency } from '../../utils/formatters';
 import { SERVICE_VARIATIONS } from '../../utils/currencyUtils';
