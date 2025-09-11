@@ -121,8 +121,23 @@ class LoyaltyService {
    * Redeem points for an offer
    */
   async redeemPoints(offerId: string): Promise<RedemptionResult> {
-    const response = await api.post('/loyalty/redeem', { offerId });
-    return response.data.data;
+    console.log('🎯 FRONTEND: Starting loyalty redemption');
+    console.log('🎯 Offer ID:', offerId);
+    console.log('🎯 Request payload:', { offerId });
+    
+    try {
+      console.log('🎯 Making API call to /loyalty/redeem');
+      const response = await api.post('/loyalty/redeem', { offerId });
+      console.log('🎯 API response received:', response.status);
+      console.log('🎯 Response data:', response.data);
+      return response.data.data;
+    } catch (error: any) {
+      console.error('🎯 ERROR in redeemPoints:', error);
+      console.error('🎯 Error status:', error.response?.status);
+      console.error('🎯 Error data:', error.response?.data);
+      console.error('🎯 Full error object:', error);
+      throw error;
+    }
   }
 
   /**

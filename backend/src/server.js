@@ -50,7 +50,7 @@ import communicationRoutes from './routes/communications.js'; // Temporarily dis
 import messageTemplateRoutes from './routes/messageTemplates.js'; // Temporarily disabled
 import contactRoutes from './routes/contact.js'; // Temporarily disabled
 import billingHistoryRoutes from './routes/billingHistory.js'; // Temporarily disabled
-import loyaltyRoutes from './routes/loyalty.js'; // Temporarily disabled
+import loyaltyRoutes from './routes/loyalty.js';
 import hotelServicesRoutes from './routes/hotelServices.js'; // Temporarily disabled
 import notificationRoutes from './routes/notifications.js'; // Temporarily disabled
 import digitalKeyRoutes from './routes/digitalKeys.js'; // Temporarily disabled

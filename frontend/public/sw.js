@@ -433,34 +433,98 @@ self.addEventListener('push', (event) => {
   console.log('Push notification received');
   
   let notificationData = {
-    title: 'Hotel Management',
+    title: 'PENTOUZ Hotel',
     body: 'You have a new notification',
     icon: '/icons/icon-192x192.png',
     badge: '/icons/badge-72x72.png',
-    tag: 'general'
+    tag: 'general',
+    requireInteraction: false,
+    silent: false,
+    vibrate: [200, 100, 200]
   };
   
   if (event.data) {
     try {
       const data = event.data.json();
-      notificationData = { ...notificationData, ...data };
+      notificationData = { 
+        ...notificationData, 
+        ...data,
+        // Map notification types to appropriate styling
+        icon: getNotificationIcon(data.type),
+        requireInteraction: data.priority === 'urgent' || data.priority === 'high',
+        vibrate: data.priority === 'urgent' ? [300, 100, 300, 100, 300] : [200, 100, 200]
+      };
     } catch (error) {
       console.error('Error parsing push notification data:', error);
     }
   }
   
+  // Add action buttons based on notification type
+  const actions = getNotificationActions(notificationData.type);
+  
   event.waitUntil(
     self.registration.showNotification(notificationData.title, {
-      body: notificationData.body,
+      body: notificationData.message || notificationData.body,
       icon: notificationData.icon,
       badge: notificationData.badge,
-      tag: notificationData.tag,
-      requireInteraction: notificationData.requireInteraction || false,
-      actions: notificationData.actions || [],
-      data: notificationData.data || {}
+      tag: notificationData.type || notificationData.tag,
+      requireInteraction: notificationData.requireInteraction,
+      silent: notificationData.silent,
+      vibrate: notificationData.vibrate,
+      actions: actions,
+      data: {
+        notificationId: notificationData._id,
+        type: notificationData.type,
+        actionUrl: notificationData.actionUrl || '/guest/notifications',
+        metadata: notificationData.metadata
+      }
     })
   );
 });
+
+// Get notification icon based on type
+function getNotificationIcon(type) {
+  const iconMap = {
+    'welcome': '/icons/welcome-icon.png',
+    'booking_confirmation': '/icons/booking-icon.png',
+    'booking_reminder': '/icons/reminder-icon.png',
+    'service_reminder': '/icons/service-icon.png',
+    'payment_success': '/icons/payment-icon.png',
+    'payment_failed': '/icons/error-icon.png',
+    'promotional': '/icons/promo-icon.png',
+    'system_alert': '/icons/alert-icon.png'
+  };
+  
+  return iconMap[type] || '/icons/icon-192x192.png';
+}
+
+// Get notification actions based on type
+function getNotificationActions(type) {
+  const baseActions = [
+    { action: 'view', title: 'View', icon: '/icons/view-icon.png' },
+    { action: 'dismiss', title: 'Dismiss', icon: '/icons/dismiss-icon.png' }
+  ];
+  
+  const typeSpecificActions = {
+    'booking_reminder': [
+      { action: 'view', title: 'View Booking', icon: '/icons/view-icon.png' },
+      { action: 'snooze', title: 'Remind Later', icon: '/icons/snooze-icon.png' },
+      { action: 'dismiss', title: 'Dismiss', icon: '/icons/dismiss-icon.png' }
+    ],
+    'service_reminder': [
+      { action: 'view', title: 'View Details', icon: '/icons/view-icon.png' },
+      { action: 'confirm', title: 'Confirm', icon: '/icons/confirm-icon.png' },
+      { action: 'reschedule', title: 'Reschedule', icon: '/icons/reschedule-icon.png' }
+    ],
+    'promotional': [
+      { action: 'view', title: 'View Offer', icon: '/icons/view-icon.png' },
+      { action: 'save', title: 'Save Offer', icon: '/icons/save-icon.png' },
+      { action: 'dismiss', title: 'Not Interested', icon: '/icons/dismiss-icon.png' }
+    ]
+  };
+  
+  return typeSpecificActions[type] || baseActions;
+}
 
 // Notification click handling
 self.addEventListener('notificationclick', (event) => {

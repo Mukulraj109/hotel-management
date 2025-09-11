@@ -72,9 +72,10 @@ export default function GuestSidebar({ isOpen = false, onClose }: GuestSidebarPr
       {/* Sidebar */}
       <aside className={`
         fixed lg:static top-0 left-0 z-50 lg:z-auto
-        w-64 bg-white shadow-sm border-r border-gray-200 min-h-screen
+        w-64 bg-white shadow-sm border-r border-gray-200 h-screen lg:h-full
         transform ${isOpen ? 'translate-x-0' : '-translate-x-full'} 
         lg:translate-x-0 transition-transform duration-300 ease-in-out
+        flex flex-col overflow-hidden
       `}>
         {/* Mobile header with close button */}
         <div className="lg:hidden flex items-center justify-between p-4 border-b border-gray-200">
@@ -96,7 +97,7 @@ export default function GuestSidebar({ isOpen = false, onClose }: GuestSidebarPr
           </button>
         </div>
 
-        <nav className="p-4 lg:p-6">
+        <nav className="p-4 lg:p-6 flex-1 overflow-y-auto scrollbar-hide">
           {/* Dashboard Navigation */}
           <div className="mb-6">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">

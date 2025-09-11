@@ -90,65 +90,67 @@ export default function GuestDashboard() {
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+    <div className="max-w-7xl mx-auto space-y-6 sm:space-y-8">
       {/* Welcome Header */}
-      <div className="mb-6 sm:mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
-          Welcome back, {user?.name}!
-        </h1>
-        <p className="text-gray-600 text-sm sm:text-base">
-          Manage your bookings and explore your loyalty benefits
-        </p>
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-6 sm:py-8 text-white rounded-none sm:rounded-xl sm:mx-0">
+        <div className="max-w-7xl mx-auto">
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2">
+            Welcome back, {user?.name}!
+          </h1>
+          <p className="text-blue-100 text-sm sm:text-base">
+            Manage your bookings and explore your loyalty benefits
+          </p>
+        </div>
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
-        <Card className="p-4 sm:p-5 lg:p-6 hover:shadow-md transition-shadow">
+        <Card className="p-4 sm:p-5 lg:p-6 hover:shadow-lg hover:scale-105 transition-all duration-200 border-l-4 border-blue-500 bg-gradient-to-br from-white to-blue-50">
           <div className="flex items-center">
-            <div className="p-2 sm:p-3 bg-blue-100 rounded-lg flex-shrink-0">
-              <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
+            <div className="p-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex-shrink-0 shadow-md">
+              <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
-            <div className="ml-3 sm:ml-4 min-w-0">
-              <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Total Bookings</p>
-              <p className="text-xl sm:text-2xl font-semibold text-gray-900">{stats.totalBookings}</p>
+            <div className="ml-4 min-w-0">
+              <p className="text-xs sm:text-sm font-medium text-blue-700 truncate">Total Bookings</p>
+              <p className="text-xl sm:text-2xl font-bold text-blue-900">{stats.totalBookings}</p>
             </div>
           </div>
         </Card>
 
-        <Card className="p-4 sm:p-5 lg:p-6 hover:shadow-md transition-shadow">
+        <Card className="p-4 sm:p-5 lg:p-6 hover:shadow-lg hover:scale-105 transition-all duration-200 border-l-4 border-green-500 bg-gradient-to-br from-white to-green-50">
           <div className="flex items-center">
-            <div className="p-2 sm:p-3 bg-green-100 rounded-lg flex-shrink-0">
-              <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
+            <div className="p-3 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex-shrink-0 shadow-md">
+              <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
-            <div className="ml-3 sm:ml-4 min-w-0">
-              <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Upcoming</p>
-              <p className="text-xl sm:text-2xl font-semibold text-gray-900">{stats.upcomingBookings}</p>
+            <div className="ml-4 min-w-0">
+              <p className="text-xs sm:text-sm font-medium text-green-700 truncate">Upcoming</p>
+              <p className="text-xl sm:text-2xl font-bold text-green-900">{stats.upcomingBookings}</p>
             </div>
           </div>
         </Card>
 
-        <Card className="p-4 sm:p-5 lg:p-6 hover:shadow-md transition-shadow">
+        <Card className="p-4 sm:p-5 lg:p-6 hover:shadow-lg hover:scale-105 transition-all duration-200 border-l-4 border-yellow-500 bg-gradient-to-br from-white to-yellow-50">
           <div className="flex items-center">
-            <div className="p-2 sm:p-3 bg-yellow-100 rounded-lg flex-shrink-0">
-              <CreditCard className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-600" />
+            <div className="p-3 bg-gradient-to-br from-yellow-500 to-yellow-600 rounded-xl flex-shrink-0 shadow-md">
+              <CreditCard className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
-            <div className="ml-3 sm:ml-4 min-w-0">
-              <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Total Spent</p>
-              <p className="text-xl sm:text-2xl font-semibold text-gray-900 truncate">
+            <div className="ml-4 min-w-0">
+              <p className="text-xs sm:text-sm font-medium text-yellow-700 truncate">Total Spent</p>
+              <p className="text-xl sm:text-2xl font-bold text-yellow-900 truncate">
                 {formatCurrency(stats.totalSpent)}
               </p>
             </div>
           </div>
         </Card>
 
-        <Card className="p-4 sm:p-5 lg:p-6 hover:shadow-md transition-shadow">
+        <Card className="p-4 sm:p-5 lg:p-6 hover:shadow-lg hover:scale-105 transition-all duration-200 border-l-4 border-purple-500 bg-gradient-to-br from-white to-purple-50">
           <div className="flex items-center">
-            <div className="p-2 sm:p-3 bg-purple-100 rounded-lg flex-shrink-0">
-              <Star className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
+            <div className="p-3 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex-shrink-0 shadow-md">
+              <Star className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
             </div>
-            <div className="ml-3 sm:ml-4 min-w-0">
-              <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Loyalty Points</p>
-              <p className="text-xl sm:text-2xl font-semibold text-gray-900">{stats.loyaltyPoints}</p>
+            <div className="ml-4 min-w-0">
+              <p className="text-xs sm:text-sm font-medium text-purple-700 truncate">Loyalty Points</p>
+              <p className="text-xl sm:text-2xl font-bold text-purple-900">{stats.loyaltyPoints}</p>
             </div>
           </div>
         </Card>
@@ -156,7 +158,7 @@ export default function GuestDashboard() {
 
       {/* Recent Bookings */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
-        <Card className="p-4 sm:p-6">
+        <Card className="p-6 shadow-lg hover:shadow-xl transition-shadow duration-300">
           <div className="flex items-center justify-between mb-4 sm:mb-6">
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Recent Bookings</h2>
             <button 
@@ -181,19 +183,19 @@ export default function GuestDashboard() {
           ) : (
             <div className="space-y-4">
               {stats.recentBookings.map((booking) => (
-                <div key={booking._id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 bg-gray-50 rounded-lg gap-3 sm:gap-0">
-                  <div>
-                    <p className="font-medium text-gray-900">{booking.hotelId?.name || 'Hotel'}</p>
-                    <p className="text-sm text-gray-600">
+                <div key={booking._id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 bg-gray-50 rounded-lg gap-3 sm:gap-0 hover:bg-gray-100 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900 truncate">{booking.hotelId?.name || 'Hotel'}</p>
+                    <p className="text-sm text-gray-600 mt-1">
                       {formatDate(booking.checkIn)} - {formatDate(booking.checkOut)}
                     </p>
-                    <p className="text-xs text-gray-500">#{booking.bookingNumber}</p>
+                    <p className="text-xs text-gray-500 mt-1">#{booking.bookingNumber}</p>
                   </div>
-                  <div className="text-right">
+                  <div className="flex flex-row sm:flex-col items-start sm:items-end justify-between sm:justify-start gap-2 sm:gap-1">
                     <p className="font-semibold text-gray-900">
                       {formatCurrency(booking.totalAmount, booking.currency)}
                     </p>
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium capitalize ${
                       booking.status === 'confirmed' 
                         ? 'bg-green-100 text-green-800' 
                         : booking.status === 'pending'
@@ -210,7 +212,7 @@ export default function GuestDashboard() {
         </Card>
 
         {/* Loyalty Program */}
-        <Card className="p-4 sm:p-6">
+        <Card className="p-6 shadow-lg hover:shadow-xl transition-shadow duration-300 bg-gradient-to-br from-white to-yellow-50">
           <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 sm:mb-6">Loyalty Status</h2>
           
           <div className="text-center mb-4 sm:mb-6">
@@ -297,29 +299,29 @@ export default function GuestDashboard() {
 
       {/* Quick Actions */}
       <div className="mt-6 sm:mt-8">
-        <Card className="p-4 sm:p-6">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 sm:mb-6">Quick Actions</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <Card className="p-6 shadow-lg hover:shadow-xl transition-shadow duration-300">
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-6">Quick Actions</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <button
               onClick={() => window.location.href = '/rooms'}
-              className="flex items-center justify-center p-4 sm:p-5 bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100 active:bg-yellow-200 transition-colors min-h-[3rem] touch-manipulation"
+              className="group flex items-center justify-center p-5 bg-gradient-to-br from-yellow-50 to-yellow-100 border-2 border-yellow-200 rounded-xl hover:from-yellow-100 hover:to-yellow-200 hover:border-yellow-300 hover:scale-105 active:scale-95 transition-all duration-200 min-h-[3.5rem] touch-manipulation shadow-md"
             >
-              <Calendar className="w-5 h-5 text-yellow-600 mr-2 flex-shrink-0" />
-              <span className="font-medium text-yellow-700 text-sm sm:text-base">Book a Room</span>
+              <Calendar className="w-5 h-5 text-yellow-600 mr-3 flex-shrink-0 group-hover:scale-110 transition-transform" />
+              <span className="font-semibold text-yellow-700 text-sm sm:text-base">Book a Room</span>
             </button>
             <button
               onClick={() => window.location.href = '/guest/bookings'}
-              className="flex items-center justify-center p-4 sm:p-5 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 active:bg-blue-200 transition-colors min-h-[3rem] touch-manipulation"
+              className="group flex items-center justify-center p-5 bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 rounded-xl hover:from-blue-100 hover:to-blue-200 hover:border-blue-300 hover:scale-105 active:scale-95 transition-all duration-200 min-h-[3.5rem] touch-manipulation shadow-md"
             >
-              <CreditCard className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0" />
-              <span className="font-medium text-blue-700 text-sm sm:text-base">My Bookings</span>
+              <CreditCard className="w-5 h-5 text-blue-600 mr-3 flex-shrink-0 group-hover:scale-110 transition-transform" />
+              <span className="font-semibold text-blue-700 text-sm sm:text-base">My Bookings</span>
             </button>
             <button
               onClick={() => window.location.href = '/contact'}
-              className="flex items-center justify-center p-4 sm:p-5 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 active:bg-green-200 transition-colors min-h-[3rem] touch-manipulation"
+              className="group flex items-center justify-center p-5 bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-xl hover:from-green-100 hover:to-green-200 hover:border-green-300 hover:scale-105 active:scale-95 transition-all duration-200 min-h-[3.5rem] touch-manipulation shadow-md"
             >
-              <Users className="w-5 h-5 text-green-600 mr-2 flex-shrink-0" />
-              <span className="font-medium text-green-700 text-sm sm:text-base">Contact Support</span>
+              <Users className="w-5 h-5 text-green-600 mr-3 flex-shrink-0 group-hover:scale-110 transition-transform" />
+              <span className="font-semibold text-green-700 text-sm sm:text-base">Contact Support</span>
             </button>
           </div>
         </Card>

@@ -39,6 +39,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
+import { PushNotificationSetup } from '../../components/notifications/PushNotificationSetup';
 import toast from 'react-hot-toast';
 
 export default function NotificationsDashboard() {
@@ -51,7 +52,6 @@ export default function NotificationsDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [selectedNotifications, setSelectedNotifications] = useState<string[]>([]);
-  const [showPreferences, setShowPreferences] = useState(false);
   const [activeTab, setActiveTab] = useState<'notifications' | 'preferences'>('notifications');
 
   const queryClient = useQueryClient();
@@ -97,7 +97,7 @@ export default function NotificationsDashboard() {
   } = useQuery({
     queryKey: ['notificationPreferences'],
     queryFn: notificationService.getPreferences,
-    enabled: showPreferences
+    enabled: activeTab === 'preferences'
   });
 
   // Mutations
@@ -276,32 +276,25 @@ export default function NotificationsDashboard() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">Notifications</h1>
-            <p className="mt-2 text-gray-600">
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
+      <div className="mb-6 sm:mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 truncate">Notifications</h1>
+            <p className="mt-1 sm:mt-2 text-sm sm:text-base text-gray-600">
               Stay updated with your hotel activities and important information
             </p>
           </div>
-          <div className="flex items-center space-x-3">
-            <Button
-              variant="outline"
-              onClick={() => setShowPreferences(!showPreferences)}
-              className="flex items-center space-x-2"
-            >
-              <Settings className="h-4 w-4" />
-              <span>Preferences</span>
-            </Button>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 sm:flex-shrink-0">
             {notificationsData?.unreadCount > 0 && (
               <Button
                 onClick={handleMarkAllAsRead}
                 disabled={markAllAsReadMutation.isLoading}
-                className="flex items-center space-x-2"
+                className="flex items-center justify-center space-x-2 min-h-[2.5rem] text-sm"
               >
                 <Check className="h-4 w-4" />
-                <span>Mark All Read</span>
+                <span className="hidden sm:inline">Mark All Read</span>
+                <span className="sm:hidden">Mark Read</span>
               </Button>
             )}
           </div>
@@ -309,19 +302,21 @@ export default function NotificationsDashboard() {
 
         {/* Unread count badge */}
         {notificationsData?.unreadCount > 0 && (
-          <div className="mt-4 inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-            <Bell className="h-4 w-4 mr-2" />
-            {notificationsData.unreadCount} unread notification{notificationsData.unreadCount !== 1 ? 's' : ''}
+          <div className="mt-3 sm:mt-4 inline-flex items-center px-3 py-2 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+            <Bell className="h-4 w-4 mr-2 flex-shrink-0" />
+            <span className="truncate">
+              {notificationsData.unreadCount} unread notification{notificationsData.unreadCount !== 1 ? 's' : ''}
+            </span>
           </div>
         )}
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex space-x-8">
+      <div className="border-b border-gray-200 mb-4 sm:mb-6">
+        <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto">
           <button
             onClick={() => setActiveTab('notifications')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+            className={`py-2 px-2 sm:px-1 border-b-2 font-medium text-sm whitespace-nowrap flex-shrink-0 ${
               activeTab === 'notifications'
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -331,7 +326,7 @@ export default function NotificationsDashboard() {
           </button>
           <button
             onClick={() => setActiveTab('preferences')}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+            className={`py-2 px-2 sm:px-1 border-b-2 font-medium text-sm whitespace-nowrap flex-shrink-0 ${
               activeTab === 'preferences'
                 ? 'border-blue-500 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -475,27 +470,32 @@ export default function NotificationsDashboard() {
 
           {/* Pagination */}
           {notificationsData?.pagination.totalPages > 1 && (
-            <div className="mt-8 flex items-center justify-between">
-              <div className="text-sm text-gray-700">
-                Showing {((notificationsData.pagination.currentPage - 1) * notificationsData.pagination.itemsPerPage) + 1} to{' '}
-                {Math.min(notificationsData.pagination.currentPage * notificationsData.pagination.itemsPerPage, notificationsData.pagination.totalItems)} of{' '}
-                {notificationsData.pagination.totalItems} results
-              </div>
-              <div className="flex space-x-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                >
-                  Previous
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setCurrentPage(prev => Math.min(notificationsData.pagination.totalPages, prev + 1))}
-                  disabled={currentPage === notificationsData.pagination.totalPages}
-                >
-                  Next
-                </Button>
+            <div className="mt-6 sm:mt-8">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="text-xs sm:text-sm text-gray-700 text-center sm:text-left">
+                  Showing {((notificationsData.pagination.currentPage - 1) * notificationsData.pagination.itemsPerPage) + 1} to{' '}
+                  {Math.min(notificationsData.pagination.currentPage * notificationsData.pagination.itemsPerPage, notificationsData.pagination.totalItems)} of{' '}
+                  {notificationsData.pagination.totalItems} results
+                </div>
+                <div className="flex justify-center sm:justify-end space-x-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="text-sm px-3 py-2"
+                  >
+                    <span className="hidden sm:inline">Previous</span>
+                    <span className="sm:hidden">Prev</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setCurrentPage(prev => Math.min(notificationsData.pagination.totalPages, prev + 1))}
+                    disabled={currentPage === notificationsData.pagination.totalPages}
+                    className="text-sm px-3 py-2"
+                  >
+                    Next
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -540,37 +540,39 @@ function NotificationCard({
   const IconComponent = getIconComponent(typeInfo.icon);
 
   return (
-    <Card className={`p-4 transition-all duration-200 ${isUnread ? 'border-l-4 border-l-blue-500 bg-blue-50' : ''}`}>
-      <div className="flex items-start space-x-4">
+    <Card className={`p-3 sm:p-4 transition-all duration-200 ${isUnread ? 'border-l-4 border-l-blue-500 bg-blue-50' : ''}`}>
+      <div className="flex items-start space-x-3 sm:space-x-4">
         {/* Checkbox */}
         <input
           type="checkbox"
           checked={isSelected}
           onChange={onSelect}
-          className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+          className="mt-1 rounded border-gray-300 text-blue-600 focus:ring-blue-500 flex-shrink-0"
         />
 
         {/* Icon */}
-        <div className={`p-2 rounded-full ${typeInfo.color}`}>
-          <IconComponent className="h-5 w-5" />
+        <div className={`p-1.5 sm:p-2 rounded-full ${typeInfo.color} flex-shrink-0`}>
+          <IconComponent className="h-4 w-4 sm:h-5 sm:w-5" />
         </div>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center space-x-2 mb-1">
-                <h3 className="text-sm font-medium text-gray-900 truncate">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-col space-y-2">
+                <h3 className="text-sm font-medium text-gray-900 leading-tight">
                   {notification.title}
                 </h3>
-                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${priorityInfo.color}`}>
-                  {priorityInfo.label}
-                </span>
-                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusInfo.color}`}>
-                  {statusInfo.label}
-                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${priorityInfo.color} flex-shrink-0`}>
+                    {priorityInfo.label}
+                  </span>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${statusInfo.color} flex-shrink-0`}>
+                    {statusInfo.label}
+                  </span>
+                </div>
               </div>
-              <p className="text-sm text-gray-600 mb-2">{notification.message}</p>
+              <p className="text-sm text-gray-600 mt-2 mb-2 leading-relaxed">{notification.message}</p>
               
               {/* Metadata */}
               {notification.metadata && (
@@ -678,29 +680,58 @@ function NotificationPreferences({
     );
   }
 
+  // Get icon component
+  const getIconComponent = (iconName: string) => {
+    const iconMap: Record<string, React.ComponentType<any>> = {
+      'check-circle': CheckCircle,
+      'clock': Clock,
+      'x-circle': XCircle,
+      'credit-card': CreditCard,
+      'alert-circle': AlertCircle,
+      'star': Star,
+      'calendar': Calendar,
+      'bell': Bell,
+      'gift': Gift,
+      'alert-triangle': AlertTriangle,
+      'heart': Heart,
+      'log-in': LogIn,
+      'log-out': LogOut,
+      'message-square': MessageSquare,
+      'tag': Tag,
+      'help-circle': HelpCircle,
+      'minus': Minus,
+      'circle': Circle,
+      'alert-octagon': AlertOctagon,
+      'mail': Mail,
+      'message-circle': MessageCircle,
+      'smartphone': Smartphone
+    };
+    return iconMap[iconName] || HelpCircle;
+  };
+
   const getChannelIcon = (channelId: string) => {
     const channel = notificationChannels.find(c => c.id === channelId);
     return channel ? getIconComponent(channel.icon) : HelpCircle;
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Channel Tabs */}
       <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
+        <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto">
           {notificationChannels.map((channel) => {
             const IconComponent = getChannelIcon(channel.id);
             return (
               <button
                 key={channel.id}
                 onClick={() => setActiveChannel(channel.id)}
-                className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
+                className={`py-2 px-2 sm:px-1 border-b-2 font-medium text-sm flex items-center space-x-2 whitespace-nowrap flex-shrink-0 ${
                   activeChannel === channel.id
                     ? 'border-blue-500 text-blue-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                <IconComponent className="h-4 w-4" />
+                <IconComponent className="h-4 w-4 flex-shrink-0" />
                 <span>{channel.name}</span>
               </button>
             );

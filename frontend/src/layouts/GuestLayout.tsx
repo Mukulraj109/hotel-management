@@ -15,12 +15,14 @@ export default function GuestLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-screen bg-gray-50 overflow-hidden flex flex-col">
       <GuestHeader onMenuToggle={toggleMobileMenu} />
-      <div className="flex">
+      <div className="flex flex-1 overflow-hidden">
         <GuestSidebar isOpen={isMobileMenuOpen} onClose={closeMobileMenu} />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 lg:ml-0">
-          <Outlet />
+        <main className="flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="p-4 sm:p-6 lg:p-8 max-w-full">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

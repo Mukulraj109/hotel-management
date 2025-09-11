@@ -287,10 +287,21 @@ offerSchema.statics.getOffersByCategory = async function(category, hotelId = nul
     .populate('hotelId', 'name');
 };
 
+// Helper function to get tier hierarchy value
+const getTierValue = (tier) => {
+  const tierValues = {
+    bronze: 0,
+    silver: 1,
+    gold: 2,
+    platinum: 3
+  };
+  return tierValues[tier] || 0;
+};
+
 // Instance method to check if user can redeem this offer
 offerSchema.methods.canRedeem = function(userTier, userPoints) {
   if (!this.isValid) return false;
-  if (userTier < this.minTier) return false;
+  if (getTierValue(userTier) < getTierValue(this.minTier)) return false;
   if (userPoints < this.pointsRequired) return false;
   return true;
 };

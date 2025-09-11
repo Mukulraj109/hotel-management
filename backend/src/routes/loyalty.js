@@ -213,34 +213,73 @@ router.get('/transactions', authenticate, catchAsync(async (req, res) => {
  *         description: Invalid redemption request
  */
 router.post('/redeem', 
+  (req, res, next) => {
+    console.log('🔥 REQUEST REACHED LOYALTY ROUTE!', req.body);
+    console.log('🔥 Headers:', req.headers.authorization);
+    next();
+  },
   authenticate, 
   validate(schemas.redeemPoints),
   catchAsync(async (req, res) => {
+    console.log('🔥 LOYALTY REDEEM - Starting redemption process');
+    console.log('🔥 Request body:', req.body);
+    console.log('🔥 User ID:', req.user?._id);
+    
     const { offerId } = req.body;
+    console.log('🔥 Offer ID to redeem:', offerId);
 
     // Get the offer
+    console.log('🔥 Fetching offer from database...');
     const offer = await Offer.findById(offerId);
+    console.log('🔥 Found offer:', offer ? 'YES' : 'NO');
     if (!offer) {
+      console.log('🔥 ERROR: Offer not found');
       throw new AppError('Offer not found', 404);
     }
+    console.log('🔥 Offer details:', { title: offer.title, pointsRequired: offer.pointsRequired });
 
     // Get user with loyalty data
+    console.log('🔥 Fetching user with loyalty data...');
     const user = await User.findById(req.user._id).select('+loyalty');
+    console.log('🔥 Found user:', user ? 'YES' : 'NO');
+    console.log('🔥 User loyalty data:', user?.loyalty);
 
     // Validate redemption
-    if (!offer.canRedeem(user.loyalty.tier, user.loyalty.points)) {
-      throw new AppError('Cannot redeem this offer. Check tier requirements and available points.', 400);
+    console.log('🔥 Checking if user can redeem offer...');
+    console.log('🔥 User points:', user?.loyalty?.points);
+    console.log('🔥 User tier:', user?.loyalty?.tier);
+    console.log('🔥 Points required:', offer.pointsRequired);
+    console.log('🔥 Min tier required:', offer.minTier);
+    
+    try {
+      const canRedeem = offer.canRedeem(user.loyalty.tier, user.loyalty.points);
+      console.log('🔥 Can redeem result:', canRedeem);
+      if (!canRedeem) {
+        console.log('🔥 ERROR: Cannot redeem offer - insufficient points or tier');
+        throw new AppError('Cannot redeem this offer. Check tier requirements and available points.', 400);
+      }
+    } catch (error) {
+      console.log('🔥 ERROR in canRedeem check:', error.message);
+      throw error;
     }
 
     // Create redemption transaction
-    const loyaltyTransaction = await Loyalty.create({
-      userId: req.user._id,
-      hotelId: offer.hotelId,
-      type: 'redeemed',
-      points: -offer.pointsRequired,
-      description: `Redeemed: ${offer.title}`,
-      offerId: offer._id
-    });
+    console.log('🔥 Creating loyalty transaction...');
+    let loyaltyTransaction;
+    try {
+      loyaltyTransaction = await Loyalty.create({
+        userId: req.user._id,
+        hotelId: offer.hotelId,
+        type: 'redeemed',
+        points: -offer.pointsRequired,
+        description: `Redeemed: ${offer.title}`,
+        offerId: offer._id
+      });
+      console.log('🔥 Loyalty transaction created:', loyaltyTransaction._id);
+    } catch (error) {
+      console.log('🔥 ERROR creating loyalty transaction:', error.message);
+      throw error;
+    }
 
     // Update user points
     user.loyalty.points -= offer.pointsRequired;

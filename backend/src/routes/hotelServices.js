@@ -168,6 +168,55 @@ router.get('/bookings/:bookingId',
 
 /**
  * @swagger
+ * /hotel-services/types:
+ *   get:
+ *     summary: Get all service types
+ *     tags: [Hotel Services]
+ *     responses:
+ *       200:
+ *         description: List of service types
+ */
+router.get('/types', catchAsync(async (req, res) => {
+  const types = [
+    { value: 'dining', label: 'Dining & Restaurants', icon: '🍽️' },
+    { value: 'spa', label: 'Spa & Wellness', icon: '💆' },
+    { value: 'gym', label: 'Fitness & Gym', icon: '💪' },
+    { value: 'transport', label: 'Transportation', icon: '🚗' },
+    { value: 'entertainment', label: 'Entertainment', icon: '🎭' },
+    { value: 'business', label: 'Business Services', icon: '💼' },
+    { value: 'wellness', label: 'Wellness & Health', icon: '🧘' },
+    { value: 'recreation', label: 'Recreation', icon: '🏊' }
+  ];
+
+  res.json({
+    status: 'success',
+    data: types
+  });
+}));
+
+/**
+ * @swagger
+ * /hotel-services/featured:
+ *   get:
+ *     summary: Get featured hotel services
+ *     tags: [Hotel Services]
+ *     responses:
+ *       200:
+ *         description: List of featured services
+ */
+router.get('/featured', catchAsync(async (req, res) => {
+  const user = await req.user;
+  
+  const featuredServices = await HotelService.getFeaturedServices(user?.hotelId);
+
+  res.json({
+    status: 'success',
+    data: featuredServices
+  });
+}));
+
+/**
+ * @swagger
  * /hotel-services/{serviceId}:
  *   get:
  *     summary: Get specific hotel service details
@@ -401,54 +450,5 @@ router.post('/bookings/:bookingId/cancel',
     });
   })
 );
-
-/**
- * @swagger
- * /hotel-services/types:
- *   get:
- *     summary: Get all service types
- *     tags: [Hotel Services]
- *     responses:
- *       200:
- *         description: List of service types
- */
-router.get('/types', catchAsync(async (req, res) => {
-  const types = [
-    { value: 'dining', label: 'Dining & Restaurants', icon: '🍽️' },
-    { value: 'spa', label: 'Spa & Wellness', icon: '💆' },
-    { value: 'gym', label: 'Fitness & Gym', icon: '💪' },
-    { value: 'transport', label: 'Transportation', icon: '🚗' },
-    { value: 'entertainment', label: 'Entertainment', icon: '🎭' },
-    { value: 'business', label: 'Business Services', icon: '💼' },
-    { value: 'wellness', label: 'Wellness & Health', icon: '🧘' },
-    { value: 'recreation', label: 'Recreation', icon: '🏊' }
-  ];
-
-  res.json({
-    status: 'success',
-    data: types
-  });
-}));
-
-/**
- * @swagger
- * /hotel-services/featured:
- *   get:
- *     summary: Get featured hotel services
- *     tags: [Hotel Services]
- *     responses:
- *       200:
- *         description: List of featured services
- */
-router.get('/featured', catchAsync(async (req, res) => {
-  const user = await req.user;
-  
-  const featuredServices = await HotelService.getFeaturedServices(user?.hotelId);
-
-  res.json({
-    status: 'success',
-    data: featuredServices
-  });
-}));
 
 export default router;

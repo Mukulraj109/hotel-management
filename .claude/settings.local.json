@@ -9,7 +9,11 @@
       "Bash(npm run build:*)",
       "Bash(grep:*)",
       "Bash(xargs sed:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(cd:*)",
+      "Bash(npm run dev:*)",
+      "Bash(timeout 20 npm start)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

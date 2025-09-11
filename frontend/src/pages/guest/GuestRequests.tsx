@@ -200,76 +200,82 @@ export default function GuestRequests() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">My Service Requests</h1>
-        <p className="text-gray-600">Manage your hotel service requests and track their status</p>
+      <div className="mb-6 sm:mb-8">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">My Service Requests</h1>
+        <p className="text-sm sm:text-base text-gray-600">Manage your hotel service requests and track their status</p>
       </div>
 
       {/* Actions */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 space-y-4 sm:space-y-0">
-        <Button
-          variant="primary"
-          onClick={() => setShowCreateForm(true)}
-          disabled={bookings.length === 0}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          New Request
-        </Button>
+      <div className="flex flex-col space-y-4 mb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-3 sm:space-y-0">
+          <Button
+            variant="primary"
+            onClick={() => setShowCreateForm(true)}
+            disabled={bookings.length === 0}
+            className="w-full sm:w-auto"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            New Request
+          </Button>
 
+          <div className="w-full sm:w-auto">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search requests..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full sm:w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+        
         {bookings.length === 0 && (
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
             You need an active booking to create service requests
           </p>
         )}
-
-        <div className="flex items-center space-x-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search requests..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-        </div>
       </div>
 
       {/* Filter Tabs */}
       <div className="mb-6">
         <div className="border-b border-gray-200">
-          <nav className="-mb-px flex space-x-8">
-            {[
-              { id: 'all', label: 'All Requests', count: requests.length },
-              { id: 'pending', label: 'Pending', count: requests.filter(r => r.status === 'pending').length },
-              { id: 'assigned', label: 'Assigned', count: requests.filter(r => r.status === 'assigned').length },
-              { id: 'in_progress', label: 'In Progress', count: requests.filter(r => r.status === 'in_progress').length },
-              { id: 'completed', label: 'Completed', count: requests.filter(r => r.status === 'completed').length }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setFilter(tab.id)}
-                className={`py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
-                  filter === tab.id
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                {tab.label} ({tab.count})
-              </button>
-            ))}
+          <nav className="-mb-px flex overflow-x-auto scrollbar-hide">
+            <div className="flex space-x-4 sm:space-x-8 min-w-max">
+              {[
+                { id: 'all', label: 'All', count: requests.length, fullLabel: 'All Requests' },
+                { id: 'pending', label: 'Pending', count: requests.filter(r => r.status === 'pending').length, fullLabel: 'Pending' },
+                { id: 'assigned', label: 'Assigned', count: requests.filter(r => r.status === 'assigned').length, fullLabel: 'Assigned' },
+                { id: 'in_progress', label: 'In Progress', count: requests.filter(r => r.status === 'in_progress').length, fullLabel: 'In Progress' },
+                { id: 'completed', label: 'Completed', count: requests.filter(r => r.status === 'completed').length, fullLabel: 'Completed' }
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setFilter(tab.id)}
+                  className={`py-2 px-1 sm:px-2 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap transition-colors ${
+                    filter === tab.id
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="hidden sm:inline">{tab.fullLabel} ({tab.count})</span>
+                  <span className="sm:hidden">{tab.label} ({tab.count})</span>
+                </button>
+              ))}
+            </div>
           </nav>
         </div>
       </div>
 
       {/* Create Request Form */}
       {showCreateForm && (
-        <Card className="p-6 mb-6">
+        <Card className="p-4 sm:p-6 mb-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Create New Service Request</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Booking *
@@ -316,8 +322,8 @@ export default function GuestRequests() {
             </div>
 
             {formData.serviceType && (
-              <div className="md:col-span-2">
-                <div className="flex items-center justify-between mb-3">
+              <div className="lg:col-span-2">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 space-y-2 sm:space-y-0">
                   <label className="block text-sm font-medium text-gray-700">
                     Service Options * (Select multiple)
                   </label>
@@ -349,7 +355,7 @@ export default function GuestRequests() {
                     </button>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3">
                   {SERVICE_VARIATIONS[formData.serviceType as keyof typeof SERVICE_VARIATIONS]?.map((variation) => (
                     <label key={variation} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
                       <input
@@ -422,7 +428,7 @@ export default function GuestRequests() {
               </div>
             )}
 
-            <div className="md:col-span-2">
+            <div className="lg:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Special Instructions
               </label>
@@ -430,16 +436,17 @@ export default function GuestRequests() {
                 value={formData.specialInstructions}
                 onChange={(e) => setFormData(prev => ({ ...prev, specialInstructions: e.target.value }))}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                rows={2}
+                rows={3}
                 placeholder="Any special instructions or preferences..."
               />
             </div>
           </div>
 
-          <div className="flex justify-end space-x-3 mt-6">
+          <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-3 mt-6">
             <Button
               variant="ghost"
               onClick={() => setShowCreateForm(false)}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
@@ -447,6 +454,7 @@ export default function GuestRequests() {
               variant="primary"
               onClick={handleCreateRequest}
               loading={creating}
+              className="w-full sm:w-auto"
             >
               Create Request
             </Button>
@@ -456,10 +464,10 @@ export default function GuestRequests() {
 
       {/* Requests List */}
       {filteredRequests.length === 0 ? (
-        <Card className="p-12 text-center">
+        <Card className="p-8 sm:p-12 text-center">
           <AlertCircle className="mx-auto h-12 w-12 text-gray-400 mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No service requests found</h3>
-          <p className="text-gray-500 mb-4">
+          <p className="text-sm sm:text-base text-gray-500 mb-4">
             {filter === 'all' 
               ? "You haven't made any service requests yet." 
               : `No ${filter} requests found.`}
@@ -468,6 +476,7 @@ export default function GuestRequests() {
             <Button
               variant="primary"
               onClick={() => setShowCreateForm(true)}
+              className="w-full sm:w-auto"
             >
               Create Your First Request
             </Button>
@@ -476,24 +485,26 @@ export default function GuestRequests() {
       ) : (
         <div className="space-y-4">
           {filteredRequests.map((request) => (
-            <Card key={request._id} className="p-6">
-              <div className="flex items-start justify-between mb-4">
+            <Card key={request._id} className="p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between mb-4 space-y-3 sm:space-y-0">
                 <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <h3 className="text-lg font-semibold text-gray-900">
+                  <div className="mb-3">
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
                       {request.serviceVariations && request.serviceVariations.length > 0
                         ? request.serviceVariations.length === 1 
                           ? request.serviceVariations[0]
                           : `${request.serviceVariations.length} ${request.serviceType.replace('_', ' ')} services`
                         : request.serviceVariation || request.title || `${request.serviceType.replace('_', ' ')} Service`}
                     </h3>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
-                      {getStatusIcon(request.status)}
-                      <span className="ml-1 capitalize">{request.status.replace('_', ' ')}</span>
-                    </span>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(request.priority)}`}>
-                      {request.priority === 'now' ? 'Now' : request.priority === 'later' ? 'Scheduled' : `${request.priority.charAt(0).toUpperCase() + request.priority.slice(1)} Priority`}
-                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
+                        {getStatusIcon(request.status)}
+                        <span className="ml-1 capitalize">{request.status.replace('_', ' ')}</span>
+                      </span>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityColor(request.priority)}`}>
+                        {request.priority === 'now' ? 'Now' : request.priority === 'later' ? 'Scheduled' : `${request.priority.charAt(0).toUpperCase() + request.priority.slice(1)} Priority`}
+                      </span>
+                    </div>
                   </div>
                   
                   <p className="text-sm text-gray-600 mb-2">
@@ -521,7 +532,7 @@ export default function GuestRequests() {
                     </div>
                   )}
 
-                  <div className="flex items-center space-x-6 text-sm text-gray-500">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:space-x-6 space-y-2 sm:space-y-0 text-xs sm:text-sm text-gray-500">
                     <div className="flex items-center space-x-1">
                       <Calendar className="w-4 h-4" />
                       <span>Created {formatDate(request.createdAt)}</span>
@@ -557,16 +568,17 @@ export default function GuestRequests() {
                   )}
                 </div>
 
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 sm:mt-0">
                   {['pending', 'assigned'].includes(request.status) && (
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => handleCancelRequest(request._id)}
-                      className="text-red-600 hover:text-red-700"
+                      className="text-red-600 hover:text-red-700 w-full sm:w-auto"
                     >
                       <Trash2 className="w-4 h-4 mr-1" />
-                      Cancel
+                      <span className="hidden sm:inline">Cancel</span>
+                      <span className="sm:hidden">Cancel</span>
                     </Button>
                   )}
                 </div>
@@ -575,7 +587,7 @@ export default function GuestRequests() {
               {/* Cost Information */}
               {(request.estimatedCost || request.actualCost) && (
                 <div className="border-t border-gray-200 pt-4 mt-4">
-                  <div className="flex justify-between text-sm">
+                  <div className="flex flex-col sm:flex-row sm:justify-between text-sm space-y-1 sm:space-y-0">
                     {request.estimatedCost && (
                       <span className="text-gray-600">
                         Estimated Cost: {formatCurrency(request.estimatedCost, 'INR')}
