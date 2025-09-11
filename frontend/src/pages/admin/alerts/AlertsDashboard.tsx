@@ -15,7 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Modal } from '@/components/ui/modal';
+import { Modal } from '@/components/ui/Modal';
 import { useAlerts } from '../../../hooks/useDashboard';
 import { formatRelativeTime, sortAlerts } from '../../../utils/dashboardUtils';
 import type { Alert } from '../../../types/dashboard';

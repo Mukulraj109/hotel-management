@@ -20,7 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Modal } from '@/components/ui/modal';
+import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/select';
 import { DataTable } from '../../components/dashboard/DataTable';
 import { LoadingSpinner } from '../../components/LoadingSpinner';

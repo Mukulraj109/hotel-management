@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Modal } from '@/components/ui/modal';
+import { Modal } from '@/components/ui/Modal';
 import { useReports } from '../../../hooks/useDashboard';
 import { formatCurrency, formatRelativeTime, generateExportFilename } from '../../../utils/dashboardUtils';
 

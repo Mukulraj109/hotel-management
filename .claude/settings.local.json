@@ -8,7 +8,8 @@
       "Bash(npm run seed:*)",
       "Bash(npm run build:*)",
       "Bash(grep:*)",
-      "Bash(xargs sed:*)"
+      "Bash(xargs sed:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

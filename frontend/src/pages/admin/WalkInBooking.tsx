@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Modal } from '@/components/ui/modal';
+import { Modal } from '@/components/ui/Modal';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { adminService } from '../../services/adminService';
 import { formatCurrency } from '../../utils/dashboardUtils';

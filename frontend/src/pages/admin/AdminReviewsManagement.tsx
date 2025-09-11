@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Modal } from '@/components/ui/modal';
+import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/input';
 import reviewsService, { Review, ReviewSummary } from '../../services/reviewsService';
 import { cn } from '../../utils/cn';

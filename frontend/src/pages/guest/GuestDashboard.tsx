@@ -102,53 +102,53 @@ export default function GuestDashboard() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
-        <Card className="p-4 sm:p-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
+        <Card className="p-4 sm:p-5 lg:p-6 hover:shadow-md transition-shadow">
           <div className="flex items-center">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Calendar className="w-6 h-6 text-blue-600" />
+            <div className="p-2 sm:p-3 bg-blue-100 rounded-lg flex-shrink-0">
+              <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
             </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Bookings</p>
-              <p className="text-2xl font-semibold text-gray-900">{stats.totalBookings}</p>
+            <div className="ml-3 sm:ml-4 min-w-0">
+              <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Total Bookings</p>
+              <p className="text-xl sm:text-2xl font-semibold text-gray-900">{stats.totalBookings}</p>
             </div>
           </div>
         </Card>
 
-        <Card className="p-4 sm:p-6">
+        <Card className="p-4 sm:p-5 lg:p-6 hover:shadow-md transition-shadow">
           <div className="flex items-center">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <Clock className="w-6 h-6 text-green-600" />
+            <div className="p-2 sm:p-3 bg-green-100 rounded-lg flex-shrink-0">
+              <Clock className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
             </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Upcoming</p>
-              <p className="text-2xl font-semibold text-gray-900">{stats.upcomingBookings}</p>
+            <div className="ml-3 sm:ml-4 min-w-0">
+              <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Upcoming</p>
+              <p className="text-xl sm:text-2xl font-semibold text-gray-900">{stats.upcomingBookings}</p>
             </div>
           </div>
         </Card>
 
-        <Card className="p-4 sm:p-6">
+        <Card className="p-4 sm:p-5 lg:p-6 hover:shadow-md transition-shadow">
           <div className="flex items-center">
-            <div className="p-2 bg-yellow-100 rounded-lg">
-              <CreditCard className="w-6 h-6 text-yellow-600" />
+            <div className="p-2 sm:p-3 bg-yellow-100 rounded-lg flex-shrink-0">
+              <CreditCard className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-600" />
             </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Total Spent</p>
-              <p className="text-2xl font-semibold text-gray-900">
+            <div className="ml-3 sm:ml-4 min-w-0">
+              <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Total Spent</p>
+              <p className="text-xl sm:text-2xl font-semibold text-gray-900 truncate">
                 {formatCurrency(stats.totalSpent)}
               </p>
             </div>
           </div>
         </Card>
 
-        <Card className="p-4 sm:p-6">
+        <Card className="p-4 sm:p-5 lg:p-6 hover:shadow-md transition-shadow">
           <div className="flex items-center">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <Star className="w-6 h-6 text-purple-600" />
+            <div className="p-2 sm:p-3 bg-purple-100 rounded-lg flex-shrink-0">
+              <Star className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
             </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-600">Loyalty Points</p>
-              <p className="text-2xl font-semibold text-gray-900">{stats.loyaltyPoints}</p>
+            <div className="ml-3 sm:ml-4 min-w-0">
+              <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Loyalty Points</p>
+              <p className="text-xl sm:text-2xl font-semibold text-gray-900">{stats.loyaltyPoints}</p>
             </div>
           </div>
         </Card>
@@ -298,28 +298,28 @@ export default function GuestDashboard() {
       {/* Quick Actions */}
       <div className="mt-6 sm:mt-8">
         <Card className="p-4 sm:p-6">
-          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
+          <h2 className="text-lg sm:text-xl font-semibold text-gray-900 mb-4 sm:mb-6">Quick Actions</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             <button
               onClick={() => window.location.href = '/rooms'}
-              className="flex items-center justify-center p-4 bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100 transition-colors"
+              className="flex items-center justify-center p-4 sm:p-5 bg-yellow-50 border border-yellow-200 rounded-lg hover:bg-yellow-100 active:bg-yellow-200 transition-colors min-h-[3rem] touch-manipulation"
             >
-              <Calendar className="w-5 h-5 text-yellow-600 mr-2" />
-              <span className="font-medium text-yellow-700">Book a Room</span>
+              <Calendar className="w-5 h-5 text-yellow-600 mr-2 flex-shrink-0" />
+              <span className="font-medium text-yellow-700 text-sm sm:text-base">Book a Room</span>
             </button>
             <button
               onClick={() => window.location.href = '/guest/bookings'}
-              className="flex items-center justify-center p-4 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+              className="flex items-center justify-center p-4 sm:p-5 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 active:bg-blue-200 transition-colors min-h-[3rem] touch-manipulation"
             >
-              <CreditCard className="w-5 h-5 text-blue-600 mr-2" />
-              <span className="font-medium text-blue-700">My Bookings</span>
+              <CreditCard className="w-5 h-5 text-blue-600 mr-2 flex-shrink-0" />
+              <span className="font-medium text-blue-700 text-sm sm:text-base">My Bookings</span>
             </button>
             <button
               onClick={() => window.location.href = '/contact'}
-              className="flex items-center justify-center p-4 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+              className="flex items-center justify-center p-4 sm:p-5 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 active:bg-green-200 transition-colors min-h-[3rem] touch-manipulation"
             >
-              <Users className="w-5 h-5 text-green-600 mr-2" />
-              <span className="font-medium text-green-700">Contact Support</span>
+              <Users className="w-5 h-5 text-green-600 mr-2 flex-shrink-0" />
+              <span className="font-medium text-green-700 text-sm sm:text-base">Contact Support</span>
             </button>
           </div>
         </Card>

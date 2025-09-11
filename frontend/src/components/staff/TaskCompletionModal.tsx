@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal } from '@/components/ui/modal';
+import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, Square, CheckSquare } from 'lucide-react';
 import { cn } from '../../utils/cn';
