@@ -4,7 +4,7 @@ import { Channel } from '../models/ChannelManager.js';
 import RoomType from '../models/RoomType.js';
 import RoomAvailability from '../models/RoomAvailability.js';
 import BookingComService from '../services/channels/bookingComService.js';
-import { syncMiddleware } from '../middleware/channelSyncMiddleware.js';
+// import { syncMiddleware } from '../middleware/channelSyncMiddleware.js'; // Temporarily disabled to debug server hang
 import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -324,66 +324,9 @@ router.post('/:channelId/sync', async (req, res) => {
   }
 });
 
-/**
- * @swagger
- * /api/channels/sync/status:
- *   get:
- *     summary: Get sync queue status
- *     tags: [Channel Management]
- */
-router.get('/sync/status', async (req, res) => {
-  try {
-    const status = syncMiddleware.getSyncStatus();
-    
-    res.json({
-      success: true,
-      ...status
-    });
-    
-  } catch (error) {
-    console.error('Failed to get sync status:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-
-/**
- * @swagger
- * /api/channels/sync/trigger:
- *   post:
- *     summary: Trigger manual sync for hotel
- *     tags: [Channel Management]
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               roomTypeId:
- *                 type: string
- *               channelId:
- *                 type: string
- */
-router.post('/sync/trigger', async (req, res) => {
-  try {
-    const { roomTypeId, channelId } = req.body;
-    const hotelId = req.user.hotelId;
-    
-    const result = await syncMiddleware.triggerManualSync(hotelId, roomTypeId, channelId);
-    
-    res.json(result);
-    
-  } catch (error) {
-    console.error('Manual sync trigger failed:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-});
+// Temporarily disabled - routes that depend on syncMiddleware
+// router.get('/sync/status', ...)
+// router.post('/sync/trigger', ...)
 
 /**
  * @swagger

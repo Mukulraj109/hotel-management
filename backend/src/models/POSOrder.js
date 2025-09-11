@@ -64,11 +64,39 @@ const posOrderSchema = new mongoose.Schema({
     amount: Number,
     percentage: Number
   }],
+  // Enhanced tax breakdown structure
   taxes: {
+    // Legacy fields for backward compatibility
     serviceTax: Number,
     gst: Number,
     otherTaxes: Number,
-    totalTax: Number
+    totalTax: Number,
+    
+    // Enhanced tax breakdown
+    breakdown: [{
+      taxId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'POSTax'
+      },
+      taxName: String,
+      taxType: String,
+      taxGroup: String,
+      amount: Number,
+      rate: Number,
+      exemptionApplied: { type: Boolean, default: false },
+      exemptionPercentage: Number
+    }],
+    exemptedAmount: { type: Number, default: 0 },
+    taxableAmount: Number,
+    calculationTimestamp: Date,
+    appliedTaxes: [{
+      taxId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'POSTax'
+      },
+      taxName: String,
+      taxType: String
+    }]
   },
   totalAmount: {
     type: Number,

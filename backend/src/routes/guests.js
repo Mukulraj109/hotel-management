@@ -1,97 +1,40 @@
 import express from 'express';
-import User from '../models/User.js';
-import Booking from '../models/Booking.js';
+import * as guestController from '../controllers/guestController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
-import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
 
-// Get guest profile
-router.get('/:id', authenticate, catchAsync(async (req, res) => {
-  const guest = await User.findById(req.params.id);
+// Apply authentication to all routes
+router.use(authenticate);
 
-  if (!guest) {
-    throw new AppError('Guest not found', 404);
-  }
+// Public routes (for guest self-service)
+router.get('/:id', guestController.getGuest);
+router.get('/:id/bookings', guestController.getGuest);
+router.patch('/:id', guestController.updateGuest);
 
-  // Check permissions
-  if (req.user.role === 'guest' && req.user._id.toString() !== req.params.id) {
-    throw new AppError('You can only view your own profile', 403);
-  }
+// Admin/Staff routes
+router.use(authorize('admin', 'manager', 'staff'));
 
-  res.json({
-    status: 'success',
-    data: { guest }
-  });
-}));
+// Enhanced guest management routes
+router.route('/')
+  .get(guestController.getAllGuests)
+  .post(guestController.createGuest);
 
-// Get guest bookings
-router.get('/:id/bookings', authenticate, catchAsync(async (req, res) => {
-  const { status, page = 1, limit = 10 } = req.query;
+router.route('/analytics')
+  .get(guestController.getGuestAnalytics);
 
-  // Check permissions
-  if (req.user.role === 'guest' && req.user._id.toString() !== req.params.id) {
-    throw new AppError('You can only view your own bookings', 403);
-  }
+router.route('/search')
+  .post(guestController.searchGuests);
 
-  const query = { userId: req.params.id };
-  if (status) query.status = status;
+router.route('/export')
+  .get(guestController.exportGuests);
 
-  const skip = (parseInt(page) - 1) * parseInt(limit);
+router.route('/bulk-update')
+  .patch(guestController.bulkUpdateGuests);
 
-  const bookings = await Booking.find(query)
-    .populate('rooms.roomId', 'roomNumber type')
-    .populate('hotelId', 'name')
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(parseInt(limit));
-
-  const total = await Booking.countDocuments(query);
-
-  res.json({
-    status: 'success',
-    results: bookings.length,
-    pagination: {
-      current: parseInt(page),
-      pages: Math.ceil(total / parseInt(limit)),
-      total
-    },
-    data: { bookings }
-  });
-}));
-
-// Update guest profile
-router.patch('/:id', authenticate, catchAsync(async (req, res) => {
-  // Check permissions
-  if (req.user.role === 'guest' && req.user._id.toString() !== req.params.id) {
-    throw new AppError('You can only update your own profile', 403);
-  }
-
-  // Allowed fields for update
-  const allowedFields = ['name', 'phone', 'preferences'];
-  const updateData = {};
-
-  allowedFields.forEach(field => {
-    if (req.body[field] !== undefined) {
-      updateData[field] = req.body[field];
-    }
-  });
-
-  const guest = await User.findByIdAndUpdate(
-    req.params.id,
-    updateData,
-    { new: true, runValidators: true }
-  );
-
-  if (!guest) {
-    throw new AppError('Guest not found', 404);
-  }
-
-  res.json({
-    status: 'success',
-    data: { guest }
-  });
-}));
+router.route('/:id')
+  .get(guestController.getGuest)
+  .patch(guestController.updateGuest)
+  .delete(guestController.deleteGuest);
 
 export default router;

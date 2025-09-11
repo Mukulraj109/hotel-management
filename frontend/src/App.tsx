@@ -61,13 +61,22 @@ import AdminFinancial from './pages/admin/AdminFinancial';
 import AdminMultiProperty from './pages/admin/AdminMultiProperty';
 import AdminMobileApps from './pages/admin/AdminMobileApps';
 import AdminAPIManagement from './pages/admin/AdminAPIManagement';
+import AdminPOSTaxes from './pages/admin/AdminPOSTaxes';
+import AdminMeasurementUnits from './pages/admin/AdminMeasurementUnits';
+import AdminPOSAttributes from './pages/admin/AdminPOSAttributes';
+import AdminBillMessages from './pages/admin/AdminBillMessages';
 import AdminRoomTypes from './pages/admin/AdminRoomTypes';
+import AdminRoomTypeAllotments from './pages/admin/AdminRoomTypeAllotments';
+import AdminRoomAllotmentCreate from './pages/admin/AdminRoomAllotmentCreate';
 import AdminInventoryManagement from './pages/admin/AdminInventoryManagement';
 import CorporateCreditManagement from './components/admin/CorporateCreditManagement';
 import GSTManagement from './components/admin/GSTManagement';
 import CorporateUserRegistration from './components/admin/CorporateUserRegistration';
 import { InventoryTemplateManagement } from './components/admin/InventoryTemplateManagement';
 import AIDashboard from './components/analytics/AIDashboard';
+import OverbookingConfiguration from './components/admin/OverbookingConfiguration';
+import AdminWebSettings from './pages/admin/AdminWebSettings';
+import AdminBookingFormBuilder from './pages/admin/AdminBookingFormBuilder';
 
 // Staff Pages
 import StaffDashboard from './pages/staff/StaffDashboard';
@@ -167,14 +176,23 @@ function App() {
                 <Route path="inventory-management" element={<AdminInventoryManagement />} />
                 <Route path="laundry" element={<AdminLaundryManagement />} />
                 <Route path="room-types" element={<AdminRoomTypes />} />
+                <Route path="room-allotments/create" element={<AdminRoomAllotmentCreate />} />
+                <Route path="room-allotments" element={<AdminRoomTypeAllotments />} />
                 <Route path="reports" element={<AdminReports />} />
                 <Route path="bypass-checkout" element={<AdminBypassCheckoutPage />} />
                 <Route path="ota" element={<AdminOTA />} />
                 <Route path="billing" element={<BillingHistory />} />
                 <Route path="tape-chart" element={<AdminTapeChart />} />
+                <Route path="pos/taxes" element={<AdminPOSTaxes />} />
+                <Route path="pos/measurement-units" element={<AdminMeasurementUnits />} />
+                <Route path="pos/attributes" element={<AdminPOSAttributes />} />
+                <Route path="pos/bill-messages" element={<AdminBillMessages />} />
                 <Route path="pos" element={<AdminPOS />} />
                 <Route path="revenue" element={<AdminRevenueManagement />} />
+                <Route path="overbooking" element={<OverbookingConfiguration />} />
                 <Route path="booking-engine" element={<AdminBookingEngine />} />
+                <Route path="booking-forms" element={<AdminBookingFormBuilder />} />
+                <Route path="web-settings" element={<AdminWebSettings />} />
                 <Route path="financial" element={<AdminFinancial />} />
                 <Route path="multi-property" element={<AdminMultiProperty />} />
                 <Route path="mobile-apps" element={<AdminMobileApps />} />

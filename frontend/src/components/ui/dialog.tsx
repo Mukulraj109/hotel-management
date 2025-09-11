@@ -33,6 +33,11 @@ interface DialogDescriptionProps {
   className?: string;
 }
 
+interface DialogFooterProps {
+  children: ReactNode;
+  className?: string;
+}
+
 const DialogContext = React.createContext<{
   open: boolean;
   setOpen: (open: boolean) => void;
@@ -135,6 +140,14 @@ export function DialogDescription({ children, className }: DialogDescriptionProp
     <p className={cn('text-sm text-gray-600', className)}>
       {children}
     </p>
+  );
+}
+
+export function DialogFooter({ children, className }: DialogFooterProps) {
+  return (
+    <div className={cn('p-6 pt-0 flex justify-end gap-2', className)}>
+      {children}
+    </div>
   );
 }
 

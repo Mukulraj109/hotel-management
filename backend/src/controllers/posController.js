@@ -1,6 +1,7 @@
 import POSOutlet from '../models/POSOutlet.js';
 import POSMenu from '../models/POSMenu.js';
 import POSOrder from '../models/POSOrder.js';
+import posTaxCalculationService from '../services/posTaxCalculationService.js';
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -166,18 +167,54 @@ export const createOrder = async (req, res) => {
     
     orderData.subtotal = subtotal;
     
-    // Calculate taxes
-    const outlet = await POSOutlet.findById(orderData.outlet);
-    const serviceTax = subtotal * (outlet.taxSettings.serviceTaxRate / 100);
-    const gst = subtotal * (outlet.taxSettings.gstRate / 100);
-    const totalTax = serviceTax + gst;
-    
-    orderData.taxes = {
-      serviceTax,
-      gst,
-      otherTaxes: 0,
-      totalTax
-    };
+    // Calculate taxes using the new tax calculation service
+    try {
+      const taxResult = await posTaxCalculationService.calculateOrderTaxes(
+        { items: orderData.items, subtotal },
+        {
+          hotelId: req.user.hotelId,
+          outletId: orderData.outlet,
+          customerType: orderData.customer?.guest ? 'individual' : 'walk_in',
+          applyExemptions: true,
+          includeBreakdown: true
+        }
+      );
+
+      // Enhanced tax structure
+      orderData.taxes = {
+        // Legacy fields for backward compatibility
+        serviceTax: taxResult.taxBreakdown.find(t => t.taxType === 'SERVICE_TAX')?.taxAmount || 0,
+        gst: taxResult.taxBreakdown.find(t => t.taxType === 'GST')?.taxAmount || 0,
+        otherTaxes: taxResult.totalTax - (orderData.taxes?.serviceTax || 0) - (orderData.taxes?.gst || 0),
+        totalTax: taxResult.totalTax,
+        
+        // Enhanced tax breakdown
+        breakdown: taxResult.taxBreakdown,
+        exemptedAmount: taxResult.exemptedAmount,
+        taxableAmount: taxResult.taxableAmount,
+        calculationTimestamp: taxResult.calculationTimestamp,
+        appliedTaxes: taxResult.appliedTaxes
+      };
+    } catch (taxError) {
+      // Fallback to legacy tax calculation if new service fails
+      console.warn('Tax calculation service failed, using legacy calculation:', taxError.message);
+      const outlet = await POSOutlet.findById(orderData.outlet);
+      const serviceTax = subtotal * (outlet.taxSettings.serviceTaxRate / 100);
+      const gst = subtotal * (outlet.taxSettings.gstRate / 100);
+      const totalTax = serviceTax + gst;
+      
+      orderData.taxes = {
+        serviceTax,
+        gst,
+        otherTaxes: 0,
+        totalTax,
+        breakdown: [],
+        exemptedAmount: 0,
+        taxableAmount: subtotal,
+        calculationTimestamp: new Date(),
+        appliedTaxes: []
+      };
+    }
     
     // Apply discounts
     let discountAmount = 0;

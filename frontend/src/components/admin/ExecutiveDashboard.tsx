@@ -3,7 +3,7 @@ import {
   TrendingUp, 
   Users, 
   Bed, 
-  DollarSign, 
+  IndianRupee, 
   Calendar,
   BarChart3,
   PieChart,
@@ -310,7 +310,7 @@ const ExecutiveDashboard: React.FC = () => {
                 </div>
               </div>
               <div className="ml-4">
-                {key === 'revenue' && <DollarSign className="h-8 w-8 text-green-500" />}
+                {key === 'revenue' && <IndianRupee className="h-8 w-8 text-green-500" />}
                 {key === 'occupancy' && <Bed className="h-8 w-8 text-blue-500" />}
                 {key === 'adr' && <TrendingUp className="h-8 w-8 text-purple-500" />}
                 {key === 'revpar' && <BarChart3 className="h-8 w-8 text-orange-500" />}

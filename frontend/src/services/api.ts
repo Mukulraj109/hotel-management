@@ -61,4 +61,95 @@ api.interceptors.response.use(
   }
 );
 
+// Centralized Rates API
+export const centralizedRatesApi = {
+  // Rate CRUD operations
+  createRate: (data: any) => api.post('/centralized-rates', data),
+  getRates: (params?: any) => api.get('/centralized-rates', { params }),
+  getRateById: (rateId: string, params?: any) => api.get(`/centralized-rates/${rateId}`, { params }),
+  updateRate: (rateId: string, data: any) => api.put(`/centralized-rates/${rateId}`, data),
+  deleteRate: (rateId: string) => api.delete(`/centralized-rates/${rateId}`),
+  
+  // Rate operations
+  distributeRate: (rateId: string, data: any) => api.post(`/centralized-rates/${rateId}/distribute`, data),
+  calculateRate: (rateId: string, data: any) => api.post(`/centralized-rates/${rateId}/calculate`, data),
+  validateRate: (rateId: string) => api.get(`/centralized-rates/${rateId}/validate`),
+  duplicateRate: (rateId: string, data: any) => api.post(`/centralized-rates/${rateId}/duplicate`, data),
+  updateRateStatus: (rateId: string, data: any) => api.patch(`/centralized-rates/${rateId}/status`, data),
+  
+  // Distribution and sync
+  previewDistribution: (rateId: string, data: any) => api.post(`/centralized-rates/${rateId}/preview-distribution`, data),
+  syncRates: (groupId: string, data?: any) => api.post(`/centralized-rates/group/${groupId}/sync`, data),
+  
+  // Analytics and reporting
+  getRateAnalytics: (rateId: string, params?: any) => api.get(`/centralized-rates/${rateId}/analytics`, { params }),
+  getRateHistory: (rateId: string, params?: any) => api.get(`/centralized-rates/${rateId}/history`, { params }),
+  getGroupDashboard: (groupId: string, params?: any) => api.get(`/centralized-rates/group/${groupId}/dashboard`, { params }),
+  exportRates: (params?: any) => api.get('/centralized-rates/export', { params }),
+  
+  // Conflict management
+  getConflicts: (params?: any) => api.get('/centralized-rates/conflicts', { params }),
+  resolveConflict: (conflictId: string, data: any) => api.post(`/centralized-rates/conflicts/${conflictId}/resolve`, data),
+  
+  // Additional utility functions
+  getRateDistribution: (rateId: string) => api.get(`/centralized-rates/${rateId}/distribution`),
+  getActiveConflicts: (rateId: string) => api.get(`/centralized-rates/${rateId}/conflicts`),
+  getDashboardStats: () => api.get('/centralized-rates/dashboard/stats'),
+  getGroupAnalytics: (groupId: string, params?: any) => api.get(`/centralized-rates/group/${groupId}/analytics`, { params }),
+  syncRate: (rateId: string) => api.post(`/centralized-rates/${rateId}/sync`)
+};
+
+// Property Groups API
+export const propertyGroupsApi = {
+  // Group CRUD operations
+  createGroup: (data: any) => api.post('/property-groups', data),
+  getGroups: (params?: any) => api.get('/property-groups', { params }),
+  getGroupById: (groupId: string, params?: any) => api.get(`/property-groups/${groupId}`, { params }),
+  updateGroup: (groupId: string, data: any) => api.put(`/property-groups/${groupId}`, data),
+  deleteGroup: (groupId: string) => api.delete(`/property-groups/${groupId}`),
+  
+  // Group operations
+  getGroupStats: (groupId: string) => api.get(`/property-groups/${groupId}/stats`),
+  addPropertiesToGroup: (groupId: string, data: any) => api.post(`/property-groups/${groupId}/properties`, data),
+  removePropertiesFromGroup: (groupId: string, data: any) => api.delete(`/property-groups/${groupId}/properties`, { data }),
+  syncGroupSettings: (groupId: string, data?: any) => api.post(`/property-groups/${groupId}/sync`, data),
+  
+  // Dashboard and analytics
+  getConsolidatedDashboard: (groupId: string, params?: any) => api.get(`/property-groups/${groupId}/dashboard`, { params }),
+  getPropertyGroupAuditLog: (groupId: string, params?: any) => api.get(`/property-groups/${groupId}/audit-log`, { params }),
+  
+  // Settings management
+  updateGroupSettings: (groupId: string, data: any) => api.patch(`/property-groups/${groupId}/settings`, data)
+};
+
+// API Management API
+export const apiManagementApi = {
+  // API Keys CRUD operations
+  createAPIKey: (data: any) => api.post('/api-management/api-keys', data),
+  getAPIKeys: (params?: any) => api.get('/api-management/api-keys', { params }),
+  getAPIKeyById: (keyId: string, params?: any) => api.get(`/api-management/api-keys/${keyId}`, { params }),
+  updateAPIKey: (keyId: string, data: any) => api.put(`/api-management/api-keys/${keyId}`, data),
+  deleteAPIKey: (keyId: string) => api.delete(`/api-management/api-keys/${keyId}`),
+  toggleAPIKeyStatus: (keyId: string) => api.patch(`/api-management/api-keys/${keyId}/toggle`),
+  
+  // Webhook CRUD operations
+  createWebhook: (data: any) => api.post('/api-management/webhooks', data),
+  getWebhooks: (params?: any) => api.get('/api-management/webhooks', { params }),
+  getWebhookById: (webhookId: string, params?: any) => api.get(`/api-management/webhooks/${webhookId}`, { params }),
+  updateWebhook: (webhookId: string, data: any) => api.put(`/api-management/webhooks/${webhookId}`, data),
+  deleteWebhook: (webhookId: string) => api.delete(`/api-management/webhooks/${webhookId}`),
+  testWebhook: (webhookId: string) => api.post(`/api-management/webhooks/${webhookId}/test`),
+  regenerateWebhookSecret: (webhookId: string) => api.post(`/api-management/webhooks/${webhookId}/regenerate-secret`),
+  
+  // Metrics and Analytics
+  getMetrics: (params?: any) => api.get('/api-management/metrics', { params }),
+  getTopEndpoints: (params?: any) => api.get('/api-management/metrics/endpoints', { params }),
+  getEndpointMetrics: (endpoint: string, params?: any) => api.get(`/api-management/metrics/endpoints/${encodeURIComponent(endpoint)}`, { params }),
+  getAPIKeyUsage: (params?: any) => api.get('/api-management/metrics/api-keys', { params }),
+  getWebhookStats: (params?: any) => api.get('/api-management/metrics/webhooks', { params }),
+  
+  // Export functionality
+  exportLogs: (params?: any) => api.get('/api-management/export/logs', { params, responseType: 'blob' }),
+};
+
 export { api };

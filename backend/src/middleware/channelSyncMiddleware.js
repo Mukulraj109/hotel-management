@@ -137,6 +137,7 @@ class ChannelSyncMiddleware {
     }, 5 * 60 * 1000); // Every 5 minutes
 
     console.log('🔄 Channel sync processor started');
+    console.log('🔍 DEBUG: Channel sync processor initialization completed');
   }
 
   /**

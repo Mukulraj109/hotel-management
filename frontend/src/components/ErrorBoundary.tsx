@@ -290,7 +290,7 @@ export const withErrorBoundary = <P extends object>(
 export const useErrorHandler = () => {
   return (error: Error, errorInfo?: ErrorInfo) => {
     // In development, you might want to throw the error to trigger the boundary
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.MODE === 'development') {
       throw error;
     }
     

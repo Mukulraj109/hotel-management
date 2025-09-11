@@ -118,7 +118,6 @@ class RoomTypeService {
       const response = await api.get(`/room-types/hotel/${hotelId}/options`);
       return response.data.data;
     } catch (error: any) {
-      console.error('Error fetching room type options:', error);
       throw new Error(error.response?.data?.message || 'Failed to fetch room type options');
     }
   }

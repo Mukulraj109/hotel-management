@@ -1,13 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Progress } from '@/components/ui/progress';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { toast } from '@/utils/toast';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { Progress } from '../ui/progress';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -19,8 +15,6 @@ import {
   Mail, Phone, FileText, Eye, Edit, Send, Archive
 } from 'lucide-react';
 import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
-import { cn } from '@/lib/utils';
-import { formatCurrency } from '@/utils/currencyUtils';
 
 interface CorporateDue {
   companyId: string;
@@ -114,235 +108,117 @@ const CorporateAnalyticsDashboard: React.FC = () => {
           break;
       }
       
-      // Simulate API calls - replace with actual service calls
-      await Promise.all([
-        fetchPendingDues(),
-        fetchCompanyTrends(startDate, endDate),
-        fetchChannelPerformance(startDate, endDate),
-        fetchCreditUtilization()
+      const filters = {
+        dateRange: {
+          startDate: startDate.toISOString().split('T')[0],
+          endDate: endDate.toISOString().split('T')[0]
+        }
+      };
+
+      // Call actual API endpoints
+      const [bookingResponse, paymentResponse, channelResponse] = await Promise.all([
+        fetch('/api/v1/analytics/corporate-bookings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(filters)
+        }),
+        fetch('/api/v1/analytics/corporate-payments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(filters)
+        }),
+        fetch('/api/v1/analytics/booking-channels', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(filters)
+        })
       ]);
+
+      const bookingData = await bookingResponse.json();
+      const paymentData = await paymentResponse.json();
+      const channelData = await channelResponse.json();
+
+      // Map API responses to component state
+      if (bookingData.success) {
+        const trends = bookingData.data.trends.map(t => ({
+          companyName: t.corporateName,
+          bookings: t.bookings,
+          totalRevenue: t.revenue,
+          averageRate: t.avgRate || 0,
+          totalNights: t.nights || 0,
+          cancellationRate: t.cancellationRate || 0,
+          noShowRate: t.noShowRate || 0,
+          averageBookingValue: t.avgBookingValue || 0
+        }));
+        setCompanyTrends(trends);
+      }
+
+      if (paymentData.success) {
+        const dues = paymentData.data.riskAssessment.map(r => ({
+          companyId: r.corporateId,
+          companyName: r.corporateName,
+          contactPerson: 'N/A',
+          email: 'contact@company.com',
+          phone: '+1-555-0000',
+          totalPending: r.outstandingAmount,
+          creditLimit: r.creditLimit,
+          currentBalance: r.creditLimit * (r.creditUtilization / 100),
+          availableCredit: r.creditLimit - (r.creditLimit * (r.creditUtilization / 100)),
+          creditUtilization: r.creditUtilization,
+          paymentTerms: 'net_30',
+          aging: { '0-30': r.outstandingAmount * 0.4, '31-60': r.outstandingAmount * 0.3, '61-90': r.outstandingAmount * 0.2, '90+': r.outstandingAmount * 0.1 },
+          invoiceCount: Math.ceil(r.outstandingAmount / 5000),
+          recentBookings: Math.ceil(Math.random() * 20),
+          riskLevel: r.riskLevel,
+          overdueDays: r.daysPastDue
+        }));
+        setPendingDues(dues);
+
+        setSummary({
+          totalPendingAmount: paymentData.data.totalOutstanding,
+          totalCompaniesWithDues: dues.length,
+          highRiskCompanies: dues.filter(d => d.riskLevel === 'high').length,
+          averagePendingAmount: paymentData.data.totalOutstanding / dues.length,
+          totalCreditLimit: dues.reduce((sum, d) => sum + d.creditLimit, 0),
+          avgCreditUtilization: paymentData.data.avgCreditUtilization || 0
+        });
+      }
+
+      if (channelData.success) {
+        setChannelPerformance(channelData.data.channels.map(c => ({
+          ...c,
+          marketShare: (c.bookings / channelData.data.channels.reduce((sum, ch) => sum + ch.bookings, 0)) * 100,
+          revenueShare: (c.revenue / channelData.data.channels.reduce((sum, ch) => sum + ch.revenue, 0)) * 100
+        })));
+      }
       
       setLastUpdate(new Date());
     } catch (error) {
       console.error('Error fetching corporate analytics:', error);
-      toast.error('Failed to load corporate analytics');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchPendingDues = async () => {
-    // Simulated data - replace with actual API call
-    const mockData: CorporateDue[] = [
-      {
-        companyId: '1',
-        companyName: 'ABC Corporation',
-        contactPerson: 'John Smith',
-        email: 'john@abccorp.com',
-        phone: '+1-555-0101',
-        totalPending: 45000,
-        creditLimit: 100000,
-        currentBalance: 65000,
-        availableCredit: 35000,
-        creditUtilization: 65,
-        paymentTerms: 'net_30',
-        lastPaymentDate: '2024-01-15',
-        aging: { '0-30': 15000, '31-60': 20000, '61-90': 10000, '90+': 0 },
-        invoiceCount: 8,
-        recentBookings: 12,
-        riskLevel: 'medium',
-        overdueDays: 15
-      },
-      {
-        companyId: '2',
-        companyName: 'XYZ Industries',
-        contactPerson: 'Sarah Johnson',
-        email: 'sarah@xyzind.com',
-        phone: '+1-555-0102',
-        totalPending: 78000,
-        creditLimit: 150000,
-        currentBalance: 125000,
-        availableCredit: 25000,
-        creditUtilization: 83,
-        paymentTerms: 'net_45',
-        lastPaymentDate: '2023-12-20',
-        aging: { '0-30': 0, '31-60': 25000, '61-90': 30000, '90+': 23000 },
-        invoiceCount: 12,
-        recentBookings: 18,
-        riskLevel: 'high',
-        overdueDays: 45
-      },
-      {
-        companyId: '3',
-        companyName: 'Tech Solutions Inc',
-        contactPerson: 'Mike Davis',
-        email: 'mike@techsol.com',
-        phone: '+1-555-0103',
-        totalPending: 22000,
-        creditLimit: 75000,
-        currentBalance: 30000,
-        availableCredit: 45000,
-        creditUtilization: 40,
-        paymentTerms: 'net_15',
-        lastPaymentDate: '2024-01-28',
-        aging: { '0-30': 22000, '31-60': 0, '61-90': 0, '90+': 0 },
-        invoiceCount: 4,
-        recentBookings: 8,
-        riskLevel: 'low',
-        overdueDays: 0
-      }
-    ];
-    
-    setPendingDues(mockData);
-    setSummary({
-      totalPendingAmount: mockData.reduce((sum, d) => sum + d.totalPending, 0),
-      totalCompaniesWithDues: mockData.length,
-      highRiskCompanies: mockData.filter(d => d.riskLevel === 'high').length,
-      averagePendingAmount: mockData.reduce((sum, d) => sum + d.totalPending, 0) / mockData.length,
-      totalCreditLimit: mockData.reduce((sum, d) => sum + d.creditLimit, 0),
-      avgCreditUtilization: mockData.reduce((sum, d) => sum + d.creditUtilization, 0) / mockData.length
-    });
-  };
-
-  const fetchCompanyTrends = async (startDate: Date, endDate: Date) => {
-    // Simulated data
-    const mockTrends: CompanyTrend[] = [
-      {
-        companyName: 'ABC Corporation',
-        bookings: 45,
-        totalRevenue: 125000,
-        averageRate: 185,
-        totalNights: 675,
-        cancellationRate: 8,
-        noShowRate: 2,
-        averageBookingValue: 2778
-      },
-      {
-        companyName: 'XYZ Industries',
-        bookings: 62,
-        totalRevenue: 189000,
-        averageRate: 195,
-        totalNights: 969,
-        cancellationRate: 12,
-        noShowRate: 5,
-        averageBookingValue: 3048
-      },
-      {
-        companyName: 'Tech Solutions Inc',
-        bookings: 28,
-        totalRevenue: 78000,
-        averageRate: 175,
-        totalNights: 445,
-        cancellationRate: 5,
-        noShowRate: 1,
-        averageBookingValue: 2786
-      }
-    ];
-    
-    setCompanyTrends(mockTrends);
-  };
-
-  const fetchChannelPerformance = async (startDate: Date, endDate: Date) => {
-    // Simulated data
-    const mockChannels: ChannelPerformance[] = [
-      {
-        channel: 'direct',
-        bookings: 245,
-        revenue: 485000,
-        nights: 2450,
-        averageRate: 198,
-        averageBookingValue: 1980,
-        marketShare: 35,
-        revenueShare: 40
-      },
-      {
-        channel: 'corporate',
-        bookings: 135,
-        revenue: 392000,
-        nights: 2025,
-        averageRate: 194,
-        averageBookingValue: 2904,
-        marketShare: 19,
-        revenueShare: 32
-      },
-      {
-        channel: 'ota',
-        bookings: 185,
-        revenue: 245000,
-        nights: 1480,
-        averageRate: 165,
-        averageBookingValue: 1324,
-        marketShare: 26,
-        revenueShare: 20
-      },
-      {
-        channel: 'travel_agent',
-        bookings: 95,
-        revenue: 156000,
-        nights: 855,
-        averageRate: 182,
-        averageBookingValue: 1642,
-        marketShare: 14,
-        revenueShare: 13
-      },
-      {
-        channel: 'walk_in',
-        bookings: 45,
-        revenue: 78000,
-        nights: 450,
-        averageRate: 173,
-        averageBookingValue: 1733,
-        marketShare: 6,
-        revenueShare: 6
-      }
-    ];
-    
-    setChannelPerformance(mockChannels);
-  };
-
-  const fetchCreditUtilization = async () => {
-    // Simulated data
-    const mockUtilization = [
-      {
-        companyName: 'ABC Corporation',
-        creditLimit: 100000,
-        currentBalance: 65000,
-        utilizationPercentage: 65,
-        status: 'medium',
-        riskLevel: 'medium'
-      },
-      {
-        companyName: 'XYZ Industries',
-        creditLimit: 150000,
-        currentBalance: 125000,
-        utilizationPercentage: 83,
-        status: 'high',
-        riskLevel: 'high'
-      },
-      {
-        companyName: 'Tech Solutions Inc',
-        creditLimit: 75000,
-        currentBalance: 30000,
-        utilizationPercentage: 40,
-        status: 'low',
-        riskLevel: 'low'
-      }
-    ];
-    
-    setCreditUtilization(mockUtilization);
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 0
+    }).format(amount);
   };
 
   const getRiskBadge = (risk: string) => {
     const config = {
-      high: { color: 'bg-red-100 text-red-800', icon: AlertTriangle },
-      medium: { color: 'bg-yellow-100 text-yellow-800', icon: Clock },
-      low: { color: 'bg-green-100 text-green-800', icon: CheckCircle }
+      high: { variant: 'destructive' as const, icon: AlertTriangle },
+      medium: { variant: 'secondary' as const, icon: Clock },
+      low: { variant: 'default' as const, icon: CheckCircle }
     };
     
-    const { color, icon: Icon } = config[risk as keyof typeof config];
+    const { variant, icon: Icon } = config[risk as keyof typeof config];
     
     return (
-      <Badge className={cn('flex items-center gap-1', color)}>
+      <Badge variant={variant} className="flex items-center gap-1">
         <Icon className="w-3 h-3" />
         {risk.charAt(0).toUpperCase() + risk.slice(1)}
       </Badge>
@@ -365,10 +241,10 @@ const CorporateAnalyticsDashboard: React.FC = () => {
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-32" />
+            <div key={i} className="h-32 bg-gray-200 animate-pulse rounded-lg" />
           ))}
         </div>
-        <Skeleton className="h-96" />
+        <div className="h-96 bg-gray-200 animate-pulse rounded-lg" />
       </div>
     );
   }
@@ -387,29 +263,27 @@ const CorporateAnalyticsDashboard: React.FC = () => {
             Last updated: {format(lastUpdate, 'HH:mm:ss')}
           </div>
           
-          <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7d">Last 7 days</SelectItem>
-              <SelectItem value="30d">Last 30 days</SelectItem>
-              <SelectItem value="90d">Last 90 days</SelectItem>
-              <SelectItem value="month">This month</SelectItem>
-            </SelectContent>
-          </Select>
+          <select 
+            value={selectedPeriod} 
+            onChange={(e) => setSelectedPeriod(e.target.value)}
+            className="w-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+            <option value="90d">Last 90 days</option>
+            <option value="month">This month</option>
+          </select>
           
-          <Select value={selectedRiskLevel} onValueChange={setSelectedRiskLevel}>
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Risk Levels</SelectItem>
-              <SelectItem value="high">High Risk</SelectItem>
-              <SelectItem value="medium">Medium Risk</SelectItem>
-              <SelectItem value="low">Low Risk</SelectItem>
-            </SelectContent>
-          </Select>
+          <select 
+            value={selectedRiskLevel} 
+            onChange={(e) => setSelectedRiskLevel(e.target.value)}
+            className="w-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All Risk Levels</option>
+            <option value="high">High Risk</option>
+            <option value="medium">Medium Risk</option>
+            <option value="low">Low Risk</option>
+          </select>
           
           <Button onClick={fetchAllData} variant="outline">
             <RefreshCw className="w-4 h-4 mr-2" />

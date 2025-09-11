@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import RoomType from '../models/RoomType.js';
 import Room from '../models/Room.js';
 import RoomAvailability from '../models/RoomAvailability.js';
@@ -15,6 +16,14 @@ class RoomTypeController {
       const { hotelId } = req.params;
       const { isActive, includeStats } = req.query;
       
+      // Validate hotel ID is a proper ObjectId
+      if (!mongoose.Types.ObjectId.isValid(hotelId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid hotel ID format. Please provide a valid ObjectId.'
+        });
+      }
+      
       const filter = { hotelId };
       if (isActive !== undefined) {
         filter.isActive = isActive === 'true';
@@ -26,14 +35,30 @@ class RoomTypeController {
       // Include room count and inventory stats if requested
       if (includeStats === 'true') {
         for (const roomType of roomTypes) {
-          const totalRooms = await roomType.getTotalRooms();
-          roomType._doc.totalRooms = totalRooms;
+          // Use the totalRooms field from the room type schema itself
+          // If it doesn't exist, fall back to counting actual room documents
+          if (!roomType.totalRooms) {
+            const totalRooms = await roomType.getTotalRooms();
+            roomType._doc.totalRooms = totalRooms;
+          }
         }
       }
 
+      // Transform data for frontend compatibility
+      const transformedRoomTypes = roomTypes.map(rt => {
+        const roomTypeObj = rt.toObject();
+        return {
+          ...roomTypeObj,
+          basePrice: roomTypeObj.baseRate || 0, // Map baseRate to basePrice for frontend, ensure it's not undefined
+          maxOccupancy: roomTypeObj.specifications?.maxOccupancy || 2,
+          // Ensure totalRooms is preserved
+          totalRooms: roomTypeObj.totalRooms || 0
+        };
+      });
+
       res.json({
         success: true,
-        data: roomTypes
+        data: transformedRoomTypes
       });
 
     } catch (error) {
@@ -52,19 +77,30 @@ class RoomTypeController {
     try {
       const { hotelId } = req.params;
       
+      // Validate hotel ID is a proper ObjectId
+      if (!mongoose.Types.ObjectId.isValid(hotelId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid hotel ID format. Please provide a valid ObjectId.'
+        });
+      }
+      
       const roomTypes = await RoomType.find({ 
         hotelId, 
         isActive: true 
-      }).select('_id roomTypeId name code basePrice maxOccupancy legacyType');
+      }).select('_id name code baseRate totalRooms specifications.maxOccupancy');
 
       const options = roomTypes.map(rt => ({
-        id: rt._id,
-        roomTypeId: rt.roomTypeId,
+        id: rt._id.toString(), // Frontend expects 'id', not '_id'
+        _id: rt._id,
+        roomTypeId: rt._id.toString(),
         name: rt.name,
         code: rt.code,
-        basePrice: rt.basePrice,
-        maxOccupancy: rt.maxOccupancy,
-        legacyType: rt.legacyType
+        basePrice: rt.baseRate, // Map baseRate to basePrice for frontend compatibility
+        baseRate: rt.baseRate,  // Keep baseRate as well for any legacy usage
+        totalRooms: rt.totalRooms,
+        maxOccupancy: rt.specifications?.maxOccupancy || 2,
+        legacyType: rt.code.toLowerCase()
       }));
 
       res.json({
@@ -73,7 +109,7 @@ class RoomTypeController {
       });
 
     } catch (error) {
-      console.error('Error getting room type options:', error);
+      console.error('❌ [RoomTypeController] Error getting room type options:', error);
       res.status(500).json({
         success: false,
         message: error.message
@@ -121,9 +157,29 @@ class RoomTypeController {
    */
   async createRoomType(req, res) {
     try {
+      // Ensure required fields have default values
       const roomTypeData = {
         ...req.body,
-        roomTypeId: req.body.roomTypeId || uuidv4()
+        roomTypeId: req.body.roomTypeId || uuidv4(),
+        // Required fields with defaults
+        baseRate: req.body.baseRate || 1000,
+        totalRooms: req.body.totalRooms || 10,
+        specifications: {
+          maxOccupancy: 2,
+          bedType: 'double',
+          bedCount: 1,
+          smokingPolicy: 'non_smoking',
+          ...req.body.specifications,
+          // Ensure maxOccupancy is always present
+          maxOccupancy: req.body.specifications?.maxOccupancy || 2
+        },
+        // Content settings with defaults
+        content: {
+          baseLanguage: 'EN',
+          autoTranslate: true,
+          translationPriority: 'medium',
+          ...req.body.content
+        }
       };
 
       const roomType = new RoomType(roomTypeData);
@@ -244,8 +300,9 @@ class RoomTypeController {
       }
 
       const oldValues = roomType.toObject();
-      roomType.isActive = false;
-      await roomType.save();
+      
+      // Actually delete the room type instead of just deactivating
+      await RoomType.findByIdAndDelete(id);
 
       // Log the deletion
       await AuditLog.logChange({
@@ -254,7 +311,7 @@ class RoomTypeController {
         recordId: roomType._id,
         changeType: 'delete',
         oldValues,
-        newValues: roomType.toObject(),
+        newValues: null,
         userId: req.user?.id,
         userEmail: req.user?.email,
         source: 'manual'
@@ -262,7 +319,7 @@ class RoomTypeController {
 
       res.json({
         success: true,
-        message: 'Room type deactivated successfully'
+        message: 'Room type deleted successfully'
       });
 
     } catch (error) {
@@ -855,7 +912,19 @@ class RoomTypeController {
         ...req.body,
         code: req.body.code || uuidv4().substring(0, 8).toUpperCase(),
         createdBy: req.user?.id,
-        updatedBy: req.user?.id
+        updatedBy: req.user?.id,
+        // Required fields with defaults
+        baseRate: req.body.baseRate || 1000,
+        totalRooms: req.body.totalRooms || 10,
+        specifications: {
+          maxOccupancy: 2,
+          bedType: 'double',
+          bedCount: 1,
+          smokingPolicy: 'non_smoking',
+          ...req.body.specifications,
+          // Ensure maxOccupancy is always present
+          maxOccupancy: req.body.specifications?.maxOccupancy || 2
+        }
       };
 
       // Set content configuration

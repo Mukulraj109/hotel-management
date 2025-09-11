@@ -43,7 +43,7 @@ export const LocalizedApp: React.FC<LocalizedAppProps> = ({
     console.error('Translation error:', error);
     
     // In production, you might want to send this to an error tracking service
-    if (process.env.NODE_ENV === 'production') {
+    if (import.meta.env.MODE === 'production') {
       // Example: Send to error tracking service
       // errorTrackingService.captureException(error);
     }
@@ -52,12 +52,12 @@ export const LocalizedApp: React.FC<LocalizedAppProps> = ({
   };
 
   const handleMissingTranslation = (missing: any) => {
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.MODE === 'development') {
       console.warn('Missing translation:', missing);
     }
     
     // In production, you might want to collect these for improvement
-    if (process.env.NODE_ENV === 'production') {
+    if (import.meta.env.MODE === 'production') {
       // Example: Send to analytics service
       // analyticsService.track('missing_translation', missing);
     }

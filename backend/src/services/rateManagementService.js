@@ -8,6 +8,7 @@ import {
 } from '../models/RateManagement.js';
 import Room from '../models/Room.js';
 import availabilityService from './availabilityService.js';
+import seasonalPricingService from './seasonalPricingService.js';
 import { v4 as uuidv4 } from 'uuid';
 
 class RateManagementService {
@@ -44,12 +45,13 @@ class RateManagementService {
       for (const plan of ratePlans) {
         const baseRate = this.getBaseRateForRoomType(plan, roomType);
         
-        // Apply seasonal adjustments
-        const seasonalAdjustment = await this.getSeasonalAdjustment(
+        // Apply seasonal adjustments using new seasonal pricing service
+        const seasonalData = await seasonalPricingService.calculateSeasonalAdjustment(
           roomType,
           checkInDate,
           plan.planId
         );
+        const seasonalAdjustment = seasonalData.totalAdjustment;
         
         // Apply dynamic pricing
         const dynamicAdjustment = await this.getDynamicPricingAdjustment(
@@ -87,6 +89,7 @@ class RateManagementService {
           nights,
           adjustments: {
             seasonal: seasonalAdjustment,
+            seasonalDetails: seasonalData.appliedAdjustments,
             dynamic: dynamicAdjustment,
             lengthOfStay: losDiscount,
             bookingWindow: bookingDiscount
@@ -104,6 +107,22 @@ class RateManagementService {
     } catch (error) {
       console.error('Error calculating best rate:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Check if booking is allowed based on seasonal restrictions
+   */
+  async checkSeasonalBookingRestrictions(arrivalDate, departureDate, roomType) {
+    try {
+      return await seasonalPricingService.isBookingAllowed(
+        arrivalDate,
+        departureDate,
+        roomType
+      );
+    } catch (error) {
+      console.error('Error checking seasonal booking restrictions:', error);
+      return { allowed: true, warning: 'Could not verify seasonal restrictions' };
     }
   }
 

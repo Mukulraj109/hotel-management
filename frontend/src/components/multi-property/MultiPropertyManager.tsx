@@ -7,7 +7,7 @@ import {
   Building2,
   MapPin,
   Users,
-  DollarSign,
+  IndianRupee,
   TrendingUp,
   Calendar,
   Settings,
@@ -30,16 +30,27 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
+  User,
   ArrowUpRight,
   ArrowDownRight,
   Filter,
   Search,
   Download,
-  Upload
+  Upload,
+  RefreshCw,
+  MoreVertical
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
+import { 
+  DropdownMenu, 
+  DropdownMenuTrigger, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuSeparator 
+} from '@/components/ui/dropdown-menu';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
+import { propertyGroupsApi, api } from '../../services/api';
 
 interface Property {
   id: string;
@@ -121,204 +132,331 @@ export const MultiPropertyManager: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [showAddProperty, setShowAddProperty] = useState(false);
   const [showAddGroup, setShowAddGroup] = useState(false);
+  const [showEditGroup, setShowEditGroup] = useState(false);
+  const [showPropertyAssignment, setShowPropertyAssignment] = useState(false);
+  const [selectedPropertiesForAssignment, setSelectedPropertiesForAssignment] = useState<string[]>([]);
+  const [targetGroup, setTargetGroup] = useState<PropertyGroup | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [propertiesLoading, setPropertiesLoading] = useState(false);
 
-  const mockProperties: Property[] = [
-    {
-      id: 'PROP001',
-      name: 'Grand Plaza Hotel',
-      brand: 'Premium Collection',
-      type: 'hotel',
-      location: {
-        address: '123 Main Street',
-        city: 'New York',
-        country: 'USA',
-        coordinates: { lat: 40.7128, lng: -74.0060 }
-      },
-      contact: {
-        phone: '+1-555-0123',
-        email: 'manager@grandplaza.com',
-        manager: 'Sarah Johnson'
-      },
-      rooms: {
-        total: 250,
-        occupied: 205,
-        available: 35,
-        outOfOrder: 10
-      },
-      performance: {
-        occupancyRate: 82,
-        adr: 320,
-        revpar: 262.4,
-        revenue: 65600,
-        lastMonth: {
-          occupancyRate: 78,
-          adr: 315,
-          revpar: 245.7,
-          revenue: 61425
-        }
-      },
-      amenities: ['Spa', 'Fitness Center', 'Pool', 'Restaurant', 'Valet Parking'],
-      rating: 4.8,
-      status: 'active',
-      features: {
-        pms: true,
-        pos: true,
-        spa: true,
-        restaurant: true,
-        parking: true,
-        wifi: true,
-        fitness: true,
-        pool: true
-      },
-      operationalHours: {
-        checkIn: '15:00',
-        checkOut: '11:00',
-        frontDesk: '24/7'
-      }
-    },
-    {
-      id: 'PROP002',
-      name: 'Seaside Resort & Spa',
-      brand: 'Premium Collection',
-      type: 'resort',
-      location: {
-        address: '456 Ocean Drive',
-        city: 'Miami',
-        country: 'USA',
-        coordinates: { lat: 25.7617, lng: -80.1918 }
-      },
-      contact: {
-        phone: '+1-555-0456',
-        email: 'manager@seasideresort.com',
-        manager: 'Michael Chen'
-      },
-      rooms: {
-        total: 180,
-        occupied: 165,
-        available: 12,
-        outOfOrder: 3
-      },
-      performance: {
-        occupancyRate: 92,
-        adr: 450,
-        revpar: 414,
-        revenue: 74520,
-        lastMonth: {
-          occupancyRate: 88,
-          adr: 435,
-          revpar: 382.8,
-          revenue: 68904
-        }
-      },
-      amenities: ['Beach Access', 'Spa', 'Multiple Restaurants', 'Pool Complex', 'Water Sports'],
-      rating: 4.9,
-      status: 'active',
-      features: {
-        pms: true,
-        pos: true,
-        spa: true,
-        restaurant: true,
-        parking: true,
-        wifi: true,
-        fitness: true,
-        pool: true
-      },
-      operationalHours: {
-        checkIn: '16:00',
-        checkOut: '12:00',
-        frontDesk: '24/7'
-      }
-    },
-    {
-      id: 'PROP003',
-      name: 'City Business Hotel',
-      brand: 'Business Plus',
-      type: 'hotel',
-      location: {
-        address: '789 Corporate Blvd',
-        city: 'Chicago',
-        country: 'USA',
-        coordinates: { lat: 41.8781, lng: -87.6298 }
-      },
-      contact: {
-        phone: '+1-555-0789',
-        email: 'manager@citybusiness.com',
-        manager: 'Emily Rodriguez'
-      },
-      rooms: {
-        total: 120,
-        occupied: 95,
-        available: 20,
-        outOfOrder: 5
-      },
-      performance: {
-        occupancyRate: 79,
-        adr: 280,
-        revpar: 221.2,
-        revenue: 26544,
-        lastMonth: {
-          occupancyRate: 85,
-          adr: 275,
-          revpar: 233.75,
-          revenue: 28050
-        }
-      },
-      amenities: ['Business Center', 'Meeting Rooms', 'Fitness Center', 'Restaurant'],
-      rating: 4.3,
-      status: 'active',
-      features: {
-        pms: true,
-        pos: true,
-        spa: false,
-        restaurant: true,
-        parking: true,
-        wifi: true,
-        fitness: true,
-        pool: false
-      },
-      operationalHours: {
-        checkIn: '15:00',
-        checkOut: '11:00',
-        frontDesk: '24/7'
-      }
-    }
-  ];
-
-  const mockPropertyGroups: PropertyGroup[] = [
-    {
-      id: 'GROUP001',
-      name: 'Premium Collection',
-      description: 'Luxury hotels and resorts targeting high-end travelers',
-      properties: ['PROP001', 'PROP002'],
-      manager: 'David Wilson',
-      budget: 5000000,
-      performance: {
-        totalRevenue: 140120,
-        avgOccupancy: 87,
-        avgADR: 385,
-        totalRooms: 430
-      }
-    },
-    {
-      id: 'GROUP002',
-      name: 'Business Plus',
-      description: 'Business-focused hotels in major city centers',
-      properties: ['PROP003'],
-      manager: 'Lisa Thompson',
-      budget: 2000000,
-      performance: {
-        totalRevenue: 26544,
-        avgOccupancy: 79,
-        avgADR: 280,
-        totalRooms: 120
-      }
-    }
-  ];
-
+  // Fetch property groups from API
   useEffect(() => {
-    setProperties(mockProperties);
-    setPropertyGroups(mockPropertyGroups);
+    fetchPropertyGroups();
+    fetchProperties();
   }, []);
+
+  const fetchPropertyGroups = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await propertyGroupsApi.getGroups();
+      setPropertyGroups(response.data.data || []);
+    } catch (err: any) {
+      console.error('Error fetching property groups:', err);
+      setError(err.response?.data?.message || 'Failed to fetch property groups');
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to fetch property groups. Please try again."
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchProperties = async () => {
+    try {
+      setPropertiesLoading(true);
+      // Fetch hotels/properties from API
+      const response = await api.get('/hotels');
+      const hotelsData = response.data.data || [];
+      
+      // Fetch analytics data for each hotel
+      const hotelsWithAnalytics = await Promise.all(
+        hotelsData.map(async (hotel: any) => {
+          try {
+            // Get current analytics data for the hotel (last 30 days)
+            const analyticsResponse = await api.get('/analytics/dashboard/metrics', {
+              params: { 
+                period: '30d',
+                hotel_id: hotel._id
+              }
+            });
+            
+            const analytics = analyticsResponse.data.data;
+            const kpis = analytics?.kpis || {};
+
+            // Get previous month data for comparison (30-60 days ago)
+            const previousDate = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+            const currentDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+            
+            const previousAnalyticsResponse = await api.get('/analytics/dashboard/metrics', {
+              params: { 
+                period: '30d',
+                hotel_id: hotel._id,
+                start_date: previousDate.toISOString(),
+                end_date: currentDate.toISOString()
+              }
+            });
+            
+            const previousAnalytics = previousAnalyticsResponse.data.data;
+            const previousKpis = previousAnalytics?.kpis || {};
+
+            return {
+              ...hotel,
+              analytics: {
+                revenue: kpis.revenue?.value || 0,
+                occupancyRate: kpis.occupancy?.value || 0,
+                adr: kpis.adr?.value || 0,
+                revpar: kpis.revpar?.value || 0,
+                bookings: kpis.bookings?.value || 0,
+                lastMonth: {
+                  revenue: previousKpis.revenue?.value || 0,
+                  occupancyRate: previousKpis.occupancy?.value || 0,
+                  adr: previousKpis.adr?.value || 0,
+                  revpar: previousKpis.revpar?.value || 0,
+                  bookings: previousKpis.bookings?.value || 0
+                }
+              }
+            };
+          } catch (analyticsError) {
+            console.warn(`Failed to fetch analytics for hotel ${hotel._id}:`, analyticsError);
+            // Return hotel with default analytics if analytics fetch fails
+            return {
+              ...hotel,
+              analytics: {
+                revenue: 0,
+                occupancyRate: 0,
+                adr: 0,
+                revpar: 0,
+                bookings: 0,
+                lastMonth: {
+                  revenue: 0,
+                  occupancyRate: 0,
+                  adr: 0,
+                  revpar: 0,
+                  bookings: 0
+                }
+              }
+            };
+          }
+        })
+      );
+      
+      // Transform hotel data to Property interface format
+      const transformedProperties: Property[] = hotelsWithAnalytics.map((hotel: any) => ({
+        id: hotel._id,
+        name: hotel.name,
+        brand: hotel.brand || 'Independent',
+        type: hotel.type || 'hotel',
+        location: {
+          address: hotel.address?.street || '',
+          city: hotel.address?.city || '',
+          country: hotel.address?.country || '',
+          coordinates: {
+            lat: hotel.address?.coordinates?.latitude || 0,
+            lng: hotel.address?.coordinates?.longitude || 0
+          }
+        },
+        contact: {
+          phone: hotel.contact?.phone || '',
+          email: hotel.contact?.email || '',
+          manager: hotel.manager || 'N/A'
+        },
+        rooms: {
+          total: hotel.totalRooms || 0,
+          occupied: hotel.occupiedRooms || 0,
+          available: hotel.availableRooms || 0,
+          outOfOrder: hotel.outOfOrderRooms || 0
+        },
+        performance: {
+          occupancyRate: hotel.analytics.occupancyRate,
+          adr: hotel.analytics.adr,
+          revpar: hotel.analytics.revpar,
+          revenue: hotel.analytics.revenue,
+          lastMonth: {
+            occupancyRate: hotel.analytics.lastMonth.occupancyRate,
+            adr: hotel.analytics.lastMonth.adr,
+            revpar: hotel.analytics.lastMonth.revpar,
+            revenue: hotel.analytics.lastMonth.revenue
+          }
+        },
+        amenities: hotel.amenities || [],
+        rating: hotel.rating || 0,
+        status: hotel.isActive ? 'active' : 'inactive',
+        features: {
+          pms: hotel.features?.pms || false,
+          pos: hotel.features?.pos || false,
+          spa: hotel.features?.spa || false,
+          restaurant: hotel.features?.restaurant || false,
+          parking: hotel.features?.parking || false,
+          wifi: hotel.features?.wifi || false,
+          fitness: hotel.features?.fitness || false,
+          pool: hotel.features?.pool || false
+        },
+        operationalHours: {
+          checkIn: hotel.policies?.checkInTime || '15:00',
+          checkOut: hotel.policies?.checkOutTime || '11:00',
+          frontDesk: '24/7'
+        }
+      }));
+      
+      setProperties(transformedProperties);
+    } catch (err: any) {
+      console.error('Error fetching properties:', err);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to fetch properties. Please try again."
+      });
+    } finally {
+      setPropertiesLoading(false);
+    }
+  };
+
+  // Property Group Management Functions
+  const handleCreateGroup = async (groupData: any) => {
+    try {
+      await propertyGroupsApi.createGroup(groupData);
+      toast({
+        title: "Success",
+        description: "Property group created successfully"
+      });
+      fetchPropertyGroups();
+      setShowAddGroup(false);
+    } catch (err: any) {
+      console.error('Error creating group:', err);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err.response?.data?.message || "Failed to create property group"
+      });
+    }
+  };
+
+  const handleUpdateGroup = async (groupId: string, groupData: any) => {
+    try {
+      await propertyGroupsApi.updateGroup(groupId, groupData);
+      toast({
+        title: "Success",
+        description: "Property group updated successfully"
+      });
+      fetchPropertyGroups();
+    } catch (err: any) {
+      console.error('Error updating group:', err);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err.response?.data?.message || "Failed to update property group"
+      });
+    }
+  };
+
+  const handleDeleteGroup = async (groupId: string) => {
+    if (window.confirm('Are you sure you want to delete this property group?')) {
+      try {
+        await propertyGroupsApi.deleteGroup(groupId);
+        toast({
+          title: "Success",
+          description: "Property group deleted successfully"
+        });
+        fetchPropertyGroups();
+        if (selectedGroup?.id === groupId) {
+          setSelectedGroup(null);
+        }
+      } catch (err: any) {
+        console.error('Error deleting group:', err);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: err.response?.data?.message || "Failed to delete property group"
+        });
+      }
+    }
+  };
+
+  const handleSyncGroupSettings = async (groupId: string) => {
+    try {
+      await propertyGroupsApi.syncGroupSettings(groupId);
+      toast({
+        title: "Success",
+        description: "Group settings synced successfully"
+      });
+      fetchPropertyGroups();
+    } catch (err: any) {
+      console.error('Error syncing group settings:', err);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err.response?.data?.message || "Failed to sync group settings"
+      });
+    }
+  };
+
+  // Property Assignment Functions
+  const handleAddPropertiesToGroup = async (groupId: string, propertyIds: string[]) => {
+    try {
+      await propertyGroupsApi.addPropertiesToGroup(groupId, { propertyIds });
+      toast({
+        title: "Success",
+        description: `Added ${propertyIds.length} property(ies) to group successfully`
+      });
+      fetchPropertyGroups();
+      fetchProperties();
+    } catch (err: any) {
+      console.error('Error adding properties to group:', err);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err.response?.data?.message || "Failed to add properties to group"
+      });
+    }
+  };
+
+  const handleRemovePropertiesFromGroup = async (groupId: string, propertyIds: string[]) => {
+    if (window.confirm(`Are you sure you want to remove ${propertyIds.length} property(ies) from this group?`)) {
+      try {
+        await propertyGroupsApi.removePropertiesFromGroup(groupId, { propertyIds });
+        toast({
+          title: "Success",
+          description: `Removed ${propertyIds.length} property(ies) from group successfully`
+        });
+        fetchPropertyGroups();
+        fetchProperties();
+      } catch (err: any) {
+        console.error('Error removing properties from group:', err);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: err.response?.data?.message || "Failed to remove properties from group"
+        });
+      }
+    }
+  };
+
+  const openPropertyAssignmentModal = (group: PropertyGroup) => {
+    setTargetGroup(group);
+    setSelectedPropertiesForAssignment([]);
+    setShowPropertyAssignment(true);
+  };
+
+  const handlePropertySelection = (propertyId: string, isSelected: boolean) => {
+    setSelectedPropertiesForAssignment(prev => 
+      isSelected 
+        ? [...prev, propertyId]
+        : prev.filter(id => id !== propertyId)
+    );
+  };
+
+  const handleBulkAssignment = async () => {
+    if (targetGroup && selectedPropertiesForAssignment.length > 0) {
+      await handleAddPropertiesToGroup(targetGroup._id, selectedPropertiesForAssignment);
+      setShowPropertyAssignment(false);
+      setTargetGroup(null);
+      setSelectedPropertiesForAssignment([]);
+    }
+  };
 
   const filteredProperties = properties.filter(property => {
     const matchesSearch = property.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -387,9 +525,9 @@ export const MultiPropertyManager: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Total Revenue</p>
-                <p className="text-2xl font-bold">${totalStats.totalRevenue.toLocaleString()}</p>
+                <p className="text-2xl font-bold">₹{totalStats.totalRevenue.toLocaleString()}</p>
               </div>
-              <DollarSign className="h-8 w-8 text-emerald-500" />
+              <IndianRupee className="h-8 w-8 text-emerald-500" />
             </div>
           </CardContent>
         </Card>
@@ -432,11 +570,11 @@ export const MultiPropertyManager: React.FC = () => {
                     <p className="text-sm text-muted-foreground mt-1">{group.description}</p>
                     <div className="flex items-center space-x-4 mt-2 text-sm">
                       <span>Manager: {group.manager}</span>
-                      <span>Budget: ${group.budget.toLocaleString()}</span>
+                      <span>Budget: ₹{group.budget.toLocaleString()}</span>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-2xl font-bold">${group.performance.totalRevenue.toLocaleString()}</div>
+                    <div className="text-2xl font-bold">₹{group.performance.totalRevenue.toLocaleString()}</div>
                     <div className="text-sm text-muted-foreground">Total Revenue</div>
                   </div>
                 </div>
@@ -482,7 +620,7 @@ export const MultiPropertyManager: React.FC = () => {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-lg font-bold">${property.performance.revpar.toFixed(2)}</div>
+                      <div className="text-lg font-bold">₹{property.performance.revpar.toFixed(2)}</div>
                       <div className="text-sm text-muted-foreground">RevPAR</div>
                       <div className={`flex items-center text-sm ${
                         revparChange.isPositive ? 'text-green-600' : 'text-red-600'
@@ -631,7 +769,7 @@ export const MultiPropertyManager: React.FC = () => {
                       </div>
                     </div>
                     <div className="text-center">
-                      <div className="text-lg font-bold">${property.performance.adr}</div>
+                      <div className="text-lg font-bold">₹{property.performance.adr}</div>
                       <div className="text-xs text-muted-foreground">ADR</div>
                       <div className={`text-xs flex items-center justify-center ${
                         adrChange.isPositive ? 'text-green-600' : 'text-red-600'
@@ -645,7 +783,7 @@ export const MultiPropertyManager: React.FC = () => {
                       </div>
                     </div>
                     <div className="text-center">
-                      <div className="text-lg font-bold">${property.performance.revpar.toFixed(0)}</div>
+                      <div className="text-lg font-bold">₹{property.performance.revpar.toFixed(0)}</div>
                       <div className="text-xs text-muted-foreground">RevPAR</div>
                     </div>
                   </div>
@@ -681,11 +819,11 @@ export const MultiPropertyManager: React.FC = () => {
               <div className="text-sm text-muted-foreground">Average Occupancy</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-green-600">${totalStats.avgADR.toFixed(0)}</div>
+              <div className="text-3xl font-bold text-green-600">₹{totalStats.avgADR.toFixed(0)}</div>
               <div className="text-sm text-muted-foreground">Average ADR</div>
             </div>
             <div className="text-center">
-              <div className="text-3xl font-bold text-purple-600">${totalStats.totalRevenue.toLocaleString()}</div>
+              <div className="text-3xl font-bold text-purple-600">₹{totalStats.totalRevenue.toLocaleString()}</div>
               <div className="text-sm text-muted-foreground">Total Revenue</div>
             </div>
           </div>
@@ -710,7 +848,7 @@ export const MultiPropertyManager: React.FC = () => {
                       <div className="text-sm text-muted-foreground">{typeProperties.length} properties</div>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold">${avgRevenue.toFixed(0)}</div>
+                      <div className="font-bold">₹{avgRevenue.toFixed(0)}</div>
                       <div className="text-sm text-muted-foreground">Avg Revenue</div>
                     </div>
                   </div>
@@ -737,7 +875,7 @@ export const MultiPropertyManager: React.FC = () => {
                       <div className="text-sm text-muted-foreground">{cityProperties.length} properties</div>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold">${totalRevenue.toLocaleString()}</div>
+                      <div className="font-bold">₹{totalRevenue.toLocaleString()}</div>
                       <div className="text-sm text-muted-foreground">Total Revenue</div>
                     </div>
                   </div>
@@ -750,6 +888,163 @@ export const MultiPropertyManager: React.FC = () => {
     </div>
   );
 
+  const renderGroups = () => (
+    <div className="space-y-6">
+      {/* Group Management Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Property Groups</h3>
+          <p className="text-sm text-muted-foreground">Manage and organize properties into groups</p>
+        </div>
+        <Button onClick={() => setShowAddGroup(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Add Group
+        </Button>
+      </div>
+
+      {/* Property Groups Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {propertyGroups.map(group => (
+          <Card key={group._id} className="hover:shadow-lg transition-shadow">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-lg">{group.name}</CardTitle>
+                  <p className="text-sm text-muted-foreground capitalize">{group.groupType || 'Standard'}</p>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={() => {
+                      setSelectedGroup(group);
+                      setShowEditGroup(true);
+                    }}>
+                      <Edit className="mr-2 h-4 w-4" />
+                      Edit Group
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleSyncGroupSettings(group._id)}>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Sync Settings
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      className="text-red-600"
+                      onClick={() => handleDeleteGroup(group._id)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Delete Group
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {/* Group Stats */}
+                <div className="grid grid-cols-3 gap-4 text-center">
+                  <div>
+                    <div className="text-xl font-bold text-blue-600">{group.properties?.length || 0}</div>
+                    <div className="text-xs text-muted-foreground">Properties</div>
+                  </div>
+                  <div>
+                    <div className="text-xl font-bold text-green-600">
+                      {group.metrics ? `${group.metrics.avgOccupancy}%` : 'N/A'}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Avg Occupancy</div>
+                  </div>
+                  <div>
+                    <div className="text-xl font-bold text-purple-600">
+                      ₹{group.metrics ? group.metrics.totalRevenue.toLocaleString() : '0'}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Revenue</div>
+                  </div>
+                </div>
+
+                {/* Group Description */}
+                {group.description && (
+                  <p className="text-sm text-muted-foreground">{group.description}</p>
+                )}
+
+                {/* Group Status */}
+                <div className="flex items-center justify-between">
+                  <Badge variant={group.isActive ? "default" : "secondary"}>
+                    {group.isActive ? "Active" : "Inactive"}
+                  </Badge>
+                  <div className="text-xs text-muted-foreground">
+                    Created {new Date(group.createdAt).toLocaleDateString()}
+                  </div>
+                </div>
+
+                {/* Quick Actions */}
+                <div className="space-y-2">
+                  <div className="flex space-x-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1"
+                      onClick={() => {
+                        // Navigate to group dashboard
+                        setSelectedGroup(group);
+                      }}
+                    >
+                      <BarChart3 className="mr-1 h-3 w-3" />
+                      Dashboard
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1"
+                      onClick={() => {
+                        // Navigate to group settings
+                        setSelectedGroup(group);
+                        setShowEditGroup(true);
+                      }}
+                    >
+                      <Settings className="mr-1 h-3 w-3" />
+                      Settings
+                    </Button>
+                  </div>
+                  <Button 
+                    variant="default"
+                    size="sm" 
+                    className="w-full"
+                    onClick={() => openPropertyAssignmentModal(group)}
+                  >
+                    <Building2 className="mr-1 h-3 w-3" />
+                    Manage Properties
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Empty State */}
+      {propertyGroups.length === 0 && (
+        <Card>
+          <CardContent className="py-12">
+            <div className="text-center">
+              <Users className="mx-auto h-12 w-12 text-muted-foreground" />
+              <h3 className="mt-4 text-lg font-semibold">No property groups yet</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Get started by creating your first property group to organize your properties.
+              </p>
+              <Button className="mt-4" onClick={() => setShowAddGroup(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Create First Group
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+
   const tabs = [
     { id: 'dashboard', name: 'Dashboard', icon: BarChart3 },
     { id: 'properties', name: 'Properties', icon: Building2 },
@@ -757,18 +1052,57 @@ export const MultiPropertyManager: React.FC = () => {
     { id: 'analytics', name: 'Analytics', icon: TrendingUp }
   ];
 
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="space-y-6 p-6">
+        <div className="flex items-center justify-center h-64">
+          <RefreshCw className="h-8 w-8 animate-spin text-blue-600" />
+          <span className="ml-2 text-gray-600">Loading dashboard...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error && propertyGroups.length === 0) {
+    return (
+      <div className="space-y-6 p-6">
+        <div className="flex items-center justify-center h-64 flex-col">
+          <AlertCircle className="h-8 w-8 text-red-600 mb-4" />
+          <span className="text-gray-600 text-center">
+            {error}
+          </span>
+          <Button 
+            onClick={() => {
+              fetchPropertyGroups();
+              fetchProperties();
+            }}
+            className="mt-4"
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Try Again
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Multi-Property Manager</h2>
         <div className="flex space-x-2">
+          <Button variant="outline" onClick={() => {
+            fetchPropertyGroups();
+            fetchProperties();
+          }}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh Data
+          </Button>
           <Button variant="outline">
             <Download className="mr-2 h-4 w-4" />
             Export Data
-          </Button>
-          <Button variant="outline">
-            <Upload className="mr-2 h-4 w-4" />
-            Import Data
           </Button>
         </div>
       </div>
@@ -801,7 +1135,7 @@ export const MultiPropertyManager: React.FC = () => {
       {/* Content */}
       {activeView === 'dashboard' && renderDashboard()}
       {activeView === 'properties' && renderProperties()}
-      {activeView === 'groups' && renderProperties()}
+      {activeView === 'groups' && renderGroups()}
       {activeView === 'analytics' && renderAnalytics()}
 
       {/* Property Details Modal */}
@@ -893,15 +1227,15 @@ export const MultiPropertyManager: React.FC = () => {
                       <div className="text-sm text-muted-foreground">Occupancy Rate</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-2xl font-bold">${selectedProperty.performance.adr}</div>
+                      <div className="text-2xl font-bold">₹{selectedProperty.performance.adr}</div>
                       <div className="text-sm text-muted-foreground">ADR</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-2xl font-bold">${selectedProperty.performance.revpar.toFixed(0)}</div>
+                      <div className="text-2xl font-bold">₹{selectedProperty.performance.revpar.toFixed(0)}</div>
                       <div className="text-sm text-muted-foreground">RevPAR</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-2xl font-bold">${selectedProperty.performance.revenue.toLocaleString()}</div>
+                      <div className="text-2xl font-bold">₹{selectedProperty.performance.revenue.toLocaleString()}</div>
                       <div className="text-sm text-muted-foreground">Revenue</div>
                     </div>
                   </div>
@@ -918,7 +1252,7 @@ export const MultiPropertyManager: React.FC = () => {
                     {Object.entries(selectedProperty.features).map(([feature, enabled]) => {
                       const icons: { [key: string]: React.ComponentType<any> } = {
                         pms: Settings,
-                        pos: DollarSign,
+                        pos: IndianRupee,
                         spa: Star,
                         restaurant: Utensils,
                         parking: Car,
@@ -948,6 +1282,131 @@ export const MultiPropertyManager: React.FC = () => {
                   </div>
                 </CardContent>
               </Card>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Property Assignment Modal */}
+      {showPropertyAssignment && targetGroup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <Card className="w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Manage Properties for {targetGroup.name}</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Add or remove properties from this group
+                  </p>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    setShowPropertyAssignment(false);
+                    setTargetGroup(null);
+                    setSelectedPropertiesForAssignment([]);
+                  }}
+                >
+                  <XCircle className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {/* Current Properties in Group */}
+                <div>
+                  <h4 className="text-sm font-medium mb-2 flex items-center">
+                    <Building2 className="mr-2 h-4 w-4" />
+                    Current Properties ({targetGroup.properties?.length || 0})
+                  </h4>
+                  {targetGroup.properties && targetGroup.properties.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {targetGroup.properties.map((propertyId: string) => {
+                        const property = properties.find(p => p.id === propertyId);
+                        if (!property) return null;
+                        
+                        return (
+                          <div key={property.id} className="flex items-center justify-between p-2 border rounded">
+                            <div className="flex items-center space-x-2">
+                              <Building2 className="h-4 w-4 text-blue-600" />
+                              <div>
+                                <div className="text-sm font-medium">{property.name}</div>
+                                <div className="text-xs text-muted-foreground">{property.location.city}</div>
+                              </div>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRemovePropertiesFromGroup(targetGroup._id, [property.id])}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No properties assigned to this group yet.</p>
+                  )}
+                </div>
+
+                {/* Available Properties to Add */}
+                <div>
+                  <h4 className="text-sm font-medium mb-2 flex items-center">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Available Properties
+                  </h4>
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {properties
+                      .filter(property => !targetGroup.properties?.includes(property.id))
+                      .map(property => (
+                        <label
+                          key={property.id}
+                          className="flex items-center space-x-3 p-2 border rounded hover:bg-gray-50 cursor-pointer"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedPropertiesForAssignment.includes(property.id)}
+                            onChange={(e) => handlePropertySelection(property.id, e.target.checked)}
+                            className="rounded"
+                          />
+                          <Building2 className="h-4 w-4 text-gray-400" />
+                          <div className="flex-1">
+                            <div className="text-sm font-medium">{property.name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {property.location.city} • {property.rooms.total} rooms • {property.type}
+                            </div>
+                          </div>
+                          <Badge variant="outline">
+                            {property.status}
+                          </Badge>
+                        </label>
+                      ))}
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                {selectedPropertiesForAssignment.length > 0 && (
+                  <div className="flex items-center justify-between pt-4 border-t">
+                    <div className="text-sm text-muted-foreground">
+                      {selectedPropertiesForAssignment.length} property(ies) selected
+                    </div>
+                    <div className="flex space-x-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setSelectedPropertiesForAssignment([])}
+                      >
+                        Clear Selection
+                      </Button>
+                      <Button onClick={handleBulkAssignment}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add to Group
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>

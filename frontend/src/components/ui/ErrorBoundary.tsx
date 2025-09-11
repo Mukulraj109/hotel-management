@@ -32,7 +32,7 @@ class ErrorBoundary extends Component<Props, State> {
     });
 
     // Log error to external service in production
-    if (process.env.NODE_ENV === 'production') {
+    if (import.meta.env.MODE === 'production') {
       // You can log to your error reporting service here
       console.error('Production error:', {
         message: error.message,
@@ -69,7 +69,7 @@ class ErrorBoundary extends Component<Props, State> {
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
-              {process.env.NODE_ENV === 'development' && this.state.error && (
+              {import.meta.env.MODE === 'development' && this.state.error && (
                 <div className="bg-gray-100 p-4 rounded-lg">
                   <h4 className="font-semibold mb-2">Error Details (Development):</h4>
                   <pre className="text-sm text-red-800 overflow-auto">

@@ -1,6 +1,6 @@
-const webpush = require('web-push');
-const User = require('../models/User');
-const Notification = require('../models/Notification');
+import webpush from 'web-push';
+import User from '../models/User.js';
+import Notification from '../models/Notification.js';
 
 // Configure web-push (these should be environment variables in production)
 const vapidKeys = {
@@ -475,7 +475,7 @@ class PushNotificationService {
   async getBookingsForDate(hotelId, date) {
     // This would be implemented based on your Booking model
     // Placeholder implementation
-    const Booking = require('../models/Booking');
+    const { default: Booking } = await import('../models/Booking.js');
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(date);
@@ -492,7 +492,7 @@ class PushNotificationService {
    */
   async getOverdueTasks(hotelId) {
     // This would be implemented based on your Task/Housekeeping model
-    const Housekeeping = require('../models/Housekeeping');
+    const { default: Housekeeping } = await import('../models/Housekeeping.js');
     const now = new Date();
 
     return await Housekeeping.find({
@@ -522,4 +522,4 @@ class PushNotificationService {
   }
 }
 
-module.exports = new PushNotificationService();
+export default new PushNotificationService();

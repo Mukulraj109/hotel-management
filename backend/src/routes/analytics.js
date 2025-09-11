@@ -12,7 +12,14 @@ import {
   getRealtimeKPIs,
   forecastOccupancy,
   predictDemand,
-  analyzeMarketTrends
+  analyzeMarketTrends,
+  getStaffProductivity,
+  getHousekeepingEfficiency,
+  getFrontDeskPerformance,
+  getCorporateBookings,
+  getCorporatePayments,
+  getBookingChannels,
+  getChannelROI
 } from '../controllers/analyticsController.js';
 
 const router = express.Router();
@@ -130,5 +137,18 @@ router.get('/etl/status', authorize(['admin']), async (req, res) => {
 router.get('/forecast/occupancy/:hotelId', authorize(['admin', 'manager']), forecastOccupancy);
 router.get('/predict/demand/:hotelId', authorize(['admin', 'manager']), predictDemand);
 router.get('/market/trends/:hotelId', authorize(['admin', 'manager']), analyzeMarketTrends);
+
+// Staff Productivity Analytics Routes
+router.post('/staff-productivity', authorize(['admin', 'manager']), getStaffProductivity);
+router.post('/staff-productivity/housekeeping', authorize(['admin', 'manager']), getHousekeepingEfficiency);
+router.post('/staff-productivity/front-desk', authorize(['admin', 'manager']), getFrontDeskPerformance);
+
+// Corporate Analytics Routes
+router.post('/corporate-bookings', authorize(['admin', 'manager']), getCorporateBookings);
+router.post('/corporate-payments', authorize(['admin', 'manager']), getCorporatePayments);
+
+// Booking Channel Analytics Routes
+router.post('/booking-channels', authorize(['admin', 'manager']), getBookingChannels);
+router.post('/booking-channels/roi', authorize(['admin', 'manager']), getChannelROI);
 
 export default router;

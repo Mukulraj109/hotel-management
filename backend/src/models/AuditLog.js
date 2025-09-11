@@ -17,7 +17,7 @@ const auditLogSchema = new mongoose.Schema({
   tableName: {
     type: String,
     required: true,
-    enum: ['RoomAvailability', 'RoomType', 'Booking', 'RatePlan', 'Channel', 'Room', 'User'],
+    enum: ['RoomAvailability', 'RoomType', 'Booking', 'RatePlan', 'Channel', 'Room', 'User', 'BookingFormTemplate', 'WebSettings'],
     index: true
   },
   recordId: {
@@ -29,7 +29,7 @@ const auditLogSchema = new mongoose.Schema({
   changeType: {
     type: String,
     required: true,
-    enum: ['create', 'update', 'delete', 'sync', 'booking', 'cancellation'],
+    enum: ['create', 'update', 'delete', 'sync', 'booking', 'cancellation', 'web_settings_update', 'web_settings_section_update_general', 'web_settings_section_update_booking', 'web_settings_section_update_payment', 'web_settings_section_update_seo', 'web_settings_section_update_integrations', 'web_settings_section_update_theme', 'web_settings_section_update_advanced', 'web_settings_section_update_maintenance', 'web_settings_export', 'web_settings_import', 'web_settings_reset'],
     index: true
   },
   // Change details
@@ -55,7 +55,7 @@ const auditLogSchema = new mongoose.Schema({
   userRole: String,
   source: {
     type: String,
-    enum: ['manual', 'api', 'channel_sync', 'system', 'migration', 'channel_setup', 'booking_com_webhook', 'expedia_webhook', 'webhook', 'room_mapping'],
+    enum: ['manual', 'api', 'channel_sync', 'system', 'migration', 'channel_setup', 'booking_com_webhook', 'expedia_webhook', 'webhook', 'room_mapping', 'web_settings_controller'],
     default: 'manual'
   },
   sourceDetails: {
@@ -288,6 +288,23 @@ auditLogSchema.statics.getChangeHistory = function(tableName, recordId, options 
     .limit(options.limit || 100);
 };
 
+auditLogSchema.statics.logFormAction = async function(template, action, userId, additionalData = {}) {
+  return await this.logChange({
+    hotelId: template.hotelId,
+    tableName: 'BookingFormTemplate',
+    recordId: template._id,
+    changeType: action,
+    userId,
+    formDetails: {
+      templateName: template.name,
+      templateCategory: template.category,
+      fieldCount: template.fieldCount || template.fields?.length || 0,
+      status: template.status
+    },
+    ...additionalData
+  });
+};
+
 auditLogSchema.statics.getUnreconciledChanges = function(hotelId, channel = null) {
   const query = {
     hotelId,
@@ -302,6 +319,26 @@ auditLogSchema.statics.getUnreconciledChanges = function(hotelId, channel = null
   return this.find(query)
     .populate('sourceDetails.channel', 'name category')
     .sort({ createdAt: 1 });
+};
+
+auditLogSchema.statics.logSettingsChange = async function(settings, changeType, userId, additionalData = {}) {
+  return await this.logChange({
+    hotelId: settings.hotelId,
+    tableName: 'WebSettings',
+    recordId: settings._id,
+    changeType,
+    userId,
+    source: additionalData.source || 'manual',
+    oldValues: additionalData.backup?.data || {},
+    newValues: additionalData.changes || {},
+    metadata: {
+      section: additionalData.section,
+      backup: additionalData.backup,
+      priority: 'medium',
+      tags: ['web_settings', changeType]
+    },
+    ...additionalData
+  });
 };
 
 // Instance methods

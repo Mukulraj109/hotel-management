@@ -1,9 +1,9 @@
-const tf = require('@tensorflow/tfjs-node');
-const Booking = require('../../models/Booking');
-const Room = require('../../models/Room');
-const Weather = require('../../models/Weather'); // Assuming weather data integration
-const Event = require('../../models/Event'); // Local events data
-const { startOfDay, endOfDay, addDays, subDays, format, differenceInDays } = require('date-fns');
+import * as tf from '@tensorflow/tfjs-node';
+import Booking from '../../models/Booking.js';
+import Room from '../../models/Room.js';
+import Weather from '../../models/Weather.js'; // Assuming weather data integration
+import Event from '../../models/Event.js'; // Local events data
+import { startOfDay, endOfDay, addDays, subDays, format, differenceInDays } from 'date-fns';
 
 class EnhancedPredictiveAnalytics {
   constructor() {
@@ -847,4 +847,4 @@ class EnhancedPredictiveAnalytics {
   }
 }
 
-module.exports = new EnhancedPredictiveAnalytics();
+export default new EnhancedPredictiveAnalytics();

@@ -76,6 +76,12 @@ const roomSchema = new mongoose.Schema({
     ref: 'RoomType',
     index: true
   },
+  // Hotel Area reference for physical location and organization
+  hotelAreaId: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'HotelArea',
+    index: true
+  },
   // LEGACY: Keep for backward compatibility during transition
   type: {
     type: String,
@@ -127,6 +133,20 @@ const roomSchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+  // Revenue Account Integration
+  revenueAccountCode: {
+    type: String,
+    trim: true,
+    uppercase: true,
+    maxLength: 20,
+    index: true
+  },
+  // Alternative: Reference to RevenueAccount model
+  revenueAccountId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'RevenueAccount',
+    index: true
+  },
   lastCleaned: Date,
   maintenanceNotes: String
 }, {
@@ -139,6 +159,8 @@ const roomSchema = new mongoose.Schema({
 roomSchema.index({ hotelId: 1, roomNumber: 1 }, { unique: true });
 roomSchema.index({ hotelId: 1, type: 1, status: 1 });
 roomSchema.index({ hotelId: 1, floor: 1 });
+roomSchema.index({ hotelId: 1, revenueAccountCode: 1 });
+roomSchema.index({ hotelId: 1, revenueAccountId: 1 });
 
 // Set current rate to base rate if not provided
 roomSchema.pre('save', function(next) {
@@ -163,6 +185,14 @@ roomSchema.virtual('currentBookings', {
 roomSchema.virtual('roomTypeDetails', {
   ref: 'RoomType',
   localField: 'roomTypeId',
+  foreignField: '_id',
+  justOne: true
+});
+
+// Virtual for revenue account details
+roomSchema.virtual('revenueAccountDetails', {
+  ref: 'RevenueAccount',
+  localField: 'revenueAccountId',
   foreignField: '_id',
   justOne: true
 });

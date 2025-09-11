@@ -15,6 +15,9 @@ import bcrypt from 'bcryptjs';
  *         _id:
  *           type: string
  *           description: User ID
+ *         salutationId:
+ *           type: string
+ *           description: Reference to salutation (Mr, Mrs, Dr, etc.)
  *         name:
  *           type: string
  *           description: User's full name
@@ -60,6 +63,10 @@ import bcrypt from 'bcryptjs';
  */
 
 const userSchema = new mongoose.Schema({
+  salutationId: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'Salutation'
+  },
   name: {
     type: String,
     required: [true, 'Name is required'],

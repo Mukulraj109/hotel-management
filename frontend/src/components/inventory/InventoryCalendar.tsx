@@ -3,7 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar as CalendarIcon,
-  DollarSign,
+  IndianRupee,
   Users,
   AlertTriangle,
   CheckCircle,
@@ -19,7 +19,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Modal } from '../ui/Modal';
 import { Badge } from '../ui/Badge';
-import { Select } from '../ui/Select';
+// import { Select } from '../ui/Select'; // Not compatible with our usage
 import { inventoryService, type CalendarData, type InventoryRecord } from '../../services/inventoryService';
 import { roomTypeService, type RoomTypeOption } from '../../services/roomTypeService';
 
@@ -68,9 +68,12 @@ const InventoryCalendar: React.FC<InventoryCalendarProps> = ({ hotelId }) => {
     try {
       const data = await roomTypeService.getRoomTypeOptions(hotelId);
       setRoomTypes(data);
+      
       if (data.length > 0 && !selectedRoomTypeId) {
         setSelectedRoomTypeId(data[0].id);
       }
+      
+      setError(null);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch room types');
     }
@@ -283,7 +286,7 @@ const InventoryCalendar: React.FC<InventoryCalendarProps> = ({ hotelId }) => {
               size="sm"
               className="px-3 py-1"
             >
-              <DollarSign className="w-4 h-4 mr-1" />
+              <IndianRupee className="w-4 h-4 mr-1" />
               Rates
             </Button>
           </div>
@@ -307,15 +310,18 @@ const InventoryCalendar: React.FC<InventoryCalendarProps> = ({ hotelId }) => {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Select Room Type
               </label>
-              <Select
+              <select
                 value={selectedRoomTypeId}
-                onChange={setSelectedRoomTypeId}
-                options={[
-                  { value: '', label: 'Select a room type...' },
-                  ...roomTypes.map(rt => ({ value: rt.id, label: `${rt.name} (${rt.code})` }))
-                ]}
-                className="min-w-0"
-              />
+                onChange={(e) => setSelectedRoomTypeId(e.target.value)}
+                className="flex w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 min-w-0"
+              >
+                <option value="">Select a room type...</option>
+                {roomTypes.map(rt => (
+                  <option key={rt.id} value={rt.id}>
+                    {rt.name} ({rt.code}) - ₹{rt.basePrice}
+                  </option>
+                ))}
+              </select>
             </div>
             
             {selectedRoomType && (
@@ -325,7 +331,7 @@ const InventoryCalendar: React.FC<InventoryCalendarProps> = ({ hotelId }) => {
                   Max: {selectedRoomType.maxOccupancy}
                 </div>
                 <div className="flex items-center">
-                  <DollarSign className="w-4 h-4 mr-1" />
+                  <IndianRupee className="w-4 h-4 mr-1" />
                   Base: ₹{selectedRoomType.basePrice}
                 </div>
               </div>

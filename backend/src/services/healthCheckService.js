@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import Redis from 'ioredis';
+import os from 'os';
 import logger from '../utils/logger.js';
 import emailService from './emailService.js';
 
@@ -641,7 +642,7 @@ class HealthCheckService {
    * Get system information
    */
   getSystemInfo() {
-    const os = require('os');
+    // os imported at top of file
     
     return {
       hostname: os.hostname(),

@@ -1,5 +1,9 @@
 import express from 'express';
 import posController from '../controllers/posController.js';
+import posTaxRoutes from './posTax.js';
+import measurementUnitRoutes from './measurementUnits.js';
+import posAttributeRoutes from './posAttributes.js';
+import billMessageRoutes from './billMessages.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -25,5 +29,17 @@ router.get('/dashboard/stats', authenticate, posController.getDashboardStats);
 
 // Reporting routes
 router.get('/reports/sales', authenticate, authorize(['admin', 'manager']), posController.getSalesReport);
+
+// Tax management routes
+router.use('/taxes', posTaxRoutes);
+
+// Measurement unit routes
+router.use('/measurement-units', measurementUnitRoutes);
+
+// POS attribute routes
+router.use('/attributes', posAttributeRoutes);
+
+// Bill message routes
+router.use('/bill-messages', billMessageRoutes);
 
 export default router;

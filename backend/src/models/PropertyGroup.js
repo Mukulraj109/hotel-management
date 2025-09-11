@@ -94,6 +94,23 @@ const propertyGroupSchema = new mongoose.Schema({
       default: true
     },
     
+    // Centralized Rate Management Settings
+    rateManagement: {
+      autoSync: { type: Boolean, default: true },
+      syncFrequency: {
+        type: String,
+        enum: ['real_time', 'hourly', 'daily', 'weekly', 'manual'],
+        default: 'daily'
+      },
+      allowPropertyOverrides: { type: Boolean, default: true },
+      requireApproval: { type: Boolean, default: false },
+      conflictResolution: {
+        type: String,
+        enum: ['centralized_wins', 'property_wins', 'manual_resolve', 'alert_only'],
+        default: 'alert_only'
+      }
+    },
+    
     // Reporting settings
     consolidatedReporting: {
       type: Boolean,

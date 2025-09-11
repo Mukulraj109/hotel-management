@@ -2,6 +2,9 @@ import AdvancedReportingService from '../services/analytics/AdvancedReportingSer
 import ETLService from '../services/analytics/ETLService.js';
 import PredictiveAnalyticsEngine from '../services/analytics/PredictiveAnalyticsEngine.js';
 import GuestSegmentationService from '../services/analytics/GuestSegmentationService.js';
+import staffProductivityService from '../services/staffProductivityService.js';
+import corporateAnalyticsService from '../services/corporateAnalyticsService.js';
+import bookingChannelService from '../services/bookingChannelService.js';
 import { 
   FactBookings, 
   FactRevenue, 
@@ -581,6 +584,142 @@ export const analyzeMarketTrends = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to analyze market trends',
+      error: error.message
+    });
+  }
+};
+
+// Staff Productivity Analytics
+export const getStaffProductivity = async (req, res) => {
+  try {
+    const result = await staffProductivityService.getStaffProductivityAnalytics(req.body);
+    
+    if (result.success) {
+      res.status(200).json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    logger.error('Error in getStaffProductivity:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+export const getHousekeepingEfficiency = async (req, res) => {
+  try {
+    const result = await staffProductivityService.getHousekeepingEfficiency(req.body);
+    
+    if (result.success) {
+      res.status(200).json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    logger.error('Error in getHousekeepingEfficiency:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+export const getFrontDeskPerformance = async (req, res) => {
+  try {
+    const result = await staffProductivityService.getFrontDeskPerformance(req.body);
+    
+    if (result.success) {
+      res.status(200).json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    logger.error('Error in getFrontDeskPerformance:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+// Corporate Analytics
+export const getCorporateBookings = async (req, res) => {
+  try {
+    const result = await corporateAnalyticsService.getCorporateBookingAnalytics(req.body);
+    
+    if (result.success) {
+      res.status(200).json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    logger.error('Error in getCorporateBookings:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+export const getCorporatePayments = async (req, res) => {
+  try {
+    const result = await corporateAnalyticsService.getCorporatePaymentAnalytics(req.body);
+    
+    if (result.success) {
+      res.status(200).json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    logger.error('Error in getCorporatePayments:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+// Booking Channel Analytics
+export const getBookingChannels = async (req, res) => {
+  try {
+    const result = await bookingChannelService.getChannelPerformanceAnalytics(req.body);
+    
+    if (result.success) {
+      res.status(200).json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    logger.error('Error in getBookingChannels:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+};
+
+export const getChannelROI = async (req, res) => {
+  try {
+    const result = await bookingChannelService.getChannelROIAnalysis(req.body);
+    
+    if (result.success) {
+      res.status(200).json(result);
+    } else {
+      res.status(400).json(result);
+    }
+  } catch (error) {
+    logger.error('Error in getChannelROI:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
       error: error.message
     });
   }

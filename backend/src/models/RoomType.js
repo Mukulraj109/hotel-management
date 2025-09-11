@@ -255,6 +255,24 @@ const roomTypeSchema = new mongoose.Schema({
     index: true
   },
 
+  // Overbooking settings
+  settings: {
+    allowOverbooking: {
+      type: Boolean,
+      default: false
+    },
+    overbookingLimit: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 50
+    },
+    requiresApproval: {
+      type: Boolean,
+      default: false
+    }
+  },
+
   // System fields
   isActive: {
     type: Boolean,

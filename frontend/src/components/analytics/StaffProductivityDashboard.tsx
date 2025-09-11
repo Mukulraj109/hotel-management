@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Progress } from '@/components/ui/progress';
-import { Skeleton } from '@/components/ui/skeleton';
-import { toast } from '@/utils/toast';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { Progress } from '../ui/progress';
+import { Skeleton } from '../ui/skeleton';
+import { toast } from 'sonner';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, RadarChart, Radar,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PolarGrid,
@@ -15,338 +17,264 @@ import {
 import {
   TrendingUp, TrendingDown, Users, Clock, CheckCircle, AlertTriangle,
   Activity, Award, Target, Calendar, Filter, Download, RefreshCw,
-  UserCheck, Timer, Briefcase, BarChart3, PieChart as PieChartIcon,
-  AlertCircle, ChevronUp, ChevronDown, Star, Zap, Shield
+  UserCheck, Timer, User, BarChart3, PieChart as PieChartIcon,
+  AlertCircle, ChevronUp, ChevronDown, Star, Zap
 } from 'lucide-react';
 import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
-import { cn } from '@/lib/utils';
 
 interface StaffMetrics {
-  staffId: string;
+  _id: string;
   staffName: string;
-  department: string;
   totalTasks: number;
-  completedTasks: number;
-  pendingTasks: number;
-  averageCompletionTime: number;
-  onTimeCompletions: number;
-  lateCompletions: number;
-  productivityScore: number;
-  completionRate: number;
-  onTimeRate: number;
-  inspectionPassRate: number;
-  uniqueRoomsCleaned?: number;
-  tasksByType?: Record<string, number>;
-  tasksByPriority?: Record<string, number>;
-  overallPerformance?: number;
-}
-
-interface DepartmentMetrics {
-  department: string;
-  totalTasks: number;
-  completedTasks: number;
-  pendingTasks: number;
-  overdueTasks: number;
-  completionRate: number;
-  overdueRate: number;
-  avgCompletionTime: number;
-  efficiency: number;
-  staffCount?: number;
-  avgTasksPerStaff?: number;
-}
-
-interface ProductivityTrend {
-  date: string;
-  dayOfWeek: string;
-  totalTasks: number;
-  completedTasks: number;
+  totalCompleted: number;
   overallCompletionRate: number;
-  housekeepingRate: number;
-  maintenanceRate: number;
-  servicesRate: number;
+  avgCompletionTime: number;
+  avgQualityScore: number;
+  efficiencyScore: number;
+  totalRoomsServiced: number;
+  dailyMetrics: Array<{
+    date: string;
+    totalTasks: number;
+    completedTasks: number;
+    completionRate: number;
+    averageCompletionTime: number;
+    roomsServiced: number;
+    averageQualityScore: number;
+  }>;
 }
 
-interface WorkloadData {
-  staffId: string;
+interface BookingMetrics {
+  byCreator: Array<{
+    _id: string;
+    staffName: string;
+    bookingsCreated: number;
+    averageBookingValue: number;
+    corporateBookings: number;
+    walkInBookings: number;
+    onlineBookings: number;
+  }>;
+  byCheckInHandler: Array<{
+    _id: string;
+    staffName: string;
+    checkInsHandled: number;
+    averageCheckInTime: number;
+    earlyCheckIns: number;
+    lateCheckIns: number;
+    averageProcessingTime: number;
+  }>;
+  byCheckOutHandler: Array<{
+    _id: string;
+    staffName: string;
+    checkOutsHandled: number;
+    averageCheckOutTime: number;
+    earlyCheckOuts: number;
+    lateCheckOuts: number;
+  }>;
+}
+
+interface GuestServiceMetrics {
+  _id: string;
   staffName: string;
-  department: string;
-  currentTasks: number;
-  pendingTasks: number;
-  completedToday: number;
-  urgentTasks: number;
-  estimatedWorkload: number;
-  status: 'overloaded' | 'busy' | 'normal' | 'light';
-  assignedRooms?: string[];
+  totalRequests: number;
+  completedRequests: number;
+  completionRate: number;
+  averageResponseTime: number;
+  averageResolutionTime: number;
+  guestSatisfactionRating: number;
+  urgentRequests: number;
+  serviceScore: number;
+}
+
+interface TaskCompletionData {
+  categoryMetrics: Array<{
+    _id: string;
+    totalTasksInCategory: number;
+    totalCompletedInCategory: number;
+    avgCompletionRate: number;
+    avgOverdueRate: number;
+    taskTypes: Array<{
+      taskType: string;
+      date: string;
+      totalTasks: number;
+      completedTasks: number;
+      completionRate: number;
+      overdueRate: number;
+      averageTimeToComplete: number;
+    }>;
+  }>;
+  staffPerformance: Array<{
+    _id: string;
+    staffName: string;
+    department: string;
+    totalTasks: number;
+    completedTasks: number;
+    completionRate: number;
+    averageTimeToComplete: number;
+  }>;
+}
+
+interface SchedulingData {
+  workloadAnalysis: Array<{
+    _id: string;
+    hourlyDistribution: Array<{
+      hour: number;
+      dayOfWeek: number;
+      taskCount: number;
+      averageUrgency: number;
+    }>;
+    peakHours: number;
+    totalTasks: number;
+  }>;
+  staffDemandAnalysis: Array<{
+    _id: string;
+    staffCount: number;
+    totalTasksHandled: number;
+    avgTasksPerStaff: number;
+    avgTasksPerDay: number;
+    staffDetails: Array<{
+      name: string;
+      tasksAssigned: number;
+      tasksCompleted: number;
+      dailyAverage: number;
+    }>;
+  }>;
+  recommendations: Array<{
+    department: string;
+    peakHours: number[];
+    recommendation: string;
+    urgencyLevel: number;
+  }>;
+}
+
+interface ProductivityData {
+  housekeeping: {
+    staffMetrics: StaffMetrics[];
+    departmentSummary: {
+      totalStaff: number;
+      averageCompletionRate: number;
+      averageEfficiencyScore: number;
+      totalTasksHandled: number;
+      totalRoomsServiced: number;
+    };
+  };
+  frontDesk: {
+    bookingMetrics: BookingMetrics;
+    guestServiceMetrics: GuestServiceMetrics[];
+  };
+  taskCompletion: TaskCompletionData;
+  scheduling: SchedulingData;
 }
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'];
 
 const StaffProductivityDashboard: React.FC = () => {
+  const [data, setData] = useState<ProductivityData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedPeriod, setSelectedPeriod] = useState('7d');
-  const [selectedDepartment, setSelectedDepartment] = useState('all');
-  const [activeTab, setActiveTab] = useState('overview');
-  
-  // Data states
-  const [staffMetrics, setStaffMetrics] = useState<StaffMetrics[]>([]);
-  const [departmentMetrics, setDepartmentMetrics] = useState<DepartmentMetrics[]>([]);
-  const [productivityTrends, setProductivityTrends] = useState<ProductivityTrend[]>([]);
-  const [workloadData, setWorkloadData] = useState<WorkloadData[]>([]);
-  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [filters, setFilters] = useState({
+    startDate: format(subDays(new Date(), 30), 'yyyy-MM-dd'),
+    endDate: format(new Date(), 'yyyy-MM-dd'),
+    department: '',
+    staffId: ''
+  });
+  const [selectedTab, setSelectedTab] = useState('overview');
 
   useEffect(() => {
-    fetchAllData();
-    const interval = setInterval(fetchAllData, 60000); // Refresh every minute
-    return () => clearInterval(interval);
-  }, [selectedPeriod, selectedDepartment]);
+    fetchProductivityData();
+  }, []);
 
-  const fetchAllData = async () => {
+  const fetchProductivityData = async () => {
     try {
       setLoading(true);
+      const response = await fetch(`/api/v1/analytics/staff-productivity`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(filters)
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch productivity data');
       
-      // Calculate date range
-      const endDate = new Date();
-      let startDate = new Date();
-      switch (selectedPeriod) {
-        case '1d':
-          startDate = subDays(endDate, 1);
-          break;
-        case '7d':
-          startDate = subDays(endDate, 7);
-          break;
-        case '30d':
-          startDate = subDays(endDate, 30);
-          break;
-        case 'month':
-          startDate = startOfMonth(endDate);
-          break;
+      const result = await response.json();
+      if (result.success) {
+        setData(result.data);
+      } else {
+        throw new Error(result.error || 'Failed to fetch data');
       }
-      
-      // Fetch all data in parallel
-      const [staff, departments, trends, workload] = await Promise.all([
-        fetchStaffMetrics(startDate, endDate),
-        fetchDepartmentMetrics(startDate, endDate),
-        fetchProductivityTrends(),
-        fetchWorkloadDistribution()
-      ]);
-      
-      setStaffMetrics(staff);
-      setDepartmentMetrics(departments);
-      setProductivityTrends(trends);
-      setWorkloadData(workload);
-      setLastUpdate(new Date());
     } catch (error) {
+      toast.error('Failed to load staff productivity data');
       console.error('Error fetching productivity data:', error);
-      toast.error('Failed to load productivity data');
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchStaffMetrics = async (startDate: Date, endDate: Date) => {
-    // Simulated API call
-    return [
-      {
-        staffId: '1',
-        staffName: 'John Doe',
-        department: 'housekeeping',
-        totalTasks: 45,
-        completedTasks: 42,
-        pendingTasks: 3,
-        averageCompletionTime: 35,
-        onTimeCompletions: 38,
-        lateCompletions: 4,
-        productivityScore: 85,
-        completionRate: 93,
-        onTimeRate: 90,
-        inspectionPassRate: 95,
-        uniqueRoomsCleaned: 25,
-        overallPerformance: 88
-      },
-      {
-        staffId: '2',
-        staffName: 'Jane Smith',
-        department: 'housekeeping',
-        totalTasks: 38,
-        completedTasks: 35,
-        pendingTasks: 3,
-        averageCompletionTime: 30,
-        onTimeCompletions: 33,
-        lateCompletions: 2,
-        productivityScore: 92,
-        completionRate: 92,
-        onTimeRate: 94,
-        inspectionPassRate: 98,
-        uniqueRoomsCleaned: 20,
-        overallPerformance: 93
-      },
-      {
-        staffId: '3',
-        staffName: 'Mike Johnson',
-        department: 'maintenance',
-        totalTasks: 22,
-        completedTasks: 18,
-        pendingTasks: 4,
-        averageCompletionTime: 60,
-        onTimeCompletions: 15,
-        lateCompletions: 3,
-        productivityScore: 75,
-        completionRate: 82,
-        onTimeRate: 83,
-        inspectionPassRate: 88,
-        overallPerformance: 78
-      }
-    ];
+  const handleFilterChange = (key: string, value: string) => {
+    setFilters(prev => ({
+      ...prev,
+      [key]: value
+    }));
   };
 
-  const fetchDepartmentMetrics = async (startDate: Date, endDate: Date) => {
-    // Simulated API call
-    return [
-      {
-        department: 'Housekeeping',
-        totalTasks: 120,
-        completedTasks: 108,
-        pendingTasks: 8,
-        overdueTasks: 4,
-        completionRate: 90,
-        overdueRate: 3,
-        avgCompletionTime: 35,
-        efficiency: 87,
-        staffCount: 5,
-        avgTasksPerStaff: 24
-      },
-      {
-        department: 'Maintenance',
-        totalTasks: 45,
-        completedTasks: 38,
-        pendingTasks: 5,
-        overdueTasks: 2,
-        completionRate: 84,
-        overdueRate: 4,
-        avgCompletionTime: 75,
-        efficiency: 80,
-        staffCount: 3,
-        avgTasksPerStaff: 15
-      },
-      {
-        department: 'Front Desk',
-        totalTasks: 200,
-        completedTasks: 195,
-        pendingTasks: 3,
-        overdueTasks: 2,
-        completionRate: 97,
-        overdueRate: 1,
-        avgCompletionTime: 15,
-        efficiency: 96,
-        staffCount: 4,
-        avgTasksPerStaff: 50
-      }
-    ];
+  const applyFilters = () => {
+    fetchProductivityData();
   };
 
-  const fetchProductivityTrends = async () => {
-    // Simulated API call - last 7 days
-    const trends = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = subDays(new Date(), i);
-      trends.push({
-        date: format(date, 'yyyy-MM-dd'),
-        dayOfWeek: format(date, 'EEE'),
-        totalTasks: Math.floor(Math.random() * 50) + 30,
-        completedTasks: Math.floor(Math.random() * 45) + 25,
-        overallCompletionRate: Math.floor(Math.random() * 15) + 80,
-        housekeepingRate: Math.floor(Math.random() * 10) + 85,
-        maintenanceRate: Math.floor(Math.random() * 15) + 75,
-        servicesRate: Math.floor(Math.random() * 10) + 88
+  const exportReport = async (format: 'pdf' | 'xlsx') => {
+    try {
+      const response = await fetch(`/api/v1/analytics/staff-productivity/export`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...filters, format })
       });
+
+      if (!response.ok) throw new Error('Export failed');
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `staff-productivity-report.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      toast.success(`Report exported as ${format.toUpperCase()}`);
+    } catch (error) {
+      toast.error('Failed to export report');
     }
-    return trends;
   };
 
-  const fetchWorkloadDistribution = async () => {
-    // Simulated API call
-    return [
-      {
-        staffId: '1',
-        staffName: 'John Doe',
-        department: 'housekeeping',
-        currentTasks: 3,
-        pendingTasks: 5,
-        completedToday: 12,
-        urgentTasks: 1,
-        estimatedWorkload: 4.5,
-        status: 'normal' as const,
-        assignedRooms: ['101', '102', '103', '201', '202']
-      },
-      {
-        staffId: '2',
-        staffName: 'Jane Smith',
-        department: 'housekeeping',
-        currentTasks: 2,
-        pendingTasks: 3,
-        completedToday: 15,
-        urgentTasks: 0,
-        estimatedWorkload: 3.0,
-        status: 'light' as const,
-        assignedRooms: ['301', '302', '303']
-      },
-      {
-        staffId: '3',
-        staffName: 'Mike Johnson',
-        department: 'maintenance',
-        currentTasks: 4,
-        pendingTasks: 6,
-        completedToday: 8,
-        urgentTasks: 2,
-        estimatedWorkload: 8.5,
-        status: 'overloaded' as const,
-        assignedRooms: []
-      }
-    ];
+  const getEfficiencyColor = (score: number) => {
+    if (score >= 80) return 'bg-green-100 text-green-800';
+    if (score >= 60) return 'bg-yellow-100 text-yellow-800';
+    return 'bg-red-100 text-red-800';
   };
 
   const getStatusColor = (score: number) => {
-    if (score >= 90) return 'text-green-600';
-    if (score >= 75) return 'text-blue-600';
+    if (score >= 80) return 'text-green-600';
     if (score >= 60) return 'text-yellow-600';
     return 'text-red-600';
   };
 
-  const getStatusBadge = (status: string) => {
-    const config = {
-      overloaded: { color: 'bg-red-100 text-red-800', icon: AlertCircle },
-      busy: { color: 'bg-orange-100 text-orange-800', icon: Clock },
-      normal: { color: 'bg-blue-100 text-blue-800', icon: Activity },
-      light: { color: 'bg-green-100 text-green-800', icon: CheckCircle }
-    };
-    
-    const { color, icon: Icon } = config[status as keyof typeof config] || config.normal;
-    
+  if (loading) {
     return (
-      <Badge className={cn('flex items-center gap-1', color)}>
-        <Icon className="w-3 h-3" />
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </Badge>
-    );
-  };
-
-  const topPerformers = staffMetrics
-    .sort((a, b) => b.productivityScore - a.productivityScore)
-    .slice(0, 5);
-
-  const needsAttention = staffMetrics
-    .filter(s => s.productivityScore < 70 || s.pendingTasks > 5)
-    .slice(0, 5);
-
-  if (loading && staffMetrics.length === 0) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-32" />
-          ))}
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex items-center space-x-2">
+          <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
+          <span className="text-lg">Loading staff productivity data...</span>
         </div>
-        <Skeleton className="h-96" />
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <AlertTriangle className="w-12 h-12 text-yellow-600 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold">No Data Available</h3>
+          <p className="text-gray-600">Unable to load staff productivity data.</p>
+        </div>
       </div>
     );
   }
@@ -356,208 +284,194 @@ const StaffProductivityDashboard: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Staff Productivity Analytics</h1>
-          <p className="text-gray-600">Monitor and analyze staff performance across all departments</p>
+          <h2 className="text-3xl font-bold text-gray-900">Staff Productivity Dashboard</h2>
+          <p className="text-gray-600">Monitor staff performance and efficiency metrics</p>
         </div>
-        
-        <div className="flex items-center gap-4">
-          <div className="text-sm text-gray-500">
-            Last updated: {format(lastUpdate, 'HH:mm:ss')}
+        <div className="flex items-center space-x-2">
+          <Button variant="outline" onClick={() => exportReport('xlsx')} className="flex items-center space-x-2">
+            <Download className="w-4 h-4" />
+            <span>Excel</span>
+          </Button>
+          <Button variant="outline" onClick={() => exportReport('pdf')} className="flex items-center space-x-2">
+            <Download className="w-4 h-4" />
+            <span>PDF</span>
+          </Button>
+          <Button onClick={fetchProductivityData} className="flex items-center space-x-2">
+            <RefreshCw className="w-4 h-4" />
+            <span>Refresh</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <Filter className="w-5 h-5" />
+            <span>Filters</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <Label htmlFor="startDate">Start Date</Label>
+              <Input
+                id="startDate"
+                type="date"
+                value={filters.startDate}
+                onChange={(e) => handleFilterChange('startDate', e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="endDate">End Date</Label>
+              <Input
+                id="endDate"
+                type="date"
+                value={filters.endDate}
+                onChange={(e) => handleFilterChange('endDate', e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="department">Department</Label>
+              <Select value={filters.department} onValueChange={(value) => handleFilterChange('department', value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Departments" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Departments</SelectItem>
+                  <SelectItem value="housekeeping">Housekeeping</SelectItem>
+                  <SelectItem value="front_desk">Front Desk</SelectItem>
+                  <SelectItem value="maintenance">Maintenance</SelectItem>
+                  <SelectItem value="guest_service">Guest Service</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-end">
+              <Button onClick={applyFilters} className="w-full">Apply Filters</Button>
+            </div>
           </div>
-          
-          <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="1d">Today</SelectItem>
-              <SelectItem value="7d">Last 7 days</SelectItem>
-              <SelectItem value="30d">Last 30 days</SelectItem>
-              <SelectItem value="month">This month</SelectItem>
-            </SelectContent>
-          </Select>
-          
-          <Select value={selectedDepartment} onValueChange={setSelectedDepartment}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Departments</SelectItem>
-              <SelectItem value="housekeeping">Housekeeping</SelectItem>
-              <SelectItem value="maintenance">Maintenance</SelectItem>
-              <SelectItem value="front_desk">Front Desk</SelectItem>
-              <SelectItem value="laundry">Laundry</SelectItem>
-            </SelectContent>
-          </Select>
-          
-          <Button onClick={fetchAllData} variant="outline">
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
-          </Button>
-          
-          <Button variant="outline">
-            <Download className="w-4 h-4 mr-2" />
-            Export
-          </Button>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
-      {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      {/* Overview Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Overall Productivity</CardTitle>
-            <Activity className="w-4 h-4 text-gray-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {Math.round(staffMetrics.reduce((sum, s) => sum + s.productivityScore, 0) / staffMetrics.length)}%
-            </div>
-            <div className="flex items-center text-sm text-green-600">
-              <TrendingUp className="w-4 h-4 mr-1" />
-              +5.2% from last period
-            </div>
-            <Progress 
-              value={Math.round(staffMetrics.reduce((sum, s) => sum + s.productivityScore, 0) / staffMetrics.length)} 
-              className="mt-2" 
-            />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Task Completion Rate</CardTitle>
-            <CheckCircle className="w-4 h-4 text-gray-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {Math.round(
-                departmentMetrics.reduce((sum, d) => sum + d.completionRate, 0) / departmentMetrics.length
-              )}%
-            </div>
-            <div className="text-sm text-gray-600">
-              {departmentMetrics.reduce((sum, d) => sum + d.completedTasks, 0)} of{' '}
-              {departmentMetrics.reduce((sum, d) => sum + d.totalTasks, 0)} tasks
-            </div>
-            <div className="mt-2 flex gap-2">
-              {departmentMetrics.map((dept, i) => (
-                <div key={i} className="flex-1 bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-blue-500 h-2 rounded-full"
-                    style={{ width: `${dept.completionRate}%` }}
-                  />
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Average Response Time</CardTitle>
-            <Timer className="w-4 h-4 text-gray-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {Math.round(
-                departmentMetrics.reduce((sum, d) => sum + d.avgCompletionTime, 0) / departmentMetrics.length
-              )} min
-            </div>
-            <div className="flex items-center text-sm text-yellow-600">
-              <AlertTriangle className="w-4 h-4 mr-1" />
-              3 min slower than target
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-1 text-xs">
-              <div className="text-center">
-                <div className="font-semibold">HK</div>
-                <div>35m</div>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Staff</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {data.housekeeping.departmentSummary.totalStaff}
+                </p>
               </div>
-              <div className="text-center">
-                <div className="font-semibold">MT</div>
-                <div>75m</div>
-              </div>
-              <div className="text-center">
-                <div className="font-semibold">FD</div>
-                <div>15m</div>
+              <div className="p-3 bg-blue-100 rounded-lg">
+                <Users className="w-6 h-6 text-blue-600" />
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Staff Utilization</CardTitle>
-            <Users className="w-4 h-4 text-gray-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {workloadData.filter(w => w.status === 'busy' || w.status === 'normal').length}/{workloadData.length}
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Avg Completion Rate</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {data.housekeeping.departmentSummary.averageCompletionRate.toFixed(1)}%
+                </p>
+              </div>
+              <div className="p-3 bg-green-100 rounded-lg">
+                <CheckCircle className="w-6 h-6 text-green-600" />
+              </div>
             </div>
-            <div className="text-sm text-gray-600">Optimally utilized</div>
-            <div className="mt-2 flex gap-1">
-              {workloadData.map((w, i) => (
-                <div
-                  key={i}
-                  className={cn('w-2 h-8 rounded', {
-                    'bg-red-500': w.status === 'overloaded',
-                    'bg-orange-500': w.status === 'busy',
-                    'bg-blue-500': w.status === 'normal',
-                    'bg-green-500': w.status === 'light'
-                  })}
-                  title={w.staffName}
-                />
-              ))}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Avg Efficiency Score</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {data.housekeeping.departmentSummary.averageEfficiencyScore.toFixed(1)}
+                </p>
+              </div>
+              <div className="p-3 bg-purple-100 rounded-lg">
+                <Award className="w-6 h-6 text-purple-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Tasks Handled</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {data.housekeeping.departmentSummary.totalTasksHandled.toLocaleString()}
+                </p>
+              </div>
+              <div className="p-3 bg-orange-100 rounded-lg">
+                <Target className="w-6 h-6 text-orange-600" />
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Main Content */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
+      {/* Main Content Tabs */}
+      <Tabs value={selectedTab} onValueChange={setSelectedTab}>
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="individual">Individual</TabsTrigger>
-          <TabsTrigger value="department">Department</TabsTrigger>
-          <TabsTrigger value="trends">Trends</TabsTrigger>
-          <TabsTrigger value="workload">Workload</TabsTrigger>
+          <TabsTrigger value="housekeeping">Housekeeping</TabsTrigger>
+          <TabsTrigger value="frontdesk">Front Desk</TabsTrigger>
+          <TabsTrigger value="scheduling">Scheduling</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
+          {/* Department Comparison */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Department Performance Comparison</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={data.taskCompletion.categoryMetrics}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="_id" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="avgCompletionRate" fill="#8884d8" name="Completion Rate %" />
+                  <Bar dataKey="avgOverdueRate" fill="#ff7c7c" name="Overdue Rate %" />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Top Performers */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Top Performers */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Award className="w-5 h-5 text-yellow-500" />
-                  Top Performers
-                </CardTitle>
-                <CardDescription>Highest productivity scores this period</CardDescription>
+                <CardTitle>Top Performing Staff</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {topPerformers.map((staff, index) => (
-                    <div key={staff.staffId} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div className={cn('font-bold text-lg', {
-                          'text-yellow-500': index === 0,
-                          'text-gray-500': index === 1,
-                          'text-orange-500': index === 2,
-                          'text-gray-700': index > 2
-                        })}>
-                          #{index + 1}
+                <div className="space-y-4">
+                  {data.taskCompletion.staffPerformance.slice(0, 5).map((staff, index) => (
+                    <div key={staff._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <div className="flex items-center justify-center w-8 h-8 bg-blue-100 rounded-full text-sm font-bold text-blue-600">
+                          {index + 1}
                         </div>
                         <div>
-                          <div className="font-medium">{staff.staffName}</div>
-                          <div className="text-sm text-gray-600 capitalize">{staff.department}</div>
+                          <p className="font-medium">{staff.staffName}</p>
+                          <p className="text-sm text-gray-600">{staff.department}</p>
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className={cn('text-xl font-bold', getStatusColor(staff.productivityScore))}>
-                          {staff.productivityScore}%
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {staff.completedTasks}/{staff.totalTasks} tasks
-                        </div>
+                        <p className="font-semibold text-green-600">{staff.completionRate.toFixed(1)}%</p>
+                        <p className="text-xs text-gray-500">{staff.completedTasks}/{staff.totalTasks} tasks</p>
                       </div>
                     </div>
                   ))}
@@ -565,242 +479,91 @@ const StaffProductivityDashboard: React.FC = () => {
               </CardContent>
             </Card>
 
-            {/* Needs Attention */}
+            {/* Scheduling Recommendations */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-red-500" />
-                  Needs Attention
-                </CardTitle>
-                <CardDescription>Staff members who may need support</CardDescription>
+                <CardTitle>Scheduling Recommendations</CardTitle>
               </CardHeader>
               <CardContent>
-                {needsAttention.length > 0 ? (
-                  <div className="space-y-3">
-                    {needsAttention.map(staff => (
-                      <div key={staff.staffId} className="flex items-center justify-between p-3 border rounded-lg border-red-200 bg-red-50">
-                        <div>
-                          <div className="font-medium">{staff.staffName}</div>
-                          <div className="text-sm text-gray-600 capitalize">{staff.department}</div>
-                          <div className="text-xs text-red-600 mt-1">
-                            {staff.productivityScore < 70 && 'Low productivity score'}
-                            {staff.pendingTasks > 5 && ` • ${staff.pendingTasks} pending tasks`}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className={cn('text-xl font-bold', getStatusColor(staff.productivityScore))}>
-                            {staff.productivityScore}%
-                          </div>
-                          <Badge className="bg-red-100 text-red-800 text-xs">
-                            {staff.pendingTasks} pending
-                          </Badge>
+                <div className="space-y-4">
+                  {data.scheduling.recommendations.slice(0, 5).map((rec, index) => (
+                    <div key={index} className="p-3 border rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <Badge variant="outline">{rec.department}</Badge>
+                        <div className="flex">
+                          {Array.from({ length: rec.urgencyLevel }).map((_, i) => (
+                            <Star key={i} className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                          ))}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <CheckCircle className="w-12 h-12 mx-auto mb-2 text-green-500" />
-                    All staff members are performing well
-                  </div>
-                )}
+                      <p className="text-sm text-gray-700">{rec.recommendation}</p>
+                      <div className="flex items-center space-x-2 mt-2">
+                        <Clock className="w-4 h-4 text-gray-400" />
+                        <span className="text-xs text-gray-500">
+                          Peak hours: {rec.peakHours.join(', ')}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           </div>
-
-          {/* Department Comparison Chart */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Department Performance Comparison</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={departmentMetrics}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="department" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="completionRate" fill="#3B82F6" name="Completion %" />
-                  <Bar dataKey="efficiency" fill="#10B981" name="Efficiency %" />
-                  <Bar dataKey="overdueRate" fill="#EF4444" name="Overdue %" />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
         </TabsContent>
 
-        <TabsContent value="individual" className="space-y-6">
+        <TabsContent value="housekeeping" className="space-y-6">
+          {/* Housekeeping Staff Performance */}
           <Card>
             <CardHeader>
-              <CardTitle>Individual Staff Performance</CardTitle>
-              <CardDescription>Detailed metrics for each staff member</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {staffMetrics.map(staff => (
-                  <div key={staff.staffId} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                          <User className="w-6 h-6 text-blue-600" />
-                        </div>
-                        <div>
-                          <div className="font-semibold text-lg">{staff.staffName}</div>
-                          <div className="text-sm text-gray-600 capitalize">{staff.department}</div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className={cn('text-3xl font-bold', getStatusColor(staff.productivityScore))}>
-                          {staff.productivityScore}%
-                        </div>
-                        <div className="text-sm text-gray-500">Productivity Score</div>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div>
-                        <div className="text-sm text-gray-600">Tasks Completed</div>
-                        <div className="text-xl font-semibold">
-                          {staff.completedTasks}/{staff.totalTasks}
-                        </div>
-                        <Progress value={(staff.completedTasks / staff.totalTasks) * 100} className="mt-1" />
-                      </div>
-                      
-                      <div>
-                        <div className="text-sm text-gray-600">On-Time Rate</div>
-                        <div className="text-xl font-semibold">{staff.onTimeRate}%</div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          {staff.onTimeCompletions} of {staff.completedTasks}
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <div className="text-sm text-gray-600">Avg Completion</div>
-                        <div className="text-xl font-semibold">{staff.averageCompletionTime}m</div>
-                        <div className="text-xs text-gray-500 mt-1">per task</div>
-                      </div>
-                      
-                      <div>
-                        <div className="text-sm text-gray-600">Inspection Pass</div>
-                        <div className="text-xl font-semibold">{staff.inspectionPassRate}%</div>
-                        <div className="text-xs text-gray-500 mt-1">quality rate</div>
-                      </div>
-                    </div>
-                    
-                    {staff.uniqueRoomsCleaned && (
-                      <div className="mt-3 pt-3 border-t">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-600">Rooms Cleaned</span>
-                          <span className="font-medium">{staff.uniqueRoomsCleaned}</span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="department" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Task Distribution by Department</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={departmentMetrics}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ department, totalTasks }) => `${department}: ${totalTasks}`}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="totalTasks"
-                    >
-                      {departmentMetrics.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Department Efficiency Radar</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <RadarChart data={departmentMetrics}>
-                    <PolarGrid />
-                    <PolarAngleAxis dataKey="department" />
-                    <PolarRadiusAxis angle={90} domain={[0, 100]} />
-                    <Radar name="Completion Rate" dataKey="completionRate" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.6} />
-                    <Radar name="Efficiency" dataKey="efficiency" stroke="#10B981" fill="#10B981" fillOpacity={0.6} />
-                    <Legend />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Department Metrics Table</CardTitle>
+              <CardTitle>Housekeeping Staff Efficiency</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
                     <tr className="border-b">
-                      <th className="text-left p-2">Department</th>
-                      <th className="text-center p-2">Staff</th>
-                      <th className="text-center p-2">Total Tasks</th>
-                      <th className="text-center p-2">Completed</th>
-                      <th className="text-center p-2">Pending</th>
-                      <th className="text-center p-2">Overdue</th>
-                      <th className="text-center p-2">Completion %</th>
-                      <th className="text-center p-2">Avg Time</th>
-                      <th className="text-center p-2">Efficiency</th>
+                      <th className="text-left p-2">Staff Name</th>
+                      <th className="text-center p-2">Tasks</th>
+                      <th className="text-center p-2">Completion Rate</th>
+                      <th className="text-center p-2">Avg Time (min)</th>
+                      <th className="text-center p-2">Quality Score</th>
+                      <th className="text-center p-2">Efficiency Score</th>
+                      <th className="text-center p-2">Rooms Serviced</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {departmentMetrics.map((dept, index) => (
-                      <tr key={index} className="border-b hover:bg-gray-50">
-                        <td className="p-2 font-medium">{dept.department}</td>
-                        <td className="text-center p-2">{dept.staffCount}</td>
-                        <td className="text-center p-2">{dept.totalTasks}</td>
-                        <td className="text-center p-2 text-green-600">{dept.completedTasks}</td>
-                        <td className="text-center p-2 text-yellow-600">{dept.pendingTasks}</td>
-                        <td className="text-center p-2 text-red-600">{dept.overdueTasks}</td>
+                    {data.housekeeping.staffMetrics.map((staff) => (
+                      <tr key={staff._id} className="border-b hover:bg-gray-50">
+                        <td className="p-2">
+                          <div className="flex items-center space-x-2">
+                            <User className="w-4 h-4 text-gray-400" />
+                            <span className="font-medium">{staff.staffName}</span>
+                          </div>
+                        </td>
                         <td className="text-center p-2">
-                          <Badge className={cn({
-                            'bg-green-100 text-green-800': dept.completionRate >= 90,
-                            'bg-yellow-100 text-yellow-800': dept.completionRate >= 70 && dept.completionRate < 90,
-                            'bg-red-100 text-red-800': dept.completionRate < 70
-                          })}>
-                            {dept.completionRate}%
+                          {staff.totalCompleted}/{staff.totalTasks}
+                        </td>
+                        <td className="text-center p-2">
+                          <Badge className={getEfficiencyColor(staff.overallCompletionRate)}>
+                            {staff.overallCompletionRate.toFixed(1)}%
                           </Badge>
                         </td>
-                        <td className="text-center p-2">{dept.avgCompletionTime}m</td>
                         <td className="text-center p-2">
-                          <div className="flex items-center justify-center gap-1">
-                            {dept.efficiency >= 85 ? (
-                              <ChevronUp className="w-4 h-4 text-green-600" />
-                            ) : dept.efficiency >= 70 ? (
-                              <Activity className="w-4 h-4 text-yellow-600" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4 text-red-600" />
-                            )}
-                            {dept.efficiency}%
+                          {staff.avgCompletionTime?.toFixed(0) || 'N/A'}
+                        </td>
+                        <td className="text-center p-2">
+                          <div className="flex items-center justify-center">
+                            <Star className="w-4 h-4 fill-yellow-400 text-yellow-400 mr-1" />
+                            {staff.avgQualityScore?.toFixed(1) || 'N/A'}
                           </div>
+                        </td>
+                        <td className="text-center p-2">
+                          <Badge className={getEfficiencyColor(staff.efficiencyScore)}>
+                            {staff.efficiencyScore.toFixed(0)}
+                          </Badge>
+                        </td>
+                        <td className="text-center p-2">
+                          {staff.totalRoomsServiced}
                         </td>
                       </tr>
                     ))}
@@ -809,215 +572,200 @@ const StaffProductivityDashboard: React.FC = () => {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
 
-        <TabsContent value="trends" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Productivity Trends</CardTitle>
-              <CardDescription>Task completion rates over time</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
-                <AreaChart data={productivityTrends}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="dayOfWeek" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Area type="monotone" dataKey="overallCompletionRate" stackId="1" stroke="#3B82F6" fill="#3B82F6" name="Overall" />
-                  <Area type="monotone" dataKey="housekeepingRate" stackId="2" stroke="#10B981" fill="#10B981" name="Housekeeping" />
-                  <Area type="monotone" dataKey="maintenanceRate" stackId="3" stroke="#F59E0B" fill="#F59E0B" name="Maintenance" />
-                  <Area type="monotone" dataKey="servicesRate" stackId="4" stroke="#8B5CF6" fill="#8B5CF6" name="Services" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Efficiency Trends */}
+          {data.housekeeping.staffMetrics.length > 0 && data.housekeeping.staffMetrics[0].dailyMetrics && (
             <Card>
               <CardHeader>
-                <CardTitle>Daily Task Volume</CardTitle>
+                <CardTitle>Efficiency Trends</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
-                  <LineChart data={productivityTrends}>
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={data.housekeeping.staffMetrics[0].dailyMetrics}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="dayOfWeek" />
+                    <XAxis dataKey="date" />
                     <YAxis />
                     <Tooltip />
                     <Legend />
-                    <Line type="monotone" dataKey="totalTasks" stroke="#3B82F6" name="Total Tasks" />
-                    <Line type="monotone" dataKey="completedTasks" stroke="#10B981" name="Completed" />
+                    <Line 
+                      type="monotone" 
+                      dataKey="completionRate" 
+                      stroke="#8884d8" 
+                      name="Completion Rate %" 
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="averageQualityScore" 
+                      stroke="#82ca9d" 
+                      name="Quality Score" 
+                    />
                   </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="frontdesk" className="space-y-6">
+          {/* Front Desk Metrics */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Booking Performance */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Booking Creation Performance</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {data.frontDesk.bookingMetrics?.byCreator?.map((staff) => (
+                    <div key={staff._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="font-medium">{staff.staffName}</p>
+                        <p className="text-sm text-gray-600">{staff.bookingsCreated} bookings</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium">${staff.averageBookingValue?.toFixed(0) || 0}</p>
+                        <div className="flex space-x-2 text-xs">
+                          <span className="text-blue-600">{staff.corporateBookings} corp</span>
+                          <span className="text-green-600">{staff.walkInBookings} walk</span>
+                          <span className="text-purple-600">{staff.onlineBookings} online</span>
+                        </div>
+                      </div>
+                    </div>
+                  )) || <p className="text-gray-500">No booking data available</p>}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Guest Service Performance */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Guest Service Performance</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {data.frontDesk.guestServiceMetrics.slice(0, 5).map((staff) => (
+                    <div key={staff._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="font-medium">{staff.staffName}</p>
+                        <p className="text-sm text-gray-600">
+                          {staff.completedRequests}/{staff.totalRequests} requests
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <div className="flex items-center space-x-2">
+                          <Badge className={getEfficiencyColor(staff.serviceScore)}>
+                            {staff.serviceScore.toFixed(0)}
+                          </Badge>
+                          <div className="flex items-center">
+                            <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                            <span className="text-xs ml-1">
+                              {staff.guestSatisfactionRating?.toFixed(1) || 'N/A'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2 text-xs text-gray-500 mt-1">
+                          <Timer className="w-3 h-3" />
+                          <span>{staff.averageResponseTime?.toFixed(0) || 0}m response</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Check-in/Check-out Performance */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Check-in Performance</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={data.frontDesk.bookingMetrics?.byCheckInHandler || []}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="staffName" />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="checkInsHandled" fill="#8884d8" name="Check-ins Handled" />
+                  </BarChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Trend Analysis</CardTitle>
+                <CardTitle>Check-out Performance</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <TrendingUp className="w-5 h-5 text-green-600" />
-                      <span className="font-medium">Best Performance</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-semibold">Wednesday</div>
-                      <div className="text-sm text-gray-600">95% completion rate</div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <TrendingDown className="w-5 h-5 text-red-600" />
-                      <span className="font-medium">Needs Improvement</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-semibold">Monday</div>
-                      <div className="text-sm text-gray-600">78% completion rate</div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <Activity className="w-5 h-5 text-blue-600" />
-                      <span className="font-medium">Weekly Average</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-semibold">87%</div>
-                      <div className="text-sm text-gray-600">completion rate</div>
-                    </div>
-                  </div>
-                </div>
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={data.frontDesk.bookingMetrics?.byCheckOutHandler || []}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="staffName" />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="checkOutsHandled" fill="#82ca9d" name="Check-outs Handled" />
+                  </BarChart>
+                </ResponsiveContainer>
               </CardContent>
             </Card>
           </div>
         </TabsContent>
 
-        <TabsContent value="workload" className="space-y-6">
+        <TabsContent value="scheduling" className="space-y-6">
+          {/* Workload Analysis */}
           <Card>
             <CardHeader>
-              <CardTitle>Current Workload Distribution</CardTitle>
-              <CardDescription>Real-time staff workload and task allocation</CardDescription>
+              <CardTitle>Staff Workload Analysis</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {workloadData.map(staff => (
-                  <div key={staff.staffId} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className={cn('w-10 h-10 rounded-full flex items-center justify-center', {
-                          'bg-red-100': staff.status === 'overloaded',
-                          'bg-orange-100': staff.status === 'busy',
-                          'bg-blue-100': staff.status === 'normal',
-                          'bg-green-100': staff.status === 'light'
-                        })}>
-                          <User className={cn('w-5 h-5', {
-                            'text-red-600': staff.status === 'overloaded',
-                            'text-orange-600': staff.status === 'busy',
-                            'text-blue-600': staff.status === 'normal',
-                            'text-green-600': staff.status === 'light'
-                          })} />
-                        </div>
-                        <div>
-                          <div className="font-medium">{staff.staffName}</div>
-                          <div className="text-sm text-gray-600 capitalize">{staff.department}</div>
-                        </div>
-                      </div>
-                      {getStatusBadge(staff.status)}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {data.scheduling.staffDemandAnalysis.map((dept) => (
+                  <div key={dept._id} className="p-4 border rounded-lg">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="font-semibold capitalize">{dept._id}</h4>
+                      <Badge variant="outline">{dept.staffCount} staff</Badge>
                     </div>
-                    
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-3">
-                      <div>
-                        <div className="text-sm text-gray-600">Current</div>
-                        <div className="text-xl font-semibold text-blue-600">{staff.currentTasks}</div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600">Total Tasks:</span>
+                        <span className="font-medium">{dept.totalTasksHandled}</span>
                       </div>
-                      <div>
-                        <div className="text-sm text-gray-600">Pending</div>
-                        <div className="text-xl font-semibold text-yellow-600">{staff.pendingTasks}</div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600">Avg per Staff:</span>
+                        <span className="font-medium">{dept.avgTasksPerStaff.toFixed(1)}</span>
                       </div>
-                      <div>
-                        <div className="text-sm text-gray-600">Completed</div>
-                        <div className="text-xl font-semibold text-green-600">{staff.completedToday}</div>
-                      </div>
-                      <div>
-                        <div className="text-sm text-gray-600">Urgent</div>
-                        <div className="text-xl font-semibold text-red-600">{staff.urgentTasks}</div>
-                      </div>
-                      <div>
-                        <div className="text-sm text-gray-600">Est. Hours</div>
-                        <div className="text-xl font-semibold">{staff.estimatedWorkload}h</div>
+                      <div className="flex justify-between">
+                        <span className="text-sm text-gray-600">Daily Average:</span>
+                        <span className="font-medium">{dept.avgTasksPerDay.toFixed(1)}</span>
                       </div>
                     </div>
-                    
-                    <div>
-                      <div className="text-sm text-gray-600 mb-1">Workload Progress</div>
-                      <Progress 
-                        value={(staff.estimatedWorkload / 8) * 100} 
-                        className={cn('h-2', {
-                          'bg-red-200': staff.status === 'overloaded',
-                          'bg-orange-200': staff.status === 'busy',
-                          'bg-blue-200': staff.status === 'normal',
-                          'bg-green-200': staff.status === 'light'
-                        })}
-                      />
-                    </div>
-                    
-                    {staff.assignedRooms && staff.assignedRooms.length > 0 && (
-                      <div className="mt-3 pt-3 border-t">
-                        <div className="text-sm text-gray-600 mb-2">Assigned Rooms</div>
-                        <div className="flex flex-wrap gap-2">
-                          {staff.assignedRooms.map(room => (
-                            <Badge key={room} variant="outline" className="text-xs">
-                              Room {room}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>
             </CardContent>
           </Card>
 
+          {/* Peak Hours Analysis */}
           <Card>
             <CardHeader>
-              <CardTitle>Workload Balance Recommendations</CardTitle>
+              <CardTitle>Peak Hours Analysis</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {workloadData.filter(w => w.status === 'overloaded').map(staff => (
-                  <div key={staff.staffId} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <AlertCircle className="w-5 h-5 text-red-600" />
-                      <div>
-                        <div className="font-medium">{staff.staffName} is overloaded</div>
-                        <div className="text-sm text-gray-600">Consider redistributing {staff.pendingTasks} pending tasks</div>
-                      </div>
-                    </div>
-                    <Button size="sm" variant="outline">
-                      Redistribute
-                    </Button>
-                  </div>
-                ))}
-                
-                {workloadData.filter(w => w.status === 'light').map(staff => (
-                  <div key={staff.staffId} className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="w-5 h-5 text-green-600" />
-                      <div>
-                        <div className="font-medium">{staff.staffName} has capacity</div>
-                        <div className="text-sm text-gray-600">Can handle {Math.floor((8 - staff.estimatedWorkload) * 2)} more tasks</div>
-                      </div>
-                    </div>
-                    <Button size="sm" variant="outline">
-                      Assign Tasks
-                    </Button>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {data.scheduling.workloadAnalysis.slice(0, 2).map((dept) => (
+                  <div key={dept._id}>
+                    <h4 className="font-semibold capitalize mb-4">{dept._id} Department</h4>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <BarChart data={dept.hourlyDistribution.slice(0, 12)}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="hour" />
+                        <YAxis />
+                        <Tooltip />
+                        <Bar dataKey="taskCount" fill="#8884d8" />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
                 ))}
               </div>

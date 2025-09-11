@@ -10,7 +10,8 @@
       "Bash(curl:*)",
       "Bash(npm run generate-keys:*)",
       "Bash(node:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(npm run seed:*)"
     ],
     "deny": [],
     "ask": []

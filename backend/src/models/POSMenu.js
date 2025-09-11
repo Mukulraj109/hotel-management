@@ -59,6 +59,53 @@ const menuItemSchema = new mongoose.Schema({
       price: Number
     }]
   }],
+  // Enhanced tax configuration
+  taxGroup: {
+    type: String,
+    enum: ['FOOD', 'BEVERAGE', 'SERVICE', 'PRODUCT', 'ALCOHOL', 'TOBACCO', 'LUXURY', 'GENERAL'],
+    default: 'GENERAL',
+    index: true
+  },
+  taxGroupId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'POSTax',
+    index: true
+  },
+  // Measurement unit configuration
+  measurementUnit: {
+    unitId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'MeasurementUnit',
+      index: true
+    },
+    quantity: {
+      type: Number,
+      default: 1,
+      min: 0
+    },
+    unitDisplay: String // e.g., "250ml", "1kg", "2 pieces"
+  },
+  // POS attributes configuration
+  attributes: [{
+    attributeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'POSAttribute',
+      required: true
+    },
+    isRequired: {
+      type: Boolean,
+      default: false
+    },
+    displayOrder: {
+      type: Number,
+      default: 0
+    },
+    isActive: {
+      type: Boolean,
+      default: true
+    }
+  }],
+  // Legacy tax fields for backward compatibility
   taxes: {
     taxable: { type: Boolean, default: true },
     taxRate: Number

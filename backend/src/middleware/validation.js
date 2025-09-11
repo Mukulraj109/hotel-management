@@ -349,6 +349,181 @@ export const schemas = {
                 }).required().messages({
                   'any.required': 'Alternative time is required'
                 })
+              }),
+              
+              // API Management validation schemas
+              createAPIKey: Joi.object({
+                name: Joi.string().required().trim().max(100).messages({
+                  'string.empty': 'API key name is required',
+                  'string.max': 'API key name cannot exceed 100 characters',
+                  'any.required': 'API key name is required'
+                }),
+                description: Joi.string().trim().max(500).optional().messages({
+                  'string.max': 'Description cannot exceed 500 characters'
+                }),
+                type: Joi.string().valid('read', 'write', 'admin').default('read').messages({
+                  'any.only': 'API key type must be read, write, or admin'
+                }),
+                permissions: Joi.array().items(
+                  Joi.object({
+                    resource: Joi.string().required().messages({
+                      'string.empty': 'Permission resource is required',
+                      'any.required': 'Permission resource is required'
+                    }),
+                    actions: Joi.array().items(
+                      Joi.string().valid('create', 'read', 'update', 'delete')
+                    ).required().messages({
+                      'any.required': 'Permission actions are required'
+                    })
+                  })
+                ).optional(),
+                rateLimit: Joi.object({
+                  requestsPerMinute: Joi.number().integer().min(1).max(1000).default(60),
+                  requestsPerHour: Joi.number().integer().min(1).max(10000).default(1000),
+                  requestsPerDay: Joi.number().integer().min(1).max(100000).default(10000)
+                }).optional(),
+                allowedIPs: Joi.array().items(
+                  Joi.string().pattern(/^(\d{1,3}\.){3}\d{1,3}$|^\*$/).messages({
+                    'string.pattern.base': 'Invalid IP address format. Use xxx.xxx.xxx.xxx or * for all'
+                  })
+                ).optional(),
+                allowedDomains: Joi.array().items(Joi.string().domain()).optional(),
+                expiresAt: Joi.date().iso().greater('now').optional().messages({
+                  'date.greater': 'Expiration date must be in the future'
+                })
+              }),
+              
+              updateAPIKey: Joi.object({
+                name: Joi.string().trim().max(100).optional().messages({
+                  'string.max': 'API key name cannot exceed 100 characters'
+                }),
+                description: Joi.string().trim().max(500).optional().messages({
+                  'string.max': 'Description cannot exceed 500 characters'
+                }),
+                isActive: Joi.boolean().optional(),
+                permissions: Joi.array().items(
+                  Joi.object({
+                    resource: Joi.string().required(),
+                    actions: Joi.array().items(
+                      Joi.string().valid('create', 'read', 'update', 'delete')
+                    ).required()
+                  })
+                ).optional(),
+                rateLimit: Joi.object({
+                  requestsPerMinute: Joi.number().integer().min(1).max(1000),
+                  requestsPerHour: Joi.number().integer().min(1).max(10000),
+                  requestsPerDay: Joi.number().integer().min(1).max(100000)
+                }).optional(),
+                allowedIPs: Joi.array().items(
+                  Joi.string().pattern(/^(\d{1,3}\.){3}\d{1,3}$|^\*$/)
+                ).optional(),
+                allowedDomains: Joi.array().items(Joi.string().domain()).optional(),
+                expiresAt: Joi.date().iso().greater('now').allow(null).optional()
+              }),
+              
+              createWebhook: Joi.object({
+                name: Joi.string().required().trim().max(100).messages({
+                  'string.empty': 'Webhook name is required',
+                  'string.max': 'Webhook name cannot exceed 100 characters',
+                  'any.required': 'Webhook name is required'
+                }),
+                description: Joi.string().trim().max(500).optional().messages({
+                  'string.max': 'Description cannot exceed 500 characters'
+                }),
+                url: Joi.string().uri({ scheme: ['http', 'https'] }).required().messages({
+                  'string.uri': 'Please provide a valid HTTP or HTTPS URL',
+                  'any.required': 'Webhook URL is required'
+                }),
+                events: Joi.array().items(
+                  Joi.string().valid(
+                    'booking.created', 'booking.updated', 'booking.cancelled', 'booking.confirmed',
+                    'booking.checked_in', 'booking.checked_out', 'booking.no_show',
+                    'payment.completed', 'payment.failed', 'payment.refunded', 'payment.partial_refund',
+                    'room.availability_changed', 'room.status_changed', 'room.maintenance_scheduled', 'room.cleaned',
+                    'rate.updated', 'rate.created', 'rate.deleted',
+                    'guest.created', 'guest.updated', 'guest.checked_in', 'guest.checked_out',
+                    'system.backup_completed', 'system.maintenance_started', 'system.maintenance_completed', 'system.error_occurred'
+                  )
+                ).min(1).required().messages({
+                  'array.min': 'At least one event must be selected',
+                  'any.required': 'Event selection is required'
+                }),
+                httpConfig: Joi.object({
+                  method: Joi.string().valid('POST', 'PUT').default('POST'),
+                  headers: Joi.object().pattern(Joi.string(), Joi.string()).optional(),
+                  timeout: Joi.number().integer().min(1000).max(300000).default(30000),
+                  contentType: Joi.string().valid('application/json', 'application/x-www-form-urlencoded').default('application/json')
+                }).optional(),
+                retryPolicy: Joi.object({
+                  enabled: Joi.boolean().default(true),
+                  maxRetries: Joi.number().integer().min(0).max(10).default(3),
+                  initialDelay: Joi.number().integer().min(100).default(1000),
+                  maxDelay: Joi.number().integer().min(1000).default(60000),
+                  backoffMultiplier: Joi.number().min(1).max(10).default(2),
+                  retryOn: Joi.array().items(
+                    Joi.string().valid('timeout', 'connection_error', '5xx', '4xx')
+                  ).default(['timeout', 'connection_error', '5xx'])
+                }).optional(),
+                filters: Joi.object({
+                  enabled: Joi.boolean().default(false),
+                  conditions: Joi.array().items(
+                    Joi.object({
+                      field: Joi.string().required(),
+                      operator: Joi.string().valid('equals', 'not_equals', 'contains', 'not_contains', 'greater_than', 'less_than', 'in', 'not_in').required(),
+                      value: Joi.any().required()
+                    })
+                  ).optional()
+                }).optional()
+              }),
+              
+              updateWebhook: Joi.object({
+                name: Joi.string().trim().max(100).optional().messages({
+                  'string.max': 'Webhook name cannot exceed 100 characters'
+                }),
+                description: Joi.string().trim().max(500).optional().messages({
+                  'string.max': 'Description cannot exceed 500 characters'
+                }),
+                url: Joi.string().uri({ scheme: ['http', 'https'] }).optional().messages({
+                  'string.uri': 'Please provide a valid HTTP or HTTPS URL'
+                }),
+                isActive: Joi.boolean().optional(),
+                events: Joi.array().items(
+                  Joi.string().valid(
+                    'booking.created', 'booking.updated', 'booking.cancelled', 'booking.confirmed',
+                    'booking.checked_in', 'booking.checked_out', 'booking.no_show',
+                    'payment.completed', 'payment.failed', 'payment.refunded', 'payment.partial_refund',
+                    'room.availability_changed', 'room.status_changed', 'room.maintenance_scheduled', 'room.cleaned',
+                    'rate.updated', 'rate.created', 'rate.deleted',
+                    'guest.created', 'guest.updated', 'guest.checked_in', 'guest.checked_out',
+                    'system.backup_completed', 'system.maintenance_started', 'system.maintenance_completed', 'system.error_occurred'
+                  )
+                ).min(1).optional(),
+                httpConfig: Joi.object({
+                  method: Joi.string().valid('POST', 'PUT'),
+                  headers: Joi.object().pattern(Joi.string(), Joi.string()),
+                  timeout: Joi.number().integer().min(1000).max(300000),
+                  contentType: Joi.string().valid('application/json', 'application/x-www-form-urlencoded')
+                }).optional(),
+                retryPolicy: Joi.object({
+                  enabled: Joi.boolean(),
+                  maxRetries: Joi.number().integer().min(0).max(10),
+                  initialDelay: Joi.number().integer().min(100),
+                  maxDelay: Joi.number().integer().min(1000),
+                  backoffMultiplier: Joi.number().min(1).max(10),
+                  retryOn: Joi.array().items(
+                    Joi.string().valid('timeout', 'connection_error', '5xx', '4xx')
+                  )
+                }).optional(),
+                filters: Joi.object({
+                  enabled: Joi.boolean(),
+                  conditions: Joi.array().items(
+                    Joi.object({
+                      field: Joi.string().required(),
+                      operator: Joi.string().valid('equals', 'not_equals', 'contains', 'not_contains', 'greater_than', 'less_than', 'in', 'not_in').required(),
+                      value: Joi.any().required()
+                    })
+                  )
+                }).optional()
               })
             };
 

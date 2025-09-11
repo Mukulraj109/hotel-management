@@ -385,3 +385,4 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({ className = '' }) =
 };
 
 export default LaundryDashboard;
+

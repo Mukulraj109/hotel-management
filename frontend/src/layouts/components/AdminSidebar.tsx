@@ -28,7 +28,10 @@ import {
   Settings,
   Layers,
   CalendarDays,
-  Brain
+  Brain,
+  Shield,
+  FileCode,
+  Target
 } from 'lucide-react';
 
 const navigation = [
@@ -37,6 +40,7 @@ const navigation = [
   { name: 'Tape Chart', href: '/admin/tape-chart', icon: Grid3X3 },
   { name: 'Rooms', href: '/admin/rooms', icon: Bed },
   { name: 'Room Types', href: '/admin/room-types', icon: Layers },
+  { name: 'Room Type Allotments', href: '/admin/room-allotments', icon: Target },
   { name: 'Bookings', href: '/admin/bookings', icon: Calendar },
   { name: 'Corporate', href: '/admin/corporate', icon: Users },
   { name: 'Staff Management', href: '/admin/staff', icon: UserCheck },
@@ -44,7 +48,10 @@ const navigation = [
   { name: 'Billing & Payments', href: '/admin/billing', icon: CreditCard },
   { name: 'POS System', href: '/admin/pos', icon: ShoppingCart },
   { name: 'Revenue Management', href: '/admin/revenue', icon: TrendingUp },
+  { name: 'Overbooking Config', href: '/admin/overbooking', icon: Shield },
   { name: 'Booking Engine', href: '/admin/booking-engine', icon: Zap },
+  { name: 'Form Builder', href: '/admin/booking-forms', icon: FileCode },
+  { name: 'Web Settings', href: '/admin/web-settings', icon: Globe },
   { name: 'Housekeeping', href: '/admin/housekeeping', icon: ClipboardList },
   { name: 'Maintenance', href: '/admin/maintenance', icon: Wrench },
   { name: 'Guest Services', href: '/admin/guest-services', icon: Headphones },

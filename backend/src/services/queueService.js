@@ -36,13 +36,14 @@ class QueueService {
     try {
       this.redis = getRedisClient();
       if (!this.redis) {
-        throw new Error('Redis client not available');
+        logger.warn('Redis client not available - queue service will operate in degraded mode');
+        return;
       }
       
       // Test Redis connection
       if (!this.redis.isReady) {
         logger.warn('Redis client not ready yet, waiting...');
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
       
       // Test Redis connection with a simple command
@@ -50,8 +51,9 @@ class QueueService {
         await this.redis.ping();
         logger.debug('Redis ping successful');
       } catch (pingError) {
-        logger.error('Redis ping failed', { error: pingError.message });
-        throw new Error('Redis client not responding to commands');
+        logger.error('Redis ping failed - queue service will operate in degraded mode', { error: pingError.message });
+        this.redis = null;
+        return;
       }
       
       logger.info('Queue service initialized', {
@@ -61,8 +63,8 @@ class QueueService {
         redisReady: this.redis.isReady
       });
     } catch (error) {
-      logger.error('Failed to initialize queue service', { error: error.message });
-      throw error;
+      logger.warn('Failed to initialize queue service - operating in degraded mode', { error: error.message });
+      this.redis = null;
     }
   }
 
@@ -185,6 +187,11 @@ class QueueService {
    */
   async addToRedisQueue(event) {
     try {
+      if (!this.redis) {
+        logger.debug('Redis not available, skipping Redis queue', { eventId: event.eventId });
+        return;
+      }
+
       const queueKey = `queue:events:priority_${event.priority}`;
       const eventData = {
         eventId: event.eventId,
@@ -211,6 +218,11 @@ class QueueService {
   async startProcessing() {
     if (this.isProcessing) {
       logger.warn('Queue processing already started');
+      return;
+    }
+
+    if (!this.redis) {
+      logger.warn('Redis not available - queue processing disabled');
       return;
     }
 

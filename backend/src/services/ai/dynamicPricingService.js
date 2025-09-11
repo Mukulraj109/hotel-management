@@ -1,9 +1,9 @@
-const enhancedPredictiveAnalytics = require('./enhancedPredictiveAnalytics');
-const Room = require('../../models/Room');
-const RoomType = require('../../models/RoomType');
-const Booking = require('../../models/Booking');
-const PricingRule = require('../../models/PricingRule');
-const { addDays, format, isWeekend, startOfDay, endOfDay } = require('date-fns');
+import enhancedPredictiveAnalytics from './enhancedPredictiveAnalytics.js';
+import Room from '../../models/Room.js';
+import RoomType from '../../models/RoomType.js';
+import Booking from '../../models/Booking.js';
+import PricingRule from '../../models/PricingRule.js';
+import { addDays, format, isWeekend, startOfDay, endOfDay } from 'date-fns';
 
 class DynamicPricingService {
   constructor() {
@@ -864,4 +864,4 @@ class DynamicPricingService {
   }
 }
 
-module.exports = new DynamicPricingService();
+export default new DynamicPricingService();
