@@ -7630,35 +7630,55 @@ VIP Services Team
       corporateCompaniesForBookings = await CorporateCompany.create([
         {
           hotelId: hotel._id,
-          companyName: 'Tech Solutions Pvt Ltd',
-          companyCode: 'TECH001',
-          contactPerson: 'Rajesh Kumar',
-          email: 'rajesh@techsolutions.com',
+          name: 'Tech Solutions Pvt Ltd',
+          email: 'contact@techsolutions.com',
           phone: '+91-9876543210',
-          address: '123 Tech Park, Bangalore',
+          address: {
+            street: '123 Tech Park, Electronic City',
+            city: 'Bangalore',
+            state: 'Karnataka',
+            country: 'India',
+            zipCode: '560100'
+          },
           gstNumber: '29AAACP1234Q1Z5',
+          panNumber: 'AAACP1234Q',
           creditLimit: 500000,
-          currentBalance: 150000,
+          availableCredit: 350000,
           paymentTerms: 30,
-          status: 'active',
-          contractStartDate: new Date('2024-01-01'),
-          contractEndDate: new Date('2024-12-31')
+          hrContacts: [{
+            name: 'Rajesh Kumar',
+            email: 'rajesh@techsolutions.com',
+            phone: '+91-9876543210',
+            designation: 'HR Manager',
+            isPrimary: true
+          }],
+          isActive: true
         },
         {
           hotelId: hotel._id,
-          companyName: 'Global Consulting Group',
-          companyCode: 'GCG002',
-          contactPerson: 'Priya Sharma',
-          email: 'priya@globalconsulting.com',
+          name: 'Global Consulting Group',
+          email: 'info@globalconsulting.com',
           phone: '+91-9876543211',
-          address: '456 Business Plaza, Mumbai',
+          address: {
+            street: '456 Business Plaza, Bandra Kurla Complex',
+            city: 'Mumbai',
+            state: 'Maharashtra',
+            country: 'India',
+            zipCode: '400051'
+          },
           gstNumber: '27AAACP5678Q1Z3',
+          panNumber: 'AAACP5678Q',
           creditLimit: 750000,
-          currentBalance: 200000,
+          availableCredit: 550000,
           paymentTerms: 45,
-          status: 'active',
-          contractStartDate: new Date('2024-01-01'),
-          contractEndDate: new Date('2024-12-31')
+          hrContacts: [{
+            name: 'Priya Sharma',
+            email: 'priya@globalconsulting.com',
+            phone: '+91-9876543211',
+            designation: 'Business Development Manager',
+            isPrimary: true
+          }],
+          isActive: true
         }
       ]);
     }
@@ -7670,36 +7690,81 @@ VIP Services Team
       groupBookingsForBookings = await GroupBooking.create([
         {
           hotelId: hotel._id,
-          groupName: 'Annual Tech Conference 2024',
           corporateCompanyId: corporateCompaniesForBookings[0]._id,
+          groupName: 'Annual Tech Conference 2024',
+          groupCode: 'GRP-TECH-2024',
           checkIn: new Date('2024-12-20'),
           checkOut: new Date('2024-12-23'),
-          totalRooms: 25,
-          totalGuests: 50,
-          status: 'confirmed',
-          contactPerson: 'Amit Verma',
-          contactEmail: 'amit@techconference.com',
-          contactPhone: '+91-9876543212',
-          specialRequests: 'Conference room for 3 days, Welcome desk in lobby',
+          nights: 3,
+          rooms: [
+            {
+              guestName: 'Amit Verma',
+              guestEmail: 'amit@techconference.com',
+              guestPhone: '+91-9876543212',
+              roomType: 'double',
+              rate: 4000,
+              checkedIn: false
+            },
+            {
+              guestName: 'Rohit Singh',
+              guestEmail: 'rohit@techconference.com',
+              guestPhone: '+91-9876543213',
+              roomType: 'single',
+              rate: 3500,
+              checkedIn: false
+            }
+          ],
+          contactPerson: {
+            name: 'Amit Verma',
+            email: 'amit@techconference.com',
+            phone: '+91-9876543212',
+            designation: 'Event Manager'
+          },
           totalAmount: 375000,
           depositAmount: 100000,
-          depositPaid: true
+          depositPaid: true,
+          status: 'confirmed',
+          paymentMethod: 'corporate_credit',
+          specialRequests: 'Conference room for 3 days, Welcome desk in lobby'
         },
         {
           hotelId: hotel._id,
+          corporateCompanyId: corporateCompaniesForBookings[1]._id,
           groupName: 'Wedding Party - Sharma Family',
+          groupCode: 'GRP-WED-2024',
           checkIn: new Date('2024-12-25'),
           checkOut: new Date('2024-12-28'),
-          totalRooms: 40,
-          totalGuests: 120,
-          status: 'confirmed',
-          contactPerson: 'Vikram Sharma',
-          contactEmail: 'vikram@email.com',
-          contactPhone: '+91-9876543213',
-          specialRequests: 'Banquet hall decoration, Special menu requirements',
+          nights: 3,
+          rooms: [
+            {
+              guestName: 'Vikram Sharma',
+              guestEmail: 'vikram@email.com',
+              guestPhone: '+91-9876543213',
+              roomType: 'suite',
+              rate: 8000,
+              checkedIn: false
+            },
+            {
+              guestName: 'Sunita Sharma',
+              guestEmail: 'sunita@email.com',
+              guestPhone: '+91-9876543214',
+              roomType: 'deluxe',
+              rate: 5000,
+              checkedIn: false
+            }
+          ],
+          contactPerson: {
+            name: 'Vikram Sharma',
+            email: 'vikram@email.com',
+            phone: '+91-9876543213',
+            designation: 'Host'
+          },
           totalAmount: 800000,
           depositAmount: 300000,
-          depositPaid: true
+          depositPaid: true,
+          status: 'confirmed',
+          paymentMethod: 'advance_payment',
+          specialRequests: 'Banquet hall decoration, Special menu requirements'
         }
       ]);
     }
@@ -7708,7 +7773,8 @@ VIP Services Team
     console.log('📡 Creating channels for bookings...');
     let channelsForBookings = await Channel.find().limit(3);
     if (channelsForBookings.length < 3) {
-      channelsForBookings = await Channel.create([
+      try {
+        channelsForBookings = await Channel.create([
         {
           channelId: 'booking_com_main',
           name: 'Booking.com',
@@ -7746,16 +7812,16 @@ VIP Services Team
           hotelId: hotel._id
         },
         {
-          channelId: 'makemytrip_main',
-          name: 'MakeMyTrip',
+          channelId: 'agoda_main',
+          name: 'Agoda',
           type: 'ota',
-          category: 'makemytrip',
+          category: 'agoda',
           isActive: true,
           connectionStatus: 'connected',
           credentials: {
-            apiKey: 'mmt_api_key_2024',
-            apiSecret: 'mmt_secret_2024',
-            hotelId: 'MMT_PENTOUZ_001'
+            apiKey: 'agoda_api_key_2024',
+            apiSecret: 'agoda_secret_2024',
+            hotelId: 'AGODA_PENTOUZ_001'
           },
           commission: {
             percentage: 20,
@@ -7764,6 +7830,11 @@ VIP Services Team
           hotelId: hotel._id
         }
       ]);
+      } catch (channelError) {
+        console.error('Channel creation error:', channelError);
+        console.log('Using existing channels or skipping channel creation');
+        channelsForBookings = await Channel.find().limit(3);
+      }
     }
 
     // Enhanced Booking data with all relationships
@@ -8713,9 +8784,14 @@ VIP Services Team
     ];
 
     // Update existing bookings with enhanced data
-    await Booking.deleteMany({});
-    const createdEnhancedBookings = await Booking.create(enhancedBookingsData);
-    console.log(`✅ Created ${createdEnhancedBookings.length} comprehensive bookings with all statuses and relationships`);
+    try {
+      await Booking.deleteMany({});
+      const createdEnhancedBookings = await Booking.create(enhancedBookingsData);
+      console.log(`✅ Created ${createdEnhancedBookings.length} comprehensive bookings with all statuses and relationships`);
+    } catch (bookingError) {
+      console.error('Booking creation error:', bookingError);
+      console.log('Continuing with rest of seeding process...');
+    }
 
     // Create PropertyGroup data (required for CentralizedRate)
     console.log('🏢 Creating property groups...');
