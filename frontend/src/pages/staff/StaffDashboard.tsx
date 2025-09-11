@@ -25,19 +25,21 @@ import {
   StaffInventoryData 
 } from '../../services/staffDashboardService';
 import { checkoutInventoryService, CheckoutInventory } from '../../services/checkoutInventoryService';
+import { dailyRoutineCheckService, DailyCheckData } from '../../services/dailyRoutineCheckService';
 
 interface StaffDashboardData {
   today: StaffTodayData;
   roomStatus: RoomStatusData;
   inventory: StaffInventoryData;
   checkoutInventories: CheckoutInventory[];
+  assignedRooms: DailyCheckData[];
 }
 
 export default function StaffDashboard() {
   const { user } = useAuth();
   const [data, setData] = useState<StaffDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'rooms' | 'inventory' | 'checkout'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'rooms' | 'inventory' | 'checkout' | 'assignments'>('overview');
 
   useEffect(() => {
     fetchDashboardData();
@@ -50,18 +52,20 @@ export default function StaffDashboard() {
       console.log('Fetching real staff dashboard data from API');
       
       // Fetch real data from the backend API using the service
-      const [todayRes, roomsRes, inventoryRes, checkoutRes] = await Promise.all([
+      const [todayRes, roomsRes, inventoryRes, checkoutRes, assignmentsRes] = await Promise.all([
         staffDashboardService.getTodayOverview(),
         staffDashboardService.getRoomStatus(),
         staffDashboardService.getInventorySummary(),
-        checkoutInventoryService.getCheckoutInventories({ status: 'completed', limit: 10 })
+        checkoutInventoryService.getCheckoutInventories({ status: 'completed', limit: 10 }),
+        dailyRoutineCheckService.getMyAssignedRooms()
       ]);
 
       const realData: StaffDashboardData = {
         today: todayRes.data.today,
         roomStatus: roomsRes.data,
         inventory: inventoryRes.data,
-        checkoutInventories: checkoutRes.data.checkoutInventories
+        checkoutInventories: checkoutRes.data.checkoutInventories,
+        assignedRooms: assignmentsRes.data.rooms || []
       };
 
       setData(realData);
@@ -101,7 +105,8 @@ export default function StaffDashboard() {
             rooms: []
           }
         },
-        checkoutInventories: []
+        checkoutInventories: [],
+        assignedRooms: []
       };
       
       setData(mockData);
@@ -145,6 +150,7 @@ export default function StaffDashboard() {
         <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto">
           {[
             { id: 'overview', label: 'Overview', icon: TrendingUp },
+            { id: 'assignments', label: 'My Assignments', icon: ClipboardCheck },
             { id: 'rooms', label: 'Room Status', icon: Users },
             { id: 'inventory', label: 'Inventory', icon: Package },
             { id: 'checkout', label: 'Checkout Queue', icon: Receipt }
@@ -296,6 +302,101 @@ export default function StaffDashboard() {
               </Button>
             </div>
           </Card>
+        </div>
+      )}
+
+      {/* My Assignments Tab */}
+      {activeTab === 'assignments' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-gray-900">My Daily Check Assignments</h2>
+            <Badge variant="default" className="bg-blue-100 text-blue-800">
+              {data.assignedRooms.filter(room => room.checkStatus !== 'completed').length} Pending
+            </Badge>
+          </div>
+
+          {data.assignedRooms.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {data.assignedRooms.map((room) => (
+                <Card key={room._id} className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Room {room.roomNumber}</h3>
+                      <p className="text-sm text-gray-600 capitalize">{room.type} • Floor {room.floor}</p>
+                    </div>
+                    <Badge
+                      variant="default"
+                      className={
+                        room.checkStatus === 'completed' ? 'bg-green-100 text-green-800' :
+                        room.checkStatus === 'overdue' ? 'bg-red-100 text-red-800' :
+                        'bg-yellow-100 text-yellow-800'
+                      }
+                    >
+                      {room.checkStatus}
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-3 mb-4">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Fixed Items:</span>
+                      <span className="font-medium">{room.fixedInventory.length}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Daily Items:</span>
+                      <span className="font-medium">{room.dailyInventory.length}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-600">Est. Duration:</span>
+                      <span className="font-medium">{room.estimatedDuration} min</span>
+                    </div>
+                    {room.lastChecked && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-600">Last Checked:</span>
+                        <span className="font-medium">
+                          {new Date(room.lastChecked).toLocaleDateString()}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2">
+                    {room.checkStatus === 'completed' ? (
+                      <Button
+                        onClick={() => window.location.href = '/staff/daily-routine-check'}
+                        variant="outline"
+                        className="flex-1 bg-green-50 text-green-700 hover:bg-green-100"
+                      >
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        View Completed
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => window.location.href = '/staff/daily-routine-check'}
+                        className="flex-1"
+                      >
+                        <CheckSquare className="w-4 h-4 mr-2" />
+                        Start Check
+                      </Button>
+                    )}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card className="p-6">
+              <div className="text-center py-12">
+                <ClipboardCheck className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No assignments today</h3>
+                <p className="text-gray-500 mb-4">You don't have any daily check assignments yet</p>
+                <Button
+                  onClick={() => setActiveTab('overview')}
+                  variant="outline"
+                >
+                  Back to Overview
+                </Button>
+              </div>
+            </Card>
+          )}
         </div>
       )}
 

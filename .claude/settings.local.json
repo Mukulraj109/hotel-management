@@ -13,7 +13,9 @@
       "Bash(cd:*)",
       "Bash(npm run dev:*)",
       "Bash(timeout 20 npm start)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(timeout 30 curl -s http://localhost:4000/api/v1/health)",
+      "Bash(timeout 10 curl -X GET http://localhost:4000/health)"
     ],
     "deny": [],
     "ask": []

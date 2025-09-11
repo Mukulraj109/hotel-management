@@ -112,6 +112,7 @@ export interface RoomBlockFilters {
   eventType?: string;
   startDate?: string;
   endDate?: string;
+  search?: string;
   page?: number;
   limit?: number;
   sortBy?: string;

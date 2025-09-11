@@ -220,7 +220,7 @@ router.post('/redeem',
   },
   authenticate, 
   validate(schemas.redeemPoints),
-  catchAsync(async (req, res) => {
+catchAsync(async (req, res) => {
     console.log('🔥 LOYALTY REDEEM - Starting redemption process');
     console.log('🔥 Request body:', req.body);
     console.log('🔥 User ID:', req.user?._id);

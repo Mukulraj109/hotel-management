@@ -120,12 +120,14 @@ router.get('/rooms', authorize('staff', 'admin'), catchAsync(async (req, res) =>
     paginatedRooms.map(async (room) => {
       try {
         // Get room inventory template
+        console.log(`Looking for template: hotelId=${hotelId}, roomType=${room.type}`);
         const template = await DailyRoutineCheckTemplate.findOne({
           hotelId: new mongoose.Types.ObjectId(hotelId),
           roomType: room.type
         });
 
         if (!template) {
+          console.log(`❌ No template found for room ${room.roomNumber} (type: ${room.type})`);
           // Return room with empty inventory if no template
           return {
             ...room,
@@ -133,6 +135,8 @@ router.get('/rooms', authorize('staff', 'admin'), catchAsync(async (req, res) =>
             dailyInventory: []
           };
         }
+
+        console.log(`✓ Found template for room ${room.roomNumber}: ${template.fixedInventory.length} fixed + ${template.dailyInventory.length} daily items`);
 
         // Get current room inventory status
         const currentInventory = await RoomInventory.findOne({
@@ -168,7 +172,8 @@ router.get('/rooms', authorize('staff', 'admin'), catchAsync(async (req, res) =>
           dailyInventory
         };
       } catch (error) {
-        console.error(`Error getting inventory for room ${room.roomNumber}:`, error);
+        console.error(`❌ Error getting inventory for room ${room.roomNumber}:`, error.message);
+        console.error(`Room details: type=${room.type}, hotelId=${hotelId}`);
         return {
           ...room,
           fixedInventory: [],
@@ -581,6 +586,284 @@ router.post('/rooms/:roomId/mark-checked', authorize('staff', 'admin'), catchAsy
       message: `Room ${room.roomNumber} marked as checked`,
       roomId: dailyCheck.roomId,
       checkedAt: dailyCheck.checkedAt
+    }
+  });
+}));
+
+/**
+ * @swagger
+ * /api/v1/daily-routine-check/assign:
+ *   post:
+ *     summary: Assign daily checks to staff members
+ *     tags: [Daily Routine Check]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               assignments:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     roomId:
+ *                       type: string
+ *                     staffId:
+ *                       type: string
+ *     responses:
+ *       200:
+ *         description: Assignments created successfully
+ */
+router.post('/assign', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+  const { hotelId } = req.user;
+  const { assignments } = req.body;
+
+  if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
+    throw new AppError('Assignments array is required', 400);
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  console.log('Creating daily check assignments:', assignments.length);
+
+  const createdAssignments = [];
+  const errors = [];
+
+  for (const assignment of assignments) {
+    try {
+      const { roomId, staffId } = assignment;
+
+      // Verify room exists and belongs to hotel
+      const room = await Room.findOne({
+        _id: roomId,
+        hotelId: new mongoose.Types.ObjectId(hotelId)
+      });
+
+      if (!room) {
+        errors.push(`Room ${roomId} not found`);
+        continue;
+      }
+
+      // Check if assignment already exists for today
+      const existingCheck = await DailyRoutineCheck.findOne({
+        roomId: new mongoose.Types.ObjectId(roomId),
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        checkDate: { $gte: today, $lt: tomorrow }
+      });
+
+      if (existingCheck) {
+        // Update existing assignment
+        existingCheck.checkedBy = new mongoose.Types.ObjectId(staffId);
+        await existingCheck.save();
+        createdAssignments.push(existingCheck);
+        console.log(`Updated existing assignment for room ${room.roomNumber}`);
+      } else {
+        // Create new assignment
+        const newCheck = new DailyRoutineCheck({
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          roomId: new mongoose.Types.ObjectId(roomId),
+          checkedBy: new mongoose.Types.ObjectId(staffId),
+          checkDate: today,
+          status: 'pending'
+        });
+
+        await newCheck.save();
+        createdAssignments.push(newCheck);
+        console.log(`Created new assignment for room ${room.roomNumber}`);
+      }
+    } catch (error) {
+      console.error(`Error assigning room ${assignment.roomId}:`, error);
+      errors.push(`Failed to assign room ${assignment.roomId}: ${error.message}`);
+    }
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      message: `Successfully assigned ${createdAssignments.length} rooms`,
+      assignmentsCreated: createdAssignments.length,
+      errors: errors.length > 0 ? errors : undefined
+    }
+  });
+}));
+
+/**
+ * @swagger
+ * /api/v1/daily-routine-check/templates:
+ *   get:
+ *     summary: Get all inventory templates for room types
+ *     tags: [Daily Routine Check]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of inventory templates
+ */
+router.get('/templates', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
+  const { hotelId } = req.user;
+
+  const templates = await DailyRoutineCheckTemplate.find({
+    hotelId: new mongoose.Types.ObjectId(hotelId),
+    isActive: true
+  }).sort({ roomType: 1 });
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      templates: templates.map(template => ({
+        roomType: template.roomType,
+        fixedInventory: template.fixedInventory,
+        dailyInventory: template.dailyInventory,
+        estimatedCheckDuration: template.estimatedCheckDuration
+      }))
+    }
+  });
+}));
+
+/**
+ * @swagger
+ * /api/v1/daily-routine-check/templates/{roomType}:
+ *   put:
+ *     summary: Update inventory template for a room type
+ *     tags: [Daily Routine Check]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: roomType
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Room type to update template for
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               fixedInventory:
+ *                 type: array
+ *               dailyInventory:
+ *                 type: array
+ *     responses:
+ *       200:
+ *         description: Template updated successfully
+ */
+router.put('/templates/:roomType', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+  const { hotelId, _id: updatedBy } = req.user;
+  const { roomType } = req.params;
+  const { fixedInventory, dailyInventory } = req.body;
+
+  const template = await DailyRoutineCheckTemplate.findOneAndUpdate(
+    {
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      roomType: roomType
+    },
+    {
+      fixedInventory,
+      dailyInventory,
+      lastUpdatedBy: new mongoose.Types.ObjectId(updatedBy)
+    },
+    { new: true }
+  );
+
+  if (!template) {
+    throw new AppError('Template not found for this room type', 404);
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      message: `Template for ${roomType} rooms updated successfully`,
+      template
+    }
+  });
+}));
+
+/**
+ * @swagger
+ * /api/v1/daily-routine-check/admin/overview:
+ *   get:
+ *     summary: Get admin overview of daily checks
+ *     tags: [Daily Routine Check]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Admin overview data
+ */
+router.get('/admin/overview', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+  const { hotelId } = req.user;
+  
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  // Get total rooms
+  const totalRooms = await Room.countDocuments({
+    hotelId: new mongoose.Types.ObjectId(hotelId),
+    isActive: true
+  });
+
+  // Get today's checks with staff details
+  const todayChecks = await DailyRoutineCheck.find({
+    hotelId: new mongoose.Types.ObjectId(hotelId),
+    checkDate: { $gte: today, $lt: tomorrow }
+  }).populate('checkedBy', 'name email')
+    .populate('roomId', 'roomNumber type floor');
+
+  // Get staff assignment summary
+  const assignmentSummary = {};
+  todayChecks.forEach(check => {
+    const staffId = check.checkedBy._id.toString();
+    if (!assignmentSummary[staffId]) {
+      assignmentSummary[staffId] = {
+        staff: check.checkedBy,
+        totalAssigned: 0,
+        completed: 0,
+        pending: 0,
+        rooms: []
+      };
+    }
+    assignmentSummary[staffId].totalAssigned++;
+    if (check.status === 'completed') {
+      assignmentSummary[staffId].completed++;
+    } else {
+      assignmentSummary[staffId].pending++;
+    }
+    assignmentSummary[staffId].rooms.push({
+      roomNumber: check.roomId.roomNumber,
+      type: check.roomId.type,
+      status: check.status,
+      checkedAt: check.checkedAt
+    });
+  });
+
+  const pendingChecks = totalRooms - todayChecks.length;
+  const completedToday = todayChecks.filter(check => check.status === 'completed').length;
+  const overdueChecks = todayChecks.filter(check => check.status === 'overdue').length;
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      totalRooms,
+      assignedRooms: todayChecks.length,
+      pendingChecks,
+      completedToday,
+      overdueChecks,
+      assignmentSummary: Object.values(assignmentSummary),
+      unassignedRooms: pendingChecks
     }
   });
 }));

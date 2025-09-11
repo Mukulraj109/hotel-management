@@ -152,6 +152,28 @@ const RoomBlockDetails: React.FC<RoomBlockDetailsProps> = ({
 
   const utilization = roomBlockService.getUtilizationPercentage(roomBlock);
   const totalRevenue = roomBlockService.calculateTotalRevenue(roomBlock);
+  
+  // Calculate nights for revenue calculation
+  const calculateNights = () => {
+    const startDate = new Date(roomBlock.startDate);
+    const endDate = new Date(roomBlock.endDate);
+    const diffTime = Math.abs(endDate.getTime() - startDate.getTime());
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  };
+  
+  const nights = calculateNights();
+  
+  // Better revenue calculation
+  const estimatedRevenue = (() => {
+    if (totalRevenue > 0) return totalRevenue;
+    
+    // Fallback: calculate from block rate or average room rates
+    const avgRate = roomBlock.blockRate || 
+      (roomBlock.rooms.reduce((sum, room) => sum + (room.rate || 3500), 0) / roomBlock.rooms.length) ||
+      3500; // fallback rate
+      
+    return roomBlock.roomsBooked * avgRate * nights;
+  })();
 
   return (
     <div className="space-y-6">
@@ -175,7 +197,7 @@ const RoomBlockDetails: React.FC<RoomBlockDetailsProps> = ({
             </div>
             <div className="flex items-center gap-1">
               <Clock className="w-4 h-4" />
-              <span>{roomBlock.nights} nights</span>
+              <span>{nights} nights</span>
             </div>
           </div>
         </div>
@@ -274,7 +296,7 @@ const RoomBlockDetails: React.FC<RoomBlockDetailsProps> = ({
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Duration:</span>
-                  <span className="font-medium">{roomBlock.nights} nights</span>
+                  <span className="font-medium">{nights} nights</span>
                 </div>
                 {roomBlock.blockRate && (
                   <div className="flex justify-between">
@@ -293,7 +315,7 @@ const RoomBlockDetails: React.FC<RoomBlockDetailsProps> = ({
               <CardContent className="space-y-3">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Estimated Revenue:</span>
-                  <span className="font-medium">₹{totalRevenue.toLocaleString()}</span>
+                  <span className="font-medium">₹{estimatedRevenue.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Currency:</span>

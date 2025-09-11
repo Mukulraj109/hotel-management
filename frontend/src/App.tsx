@@ -37,6 +37,7 @@ import GuestFeedback from './pages/guest/GuestFeedback';
 // Admin Pages
 import AdminLogin from './pages/admin/AdminLogin';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminDailyCheckManagement from './pages/admin/AdminDailyCheckManagement';
 import AdminRooms from './pages/admin/AdminRooms';
 import RoomDetailsPage from './pages/admin/RoomDetailsPage';
 import RoomBookingsPage from './pages/admin/RoomBookingsPage';
@@ -77,6 +78,7 @@ import AIDashboard from './components/analytics/AIDashboard';
 import OverbookingConfiguration from './components/admin/OverbookingConfiguration';
 import AdminWebSettings from './pages/admin/AdminWebSettings';
 import AdminBookingFormBuilder from './pages/admin/AdminBookingFormBuilder';
+import AdminAutomation from './pages/admin/AdminAutomation';
 
 // Staff Pages
 import StaffDashboard from './pages/staff/StaffDashboard';
@@ -168,6 +170,7 @@ function App() {
                 <Route path="corporate/gst" element={<GSTManagement />} />
                 <Route path="corporate/users" element={<CorporateUserRegistration />} />
                 <Route path="housekeeping" element={<AdminHousekeeping />} />
+                <Route path="daily-check-management" element={<AdminDailyCheckManagement />} />
                 <Route path="maintenance" element={<AdminMaintenance />} />
                 <Route path="guest-services" element={<AdminGuestServices />} />
                 <Route path="supply-requests" element={<AdminSupplyRequests />} />
@@ -198,6 +201,7 @@ function App() {
                 <Route path="mobile-apps" element={<AdminMobileApps />} />
                 <Route path="api-management" element={<AdminAPIManagement />} />
                 <Route path="ai-dashboard" element={<AIDashboard />} />
+                <Route path="automation" element={<AdminAutomation />} />
               </Route>
 
               {/* Staff Routes */}

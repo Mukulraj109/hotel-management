@@ -35,6 +35,9 @@ const RoomBlocks: React.FC = () => {
   const [roomBlocks, setRoomBlocks] = useState<RoomBlock[]>([]);
   const [stats, setStats] = useState<RoomBlockStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
   const [filters, setFilters] = useState<RoomBlockFilters>({
     page: 1,
     limit: 10,
@@ -60,11 +63,14 @@ const RoomBlocks: React.FC = () => {
   const fetchRoomBlocks = async () => {
     try {
       setLoading(true);
+      setError(null);
       const result = await roomBlockService.getRoomBlocks(filters);
       setRoomBlocks(result.data);
       setPagination(result.pagination);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch room blocks:', error);
+      setError(error.message || 'Failed to load room blocks. Please try again.');
+      setRoomBlocks([]);
     } finally {
       setLoading(false);
     }
@@ -72,10 +78,16 @@ const RoomBlocks: React.FC = () => {
 
   const fetchStats = async () => {
     try {
+      setStatsLoading(true);
+      setStatsError(null);
       const statsData = await roomBlockService.getRoomBlockStats();
       setStats(statsData);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch room block stats:', error);
+      setStatsError(error.message || 'Failed to load statistics.');
+      setStats(null);
+    } finally {
+      setStatsLoading(false);
     }
   };
 
@@ -86,8 +98,7 @@ const RoomBlocks: React.FC = () => {
     };
 
     if (searchTerm.trim()) {
-      // Note: Backend would need to support search by block name/group name
-      console.log('Searching for:', searchTerm);
+      searchFilters.search = searchTerm.trim();
     }
 
     if (statusFilter !== 'all') {
@@ -100,6 +111,17 @@ const RoomBlocks: React.FC = () => {
 
     setFilters(searchFilters);
   };
+
+  // Auto-search as user types (debounced)
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchTerm !== (filters.search || '')) {
+        handleSearch();
+      }
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchTerm]);
 
   const getStatusBadge = (status: RoomBlock['status']) => {
     const variants = {
@@ -144,40 +166,103 @@ const RoomBlocks: React.FC = () => {
 
   if (loading && roomBlocks.length === 0) {
     return (
-      <div className="p-6">
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="p-4 md:p-6 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <div className="h-8 bg-gray-200 rounded w-64 animate-pulse"></div>
+            <div className="h-4 bg-gray-200 rounded w-48 mt-2 animate-pulse"></div>
+          </div>
+          <div className="h-10 bg-gray-200 rounded w-40 animate-pulse"></div>
         </div>
+        
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gray-200 rounded-lg"></div>
+                  <div className="flex-1">
+                    <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                    <div className="h-6 bg-gray-200 rounded"></div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="h-10 bg-gray-200 rounded animate-pulse"></div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-center h-32">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className="ml-3 text-gray-600">Loading room blocks...</span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Room Block Management</h1>
-          <p className="text-gray-600">Manage group bookings and room blocks</p>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Room Block Management</h1>
+          <p className="text-gray-600 mt-1">Manage group bookings and room blocks</p>
         </div>
-        <Button onClick={() => setShowCreateForm(true)} className="flex items-center gap-2">
+        <Button onClick={() => setShowCreateForm(true)} className="flex items-center gap-2 w-full sm:w-auto">
           <Plus className="w-4 h-4" />
           Create Room Block
         </Button>
       </div>
 
       {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
+      {statsLoading ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gray-200 rounded-lg"></div>
+                  <div className="flex-1">
+                    <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                    <div className="h-6 bg-gray-200 rounded"></div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : statsError ? (
+        <Card className="border-red-200">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="w-4 h-4" />
+              <span>{statsError}</span>
+              <Button variant="outline" size="sm" onClick={fetchStats} className="ml-auto">
+                Retry
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : stats ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="hover:shadow-md transition-shadow">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-green-100 rounded-lg">
                   <CheckCircle className="w-5 h-5 text-green-600" />
                 </div>
-                <div>
-                  <p className="text-sm text-gray-600">Active Blocks</p>
-                  <p className="text-xl font-semibold">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-gray-600 truncate">Active Blocks</p>
+                  <p className="text-2xl font-semibold">
                     {stats.statusStats.find(s => s._id === 'active')?.count || 0}
                   </p>
                 </div>
@@ -185,15 +270,15 @@ const RoomBlocks: React.FC = () => {
             </CardContent>
           </Card>
           
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-blue-100 rounded-lg">
                   <Building className="w-5 h-5 text-blue-600" />
                 </div>
-                <div>
-                  <p className="text-sm text-gray-600">Total Rooms</p>
-                  <p className="text-xl font-semibold">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-gray-600 truncate">Total Rooms</p>
+                  <p className="text-2xl font-semibold">
                     {stats.statusStats.reduce((sum, stat) => sum + stat.totalRooms, 0)}
                   </p>
                 </div>
@@ -201,15 +286,15 @@ const RoomBlocks: React.FC = () => {
             </CardContent>
           </Card>
           
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-yellow-100 rounded-lg">
                   <Users className="w-5 h-5 text-yellow-600" />
                 </div>
-                <div>
-                  <p className="text-sm text-gray-600">Booked Rooms</p>
-                  <p className="text-xl font-semibold">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-gray-600 truncate">Booked Rooms</p>
+                  <p className="text-2xl font-semibold">
                     {stats.statusStats.reduce((sum, stat) => sum + stat.totalBookedRooms, 0)}
                   </p>
                 </div>
@@ -217,15 +302,15 @@ const RoomBlocks: React.FC = () => {
             </CardContent>
           </Card>
           
-          <Card>
+          <Card className="hover:shadow-md transition-shadow">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-purple-100 rounded-lg">
                   <Calendar className="w-5 h-5 text-purple-600" />
                 </div>
-                <div>
-                  <p className="text-sm text-gray-600">Events</p>
-                  <p className="text-xl font-semibold">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-gray-600 truncate">Events</p>
+                  <p className="text-2xl font-semibold">
                     {stats.eventTypeStats.length}
                   </p>
                 </div>
@@ -233,13 +318,13 @@ const RoomBlocks: React.FC = () => {
             </CardContent>
           </Card>
         </div>
-      )}
+      ) : null}
 
       {/* Filters */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex flex-wrap gap-4 items-center">
-            <div className="flex-1 min-w-[200px]">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
               <div className="relative">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                 <Input
@@ -251,38 +336,44 @@ const RoomBlocks: React.FC = () => {
               </div>
             </div>
             
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-                <SelectItem value="partially_released">Partially Released</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Event Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="conference">Conference</SelectItem>
-                <SelectItem value="wedding">Wedding</SelectItem>
-                <SelectItem value="corporate_event">Corporate Event</SelectItem>
-                <SelectItem value="group_booking">Group Booking</SelectItem>
-                <SelectItem value="convention">Convention</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            <Button onClick={handleSearch} variant="outline" className="flex items-center gap-2">
-              <Filter className="w-4 h-4" />
-              Filter
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full sm:w-[150px]">
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                  <SelectItem value="partially_released">Partially Released</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
+                <SelectTrigger className="w-full sm:w-[150px]">
+                  <SelectValue placeholder="All Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="conference">Conference</SelectItem>
+                  <SelectItem value="wedding">Wedding</SelectItem>
+                  <SelectItem value="corporate_event">Corporate Event</SelectItem>
+                  <SelectItem value="group_booking">Group Booking</SelectItem>
+                  <SelectItem value="convention">Convention</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Button 
+                onClick={handleSearch} 
+                variant="outline" 
+                className="flex items-center gap-2 w-full sm:w-auto justify-center"
+              >
+                <Filter className="w-4 h-4" />
+                Filter
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -293,7 +384,15 @@ const RoomBlocks: React.FC = () => {
           <CardTitle>Room Blocks ({pagination.total})</CardTitle>
         </CardHeader>
         <CardContent>
-          {roomBlocks.length === 0 ? (
+          {error ? (
+            <div className="text-center py-8">
+              <AlertCircle className="w-12 h-12 mx-auto mb-4 text-red-500" />
+              <p className="text-red-600 mb-4">{error}</p>
+              <Button onClick={fetchRoomBlocks} variant="outline">
+                Try Again
+              </Button>
+            </div>
+          ) : roomBlocks.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Building className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>No room blocks found</p>
@@ -304,56 +403,58 @@ const RoomBlocks: React.FC = () => {
               {roomBlocks.map((block) => (
                 <div
                   key={block._id}
-                  className="border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                  className="border rounded-lg p-4 hover:shadow-md transition-all duration-200 cursor-pointer bg-white hover:bg-gray-50"
                   onClick={() => setSelectedBlock(block)}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        {getEventTypeIcon(block.eventType)}
-                        <h3 className="font-semibold text-lg">{block.blockName}</h3>
+                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
+                        <div className="flex items-center gap-3">
+                          {getEventTypeIcon(block.eventType)}
+                          <h3 className="font-semibold text-lg truncate">{block.blockName}</h3>
+                        </div>
                         {getStatusBadge(block.status)}
                       </div>
                       
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600">
-                        <div className="flex items-center gap-2">
-                          <Users className="w-4 h-4" />
-                          <span>{block.groupName}</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm text-gray-600 mb-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Users className="w-4 h-4 flex-shrink-0" />
+                          <span className="truncate">{block.groupName}</span>
                         </div>
                         
-                        <div className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4" />
-                          <span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Calendar className="w-4 h-4 flex-shrink-0" />
+                          <span className="truncate">
                             {format(new Date(block.startDate), 'MMM dd')} - {format(new Date(block.endDate), 'MMM dd, yyyy')}
                           </span>
                         </div>
                         
                         <div className="flex items-center gap-2">
-                          <Building className="w-4 h-4" />
+                          <Building className="w-4 h-4 flex-shrink-0" />
                           <span>{block.totalRooms} rooms</span>
                         </div>
                         
                         <div className="flex items-center gap-2">
-                          <CheckCircle className="w-4 h-4" />
+                          <CheckCircle className="w-4 h-4 flex-shrink-0" />
                           <span>{block.roomsBooked} booked</span>
                         </div>
                       </div>
                       
-                      {block.contactPerson.name && (
-                        <div className="mt-2 flex items-center gap-4 text-sm text-gray-600">
-                          <div className="flex items-center gap-1">
-                            <Users className="w-3 h-3" />
-                            <span>{block.contactPerson.name}</span>
+                      {block.contactPerson?.name && (
+                        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-600">
+                          <div className="flex items-center gap-1 min-w-0">
+                            <Users className="w-3 h-3 flex-shrink-0" />
+                            <span className="truncate">{block.contactPerson.name}</span>
                           </div>
                           {block.contactPerson.email && (
-                            <div className="flex items-center gap-1">
-                              <Mail className="w-3 h-3" />
-                              <span>{block.contactPerson.email}</span>
+                            <div className="flex items-center gap-1 min-w-0">
+                              <Mail className="w-3 h-3 flex-shrink-0" />
+                              <span className="truncate">{block.contactPerson.email}</span>
                             </div>
                           )}
                           {block.contactPerson.phone && (
                             <div className="flex items-center gap-1">
-                              <Phone className="w-3 h-3" />
+                              <Phone className="w-3 h-3 flex-shrink-0" />
                               <span>{block.contactPerson.phone}</span>
                             </div>
                           )}
@@ -361,7 +462,13 @@ const RoomBlocks: React.FC = () => {
                       )}
                     </div>
                     
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-end gap-2 lg:ml-4">
+                      <div className="text-right text-sm">
+                        <div className="text-gray-500">Utilization</div>
+                        <div className="font-semibold text-lg">
+                          {Math.round((block.roomsBooked / block.totalRooms) * 100)}%
+                        </div>
+                      </div>
                       <Button
                         variant="outline"
                         size="sm"
@@ -369,6 +476,7 @@ const RoomBlocks: React.FC = () => {
                           e.stopPropagation();
                           setSelectedBlock(block);
                         }}
+                        className="flex-shrink-0"
                       >
                         <Eye className="w-4 h-4" />
                       </Button>

@@ -520,8 +520,8 @@ class TapeChartService {
         }
       }
 
-      // Get bookings for the date range
-      const bookings = await Booking.find({
+      // Get ALL bookings for the date range (don't filter by status in database)
+      const allBookings = await Booking.find({
         $or: [
           {
             checkIn: { $gte: startDate, $lte: endDate }
@@ -533,11 +533,21 @@ class TapeChartService {
             checkIn: { $lt: startDate },
             checkOut: { $gt: endDate }
           }
-        ],
-        status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+        ]
       })
       .populate('rooms.roomId', 'roomNumber type')
       .populate('userId', 'name email phone');
+
+      console.log(`🚀 TAPE CHART DEBUG - Found ${allBookings.length} total bookings in date range`);
+      
+      // Filter bookings by status in application logic
+      const bookings = allBookings.filter(booking => {
+        const isValidStatus = ['confirmed', 'checked_in', 'checked_out', 'pending', 'modified', 'cancelled'].includes(booking.status);
+        console.log(`🚀 TAPE CHART DEBUG - Booking ${booking._id} (${booking.userId?.name}) status: ${booking.status}, valid: ${isValidStatus}`);
+        return isValidStatus;
+      });
+      
+      console.log(`🚀 TAPE CHART DEBUG - Filtered to ${bookings.length} bookings with valid statuses`);
 
 
       // Get room blocks
@@ -643,14 +653,64 @@ class TapeChartService {
         // Check if room has current booking to override status
         let finalStatus = mappedStatus;
         const now = new Date();
+        console.log(`🚀 TAPE CHART DEBUG - Current time for comparison: ${now.toISOString()}`);
+        
+        console.log(`🚀 TAPE CHART DEBUG - Room ${room.roomNumber} bookings:`, roomBookings.map(b => ({
+          bookingId: b._id,
+          guestName: b.userId?.name || 'Unknown',
+          status: b.status,
+          checkIn: b.checkIn,
+          checkOut: b.checkOut
+        })));
+        
         const hasCurrentBooking = roomBookings.some(booking => {
           const checkIn = new Date(booking.checkIn);
           const checkOut = new Date(booking.checkOut);
-          return checkIn <= now && checkOut > now && ['confirmed', 'checked_in'].includes(booking.status);
+          
+          // A booking is current if:
+          // 1. It has an ACTIVE status (not checked_out or cancelled) - PRIORITY
+          // 2. It's within the current date range (checkIn <= now < checkOut)
+          const hasActiveStatus = ['confirmed', 'checked_in', 'pending', 'modified'].includes(booking.status);
+          const isWithinDateRange = checkIn <= now && checkOut > now;
+          
+          // If status is checked_out or cancelled, it's never current regardless of dates
+          // This handles manual checkouts even before the scheduled checkout time
+          if (booking.status === 'checked_out' || booking.status === 'cancelled') {
+            console.log(`🚀 TAPE CHART DEBUG - Booking ${booking._id} (${booking.userId?.name}) is ${booking.status}, marking as NOT current (manual checkout)`);
+            return false;
+          }
+          
+          const isCurrentBooking = hasActiveStatus && isWithinDateRange;
+          
+          console.log(`🚀 TAPE CHART DEBUG - Booking ${booking._id} (${booking.userId?.name}):`, {
+            status: booking.status,
+            checkIn: checkIn.toISOString(),
+            checkOut: checkOut.toISOString(),
+            now: now.toISOString(),
+            isWithinDateRange,
+            hasActiveStatus,
+            isCurrentBooking
+          });
+          
+          if (isCurrentBooking) {
+            console.log(`🚀 TAPE CHART DEBUG - Room ${room.roomNumber} has current booking:`, {
+              bookingId: booking._id,
+              guestName: booking.userId?.name || 'Unknown',
+              status: booking.status,
+              checkIn: booking.checkIn,
+              checkOut: booking.checkOut,
+              now: now
+            });
+          }
+          
+          return isCurrentBooking;
         });
         
         if (hasCurrentBooking) {
           finalStatus = 'occupied';
+          console.log(`🚀 TAPE CHART DEBUG - Room ${room.roomNumber} marked as occupied`);
+        } else {
+          console.log(`🚀 TAPE CHART DEBUG - Room ${room.roomNumber} has no current booking, status: ${finalStatus}`);
         }
         
         

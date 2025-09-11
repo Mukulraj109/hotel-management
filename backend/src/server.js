@@ -132,6 +132,10 @@ import credentialRoutes from './routes/credentials.js';
 import rolePermissionRoutes from './routes/rolePermissions.js';
 import dataPrivacyRoutes from './routes/dataPrivacy.js';
 import securityMonitoringRoutes from './routes/securityMonitoring.js';
+import checkoutAutomationRoutes from './routes/checkoutAutomation.js';
+import laundryTemplatesRoutes from './routes/laundryTemplates.js';
+import inventoryAutomationRoutes from './routes/inventoryAutomation.js';
+import housekeepingAutomationRoutes from './routes/housekeepingAutomation.js';
 
 const app = express();
 
@@ -381,6 +385,10 @@ app.use('/api/v1/credentials', credentialRoutes);
 app.use('/api/v1/roles', rolePermissionRoutes);
 app.use('/api/v1/data-privacy', dataPrivacyRoutes);
 app.use('/api/v1/security-monitoring', securityMonitoringRoutes);
+app.use('/api/v1/checkout-automation', checkoutAutomationRoutes);
+app.use('/api/v1/laundry-templates', laundryTemplatesRoutes);
+app.use('/api/v1/inventory-automation', inventoryAutomationRoutes);
+app.use('/api/v1/housekeeping-automation', housekeepingAutomationRoutes);
 
 // 404 handler
 app.all('*', (req, res) => {

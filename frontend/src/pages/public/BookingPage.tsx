@@ -598,7 +598,7 @@ const BookingPage: React.FC = () => {
                     guestName: bookingData.guestDetails.name,
                     guestEmail: bookingData.guestDetails.email,
                     guestPhone: bookingData.guestDetails.phone,
-                    idempotencyKey: `booking-${Date.now()}-${user?._id}-${Math.random().toString(36).substr(2, 9)}`
+                    idempotencyKey: `booking-${Date.now()}-${user?._id}-${crypto.randomUUID()}`
                   };
 
                   console.log('🚀 USER BOOKING DEBUG - Full booking data state:', JSON.stringify(bookingData, null, 2));

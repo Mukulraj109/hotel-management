@@ -1,61 +1,57 @@
 import React from 'react';
-import { AlertCircle, CheckCircle, Info, AlertTriangle } from 'lucide-react';
+import { cn } from '../../utils/cn';
+import { AlertTriangle, CheckCircle, Info, XCircle } from 'lucide-react';
 
 interface AlertProps {
   children: React.ReactNode;
-  variant?: 'default' | 'destructive' | 'success' | 'warning';
+  variant?: 'default' | 'success' | 'warning' | 'error' | 'info';
   className?: string;
 }
 
-export const Alert: React.FC<AlertProps> = ({
-  children,
-  variant = 'default',
-  className = ''
-}) => {
-  const baseClasses = 'relative w-full rounded-lg border p-4';
-  
-  const variantClasses = {
-    default: 'bg-background text-foreground border-border',
-    destructive: 'border-red-200 bg-red-50 text-red-800',
-    success: 'border-green-200 bg-green-50 text-green-800',
-    warning: 'border-yellow-200 bg-yellow-50 text-yellow-800'
+export function Alert({ children, variant = 'default', className }: AlertProps) {
+  const variants = {
+    default: 'bg-blue-50 border-blue-200 text-blue-800',
+    success: 'bg-green-50 border-green-200 text-green-800',
+    warning: 'bg-yellow-50 border-yellow-200 text-yellow-800',
+    error: 'bg-red-50 border-red-200 text-red-800',
+    info: 'bg-blue-50 border-blue-200 text-blue-800'
   };
 
+  const icons = {
+    default: Info,
+    success: CheckCircle,
+    warning: AlertTriangle,
+    error: XCircle,
+    info: Info
+  };
+
+  const Icon = icons[variant];
+
   return (
-    <div className={`${baseClasses} ${variantClasses[variant]} ${className}`}>
-      {children}
+    <div
+      className={cn(
+        'flex items-start p-4 border rounded-lg',
+        variants[variant],
+        className
+      )}
+    >
+      <Icon className="h-5 w-5 mr-3 mt-0.5 flex-shrink-0" />
+      <div className="flex-1">
+        {children}
+      </div>
     </div>
   );
-};
+}
 
 interface AlertDescriptionProps {
   children: React.ReactNode;
   className?: string;
 }
 
-export const AlertDescription: React.FC<AlertDescriptionProps> = ({
-  children,
-  className = ''
-}) => {
+export function AlertDescription({ children, className }: AlertDescriptionProps) {
   return (
-    <div className={`text-sm ${className}`}>
+    <div className={cn('text-sm', className)}>
       {children}
     </div>
   );
-};
-
-interface AlertTitleProps {
-  children: React.ReactNode;
-  className?: string;
 }
-
-export const AlertTitle: React.FC<AlertTitleProps> = ({
-  children,
-  className = ''
-}) => {
-  return (
-    <h5 className={`mb-1 font-medium leading-none tracking-tight ${className}`}>
-      {children}
-    </h5>
-  );
-};

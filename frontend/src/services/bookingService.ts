@@ -1,5 +1,6 @@
 import { api } from './api';
 import { Room, Booking, BookingFilters, CreateBookingRequest } from '../types/booking';
+import { ensureAuthenticated } from '../utils/auth';
 
 interface ApiResponse<T> {
   status: string;
@@ -32,7 +33,27 @@ class BookingService {
   }
 
   async createBooking(bookingData: CreateBookingRequest): Promise<ApiResponse<{ booking: Booking }>> {
-    const response = await api.post('/bookings', bookingData);
+    // Ensure we have the required fields for the backend API
+    const enhancedBookingData = {
+      ...bookingData,
+      // Add required fields if missing
+      hotelId: bookingData.hotelId || '68c25aa418157b9a452bdd17', // Default hotel ID
+      idempotencyKey: bookingData.idempotencyKey || `booking-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      // Ensure roomIds is an array if roomId is provided as a string
+      roomIds: bookingData.roomIds || (bookingData.roomId ? [bookingData.roomId] : undefined),
+      // Set default currency if not provided
+      currency: bookingData.currency || 'INR',
+      // Ensure guestDetails has required fields
+      guestDetails: {
+        adults: 1,
+        children: 0,
+        ...bookingData.guestDetails
+      }
+    };
+
+    console.log('Enhanced booking data:', enhancedBookingData);
+    
+    const response = await api.post('/bookings', enhancedBookingData);
     return response.data;
   }
 

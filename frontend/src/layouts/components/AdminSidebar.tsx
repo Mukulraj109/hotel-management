@@ -57,6 +57,7 @@ const navigation = [
   { name: 'Guest Services', href: '/admin/guest-services', icon: Headphones },
   { name: 'Supply Requests', href: '/admin/supply-requests', icon: FileText },
   { name: 'Inventory', href: '/admin/inventory', icon: Package },
+  { name: 'Automation', href: '/admin/automation', icon: Zap },
   { name: 'Inventory Management', href: '/admin/inventory-management', icon: CalendarDays },
   { name: 'Reports', href: '/admin/reports', icon: BarChart3 },
   { name: 'Multi-Property', href: '/admin/multi-property', icon: Building },

@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
 import Invoice from '../models/Invoice.js';
+import User from '../models/User.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { AppError } from '../utils/appError.js';
@@ -671,38 +672,97 @@ router.post('/change-room-by-guest',
   authenticate, 
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
+    console.log('🚀 BACKEND DEBUG - Request body:', req.body);
+    console.log('🚀 BACKEND DEBUG - User info:', req.user);
+    
     const { guestName, checkIn, checkOut, newRoomId, newRoomNumber, reason } = req.body;
     
-    // Find booking by guest name and dates
-    const booking = await Booking.findOne({
-      guestName: { $regex: new RegExp(guestName, 'i') }, // Case insensitive search
-      checkIn: new Date(checkIn),
-      checkOut: new Date(checkOut)
+    console.log('🚀 BACKEND DEBUG - Extracted data:', {
+      guestName,
+      checkIn,
+      checkOut,
+      newRoomId,
+      newRoomNumber,
+      reason
     });
     
+    // Find booking by guest name and dates
+    // First, find the user by name
+    const user = await User.findOne({ 
+      name: { $regex: new RegExp(guestName, 'i') } 
+    });
+    
+    if (!user) {
+      console.log('🚀 BACKEND DEBUG - No user found with name:', guestName);
+      throw new AppError(`Guest not found: ${guestName}`, 404);
+    }
+    
+    console.log('🚀 BACKEND DEBUG - Found user:', user.name, user._id);
+    
+    // Then find the booking by userId and dates
+    const searchQuery = {
+      userId: user._id,
+      checkIn: new Date(checkIn),
+      checkOut: new Date(checkOut)
+    };
+    
+    console.log('🚀 BACKEND DEBUG - Search query:', searchQuery);
+    
+    const booking = await Booking.findOne(searchQuery);
+    
+    console.log('🚀 BACKEND DEBUG - Found booking:', booking);
+    
     if (!booking) {
+      console.log('🚀 BACKEND DEBUG - No booking found for search query');
       throw new AppError(`Booking not found for ${guestName} (${checkIn} to ${checkOut})`, 404);
     }
 
-    // Find the room in the booking's rooms array and update it
-    if (booking.rooms && booking.rooms.length > 0) {
-      booking.rooms[0].roomId = new mongoose.Types.ObjectId(newRoomId);
-      // Add a note about the room change
-      if (!booking.notes) booking.notes = [];
-      booking.notes.push(`Room changed to ${newRoomNumber} on ${new Date().toISOString()} by ${req.user.name}. Reason: ${reason}`);
-      
-      await booking.save();
-      
-      res.json({
-        success: true,
-        data: {
-          booking,
-          message: `${guestName}'s room changed to ${newRoomNumber} successfully`
-        }
-      });
-    } else {
-      throw new AppError('Booking has no rooms to change', 400);
+    console.log('🚀 BACKEND DEBUG - Booking rooms:', booking.rooms);
+    console.log('🚀 BACKEND DEBUG - Booking rooms length:', booking.rooms?.length);
+    console.log('🚀 BACKEND DEBUG - Booking status:', booking.status);
+
+    // Check if booking is cancelled and reactivate it if needed
+    if (booking.status === 'cancelled') {
+      console.log('🚀 BACKEND DEBUG - Reactivating cancelled booking...');
+      booking.status = 'confirmed';
+      booking.lastStatusChange = {
+        from: 'cancelled',
+        to: 'confirmed',
+        timestamp: new Date(),
+        reason: 'Reactivated for room assignment'
+      };
     }
+
+    // Handle bookings without rooms (new bookings) or with existing rooms
+    if (booking.rooms && booking.rooms.length > 0) {
+      // Update existing room
+      console.log('🚀 BACKEND DEBUG - Updating existing room from:', booking.rooms[0].roomId, 'to:', newRoomId);
+      booking.rooms[0].roomId = new mongoose.Types.ObjectId(newRoomId);
+    } else {
+      // Add new room to booking
+      console.log('🚀 BACKEND DEBUG - Adding new room to booking:', newRoomId);
+      booking.rooms = [{
+        roomId: new mongoose.Types.ObjectId(newRoomId),
+        rate: 0 // Will be updated when room is confirmed
+      }];
+    }
+
+    // Add a note about the room assignment/change
+    if (!booking.notes) booking.notes = [];
+    booking.notes.push(`Room assigned/changed to ${newRoomNumber} on ${new Date().toISOString()} by ${req.user.name}. Reason: ${reason}`);
+    
+    console.log('🚀 BACKEND DEBUG - Saving booking with updated room...');
+    await booking.save();
+    
+    console.log('🚀 BACKEND DEBUG - Booking saved successfully');
+    
+    res.json({
+      success: true,
+      data: {
+        booking,
+        message: `${guestName}'s room assigned to ${newRoomNumber} successfully`
+      }
+    });
   })
 );
 

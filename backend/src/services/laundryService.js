@@ -597,6 +597,170 @@ class LaundryService {
       throw error;
     }
   }
+
+  /**
+   * Process checkout laundry using enhanced detection service
+   * @param {string} bookingId - Booking ID
+   * @param {string} roomId - Room ID
+   * @param {string} processedBy - User ID who processed
+   * @param {Object} options - Processing options
+   */
+  async processCheckoutLaundry(bookingId, roomId, processedBy, options = {}) {
+    try {
+      logger.info('Processing checkout laundry with enhanced detection', {
+        bookingId,
+        roomId,
+        processedBy
+      });
+
+      // Import laundry detection service
+      const { default: laundryDetectionService } = await import('./laundryDetectionService.js');
+      
+      // Detect laundry items using enhanced service
+      const detectionResult = await laundryDetectionService.detectLaundryItems(bookingId, {
+        roomId,
+        ...options
+      });
+
+      if (!detectionResult.success) {
+        throw new Error('Laundry detection failed');
+      }
+
+      // Find the result for the specific room
+      const roomResult = detectionResult.results.find(r => r.roomId.toString() === roomId.toString());
+      if (!roomResult || !roomResult.success) {
+        throw new Error(`Laundry detection failed for room ${roomId}`);
+      }
+
+      // Process each detected item
+      const transactions = [];
+      const expectedReturnDate = new Date();
+      expectedReturnDate.setDate(expectedReturnDate.getDate() + roomResult.timingAnalysis.recommendedReturnDays);
+
+      for (const item of roomResult.items) {
+        try {
+          // Create laundry transaction
+          const transaction = new LaundryTransaction({
+            hotelId: options.hotelId,
+            roomId,
+            itemId: item.itemId,
+            bookingId,
+            transactionType: 'send_to_laundry',
+            quantity: item.quantity,
+            status: 'pending',
+            expectedReturnDate,
+            cost: item.costPerItem || 0,
+            totalCost: item.estimatedCost || 0,
+            notes: `Checkout laundry - ${item.itemName} (${item.category})`,
+            specialInstructions: item.specialInstructions || '',
+            processedBy,
+            isUrgent: item.priority === 'urgent',
+            priority: item.priority || 'medium',
+            metadata: {
+              createdBy: processedBy,
+              source: 'checkout_automation_enhanced',
+              detectionMethod: roomResult.detectionMethod,
+              templateUsed: roomResult.templateUsed,
+              guestCount: roomResult.guestCount,
+              season: roomResult.season,
+              roomCondition: roomResult.roomCondition
+            }
+          });
+
+          await transaction.save();
+          transactions.push(transaction);
+
+          // Update room inventory status
+          await this.updateRoomInventoryStatus(roomId, item.itemId, 'sent_to_laundry', item.quantity);
+
+          logger.info('Enhanced laundry transaction created', {
+            transactionId: transaction._id,
+            itemName: item.itemName,
+            category: item.category,
+            quantity: item.quantity,
+            priority: item.priority
+          });
+
+        } catch (error) {
+          logger.error('Failed to create laundry transaction for item', {
+            itemName: item.itemName,
+            error: error.message
+          });
+          // Continue with other items even if one fails
+        }
+      }
+
+      // Calculate total cost
+      const totalCost = transactions.reduce((sum, t) => sum + t.totalCost, 0);
+
+      logger.info('Checkout laundry processing completed', {
+        bookingId,
+        roomId,
+        transactionsCreated: transactions.length,
+        totalCost,
+        expectedReturnDate
+      });
+
+      return {
+        success: true,
+        bookingId,
+        roomId,
+        transactions,
+        totalItems: transactions.length,
+        totalCost,
+        expectedReturnDate,
+        detectionResult: roomResult,
+        processingTime: roomResult.timingAnalysis.estimatedProcessingMinutes
+      };
+
+    } catch (error) {
+      logger.error('Enhanced checkout laundry processing failed', {
+        bookingId,
+        roomId,
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get enhanced laundry processing statistics
+   * @param {string} hotelId - Hotel ID
+   * @param {Object} dateRange - Date range for statistics
+   */
+  async getEnhancedStatistics(hotelId, dateRange = {}) {
+    try {
+      // Import laundry detection service
+      const { default: laundryDetectionService } = await import('./laundryDetectionService.js');
+      
+      // Get detection statistics
+      const detectionStats = await laundryDetectionService.getDetectionStatistics(hotelId, dateRange);
+      
+      // Get traditional laundry statistics
+      const traditionalStats = await this.getLaundryStatistics(hotelId, dateRange);
+      
+      // Combine statistics
+      return {
+        detection: detectionStats,
+        traditional: traditionalStats,
+        enhanced: {
+          totalTemplates: detectionStats.totalTemplates,
+          averageTemplateUsage: detectionStats.averageUsage,
+          mostUsedTemplate: detectionStats.mostUsedTemplate,
+          templatesByRoomType: detectionStats.templatesByRoomType
+        }
+      };
+
+    } catch (error) {
+      logger.error('Error getting enhanced laundry statistics', {
+        error: error.message,
+        hotelId,
+        dateRange
+      });
+      throw error;
+    }
+  }
 }
 
 export default new LaundryService();

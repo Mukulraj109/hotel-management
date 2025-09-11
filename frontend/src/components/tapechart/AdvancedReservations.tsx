@@ -312,7 +312,7 @@ const AdvancedReservations: React.FC = () => {
                       <div className="flex items-center gap-3 mb-2">
                         <Users className="w-4 h-4 text-gray-500" />
                         <h3 className="font-semibold text-lg">
-                          {reservation.bookingId.guestName}
+                          {reservation.bookingId?.guestName || 'Guest Name Not Available'}
                         </h3>
                         <span className="text-sm text-gray-500">
                           #{reservation.reservationId}
@@ -326,8 +326,8 @@ const AdvancedReservations: React.FC = () => {
                         <div className="flex items-center gap-2">
                           <Calendar className="w-4 h-4" />
                           <span>
-                            {format(new Date(reservation.bookingId.checkIn), 'MMM dd')} - 
-                            {format(new Date(reservation.bookingId.checkOut), 'MMM dd, yyyy')}
+                            {reservation.bookingId?.checkIn ? format(new Date(reservation.bookingId.checkIn), 'MMM dd') : 'N/A'} - 
+                            {reservation.bookingId?.checkOut ? format(new Date(reservation.bookingId.checkOut), 'MMM dd, yyyy') : 'N/A'}
                           </span>
                         </div>
                         

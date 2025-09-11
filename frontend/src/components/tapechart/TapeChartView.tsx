@@ -15,7 +15,7 @@ import {
   User, Clock, Bed, DollarSign, AlertTriangle, CheckCircle,
   MoreHorizontal, Move, Copy, Trash2, Bell, Phone, Mail,
   Zap, Star, Crown, UserCheck, UserX, Coffee, Wifi, Users,
-  UserPlus, Building2, Plane, Heart, Baby
+  UserPlus, Building2, Plane, Heart, Baby, RefreshCw
 } from 'lucide-react';
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, formatISO } from 'date-fns';
 import tapeChartService, { TapeChartData, TapeChartView as TapeChartViewType } from '@/services/tapeChartService';
@@ -107,6 +107,9 @@ const TapeChartView: React.FC = () => {
   const [showRates, setShowRates] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
   const [isMenuCollapsed, setIsMenuCollapsed] = useState(false);
+  
+  // Refresh trigger for sidebar
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   
   // Filters
   const [filters, setFilters] = useState({
@@ -293,6 +296,18 @@ const TapeChartView: React.FC = () => {
     }
   }, [selectedView, startDate, endDate]);
 
+  // Auto-refresh every 30 seconds to keep data updated
+  useEffect(() => {
+    if (!selectedView) return;
+    
+    const interval = setInterval(() => {
+      console.log('🔄 Auto-refreshing tape chart data...');
+      fetchChartData();
+    }, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [selectedView, startDate, endDate]);
+
   const fetchViews = async () => {
     try {
       console.log('Fetching tape chart views...');
@@ -446,8 +461,16 @@ const TapeChartView: React.FC = () => {
     }
     
     try {
-      console.log('Full dragged item structure:', draggedItem);
-      console.log('Available fields:', Object.keys(draggedItem));
+      console.log('🚀 FRONTEND DEBUG - Full dragged item structure:', draggedItem);
+      console.log('🚀 FRONTEND DEBUG - Available fields:', Object.keys(draggedItem));
+      console.log('🚀 FRONTEND DEBUG - Room assignment data:', {
+        roomId,
+        roomNumber: roomNumber || roomId,
+        assignmentType: 'drag_drop',
+        notes: `Moved via drag & drop to room ${roomNumber || roomId} for ${date}`,
+        newCheckInDate: date,
+        moveReason: 'Staff reassignment via tape chart'
+      });
       
       // Handle actual room assignment logic
       await tapeChartService.assignRoom(draggedItem, {
@@ -460,7 +483,10 @@ const TapeChartView: React.FC = () => {
       });
       
       toast.success(`${draggedItem.guestName}'s reservation moved to room ${roomNumber || roomId}`);
-      fetchChartData(); // Refresh data
+      fetchChartData(); // Refresh chart data
+      
+      // Trigger sidebar refresh
+      setRefreshTrigger(prev => prev + 1);
     } catch (err: any) {
       console.error('Room assignment error:', err);
       toast.error(err.response?.data?.message || err.message || 'Failed to move reservation');
@@ -709,6 +735,7 @@ const TapeChartView: React.FC = () => {
               onDragStart={handleDragStart}
               selectedDate={startDate}
               isCompact={compactView}
+              refreshTrigger={refreshTrigger}
               className="h-full"
             />
           </div>
@@ -834,6 +861,18 @@ const TapeChartView: React.FC = () => {
                     onClick={() => setShowFilters(!showFilters)}
                   >
                     <Filter className="w-4 h-4" />
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      console.log('🔄 Manual refresh triggered');
+                      fetchChartData();
+                    }}
+                    title="Refresh tape chart data"
+                  >
+                    <RefreshCw className="w-4 h-4" />
                   </Button>
                   
                   <DropdownMenu>

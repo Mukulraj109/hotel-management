@@ -42,13 +42,15 @@ interface ReservationSidebarProps {
   selectedDate: Date;
   isCompact?: boolean;
   className?: string;
+  refreshTrigger?: number; // Add refresh trigger prop
 }
 
 const ReservationSidebar: React.FC<ReservationSidebarProps> = ({
   onDragStart,
   selectedDate,
   isCompact = false,
-  className
+  className,
+  refreshTrigger
 }) => {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [filteredReservations, setFilteredReservations] = useState<Reservation[]>([]);
@@ -56,13 +58,13 @@ const ReservationSidebar: React.FC<ReservationSidebarProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [roomTypeFilter, setRoomTypeFilter] = useState<string>('all');
-  const [showAssigned, setShowAssigned] = useState(false);
+  const [viewMode, setViewMode] = useState<'all' | 'unassigned' | 'assigned'>('unassigned');
   const [loading, setLoading] = useState(true);
 
   // Fetch real booking data from the database
   useEffect(() => {
     fetchReservations();
-  }, [selectedDate]);
+  }, [selectedDate, refreshTrigger]);
 
   const fetchReservations = async () => {
     try {
@@ -170,13 +172,16 @@ const ReservationSidebar: React.FC<ReservationSidebarProps> = ({
       filtered = filtered.filter(res => res.roomType === roomTypeFilter);
     }
 
-    // Assigned/unassigned filter
-    if (!showAssigned) {
+    // View mode filter
+    if (viewMode === 'unassigned') {
       filtered = filtered.filter(res => !res.assignedRoom);
+    } else if (viewMode === 'assigned') {
+      filtered = filtered.filter(res => res.assignedRoom);
     }
+    // 'all' shows both assigned and unassigned
 
     setFilteredReservations(filtered);
-  }, [reservations, searchTerm, statusFilter, priorityFilter, roomTypeFilter, showAssigned]);
+  }, [reservations, searchTerm, statusFilter, priorityFilter, roomTypeFilter, viewMode]);
 
   const getPriorityIcon = (priority?: string) => {
     switch (priority) {
@@ -262,14 +267,44 @@ const ReservationSidebar: React.FC<ReservationSidebarProps> = ({
           </Select>
         </div>
         
+        {/* View Mode Buttons */}
+        <div className="flex items-center gap-2">
+          <Button
+            variant={viewMode === 'unassigned' ? "default" : "outline"}
+            size="sm"
+            onClick={() => setViewMode('unassigned')}
+            className={cn(
+              isCompact ? 'text-xs h-7' : 'text-sm',
+              viewMode === 'unassigned' 
+                ? 'bg-red-600 hover:bg-red-700 border-red-600 text-white' 
+                : 'border-red-300 text-red-600 hover:bg-red-50'
+            )}
+          >
+            Unassigned ({unassignedCount})
+          </Button>
+          <Button
+            variant={viewMode === 'assigned' ? "default" : "outline"}
+            size="sm"
+            onClick={() => setViewMode('assigned')}
+            className={cn(
+              isCompact ? 'text-xs h-7' : 'text-sm',
+              viewMode === 'assigned' 
+                ? 'bg-green-600 hover:bg-green-700 border-green-600 text-white' 
+                : 'border-green-300 text-green-600 hover:bg-green-50'
+            )}
+          >
+            Assigned ({assignedCount})
+          </Button>
+        </div>
+        
         <div className="flex items-center justify-between">
           <Button
-            variant={showAssigned ? "default" : "outline"}
+            variant={viewMode === 'all' ? "default" : "outline"}
             size="sm"
-            onClick={() => setShowAssigned(!showAssigned)}
+            onClick={() => setViewMode('all')}
             className={isCompact ? 'text-xs h-7' : 'text-sm'}
           >
-            Show Assigned
+            Show All ({reservations.length})
           </Button>
           
           <Button variant="outline" size="sm" className={isCompact ? 'text-xs h-7' : 'text-sm'}>

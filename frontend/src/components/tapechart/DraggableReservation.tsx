@@ -17,6 +17,7 @@ interface DraggableReservationProps {
     nights: number;
     adults: number;
     children: number;
+    assignedRoom?: string;
   };
   onDragStart: (e: React.DragEvent, reservation: any) => void;
   isCompact?: boolean;
@@ -27,6 +28,16 @@ const DraggableReservation: React.FC<DraggableReservationProps> = ({
   onDragStart,
   isCompact = false
 }) => {
+  const getAssignmentColor = (assignedRoom?: string): string => {
+    if (assignedRoom) {
+      // Assigned bookings - green theme
+      return 'bg-green-100 text-green-800 border-green-200';
+    } else {
+      // Unassigned bookings - red theme  
+      return 'bg-red-100 text-red-800 border-red-200';
+    }
+  };
+
   const getStatusColor = (status: string): string => {
     const colors = {
       confirmed: 'bg-green-100 text-green-800 border-green-200',
@@ -53,12 +64,13 @@ const DraggableReservation: React.FC<DraggableReservationProps> = ({
       draggable
       onDragStart={(e) => onDragStart(e, reservation)}
       className={cn(
-        'relative rounded-md border-2 border-dashed border-gray-300 p-3 cursor-move',
-        'hover:border-blue-400 hover:bg-blue-50 transition-colors duration-150',
-        'bg-white shadow-sm',
-        getStatusColor(reservation.status),
+        'relative rounded-md border-2 border-dashed border-gray-300 p-3 cursor-move group',
+        'hover:border-blue-400 hover:bg-blue-50 hover:shadow-md transition-all duration-200',
+        'bg-white shadow-sm transform hover:scale-[1.02]',
+        getAssignmentColor(reservation.assignedRoom),
         isCompact && 'p-2'
       )}
+      title={`Drag to assign ${reservation.guestName} to a room`}
     >
       {/* Drag handle indicator */}
       <div className="absolute top-1 left-1">
@@ -126,9 +138,9 @@ const DraggableReservation: React.FC<DraggableReservationProps> = ({
       <div className="absolute top-2 right-2">
         <span className={cn(
           'px-1.5 py-0.5 rounded-full text-xs font-medium uppercase',
-          getStatusColor(reservation.status)
+          reservation.assignedRoom ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
         )}>
-          {reservation.status.replace('_', ' ')}
+          {reservation.assignedRoom ? 'ASSIGNED' : 'UNASSIGNED'}
         </span>
       </div>
     </div>

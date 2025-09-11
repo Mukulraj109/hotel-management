@@ -59,8 +59,9 @@ export interface BookingFilters {
 }
 
 export interface CreateBookingRequest {
-  hotelId: string;
-  roomIds: string[];
+  hotelId?: string;
+  roomIds?: string[];
+  roomId?: string; // Single room ID (will be converted to roomIds array)
   checkIn: string;
   checkOut: string;
   guestDetails: {
@@ -69,5 +70,7 @@ export interface CreateBookingRequest {
     specialRequests?: string;
   };
   roomType?: 'single' | 'double' | 'suite' | 'deluxe'; // Room type preference for room-type bookings
-  idempotencyKey: string;
+  totalAmount: number;
+  currency?: string;
+  idempotencyKey?: string;
 }

@@ -485,6 +485,30 @@ const bookingSchema = new mongoose.Schema({
       type: Boolean,
       default: false
     }
+  },
+  // Automation fields
+  needsAutomaticProcessing: {
+    type: Boolean,
+    default: false,
+    description: 'Flag to indicate if automatic checkout processing is needed'
+  },
+  automationStatus: {
+    type: String,
+    enum: ['pending', 'in_progress', 'completed', 'partial_success', 'failed', 'disabled'],
+    default: null,
+    description: 'Status of automatic checkout processing'
+  },
+  automationTriggeredAt: {
+    type: Date,
+    description: 'When automatic processing was triggered'
+  },
+  automationCompletedAt: {
+    type: Date,
+    description: 'When automatic processing was completed'
+  },
+  automationResults: {
+    type: mongoose.Schema.Types.Mixed,
+    description: 'Results of automatic processing'
   }
 }, {
   timestamps: true,
@@ -779,6 +803,13 @@ bookingSchema.methods.handleStatusSpecificActions = async function(newStatus, ol
       this.needsFinalBilling = true;
       // Mark rooms as needing cleaning
       this.needsRoomStatusUpdate = true;
+      
+      // NEW: Trigger automatic checkout processing
+      if (context.enableAutomation !== false) {
+        this.needsAutomaticProcessing = true;
+        this.automationStatus = 'pending';
+        this.automationTriggeredAt = now;
+      }
       break;
       
     case 'cancelled':
@@ -950,5 +981,14 @@ bookingSchema.methods.applyAmendmentChanges = async function(changes) {
   
   return this;
 };
+
+// Import and integrate checkout automation middleware
+import checkoutAutomationMiddleware from '../middleware/checkoutAutomationMiddleware.js';
+
+// Add pre-save middleware to store previous status
+bookingSchema.pre('save', checkoutAutomationMiddleware.bookingPreSaveMiddleware);
+
+// Add post-save middleware to trigger automation
+bookingSchema.post('save', checkoutAutomationMiddleware.bookingPostSaveMiddleware);
 
 export default mongoose.model('Booking', bookingSchema);

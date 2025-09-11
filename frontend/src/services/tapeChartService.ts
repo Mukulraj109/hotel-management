@@ -395,28 +395,26 @@ class TapeChartService {
     newCheckInDate?: string;
     moveReason?: string;
   }) {
-    // Use the actual booking ObjectId for room assignment
-    if (draggedItemData._id) {
-      // Direct booking update using MongoDB ObjectId
-      const response = await apiClient.patch(`/bookings/${draggedItemData._id}`, {
-        'rooms.0.roomId': assignmentData.roomId,
-        reason: assignmentData.notes || 'Room change via tape chart',
-        changeDate: assignmentData.newCheckInDate
-      });
-      return response.data.data || response.data;
-    } else {
-      // Fallback to guest name matching for backward compatibility
-      const response = await apiClient.post('/bookings/change-room-by-guest', {
-        guestName: draggedItemData.guestName,
-        checkIn: draggedItemData.checkIn,
-        checkOut: draggedItemData.checkOut,
-        newRoomId: assignmentData.roomId,
-        newRoomNumber: assignmentData.roomNumber,
-        reason: assignmentData.notes || 'Room change via tape chart',
-        changeDate: assignmentData.newCheckInDate
-      });
-      return response.data.data || response.data;
-    }
+    console.log('🚀 TAPE CHART SERVICE DEBUG - Dragged item data:', draggedItemData);
+    console.log('🚀 TAPE CHART SERVICE DEBUG - Assignment data:', assignmentData);
+    
+    const requestPayload = {
+      guestName: draggedItemData.guestName,
+      checkIn: draggedItemData.checkIn,
+      checkOut: draggedItemData.checkOut,
+      newRoomId: assignmentData.roomId,
+      newRoomNumber: assignmentData.roomNumber,
+      reason: assignmentData.notes || 'Room change via tape chart'
+    };
+    
+    console.log('🚀 TAPE CHART SERVICE DEBUG - Request payload:', requestPayload);
+    console.log('🚀 TAPE CHART SERVICE DEBUG - API endpoint: /bookings/change-room-by-guest');
+    
+    // Always use the change-room-by-guest endpoint which handles room assignments properly
+    const response = await apiClient.post('/bookings/change-room-by-guest', requestPayload);
+    
+    console.log('🚀 TAPE CHART SERVICE DEBUG - Response:', response);
+    return response.data.data || response.data;
   }
 
   async autoAssignRooms(reservationId: string) {
