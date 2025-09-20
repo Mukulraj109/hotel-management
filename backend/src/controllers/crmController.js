@@ -2,7 +2,7 @@ import GuestCRMProfile from '../models/GuestCRMProfile.js';
 import GuestBehavior from '../models/GuestBehavior.js';
 import crmAutomationService from '../services/crmAutomationService.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/AppError.js';
+import { AppError } from '../utils/appError.js';
 
 export const getGuestProfile = catchAsync(async (req, res, next) => {
   const { userId } = req.params;
