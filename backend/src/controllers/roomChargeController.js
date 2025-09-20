@@ -3,7 +3,7 @@ import RoomType from '../models/RoomType.js';
 import RoomTax from '../models/RoomTax.js';
 import taxCalculationService from '../services/taxCalculationService.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -88,7 +88,7 @@ export const getRoomCharge = catchAsync(async (req, res, next) => {
     .populate('updatedBy', 'name email');
 
   if (!charge) {
-    return next(new AppError('Room charge not found', 404));
+    return next(new ApplicationError('Room charge not found', 404));
   }
 
   res.status(200).json({
@@ -110,13 +110,13 @@ export const createRoomCharge = catchAsync(async (req, res, next) => {
   const requiredFields = ['chargeName', 'chargeCode', 'chargeType', 'chargeCategory', 'chargeAmount'];
   for (const field of requiredFields) {
     if (!req.body[field]) {
-      return next(new AppError(`${field} is required`, 400));
+      return next(new ApplicationError(`${field} is required`, 400));
     }
   }
 
   // Validate charge amount
   if (req.body.chargeAmount <= 0) {
-    return next(new AppError('Charge amount must be greater than 0', 400));
+    return next(new ApplicationError('Charge amount must be greater than 0', 400));
   }
 
   // Check for duplicate charge code
@@ -126,7 +126,7 @@ export const createRoomCharge = catchAsync(async (req, res, next) => {
   });
 
   if (existingCharge) {
-    return next(new AppError('A charge with this code already exists', 400));
+    return next(new ApplicationError('A charge with this code already exists', 400));
   }
 
   // Validate room types if specified
@@ -137,7 +137,7 @@ export const createRoomCharge = catchAsync(async (req, res, next) => {
     });
 
     if (roomTypes.length !== req.body.applicableRoomTypes.length) {
-      return next(new AppError('One or more room types are invalid', 400));
+      return next(new ApplicationError('One or more room types are invalid', 400));
     }
   }
 
@@ -149,7 +149,7 @@ export const createRoomCharge = catchAsync(async (req, res, next) => {
     });
 
     if (taxes.length !== req.body.taxConfiguration.applicableTaxes.length) {
-      return next(new AppError('One or more taxes are invalid', 400));
+      return next(new ApplicationError('One or more taxes are invalid', 400));
     }
   }
 
@@ -194,12 +194,12 @@ export const updateRoomCharge = catchAsync(async (req, res, next) => {
   const charge = await RoomCharge.findById(id);
 
   if (!charge) {
-    return next(new AppError('Room charge not found', 404));
+    return next(new ApplicationError('Room charge not found', 404));
   }
 
   // Check if charge is system generated
   if (charge.isSystemGenerated && req.body.isActive === false) {
-    return next(new AppError('System generated charges cannot be deactivated', 400));
+    return next(new ApplicationError('System generated charges cannot be deactivated', 400));
   }
 
   // Check for duplicate charge code if being changed
@@ -211,7 +211,7 @@ export const updateRoomCharge = catchAsync(async (req, res, next) => {
     });
 
     if (existingCharge) {
-      return next(new AppError('A charge with this code already exists', 400));
+      return next(new ApplicationError('A charge with this code already exists', 400));
     }
   }
 
@@ -223,7 +223,7 @@ export const updateRoomCharge = catchAsync(async (req, res, next) => {
     });
 
     if (roomTypes.length !== req.body.applicableRoomTypes.length) {
-      return next(new AppError('One or more room types are invalid', 400));
+      return next(new ApplicationError('One or more room types are invalid', 400));
     }
   }
 
@@ -235,7 +235,7 @@ export const updateRoomCharge = catchAsync(async (req, res, next) => {
     });
 
     if (taxes.length !== req.body.taxConfiguration.applicableTaxes.length) {
-      return next(new AppError('One or more taxes are invalid', 400));
+      return next(new ApplicationError('One or more taxes are invalid', 400));
     }
   }
 
@@ -282,12 +282,12 @@ export const deleteRoomCharge = catchAsync(async (req, res, next) => {
   const charge = await RoomCharge.findById(id);
 
   if (!charge) {
-    return next(new AppError('Room charge not found', 404));
+    return next(new ApplicationError('Room charge not found', 404));
   }
 
   // Check if charge is system generated
   if (charge.isSystemGenerated) {
-    return next(new AppError('System generated charges cannot be deleted', 400));
+    return next(new ApplicationError('System generated charges cannot be deleted', 400));
   }
 
   // Soft delete by setting isActive to false
@@ -331,7 +331,7 @@ export const calculateRoomCharges = catchAsync(async (req, res, next) => {
   } = req.body;
 
   if (!baseAmount || baseAmount <= 0) {
-    return next(new AppError('Base amount is required and must be greater than 0', 400));
+    return next(new ApplicationError('Base amount is required and must be greater than 0', 400));
   }
 
   try {
@@ -364,7 +364,7 @@ export const calculateRoomCharges = catchAsync(async (req, res, next) => {
       stack: error.stack
     });
     
-    return next(new AppError('Room charges calculation failed', 500));
+    return next(new ApplicationError('Room charges calculation failed', 500));
   }
 });
 
@@ -389,7 +389,7 @@ export const calculateComprehensiveTotal = catchAsync(async (req, res, next) => 
   } = req.body;
 
   if (!baseAmount || baseAmount <= 0) {
-    return next(new AppError('Base amount is required and must be greater than 0', 400));
+    return next(new ApplicationError('Base amount is required and must be greater than 0', 400));
   }
 
   try {
@@ -422,7 +422,7 @@ export const calculateComprehensiveTotal = catchAsync(async (req, res, next) => 
       stack: error.stack
     });
     
-    return next(new AppError('Comprehensive booking calculation failed', 500));
+    return next(new ApplicationError('Comprehensive booking calculation failed', 500));
   }
 });
 
@@ -510,11 +510,11 @@ export const bulkUpdateChargeStatus = catchAsync(async (req, res, next) => {
   const userId = req.user._id;
 
   if (!Array.isArray(chargeIds) || chargeIds.length === 0) {
-    return next(new AppError('Charge IDs array is required', 400));
+    return next(new ApplicationError('Charge IDs array is required', 400));
   }
 
   if (typeof isActive !== 'boolean') {
-    return next(new AppError('isActive must be a boolean value', 400));
+    return next(new ApplicationError('isActive must be a boolean value', 400));
   }
 
   const result = await RoomCharge.updateMany(
@@ -627,7 +627,7 @@ export const updateChargeAudit = catchAsync(async (req, res, next) => {
   const charge = await RoomCharge.findById(id);
 
   if (!charge) {
-    return next(new AppError('Room charge not found', 404));
+    return next(new ApplicationError('Room charge not found', 404));
   }
 
   const updateData = {};

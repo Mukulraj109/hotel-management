@@ -16,6 +16,7 @@ import { Card } from '@/components/ui/card';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { RoomServiceWidget } from '../../components/guest/RoomServiceWidget';
+import toast from 'react-hot-toast';
 
 interface BookingStats {
   totalBookings: number;
@@ -41,6 +42,8 @@ export default function GuestDashboard() {
       fetchDashboardData();
     }
   }, [user]);
+
+  // Real-time connections removed for performance optimization
 
   const fetchDashboardData = async () => {
     try {
@@ -94,12 +97,17 @@ export default function GuestDashboard() {
       {/* Welcome Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-6 sm:py-8 text-white rounded-none sm:rounded-xl sm:mx-0">
         <div className="max-w-7xl mx-auto">
-          <h1 className="text-2xl sm:text-3xl font-bold mb-2">
-            Welcome back, {user?.name}!
-          </h1>
-          <p className="text-blue-100 text-sm sm:text-base">
-            Manage your bookings and explore your loyalty benefits
-          </p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold mb-2">
+                Welcome back, {user?.name}!
+              </h1>
+              <p className="text-blue-100 text-sm sm:text-base">
+                Manage your bookings and explore your loyalty benefits
+              </p>
+            </div>
+            {/* Connection status removed - using regular API calls */}
+          </div>
         </div>
       </div>
 

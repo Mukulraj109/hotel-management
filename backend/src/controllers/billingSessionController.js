@@ -1,7 +1,7 @@
 import BillingSession from '../models/BillingSession.js';
 import User from '../models/User.js';
 import Booking from '../models/Booking.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -17,12 +17,12 @@ export const createBillingSession = catchAsync(async (req, res) => {
 
   // Validate required fields
   if (!guestName || !roomNumber || !hotelId) {
-    throw new AppError('Guest name, room number, and hotel ID are required', 400);
+    throw new ApplicationError('Guest name, room number, and hotel ID are required', 400);
   }
 
   // Check if user has access to this hotel
   if (req.user.role === 'staff' && req.user.hotelId.toString() !== hotelId) {
-    throw new AppError('You can only create billing sessions for your hotel', 403);
+    throw new ApplicationError('You can only create billing sessions for your hotel', 403);
   }
 
   // Check if there's already an active session for this room
@@ -33,7 +33,7 @@ export const createBillingSession = catchAsync(async (req, res) => {
   });
 
   if (existingSession) {
-    throw new AppError('There is already an active billing session for this room', 409);
+    throw new ApplicationError('There is already an active billing session for this room', 409);
   }
 
   // If bookingNumber is provided, try to find the actual booking to get the ObjectId
@@ -78,12 +78,12 @@ export const getBillingSession = catchAsync(async (req, res) => {
     .populate('createdBy', 'name');
 
   if (!billingSession) {
-    throw new AppError('Billing session not found', 404);
+    throw new ApplicationError('Billing session not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && billingSession.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only access billing sessions for your hotel', 403);
+    throw new ApplicationError('You can only access billing sessions for your hotel', 403);
   }
 
   res.json({
@@ -100,17 +100,17 @@ export const updateBillingSession = catchAsync(async (req, res) => {
   const billingSession = await BillingSession.findById(id);
 
   if (!billingSession) {
-    throw new AppError('Billing session not found', 404);
+    throw new ApplicationError('Billing session not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && billingSession.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only update billing sessions for your hotel', 403);
+    throw new ApplicationError('You can only update billing sessions for your hotel', 403);
   }
 
   // Prevent updates to completed sessions
   if (billingSession.status === 'paid' || billingSession.status === 'void') {
-    throw new AppError('Cannot update completed billing sessions', 400);
+    throw new ApplicationError('Cannot update completed billing sessions', 400);
   }
 
   // Update session
@@ -140,17 +140,17 @@ export const deleteBillingSession = catchAsync(async (req, res) => {
   const billingSession = await BillingSession.findById(id);
 
   if (!billingSession) {
-    throw new AppError('Billing session not found', 404);
+    throw new ApplicationError('Billing session not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && billingSession.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only delete billing sessions for your hotel', 403);
+    throw new ApplicationError('You can only delete billing sessions for your hotel', 403);
   }
 
   // Only allow deletion of draft sessions
   if (billingSession.status !== 'draft') {
-    throw new AppError('Only draft billing sessions can be deleted', 400);
+    throw new ApplicationError('Only draft billing sessions can be deleted', 400);
   }
 
   await BillingSession.findByIdAndDelete(id);
@@ -167,23 +167,23 @@ export const addItemToSession = catchAsync(async (req, res) => {
   const { item } = req.body;
 
   if (!item || !item.id || !item.name || !item.price || !item.outlet) {
-    throw new AppError('Item details are incomplete', 400);
+    throw new ApplicationError('Item details are incomplete', 400);
   }
 
   const billingSession = await BillingSession.findById(id);
 
   if (!billingSession) {
-    throw new AppError('Billing session not found', 404);
+    throw new ApplicationError('Billing session not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && billingSession.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only modify billing sessions for your hotel', 403);
+    throw new ApplicationError('You can only modify billing sessions for your hotel', 403);
   }
 
   // Check if session is editable
   if (billingSession.status !== 'draft') {
-    throw new AppError('Cannot add items to completed billing sessions', 400);
+    throw new ApplicationError('Cannot add items to completed billing sessions', 400);
   }
 
   // Add item to session
@@ -202,23 +202,23 @@ export const updateItemInSession = catchAsync(async (req, res) => {
   const { quantity } = req.body;
 
   if (!quantity || quantity < 1) {
-    throw new AppError('Valid quantity is required', 400);
+    throw new ApplicationError('Valid quantity is required', 400);
   }
 
   const billingSession = await BillingSession.findById(id);
 
   if (!billingSession) {
-    throw new AppError('Billing session not found', 404);
+    throw new ApplicationError('Billing session not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && billingSession.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only modify billing sessions for your hotel', 403);
+    throw new ApplicationError('You can only modify billing sessions for your hotel', 403);
   }
 
   // Check if session is editable
   if (billingSession.status !== 'draft') {
-    throw new AppError('Cannot modify completed billing sessions', 400);
+    throw new ApplicationError('Cannot modify completed billing sessions', 400);
   }
 
   // Update item quantity
@@ -238,17 +238,17 @@ export const removeItemFromSession = catchAsync(async (req, res) => {
   const billingSession = await BillingSession.findById(id);
 
   if (!billingSession) {
-    throw new AppError('Billing session not found', 404);
+    throw new ApplicationError('Billing session not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && billingSession.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only modify billing sessions for your hotel', 403);
+    throw new ApplicationError('You can only modify billing sessions for your hotel', 403);
   }
 
   // Check if session is editable
   if (billingSession.status !== 'draft') {
-    throw new AppError('Cannot modify completed billing sessions', 400);
+    throw new ApplicationError('Cannot modify completed billing sessions', 400);
   }
 
   // Remove item from session
@@ -269,21 +269,21 @@ export const checkoutSession = catchAsync(async (req, res) => {
   const billingSession = await BillingSession.findById(id);
 
   if (!billingSession) {
-    throw new AppError('Billing session not found', 404);
+    throw new ApplicationError('Billing session not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && billingSession.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only checkout billing sessions for your hotel', 403);
+    throw new ApplicationError('You can only checkout billing sessions for your hotel', 403);
   }
 
   // Check if session can be checked out
   if (billingSession.status !== 'draft') {
-    throw new AppError('Only draft billing sessions can be checked out', 400);
+    throw new ApplicationError('Only draft billing sessions can be checked out', 400);
   }
 
   if (billingSession.items.length === 0) {
-    throw new AppError('Cannot checkout empty billing session', 400);
+    throw new ApplicationError('Cannot checkout empty billing session', 400);
   }
 
   // Process payment
@@ -314,17 +314,17 @@ export const voidSession = catchAsync(async (req, res) => {
   const billingSession = await BillingSession.findById(id);
 
   if (!billingSession) {
-    throw new AppError('Billing session not found', 404);
+    throw new ApplicationError('Billing session not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && billingSession.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only void billing sessions for your hotel', 403);
+    throw new ApplicationError('You can only void billing sessions for your hotel', 403);
   }
 
   // Check if session can be voided
   if (billingSession.status === 'void') {
-    throw new AppError('Billing session is already voided', 400);
+    throw new ApplicationError('Billing session is already voided', 400);
   }
 
   // Void session
@@ -349,7 +349,7 @@ export const getHotelBillingSessions = catchAsync(async (req, res) => {
 
   // Check access permissions
   if (req.user.role === 'staff' && req.user.hotelId.toString() !== hotelId) {
-    throw new AppError('You can only view billing sessions for your hotel', 403);
+    throw new ApplicationError('You can only view billing sessions for your hotel', 403);
   }
 
   const query = { hotelId };

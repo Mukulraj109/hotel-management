@@ -7,7 +7,7 @@ import CheckoutInventory from '../models/CheckoutInventory.js';
 import KPI from '../models/KPI.js';
 import KPICalculationService from '../services/kpiCalculationService.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
@@ -22,7 +22,7 @@ router.get('/checkout-inventory', authenticate, authorize('admin', 'staff'), cat
   } = req.query;
 
   if (!startDate || !endDate) {
-    throw new AppError('Start date and end date are required', 400);
+    throw new ApplicationError('Start date and end date are required', 400);
   }
 
   const matchQuery = {
@@ -126,7 +126,7 @@ router.get('/revenue', authenticate, authorize('admin', 'staff'), catchAsync(asy
   } = req.query;
 
   if (!startDate || !endDate) {
-    throw new AppError('Start date and end date are required', 400);
+    throw new ApplicationError('Start date and end date are required', 400);
   }
 
   const matchQuery = {
@@ -209,7 +209,7 @@ router.get('/occupancy', authenticate, authorize('admin', 'staff'), catchAsync(a
   } = req.query;
 
   if (!startDate || !endDate) {
-    throw new AppError('Start date and end date are required', 400);
+    throw new ApplicationError('Start date and end date are required', 400);
   }
 
   const matchQuery = {
@@ -995,13 +995,13 @@ router.post('/kpi/calculate', authenticate, authorize('admin', 'staff'), catchAs
   const { date, period = 'daily' } = req.body;
   
   if (!date) {
-    throw new AppError('Date is required for KPI calculation', 400);
+    throw new ApplicationError('Date is required for KPI calculation', 400);
   }
 
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.body.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   const kpi = await KPICalculationService.calculateKPIs(hotelId, new Date(date), period);
@@ -1025,13 +1025,13 @@ router.get('/kpi', authenticate, authorize('admin', 'staff'), catchAsync(async (
   } = req.query;
 
   if (!startDate || !endDate) {
-    throw new AppError('Start date and end date are required', 400);
+    throw new ApplicationError('Start date and end date are required', 400);
   }
 
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : requestedHotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   const kpis = await KPI.find({
@@ -1074,7 +1074,7 @@ router.get('/business-intelligence', authenticate, authorize('admin', 'staff'), 
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : requestedHotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   // Get monthly KPI data
@@ -1253,7 +1253,7 @@ router.post('/kpi/batch-calculate', authenticate, authorize('admin'), catchAsync
   const { startDate, endDate, period = 'daily', hotelId } = req.body;
   
   if (!startDate || !endDate || !hotelId) {
-    throw new AppError('Start date, end date, and hotel ID are required', 400);
+    throw new ApplicationError('Start date, end date, and hotel ID are required', 400);
   }
 
   const results = await KPICalculationService.batchCalculateKPIs(
@@ -1285,13 +1285,13 @@ router.get('/kpi/compare', authenticate, authorize('admin', 'staff'), catchAsync
   } = req.query;
 
   if (!currentStart || !currentEnd || !previousStart || !previousEnd) {
-    throw new AppError('All date parameters are required for comparison', 400);
+    throw new ApplicationError('All date parameters are required for comparison', 400);
   }
 
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : requestedHotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   const [currentPeriod, previousPeriod] = await Promise.all([

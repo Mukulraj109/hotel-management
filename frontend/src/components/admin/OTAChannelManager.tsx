@@ -5,7 +5,7 @@ import { cn } from '../../utils/cn';
 import {
   Settings,
   Globe,
-  DollarSign,
+  IndianRupee,
   Activity,
   AlertTriangle,
   CheckCircle,

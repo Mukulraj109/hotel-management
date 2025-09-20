@@ -1,5 +1,5 @@
 import blacklistService from '../services/blacklistService.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 /**

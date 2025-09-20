@@ -5,7 +5,7 @@ import Booking from '../models/Booking.js';
 import Hotel from '../models/Hotel.js';
 import User from '../models/User.js';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
@@ -84,26 +84,26 @@ router.post('/', authenticate, catchAsync(async (req, res) => {
   // Verify hotel exists
   const hotel = await Hotel.findById(hotelId);
   if (!hotel) {
-    throw new AppError('Hotel not found', 404);
+    throw new ApplicationError('Hotel not found', 404);
   }
 
   // Check if booking exists and belongs to user (if provided)
   if (bookingId) {
     const booking = await Booking.findById(bookingId);
     if (!booking) {
-      throw new AppError('Booking not found', 404);
+      throw new ApplicationError('Booking not found', 404);
     }
     if (booking.userId.toString() !== req.user._id.toString()) {
-      throw new AppError('You can only review your own bookings', 403);
+      throw new ApplicationError('You can only review your own bookings', 403);
     }
     if (booking.hotelId.toString() !== hotelId) {
-      throw new AppError('Booking does not match hotel', 400);
+      throw new ApplicationError('Booking does not match hotel', 400);
     }
 
     // Check if review already exists for this booking
     const existingReview = await Review.findOne({ bookingId });
     if (existingReview) {
-      throw new AppError('You have already reviewed this booking', 400);
+      throw new ApplicationError('You have already reviewed this booking', 400);
     }
   } else {
     // Check if user has already reviewed this hotel (without booking)
@@ -113,7 +113,7 @@ router.post('/', authenticate, catchAsync(async (req, res) => {
       bookingId: { $exists: false }
     });
     if (existingReview) {
-      throw new AppError('You have already reviewed this hotel', 400);
+      throw new ApplicationError('You have already reviewed this hotel', 400);
     }
   }
 
@@ -325,7 +325,7 @@ router.get('/:id', catchAsync(async (req, res) => {
     .populate('response.respondedBy', 'name role');
 
   if (!review || (!review.isPublished && review.moderationStatus !== 'approved')) {
-    throw new AppError('Review not found', 404);
+    throw new ApplicationError('Review not found', 404);
   }
 
   res.json({
@@ -368,12 +368,12 @@ router.post('/:id/response', authenticate, authorize('staff', 'admin'), catchAsy
   
   const review = await Review.findById(req.params.id);
   if (!review) {
-    throw new AppError('Review not found', 404);
+    throw new ApplicationError('Review not found', 404);
   }
 
   // Staff can only respond to reviews for their hotel
   if (req.user.role === 'staff' && review.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only respond to reviews for your hotel', 403);
+    throw new ApplicationError('You can only respond to reviews for your hotel', 403);
   }
 
   await review.addResponse(content, req.user._id);
@@ -413,7 +413,7 @@ router.post('/:id/helpful', catchAsync(async (req, res) => {
   );
 
   if (!review) {
-    throw new AppError('Review not found', 404);
+    throw new ApplicationError('Review not found', 404);
   }
 
   res.json({
@@ -458,7 +458,7 @@ router.post('/:id/report', catchAsync(async (req, res) => {
   );
 
   if (!review) {
-    throw new AppError('Review not found', 404);
+    throw new ApplicationError('Review not found', 404);
   }
 
   // Auto-hide review if reported too many times
@@ -511,7 +511,7 @@ router.patch('/:id/moderate', authenticate, authorize('admin'), catchAsync(async
   
   const review = await Review.findById(req.params.id);
   if (!review) {
-    throw new AppError('Review not found', 404);
+    throw new ApplicationError('Review not found', 404);
   }
 
   await review.moderate(status, notes);

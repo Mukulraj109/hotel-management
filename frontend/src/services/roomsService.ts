@@ -81,7 +81,7 @@ class RoomsService {
     floor?: number;
   }): Promise<RoomsResponse> {
     const searchParams = new URLSearchParams();
-    
+
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
@@ -95,6 +95,7 @@ class RoomsService {
         'X-Admin-Request': 'true'
       }
     });
+
     return response.data.data; // The API returns { status: 'success', data: {...} }
   }
 

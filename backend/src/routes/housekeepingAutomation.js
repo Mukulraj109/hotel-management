@@ -1,7 +1,7 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
 
@@ -66,7 +66,7 @@ router.post('/process-checkout', authorize('admin', 'manager', 'staff'), catchAs
   const { bookingId, roomId, options = {} } = req.body;
 
   if (!bookingId || !roomId) {
-    throw new AppError('Booking ID and Room ID are required', 400);
+    throw new ApplicationError('Booking ID and Room ID are required', 400);
   }
 
   // Import housekeeping automation service
@@ -187,7 +187,7 @@ router.get('/tasks/:taskId', authorize('admin', 'manager', 'staff'), catchAsync(
     .populate('assignedToUserId', 'name email'); // For backward compatibility
 
   if (!task) {
-    throw new AppError('Housekeeping task not found', 404);
+    throw new ApplicationError('Housekeeping task not found', 404);
   }
 
   res.status(200).json({
@@ -233,7 +233,7 @@ router.put('/tasks/:taskId/assign', authorize('admin', 'manager'), catchAsync(as
   const { staffId } = req.body;
 
   if (!staffId) {
-    throw new AppError('Staff ID is required', 400);
+    throw new ApplicationError('Staff ID is required', 400);
   }
 
   // Import models and services
@@ -242,12 +242,12 @@ router.put('/tasks/:taskId/assign', authorize('admin', 'manager'), catchAsync(as
   
   const task = await Housekeeping.findOne({ _id: taskId, hotelId });
   if (!task) {
-    throw new AppError('Housekeeping task not found', 404);
+    throw new ApplicationError('Housekeeping task not found', 404);
   }
 
   const staff = await User.findOne({ _id: staffId, hotelId, isActive: true });
   if (!staff) {
-    throw new AppError('Staff member not found or inactive', 404);
+    throw new ApplicationError('Staff member not found or inactive', 404);
   }
 
   task.assignedTo = staffId;
@@ -295,11 +295,11 @@ router.put('/tasks/:taskId/start', authorize('admin', 'manager', 'staff'), catch
   
   const task = await Housekeeping.findOne({ _id: taskId, hotelId });
   if (!task) {
-    throw new AppError('Housekeeping task not found', 404);
+    throw new ApplicationError('Housekeeping task not found', 404);
   }
 
   if (task.status !== 'assigned' && task.status !== 'pending') {
-    throw new AppError('Task cannot be started in current status', 400);
+    throw new ApplicationError('Task cannot be started in current status', 400);
   }
 
   task.status = 'in_progress';
@@ -366,11 +366,11 @@ router.put('/tasks/:taskId/complete', authorize('admin', 'manager', 'staff'), ca
   
   const task = await Housekeeping.findOne({ _id: taskId, hotelId });
   if (!task) {
-    throw new AppError('Housekeeping task not found', 404);
+    throw new ApplicationError('Housekeeping task not found', 404);
   }
 
   if (task.status !== 'in_progress') {
-    throw new AppError('Task must be in progress to complete', 400);
+    throw new ApplicationError('Task must be in progress to complete', 400);
   }
 
   task.status = 'completed';
@@ -532,7 +532,7 @@ router.post('/auto-assign', authorize('admin', 'manager'), catchAsync(async (req
   }).select('_id name email');
 
   if (availableStaff.length === 0) {
-    throw new AppError('No available staff found for assignment', 400);
+    throw new ApplicationError('No available staff found for assignment', 400);
   }
 
   let assignedCount = 0;

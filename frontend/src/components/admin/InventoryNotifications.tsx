@@ -3,7 +3,7 @@ import {
   Bell,
   AlertTriangle,
   Package,
-  DollarSign,
+  IndianRupee,
   Clock,
   CheckCircle,
   Eye,
@@ -155,7 +155,7 @@ export function InventoryNotifications({
       case 'inventory_missing':
         return <Package className="h-5 w-5 text-red-600" />;
       case 'inventory_guest_charged':
-        return <DollarSign className="h-5 w-5 text-green-600" />;
+        return <IndianRupee className="h-5 w-5 text-green-600" />;
       case 'checkout_inspection_failed':
         return <AlertTriangle className="h-5 w-5 text-red-600" />;
       case 'inventory_low_stock':

@@ -42,6 +42,40 @@ import bcrypt from 'bcryptjs';
  *               type: string
  *             smokingAllowed:
  *               type: boolean
+ *             offers:
+ *               type: object
+ *               properties:
+ *                 favoriteCategories:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                     enum: [room, dining, spa, transport, general]
+ *                 favoriteTypes:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                     enum: [discount, free_service, upgrade, bonus_points]
+ *                 priceRangePreference:
+ *                   type: object
+ *                   properties:
+ *                     min:
+ *                       type: number
+ *                       default: 0
+ *                     max:
+ *                       type: number
+ *                       default: 5000
+ *                 notifications:
+ *                   type: object
+ *                   properties:
+ *                     newOffers:
+ *                       type: boolean
+ *                       default: true
+ *                     expiringOffers:
+ *                       type: boolean
+ *                       default: true
+ *                     personalizedRecommendations:
+ *                       type: boolean
+ *                       default: true
  *         loyalty:
  *           type: object
  *           properties:
@@ -147,7 +181,41 @@ const userSchema = new mongoose.Schema({
       type: Boolean,
       default: false
     },
-    other: String
+    other: String,
+    offers: {
+      favoriteCategories: [{
+        type: String,
+        enum: ['room', 'dining', 'spa', 'transport', 'general']
+      }],
+      favoriteTypes: [{
+        type: String,
+        enum: ['discount', 'free_service', 'upgrade', 'bonus_points']
+      }],
+      priceRangePreference: {
+        min: {
+          type: Number,
+          default: 0
+        },
+        max: {
+          type: Number,
+          default: 5000
+        }
+      },
+      notifications: {
+        newOffers: {
+          type: Boolean,
+          default: true
+        },
+        expiringOffers: {
+          type: Boolean,
+          default: true
+        },
+        personalizedRecommendations: {
+          type: Boolean,
+          default: true
+        }
+      }
+    }
   },
   loyalty: {
     points: {
@@ -262,6 +330,32 @@ userSchema.methods.updateLoyaltyTier = function() {
   else if (points >= 5000) this.loyalty.tier = 'gold';
   else if (points >= 1000) this.loyalty.tier = 'silver';
   else this.loyalty.tier = 'bronze';
+};
+
+// Update offer preferences based on user behavior
+userSchema.methods.updateOfferPreferences = function(category, type) {
+  if (!this.preferences.offers) {
+    this.preferences.offers = {
+      favoriteCategories: [],
+      favoriteTypes: [],
+      priceRangePreference: { min: 0, max: 5000 },
+      notifications: {
+        newOffers: true,
+        expiringOffers: true,
+        personalizedRecommendations: true
+      }
+    };
+  }
+  
+  // Add category if not already present
+  if (category && !this.preferences.offers.favoriteCategories.includes(category)) {
+    this.preferences.offers.favoriteCategories.push(category);
+  }
+  
+  // Add type if not already present
+  if (type && !this.preferences.offers.favoriteTypes.includes(type)) {
+    this.preferences.offers.favoriteTypes.push(type);
+  }
 };
 
 // Remove password from JSON output

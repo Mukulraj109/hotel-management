@@ -18,13 +18,60 @@ import {
   Users,
   FileText,
   TrendingUp,
-  DollarSign
+  IndianRupee,
+  BarChart3,
+  Activity,
+  PieChart,
+  Power,
+  PowerOff
 } from 'lucide-react';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js';
+import { Line, Bar, Pie } from 'react-chartjs-2';
+
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
 import { cn } from '../../utils/cn';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '../LoadingSpinner';
 import { formatCurrency, formatDate } from '../../utils/dashboardUtils';
+import { corporateService } from '../../services/corporateService';
+import {
+  validateCompanyForm,
+  parseBackendErrors,
+  formatGST,
+  formatPAN,
+  formatPhone,
+  validateEmail,
+  validateGST,
+  validatePAN,
+  validatePhone,
+  validateZIP,
+  type FieldValidationErrors
+} from '../../utils/corporateValidators';
 import toast from 'react-hot-toast';
 
 interface CorporateCompany {
@@ -44,6 +91,7 @@ interface CorporateCompany {
   creditLimit: number;
   paymentTerms: number;
   hrContacts: Array<{
+    _id?: string;
     name: string;
     email: string;
     phone?: string;
@@ -194,11 +242,30 @@ const deleteCorporateCompany = async (id: string): Promise<void> => {
       'Content-Type': 'application/json',
     },
   });
-  
+
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.message || 'Failed to delete corporate company');
   }
+};
+
+const toggleCompanyStatus = async (id: string): Promise<CorporateCompany> => {
+  const token = localStorage.getItem('token');
+  const response = await fetch(`/api/v1/corporate/companies/${id}/toggle-status`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error?.message || error.message || 'Failed to toggle company status');
+  }
+
+  const data = await response.json();
+  return data.data.company;
 };
 
 export default function CorporateCompanyManagement() {
@@ -206,7 +273,7 @@ export default function CorporateCompanyManagement() {
   const [editingCompany, setEditingCompany] = useState<CorporateCompany | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState<CompanyFormData>(initialFormData);
-  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [formErrors, setFormErrors] = useState<FieldValidationErrors>({});
 
   const queryClient = useQueryClient();
 
@@ -221,6 +288,17 @@ export default function CorporateCompanyManagement() {
     queryFn: fetchCorporateCompanies,
   });
 
+  // Fetch dashboard metrics
+  const {
+    data: metricsData,
+    isLoading: metricsLoading,
+    error: metricsError
+  } = useQuery({
+    queryKey: ['corporate-dashboard-metrics'],
+    queryFn: () => corporateService.getDashboardMetrics(),
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
   // Create company mutation
   const createMutation = useMutation({
     mutationFn: createCorporateCompany,
@@ -229,9 +307,16 @@ export default function CorporateCompanyManagement() {
       toast.success('Corporate company created successfully');
       setShowForm(false);
       setFormData(initialFormData);
+      setFormErrors({});
     },
-    onError: (error: Error) => {
-      toast.error(error.message);
+    onError: (error: any) => {
+      const backendErrors = parseBackendErrors(error);
+      if (backendErrors.general) {
+        toast.error(backendErrors.general);
+      } else {
+        setFormErrors(backendErrors);
+        toast.error('Please fix the form errors and try again');
+      }
     },
   });
 
@@ -244,9 +329,16 @@ export default function CorporateCompanyManagement() {
       setShowForm(false);
       setEditingCompany(null);
       setFormData(initialFormData);
+      setFormErrors({});
     },
-    onError: (error: Error) => {
-      toast.error(error.message);
+    onError: (error: any) => {
+      const backendErrors = parseBackendErrors(error);
+      if (backendErrors.general) {
+        toast.error(backendErrors.general);
+      } else {
+        setFormErrors(backendErrors);
+        toast.error('Please fix the form errors and try again');
+      }
     },
   });
 
@@ -256,6 +348,19 @@ export default function CorporateCompanyManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['corporate-companies'] });
       toast.success('Corporate company deleted successfully');
+    },
+    onError: (error: Error) => {
+      toast.error(error.message);
+    },
+  });
+
+  // Toggle status mutation
+  const toggleStatusMutation = useMutation({
+    mutationFn: toggleCompanyStatus,
+    onSuccess: (updatedCompany) => {
+      queryClient.invalidateQueries({ queryKey: ['corporate-companies'] });
+      const statusText = updatedCompany.isActive ? 'activated' : 'deactivated';
+      toast.success(`Company ${statusText} successfully`);
     },
     onError: (error: Error) => {
       toast.error(error.message);
@@ -289,7 +394,13 @@ export default function CorporateCompanyManagement() {
       address: company.address,
       creditLimit: company.creditLimit,
       paymentTerms: company.paymentTerms,
-      hrContacts: company.hrContacts.length > 0 ? company.hrContacts : initialFormData.hrContacts,
+      hrContacts: company.hrContacts.length > 0 ? company.hrContacts.map(contact => ({
+        name: contact.name,
+        email: contact.email,
+        phone: contact.phone || '',
+        designation: contact.designation || '',
+        isPrimary: contact.isPrimary
+      })) : initialFormData.hrContacts,
       contractDetails: company.contractDetails ? {
         contractNumber: company.contractDetails.contractNumber || '',
         contractStartDate: company.contractDetails.contractStartDate ? 
@@ -305,9 +416,14 @@ export default function CorporateCompanyManagement() {
     setShowForm(true);
   };
 
-  const handleDeleteCompany = async (company: CorporateCompany) => {
-    if (window.confirm(`Are you sure you want to delete ${company.name}? This action cannot be undone.`)) {
-      deleteMutation.mutate(company._id);
+  const handleToggleStatus = async (company: CorporateCompany) => {
+    const action = company.isActive ? 'deactivate' : 'activate';
+    const message = company.isActive
+      ? `Are you sure you want to deactivate ${company.name}? This will prevent new bookings.`
+      : `Are you sure you want to activate ${company.name}?`;
+
+    if (window.confirm(message)) {
+      toggleStatusMutation.mutate(company._id);
     }
   };
 
@@ -346,26 +462,7 @@ export default function CorporateCompanyManagement() {
   };
 
   const validateForm = (): boolean => {
-    const errors: Record<string, string> = {};
-    
-    if (!formData.name.trim()) errors.name = 'Company name is required';
-    if (!formData.email.trim()) errors.email = 'Email is required';
-    if (!formData.gstNumber.trim()) errors.gstNumber = 'GST number is required';
-    if (!formData.address.street.trim()) errors.street = 'Street address is required';
-    if (!formData.address.city.trim()) errors.city = 'City is required';
-    if (!formData.address.state.trim()) errors.state = 'State is required';
-    if (!formData.address.zipCode.trim()) errors.zipCode = 'ZIP code is required';
-    
-    // Validate at least one HR contact
-    if (formData.hrContacts.length === 0) {
-      errors.hrContacts = 'At least one HR contact is required';
-    } else {
-      formData.hrContacts.forEach((contact, index) => {
-        if (!contact.name.trim()) errors[`hrContact_${index}_name`] = 'Name is required';
-        if (!contact.email.trim()) errors[`hrContact_${index}_email`] = 'Email is required';
-      });
-    }
-    
+    const errors = validateCompanyForm(formData);
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -424,6 +521,290 @@ export default function CorporateCompanyManagement() {
           Add Company
         </Button>
       </div>
+
+      {/* Overview Metrics */}
+      {metricsLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white p-6 rounded-lg border border-gray-200">
+              <div className="animate-pulse">
+                <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                <div className="h-8 bg-gray-200 rounded mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : metricsError ? (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <p className="text-red-600">Failed to load metrics. Using cached data where available.</p>
+        </div>
+      ) : metricsData?.data ? (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="bg-white p-6 rounded-lg border border-gray-200">
+            <div className="flex items-center">
+              <div className="bg-blue-500 p-3 rounded-lg">
+                <Building2 className="w-6 h-6 text-white" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-500">Total Companies</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {metricsData.data.overview.totalCompanies}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg border border-gray-200">
+            <div className="flex items-center">
+              <div className="bg-green-500 p-3 rounded-lg">
+                <IndianRupee className="w-6 h-6 text-white" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-500">Total Credit Limit</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {formatCurrency(metricsData.data.overview.totalCreditLimit)}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg border border-gray-200">
+            <div className="flex items-center">
+              <div className="bg-orange-500 p-3 rounded-lg">
+                <TrendingUp className="w-6 h-6 text-white" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-500">Credit Utilization</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {metricsData.data.overview.averageUtilization.toFixed(1)}%
+                </p>
+                <p className="text-sm text-gray-500">
+                  {formatCurrency(metricsData.data.overview.totalUsedCredit)} used
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-lg border border-gray-200">
+            <div className="flex items-center">
+              <div className={cn(
+                "p-3 rounded-lg",
+                metricsData.data.overview.lowCreditAlerts > 0 ? "bg-red-500" : "bg-gray-500"
+              )}>
+                {metricsData.data.overview.lowCreditAlerts > 0 ? (
+                  <AlertTriangle className="w-6 h-6 text-white" />
+                ) : (
+                  <CheckCircle className="w-6 h-6 text-white" />
+                )}
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-500">Low Credit Alerts</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {metricsData.data.overview.lowCreditAlerts}
+                </p>
+                <p className="text-sm text-gray-500">
+                  {metricsData.data.overview.companiesWithActiveCredit} with active credit
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className="bg-white p-6 rounded-lg border border-gray-200">
+            <div className="flex items-center">
+              <div className="bg-gray-300 p-3 rounded-lg">
+                <Building2 className="w-6 h-6 text-white" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-500">Total Companies</p>
+                <p className="text-2xl font-bold text-gray-900">
+                  {filteredCompanies.length}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white p-6 rounded-lg border border-gray-200">
+            <div className="flex items-center">
+              <div className="bg-gray-300 p-3 rounded-lg">
+                <IndianRupee className="w-6 h-6 text-white" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-500">Total Credit Limit</p>
+                <p className="text-2xl font-bold text-gray-900">Loading...</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white p-6 rounded-lg border border-gray-200">
+            <div className="flex items-center">
+              <div className="bg-gray-300 p-3 rounded-lg">
+                <TrendingUp className="w-6 h-6 text-white" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-500">Credit Utilization</p>
+                <p className="text-2xl font-bold text-gray-900">Loading...</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white p-6 rounded-lg border border-gray-200">
+            <div className="flex items-center">
+              <div className="bg-gray-300 p-3 rounded-lg">
+                <Activity className="w-6 h-6 text-white" />
+              </div>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-500">Low Credit Alerts</p>
+                <p className="text-2xl font-bold text-gray-900">Loading...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Analytics Charts */}
+      {metricsData?.data && !metricsLoading && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Credit Utilization Distribution */}
+          <div className="bg-white p-6 rounded-lg border border-gray-200">
+            <div className="flex items-center mb-4">
+              <PieChart className="w-5 h-5 mr-2 text-blue-600" />
+              <h3 className="text-lg font-semibold text-gray-900">Credit Utilization Distribution</h3>
+            </div>
+            {metricsData.data.utilizationDistribution.length > 0 ? (
+              <div className="h-64">
+                <Pie
+                  data={{
+                    labels: metricsData.data.utilizationDistribution.map(item => item._id),
+                    datasets: [
+                      {
+                        data: metricsData.data.utilizationDistribution.map(item => item.count),
+                        backgroundColor: [
+                          '#10b981', // Green for 0-25%
+                          '#f59e0b', // Yellow for 25-50%
+                          '#f97316', // Orange for 50-75%
+                          '#ef4444', // Red for 75-90%
+                          '#991b1b'  // Dark red for 90-100%
+                        ],
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                      }
+                    ]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                      legend: {
+                        position: 'bottom',
+                        labels: {
+                          padding: 20,
+                          usePointStyle: true
+                        }
+                      },
+                      tooltip: {
+                        callbacks: {
+                          label: function(context) {
+                            const item = metricsData.data.utilizationDistribution[context.dataIndex];
+                            return `${context.label}: ${item.count} companies (${formatCurrency(item.totalUsedCredit)} used)`;
+                          }
+                        }
+                      }
+                    }
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-gray-500">
+                <div className="text-center">
+                  <PieChart className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                  <p>No utilization data available</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Top Company Performance */}
+          <div className="bg-white p-6 rounded-lg border border-gray-200">
+            <div className="flex items-center mb-4">
+              <BarChart3 className="w-5 h-5 mr-2 text-green-600" />
+              <h3 className="text-lg font-semibold text-gray-900">Top Company Performance</h3>
+            </div>
+            {metricsData.data.companyPerformance.length > 0 ? (
+              <div className="h-64">
+                <Bar
+                  data={{
+                    labels: metricsData.data.companyPerformance.map(company =>
+                      company.name.length > 15
+                        ? company.name.substring(0, 15) + '...'
+                        : company.name
+                    ),
+                    datasets: [
+                      {
+                        label: 'Used Credit',
+                        data: metricsData.data.companyPerformance.map(company => company.usedCredit),
+                        backgroundColor: '#3b82f6',
+                        borderRadius: 4,
+                      },
+                      {
+                        label: 'Available Credit',
+                        data: metricsData.data.companyPerformance.map(company => company.availableCredit),
+                        backgroundColor: '#e5e7eb',
+                        borderRadius: 4,
+                      }
+                    ]
+                  }}
+                  options={{
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                      x: {
+                        stacked: true,
+                        grid: {
+                          display: false
+                        }
+                      },
+                      y: {
+                        stacked: true,
+                        beginAtZero: true,
+                        ticks: {
+                          callback: function(value) {
+                            return '₹' + (value / 1000).toFixed(0) + 'K';
+                          }
+                        }
+                      }
+                    },
+                    plugins: {
+                      legend: {
+                        position: 'top',
+                        align: 'end'
+                      },
+                      tooltip: {
+                        callbacks: {
+                          label: function(context) {
+                            const company = metricsData.data.companyPerformance[context.dataIndex];
+                            if (context.datasetIndex === 0) {
+                              return `Used: ${formatCurrency(context.parsed.y)} (${company.utilizationRate.toFixed(1)}%)`;
+                            } else {
+                              return `Available: ${formatCurrency(context.parsed.y)}`;
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }}
+                />
+              </div>
+            ) : (
+              <div className="h-64 flex items-center justify-center text-gray-500">
+                <div className="text-center">
+                  <BarChart3 className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                  <p>No company performance data available</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative">
@@ -524,10 +905,20 @@ export default function CorporateCompanyManagement() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDeleteCompany(company)}
-                          className="text-red-600 hover:text-red-700"
+                          onClick={() => handleToggleStatus(company)}
+                          className={cn(
+                            "flex items-center",
+                            company.isActive
+                              ? "text-orange-600 hover:text-orange-700"
+                              : "text-green-600 hover:text-green-700"
+                          )}
+                          disabled={toggleStatusMutation.isPending}
                         >
-                          <Trash2 className="w-4 h-4" />
+                          {company.isActive ? (
+                            <PowerOff className="w-4 h-4" />
+                          ) : (
+                            <Power className="w-4 h-4" />
+                          )}
                         </Button>
                       </div>
                     </td>
@@ -603,7 +994,22 @@ export default function CorporateCompanyManagement() {
                     <input
                       type="email"
                       value={formData.email}
-                      onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                      onChange={(e) => {
+                        setFormData(prev => ({ ...prev, email: e.target.value }));
+
+                        // Real-time validation
+                        if (e.target.value.length > 0) {
+                          const validation = validateEmail(e.target.value);
+                          if (!validation.isValid) {
+                            setFormErrors(prev => ({ ...prev, email: validation.error }));
+                          } else {
+                            setFormErrors(prev => {
+                              const { email, ...rest } = prev;
+                              return rest;
+                            });
+                          }
+                        }
+                      }}
                       className={cn(
                         "w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent",
                         formErrors.email ? "border-red-300" : "border-gray-300"
@@ -622,10 +1028,31 @@ export default function CorporateCompanyManagement() {
                     <input
                       type="tel"
                       value={formData.phone}
-                      onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      onChange={(e) => {
+                        setFormData(prev => ({ ...prev, phone: e.target.value }));
+
+                        // Real-time validation
+                        if (e.target.value.length > 0) {
+                          const validation = validatePhone(e.target.value);
+                          if (!validation.isValid) {
+                            setFormErrors(prev => ({ ...prev, phone: validation.error }));
+                          } else {
+                            setFormErrors(prev => {
+                              const { phone, ...rest } = prev;
+                              return rest;
+                            });
+                          }
+                        }
+                      }}
+                      className={cn(
+                        "w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+                        formErrors.phone ? "border-red-300" : "border-gray-300"
+                      )}
                       placeholder="+91 98765 43210"
                     />
+                    {formErrors.phone && (
+                      <p className="text-sm text-red-600 mt-1">{formErrors.phone}</p>
+                    )}
                   </div>
 
                   <div>
@@ -635,7 +1062,21 @@ export default function CorporateCompanyManagement() {
                     <input
                       type="text"
                       value={formData.gstNumber}
-                      onChange={(e) => setFormData(prev => ({ ...prev, gstNumber: e.target.value.toUpperCase() }))}
+                      onChange={(e) => {
+                        const formatted = formatGST(e.target.value);
+                        setFormData(prev => ({ ...prev, gstNumber: formatted }));
+
+                        // Real-time validation
+                        const validation = validateGST(formatted);
+                        if (!validation.isValid && formatted.length > 0) {
+                          setFormErrors(prev => ({ ...prev, gstNumber: validation.error }));
+                        } else {
+                          setFormErrors(prev => {
+                            const { gstNumber, ...rest } = prev;
+                            return rest;
+                          });
+                        }
+                      }}
                       className={cn(
                         "w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent",
                         formErrors.gstNumber ? "border-red-300" : "border-gray-300"
@@ -655,11 +1096,33 @@ export default function CorporateCompanyManagement() {
                     <input
                       type="text"
                       value={formData.panNumber}
-                      onChange={(e) => setFormData(prev => ({ ...prev, panNumber: e.target.value.toUpperCase() }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      onChange={(e) => {
+                        const formatted = formatPAN(e.target.value);
+                        setFormData(prev => ({ ...prev, panNumber: formatted }));
+
+                        // Real-time validation
+                        if (formatted.length > 0) {
+                          const validation = validatePAN(formatted);
+                          if (!validation.isValid) {
+                            setFormErrors(prev => ({ ...prev, panNumber: validation.error }));
+                          } else {
+                            setFormErrors(prev => {
+                              const { panNumber, ...rest } = prev;
+                              return rest;
+                            });
+                          }
+                        }
+                      }}
+                      className={cn(
+                        "w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+                        formErrors.panNumber ? "border-red-300" : "border-gray-300"
+                      )}
                       placeholder="ABCDE1234F"
                       maxLength={10}
                     />
+                    {formErrors.panNumber && (
+                      <p className="text-sm text-red-600 mt-1">{formErrors.panNumber}</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -760,15 +1223,32 @@ export default function CorporateCompanyManagement() {
                     <input
                       type="text"
                       value={formData.address.zipCode}
-                      onChange={(e) => setFormData(prev => ({
-                        ...prev,
-                        address: { ...prev.address, zipCode: e.target.value }
-                      }))}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '').slice(0, 6);
+                        setFormData(prev => ({
+                          ...prev,
+                          address: { ...prev.address, zipCode: value }
+                        }));
+
+                        // Real-time validation
+                        if (value.length > 0) {
+                          const validation = validateZIP(value);
+                          if (!validation.isValid) {
+                            setFormErrors(prev => ({ ...prev, zipCode: validation.error }));
+                          } else {
+                            setFormErrors(prev => {
+                              const { zipCode, ...rest } = prev;
+                              return rest;
+                            });
+                          }
+                        }
+                      }}
                       className={cn(
                         "w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent",
                         formErrors.zipCode ? "border-red-300" : "border-gray-300"
                       )}
                       placeholder="Enter ZIP code"
+                      maxLength={6}
                     />
                     {formErrors.zipCode && (
                       <p className="text-sm text-red-600 mt-1">{formErrors.zipCode}</p>
@@ -893,7 +1373,22 @@ export default function CorporateCompanyManagement() {
                         <input
                           type="email"
                           value={contact.email}
-                          onChange={(e) => handleHRContactChange(index, 'email', e.target.value)}
+                          onChange={(e) => {
+                            handleHRContactChange(index, 'email', e.target.value);
+
+                            // Real-time validation for HR contact email
+                            if (e.target.value.length > 0) {
+                              const validation = validateEmail(e.target.value);
+                              if (!validation.isValid) {
+                                setFormErrors(prev => ({ ...prev, [`hrContact_${index}_email`]: validation.error }));
+                              } else {
+                                setFormErrors(prev => {
+                                  const { [`hrContact_${index}_email`]: removed, ...rest } = prev;
+                                  return rest;
+                                });
+                              }
+                            }
+                          }}
                           className={cn(
                             "w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent",
                             formErrors[`hrContact_${index}_email`] ? "border-red-300" : "border-gray-300"
@@ -912,10 +1407,31 @@ export default function CorporateCompanyManagement() {
                         <input
                           type="tel"
                           value={contact.phone}
-                          onChange={(e) => handleHRContactChange(index, 'phone', e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          onChange={(e) => {
+                            handleHRContactChange(index, 'phone', e.target.value);
+
+                            // Real-time validation for HR contact phone
+                            if (e.target.value.length > 0) {
+                              const validation = validatePhone(e.target.value);
+                              if (!validation.isValid) {
+                                setFormErrors(prev => ({ ...prev, [`hrContact_${index}_phone`]: validation.error }));
+                              } else {
+                                setFormErrors(prev => {
+                                  const { [`hrContact_${index}_phone`]: removed, ...rest } = prev;
+                                  return rest;
+                                });
+                              }
+                            }
+                          }}
+                          className={cn(
+                            "w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+                            formErrors[`hrContact_${index}_phone`] ? "border-red-300" : "border-gray-300"
+                          )}
                           placeholder="+91 98765 43210"
                         />
+                        {formErrors[`hrContact_${index}_phone`] && (
+                          <p className="text-sm text-red-600 mt-1">{formErrors[`hrContact_${index}_phone`]}</p>
+                        )}
                       </div>
 
                       <div>

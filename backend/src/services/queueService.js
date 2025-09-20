@@ -18,7 +18,7 @@ class QueueService {
     this.workerId = `worker_${process.pid}_${Date.now()}`;
     this.workerInstance = process.env.WORKER_INSTANCE || 'default';
     this.maxConcurrentJobs = parseInt(process.env.MAX_CONCURRENT_JOBS) || 5;
-    this.processingIntervalMs = parseInt(process.env.PROCESSING_INTERVAL_MS) || 5000;
+    this.processingIntervalMs = parseInt(process.env.PROCESSING_INTERVAL_MS) || 30000; // Reduced frequency to 30 seconds
     this.activeJobs = new Map(); // Track currently processing jobs
   }
 

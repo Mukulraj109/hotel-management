@@ -1,7 +1,7 @@
 import LoginSession from '../models/LoginSession.js';
 import AuditLog from '../models/AuditLog.js';
 import User from '../models/User.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import mongoose from 'mongoose';
 
 class LoginAnalyticsService {
@@ -94,7 +94,7 @@ class LoginAnalyticsService {
         riskRate: result.totalLogins > 0 ? ((result.highRiskSessions + result.mediumRiskSessions) / result.totalLogins) * 100 : 0
       };
     } catch (error) {
-      throw new AppError('Failed to fetch login analytics', 500);
+      throw new ApplicationError('Failed to fetch login analytics', 500);
     }
   }
 
@@ -173,7 +173,7 @@ class LoginAnalyticsService {
         }))
       };
     } catch (error) {
-      throw new AppError('Failed to fetch login patterns', 500);
+      throw new ApplicationError('Failed to fetch login patterns', 500);
     }
   }
 
@@ -247,7 +247,7 @@ class LoginAnalyticsService {
         }
       };
     } catch (error) {
-      throw new AppError('Failed to fetch security metrics', 500);
+      throw new ApplicationError('Failed to fetch security metrics', 500);
     }
   }
 
@@ -326,7 +326,7 @@ class LoginAnalyticsService {
           behaviorData.reduce((sum, user) => sum + user.behaviorScore, 0) / behaviorData.length : 0
       };
     } catch (error) {
-      throw new AppError('Failed to fetch user behavior analysis', 500);
+      throw new ApplicationError('Failed to fetch user behavior analysis', 500);
     }
   }
 
@@ -401,7 +401,7 @@ class LoginAnalyticsService {
         auditTrail
       };
     } catch (error) {
-      throw new AppError('Failed to fetch compliance report', 500);
+      throw new ApplicationError('Failed to fetch compliance report', 500);
     }
   }
 
@@ -417,7 +417,7 @@ class LoginAnalyticsService {
 
       return logins;
     } catch (error) {
-      throw new AppError('Failed to fetch recent logins', 500);
+      throw new ApplicationError('Failed to fetch recent logins', 500);
     }
   }
 
@@ -459,7 +459,7 @@ class LoginAnalyticsService {
 
       return await LoginSession.aggregate(pipeline);
     } catch (error) {
-      throw new AppError('Failed to fetch top login users', 500);
+      throw new ApplicationError('Failed to fetch top login users', 500);
     }
   }
 
@@ -498,7 +498,7 @@ class LoginAnalyticsService {
 
       return await LoginSession.aggregate(pipeline);
     } catch (error) {
-      throw new AppError('Failed to fetch threat trends', 500);
+      throw new ApplicationError('Failed to fetch threat trends', 500);
     }
   }
 
@@ -528,7 +528,7 @@ class LoginAnalyticsService {
 
       return auditLogs;
     } catch (error) {
-      throw new AppError('Failed to fetch audit trail', 500);
+      throw new ApplicationError('Failed to fetch audit trail', 500);
     }
   }
 

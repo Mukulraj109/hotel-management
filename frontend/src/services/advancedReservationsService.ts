@@ -137,6 +137,7 @@ export interface AdvancedReservationFilters {
   reservationType?: string;
   priority?: string;
   hasWaitlist?: boolean;
+  search?: string;
   page?: number;
   limit?: number;
   sortBy?: string;
@@ -187,6 +188,7 @@ class AdvancedReservationsService {
     if (filters?.reservationType) params.append('reservationType', filters.reservationType);
     if (filters?.priority) params.append('priority', filters.priority);
     if (filters?.hasWaitlist !== undefined) params.append('hasWaitlist', filters.hasWaitlist.toString());
+    if (filters?.search) params.append('search', filters.search);
     if (filters?.page) params.append('page', filters.page.toString());
     if (filters?.limit) params.append('limit', filters.limit.toString());
     if (filters?.sortBy) params.append('sortBy', filters.sortBy);
@@ -249,8 +251,20 @@ class AdvancedReservationsService {
 
   // Get advanced reservations statistics
   async getAdvancedReservationsStats(): Promise<AdvancedReservationsStats> {
-    const response = await api.get(`${this.baseURL}/stats`);
-    return response.data.data;
+    try {
+      const response = await api.get(`${this.baseURL}/stats`);
+      return response.data.data;
+    } catch (error: any) {
+      console.error('Failed to fetch advanced reservations stats:', error);
+      // Return default stats if API fails
+      return {
+        typeStats: [],
+        priorityStats: [],
+        upgradeStats: [],
+        waitlistCount: 0,
+        recentReservations: []
+      };
+    }
   }
 }
 

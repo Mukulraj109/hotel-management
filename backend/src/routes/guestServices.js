@@ -3,9 +3,11 @@ import mongoose from 'mongoose';
 import GuestService from '../models/GuestService.js';
 import Booking from '../models/Booking.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import { serviceNotificationService } from '../services/serviceNotificationService.js';
 import { validate, schemas } from '../middleware/validation.js';
+import websocketService from '../services/websocketService.js';
 
 const router = express.Router();
 
@@ -83,31 +85,25 @@ router.post('/', authenticate, catchAsync(async (req, res) => {
   // Verify booking exists and belongs to user
   const booking = await Booking.findById(bookingId);
   if (!booking) {
-    throw new AppError('Booking not found', 404);
+    throw new ApplicationError('Booking not found', 404);
   }
 
-  // Simple automatic staff assignment
+  // Intelligent automatic staff assignment based on hotel services
   let assignedTo = null;
   let status = 'pending';
-  const User = mongoose.model('User');
-  const staffList = await User.find({ hotelId: booking.hotelId, role: 'staff', isActive: true }).select('_id');
-  if (staffList.length > 0) {
-    // Pick a random staff member
-    const randomIndex = Math.floor(Math.random() * staffList.length);
-    assignedTo = staffList[randomIndex]._id;
-    status = 'assigned';
-  }
+  let relatedHotelService = null;
 
   // Guests can only create requests for their own bookings
   if (req.user.role === 'guest' && booking.userId.toString() !== req.user._id.toString()) {
-    throw new AppError('You can only create requests for your own bookings', 403);
+    throw new ApplicationError('You can only create requests for your own bookings', 403);
   }
 
   // Handle multiple service variations
   const finalServiceVariations = serviceVariations && serviceVariations.length > 0 ? serviceVariations : [];
   const primaryVariation = serviceVariation || (finalServiceVariations.length > 0 ? finalServiceVariations[0] : '');
-  
-  const serviceRequest = await GuestService.create({
+
+  // Create initial service request
+  let serviceRequest = new GuestService({
     hotelId: booking.hotelId,
     userId: booking.userId,
     bookingId,
@@ -120,15 +116,63 @@ router.post('/', authenticate, catchAsync(async (req, res) => {
     scheduledTime,
     items: items || [],
     specialInstructions,
-    assignedTo,
-    status
+    status: 'pending'
   });
+
+  // Apply intelligent staff assignment
+  serviceRequest = await GuestService.autoAssignToStaff(serviceRequest, booking.hotelId);
+
+  // Save the service request
+  await serviceRequest.save();
 
   await serviceRequest.populate([
     { path: 'hotelId', select: 'name' },
     { path: 'userId', select: 'name email' },
-    { path: 'bookingId', select: 'bookingNumber' }
+    { path: 'bookingId', select: 'bookingNumber' },
+    { path: 'assignedTo', select: 'name email role' },
+    { path: 'relatedHotelService', select: 'name type' }
   ]);
+
+  // Send notification to assigned staff member
+  if (serviceRequest.assignedTo) {
+    try {
+      await serviceNotificationService.notifyStaffAssignment(serviceRequest, serviceRequest.assignedTo);
+    } catch (error) {
+      console.error('Failed to send staff assignment notification:', error);
+    }
+  }
+
+  // Real-time WebSocket notifications for guest service request
+  try {
+    // Notify hotel staff and admins of new guest service request
+    await websocketService.broadcastToHotel(booking.hotelId, 'guest-service:created', {
+      serviceRequest,
+      booking,
+      guest: serviceRequest.userId
+    });
+
+    // Notify the assigned staff member specifically
+    if (assignedTo) {
+      await websocketService.sendToUser(assignedTo.toString(), 'guest-service:assigned', {
+        serviceRequest,
+        booking
+      });
+    }
+
+    // Notify all staff roles
+    await websocketService.broadcastToRole('staff', 'guest-service:created', serviceRequest);
+    await websocketService.broadcastToRole('admin', 'guest-service:created', serviceRequest);
+    await websocketService.broadcastToRole('manager', 'guest-service:created', serviceRequest);
+
+    // Notify the guest who created the request
+    await websocketService.sendToUser(serviceRequest.userId.toString(), 'guest-service:created', {
+      serviceRequest,
+      status: 'confirmed'
+    });
+  } catch (wsError) {
+    // Log WebSocket errors but don't fail the service request creation
+    console.warn('Failed to send real-time guest service notification:', wsError.message);
+  }
 
   res.status(201).json({
     status: 'success',
@@ -271,7 +315,7 @@ router.get('/stats', authenticate, authorize('staff', 'admin'), catchAsync(async
   }
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required. Admin users should provide hotelId as query parameter.', 400);
+    throw new ApplicationError('Hotel ID is required. Admin users should provide hotelId as query parameter.', 400);
   }
 
   const stats = await GuestService.getServiceStats(hotelId, startDate, endDate);
@@ -335,7 +379,7 @@ router.get('/available-staff', authenticate, authorize('staff', 'admin'), catchA
   }
   
   if (!hotelId) { 
-    throw new AppError('Hotel ID is required. Admin users should provide hotelId as query parameter.', 400); 
+    throw new ApplicationError('Hotel ID is required. Admin users should provide hotelId as query parameter.', 400); 
   }
   
   const User = mongoose.model('User');
@@ -381,16 +425,16 @@ router.get('/:id', authenticate, catchAsync(async (req, res) => {
     .populate('assignedTo', 'name email');
 
   if (!serviceRequest) {
-    throw new AppError('Service request not found', 404);
+    throw new ApplicationError('Service request not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'guest' && serviceRequest.userId._id.toString() !== req.user._id.toString()) {
-    throw new AppError('You can only view your own service requests', 403);
+    throw new ApplicationError('You can only view your own service requests', 403);
   }
 
   if (req.user.role === 'staff' && serviceRequest.hotelId._id.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only view requests for your hotel', 403);
+    throw new ApplicationError('You can only view requests for your hotel', 403);
   }
 
   res.json({
@@ -440,7 +484,7 @@ router.patch('/:id', authenticate, catchAsync(async (req, res) => {
   const serviceRequest = await GuestService.findById(req.params.id);
   
   if (!serviceRequest) {
-    throw new AppError('Service request not found', 404);
+    throw new ApplicationError('Service request not found', 404);
   }
 
   const {
@@ -460,13 +504,13 @@ router.patch('/:id', authenticate, catchAsync(async (req, res) => {
     (req.user.role === 'guest' && serviceRequest.userId.toString() === req.user._id.toString() && serviceRequest.canCancel());
 
   if (!canUpdate) {
-    throw new AppError('You do not have permission to update this request', 403);
+    throw new ApplicationError('You do not have permission to update this request', 403);
   }
 
   // Guests can only cancel their own requests
   if (req.user.role === 'guest') {
     if (status && status !== 'cancelled') {
-      throw new AppError('Guests can only cancel their requests', 403);
+      throw new ApplicationError('Guests can only cancel their requests', 403);
     }
     serviceRequest.status = 'cancelled';
   } else {
@@ -533,15 +577,15 @@ router.post('/:id/feedback', authenticate, authorize('guest'), catchAsync(async 
   const serviceRequest = await GuestService.findById(req.params.id);
   
   if (!serviceRequest) {
-    throw new AppError('Service request not found', 404);
+    throw new ApplicationError('Service request not found', 404);
   }
 
   if (serviceRequest.userId.toString() !== req.user._id.toString()) {
-    throw new AppError('You can only rate your own service requests', 403);
+    throw new ApplicationError('You can only rate your own service requests', 403);
   }
 
   if (serviceRequest.status !== 'completed') {
-    throw new AppError('You can only rate completed services', 400);
+    throw new ApplicationError('You can only rate completed services', 400);
   }
 
   serviceRequest.rating = rating;

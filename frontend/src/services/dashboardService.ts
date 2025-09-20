@@ -29,7 +29,7 @@ class DashboardService {
         status: 'success',
         data: [
           {
-            _id: '68afe8080c02fcbe30092b8e',
+            _id: '68c7ab1242a357d06adbb2aa',
             name: 'THE PENTOUZ',
             description: 'A luxury hotel in the heart of the city'
           }
@@ -41,8 +41,8 @@ class DashboardService {
         status: 'success',
         data: [
           {
-            _id: '68afe8080c02fcbe30092b8e',
-            name: 'THE PENTOUZ', 
+            _id: '68c7ab1242a357d06adbb2aa',
+            name: 'THE PENTOUZ',
             description: 'A luxury hotel in the heart of the city'
           }
         ]

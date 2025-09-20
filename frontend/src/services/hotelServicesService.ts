@@ -129,6 +129,13 @@ class HotelServicesService {
   }
 
   /**
+   * Get service details (alias for getService for consistency)
+   */
+  async getServiceDetails(serviceId: string): Promise<HotelService> {
+    return this.getService(serviceId);
+  }
+
+  /**
    * Check service availability
    */
   async checkAvailability(
@@ -401,6 +408,125 @@ class HotelServicesService {
     const now = new Date();
     const bookingDate = new Date(booking.bookingDate);
     return bookingDate > now && booking.status !== 'cancelled';
+  }
+
+  // Admin Methods for Service Management
+
+  /**
+   * Get all services for admin management (with pagination)
+   */
+  async getAdminServices(params?: {
+    page?: number;
+    limit?: number;
+    type?: string;
+    search?: string;
+    status?: string;
+  }): Promise<{
+    services: HotelService[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      pages: number;
+      hasNext: boolean;
+      hasPrev: boolean;
+    };
+  }> {
+    const response = await api.get('/admin/hotel-services', { params });
+    return response.data.data;
+  }
+
+  /**
+   * Create a new hotel service (Admin only)
+   */
+  async createService(serviceData: FormData): Promise<HotelService> {
+    const response = await api.post('/admin/hotel-services', serviceData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data.data;
+  }
+
+  /**
+   * Update a hotel service (Admin only)
+   */
+  async updateService(serviceId: string, serviceData: FormData): Promise<HotelService> {
+    const response = await api.put(`/admin/hotel-services/${serviceId}`, serviceData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data.data;
+  }
+
+  /**
+   * Delete a hotel service (Admin only)
+   */
+  async deleteService(serviceId: string): Promise<void> {
+    await api.delete(`/admin/hotel-services/${serviceId}`);
+  }
+
+  /**
+   * Toggle service active status (Admin only)
+   */
+  async toggleServiceStatus(serviceId: string): Promise<HotelService> {
+    const response = await api.patch(`/admin/hotel-services/${serviceId}/toggle-status`);
+    return response.data.data;
+  }
+
+  /**
+   * Delete a specific service image (Admin only)
+   */
+  async deleteServiceImage(serviceId: string, imageIndex: number): Promise<HotelService> {
+    const response = await api.delete(`/admin/hotel-services/${serviceId}/images/${imageIndex}`);
+    return response.data.data;
+  }
+
+  /**
+   * Perform bulk operations on services (Admin only)
+   */
+  async bulkOperations(operation: string, serviceIds: string[]): Promise<void> {
+    await api.post('/admin/hotel-services/bulk-operations', {
+      operation,
+      serviceIds
+    });
+  }
+
+  /**
+   * Convert service data to FormData for API submission
+   */
+  convertToFormData(serviceData: any, images?: File[]): FormData {
+    const formData = new FormData();
+
+    // Add basic fields
+    Object.keys(serviceData).forEach(key => {
+      const value = serviceData[key];
+      if (value !== undefined && value !== null) {
+        if (Array.isArray(value)) {
+          value.forEach((item, index) => {
+            formData.append(`${key}[]`, item);
+          });
+        } else if (typeof value === 'object' && key === 'operatingHours') {
+          formData.append('operatingHoursOpen', value.open || '');
+          formData.append('operatingHoursClose', value.close || '');
+        } else if (typeof value === 'object' && key === 'contactInfo') {
+          if (value.phone) formData.append('contactPhone', value.phone);
+          if (value.email) formData.append('contactEmail', value.email);
+        } else {
+          formData.append(key, value.toString());
+        }
+      }
+    });
+
+    // Add image files
+    if (images && images.length > 0) {
+      images.forEach(image => {
+        formData.append('images', image);
+      });
+    }
+
+    return formData;
   }
 }
 

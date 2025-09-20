@@ -11,6 +11,11 @@ router.put('/widgets/:id', authenticate, authorize(['admin', 'marketing_manager'
 router.get('/widgets/:widgetId/code', bookingEngineController.getWidgetCode);
 router.post('/widgets/:widgetId/booking', bookingEngineController.processWidgetBooking);
 
+// Widget Tracking Routes (Public for external websites)
+router.post('/widget/track', bookingEngineController.trackWidgetEvent);
+router.get('/widgets/:widgetId/analytics', authenticate, authorize(['admin', 'marketing_manager', 'manager']), bookingEngineController.getWidgetAnalytics);
+router.get('/widgets/performance/summary', authenticate, authorize(['admin', 'marketing_manager', 'manager']), bookingEngineController.getWidgetsPerformanceSummary);
+
 // Promo Code Routes
 router.post('/promo-codes', authenticate, authorize(['admin', 'marketing_manager']), bookingEngineController.createPromoCode);
 router.get('/promo-codes', authenticate, authorize(['admin', 'marketing_manager', 'manager']), bookingEngineController.getPromoCodes);

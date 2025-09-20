@@ -249,9 +249,48 @@ router.delete('/:id',
  *       404:
  *         description: Assignment rule not found
  */
-router.post('/:id/test', 
-  authorize('admin', 'staff'), 
+router.post('/:id/test',
+  authorize('admin', 'staff'),
   catchAsync(assignmentRulesController.testAssignmentRule)
+);
+
+/**
+ * @swagger
+ * /assignment-rules/auto-assign:
+ *   post:
+ *     summary: Auto-assign rooms based on assignment rules
+ *     tags: [Assignment Rules]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               criteria:
+ *                 type: object
+ *                 properties:
+ *                   guestType:
+ *                     type: string
+ *                   roomType:
+ *                     type: string
+ *                   priority:
+ *                     type: string
+ *                     enum: [low, medium, high, vip]
+ *                   maxBookings:
+ *                     type: integer
+ *                     default: 50
+ *     responses:
+ *       200:
+ *         description: Auto-assignment completed successfully
+ *       400:
+ *         description: Invalid criteria provided
+ */
+router.post('/auto-assign',
+  authorize('admin', 'staff'),
+  catchAsync(assignmentRulesController.autoAssignRooms)
 );
 
 export default router;

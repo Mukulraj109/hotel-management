@@ -159,11 +159,11 @@ const EmailCampaignManager: React.FC = () => {
     setFormData({
       name: campaign.name,
       type: campaign.type,
-      subject: campaign.content.subject,
-      preheader: campaign.content.preheader || '',
-      htmlContent: campaign.content.htmlContent || '',
-      textContent: campaign.content.textContent || '',
-      segments: campaign.targeting.segments,
+      subject: campaign.content?.subject || '',
+      preheader: campaign.content?.preheader || '',
+      htmlContent: campaign.content?.htmlContent || '',
+      textContent: campaign.content?.textContent || '',
+      segments: campaign.targeting?.segments || [],
       sendImmediately: false
     });
     setIsEditModalOpen(true);
@@ -321,7 +321,7 @@ const EmailCampaignManager: React.FC = () => {
                           <TypeIcon className="w-5 h-5 text-gray-600" />
                           <div>
                             <h3 className="text-lg font-semibold">{campaign.name}</h3>
-                            <p className="text-sm text-gray-600">{campaign.content.subject}</p>
+                            <p className="text-sm text-gray-600">{campaign.content?.subject || 'No subject'}</p>
                           </div>
                         </div>
                         <div className="flex items-center space-x-2">

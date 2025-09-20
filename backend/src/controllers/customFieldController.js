@@ -1,6 +1,6 @@
 import customFieldService from '../services/customFieldService.js';
 import CustomField from '../models/CustomField.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 // Get all custom fields
@@ -139,7 +139,7 @@ export const validateFieldValue = catchAsync(async (req, res) => {
   const { fieldId, value } = req.body;
 
   if (!fieldId || value === undefined) {
-    throw new AppError('Field ID and value are required', 400);
+    throw new ApplicationError('Field ID and value are required', 400);
   }
 
   const errors = await customFieldService.validateFieldValue(
@@ -185,7 +185,7 @@ export const updateGuestCustomData = catchAsync(async (req, res) => {
   const { value } = req.body;
 
   if (value === undefined) {
-    throw new AppError('Value is required', 400);
+    throw new ApplicationError('Value is required', 400);
   }
 
   const guestData = await customFieldService.updateGuestCustomData(
@@ -208,7 +208,7 @@ export const bulkUpdateGuestCustomData = catchAsync(async (req, res) => {
   const { dataUpdates } = req.body;
 
   if (!dataUpdates || typeof dataUpdates !== 'object') {
-    throw new AppError('Data updates object is required', 400);
+    throw new ApplicationError('Data updates object is required', 400);
   }
 
   const result = await customFieldService.bulkUpdateGuestCustomData(
@@ -255,7 +255,7 @@ export const getCustomDataAnalytics = catchAsync(async (req, res) => {
       const range = JSON.parse(dateRange);
       options.dateRange = range;
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
 
@@ -294,7 +294,7 @@ export const importCustomFields = catchAsync(async (req, res) => {
   const { fieldsData } = req.body;
 
   if (!Array.isArray(fieldsData)) {
-    throw new AppError('Fields data must be an array', 400);
+    throw new ApplicationError('Fields data must be an array', 400);
   }
 
   const result = await customFieldService.importCustomFields(
@@ -334,7 +334,7 @@ export const bulkUpdateCustomFields = catchAsync(async (req, res) => {
   const { fieldIds, updateData } = req.body;
 
   if (!Array.isArray(fieldIds) || fieldIds.length === 0) {
-    throw new AppError('Field IDs array is required', 400);
+    throw new ApplicationError('Field IDs array is required', 400);
   }
 
   const result = await CustomField.updateMany(
@@ -362,7 +362,7 @@ export const reorderCustomFields = catchAsync(async (req, res) => {
   const { fieldOrders } = req.body;
 
   if (!Array.isArray(fieldOrders)) {
-    throw new AppError('Field orders array is required', 400);
+    throw new ApplicationError('Field orders array is required', 400);
   }
 
   const operations = fieldOrders.map(({ fieldId, displayOrder }) => ({

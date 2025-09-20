@@ -13,6 +13,30 @@ export interface RoomInventoryItem {
   lastCleaned?: string;
 }
 
+export interface TemplateInventoryItem {
+  _id?: string;
+  name: string;
+  category: string;
+  description?: string;
+  unitPrice?: number;
+  standardQuantity?: number;
+  checkInstructions?: string;
+  expectedCondition?: string;
+}
+
+export interface InventoryTemplate {
+  _id?: string;
+  roomType: 'single' | 'double' | 'deluxe' | 'suite';
+  fixedInventory: TemplateInventoryItem[];
+  dailyInventory: TemplateInventoryItem[];
+  estimatedCheckDuration?: number;
+  isActive?: boolean;
+  createdBy?: string;
+  lastUpdatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface DailyCheckData {
   _id: string;
   roomNumber: string;
@@ -135,24 +159,33 @@ class DailyRoutineCheckService {
    * Get inventory templates for different room types
    */
   async getInventoryTemplates(): Promise<ApiResponse<{
-    templates: Array<{
-      roomType: string;
-      fixedInventory: RoomInventoryItem[];
-      dailyInventory: RoomInventoryItem[];
-    }>;
+    templates: InventoryTemplate[];
   }>> {
-    const response = await api.get(`${this.baseURL}/inventory-templates`);
+    const response = await api.get(`${this.baseURL}/templates`);
+    return response.data;
+  }
+
+  /**
+   * Create new inventory template for a room type
+   */
+  async createInventoryTemplate(template: Omit<InventoryTemplate, '_id' | 'isActive' | 'createdBy' | 'lastUpdatedBy' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<{ message: string; template: InventoryTemplate }>> {
+    const response = await api.post(`${this.baseURL}/templates`, template);
     return response.data;
   }
 
   /**
    * Update inventory template for a room type
    */
-  async updateInventoryTemplate(roomType: string, template: {
-    fixedInventory: Partial<RoomInventoryItem>[];
-    dailyInventory: Partial<RoomInventoryItem>[];
-  }): Promise<ApiResponse<{ message: string }>> {
-    const response = await api.put(`${this.baseURL}/inventory-templates/${roomType}`, template);
+  async updateInventoryTemplate(roomType: string, template: Partial<Pick<InventoryTemplate, 'fixedInventory' | 'dailyInventory' | 'estimatedCheckDuration'>>): Promise<ApiResponse<{ message: string; template: InventoryTemplate }>> {
+    const response = await api.put(`${this.baseURL}/templates/${roomType}`, template);
+    return response.data;
+  }
+
+  /**
+   * Delete inventory template for a room type
+   */
+  async deleteInventoryTemplate(roomType: string): Promise<ApiResponse<{ message: string }>> {
+    const response = await api.delete(`${this.baseURL}/templates/${roomType}`);
     return response.data;
   }
 

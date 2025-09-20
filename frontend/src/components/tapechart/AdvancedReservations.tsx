@@ -43,6 +43,7 @@ const AdvancedReservations: React.FC = () => {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [selectedReservation, setSelectedReservation] = useState<AdvancedReservation | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState({
     current: 1,
     pages: 1,
@@ -57,11 +58,16 @@ const AdvancedReservations: React.FC = () => {
   const fetchReservations = async () => {
     try {
       setLoading(true);
+      setError(null);
       const result = await advancedReservationsService.getAdvancedReservations(filters);
       setReservations(result.data);
       setPagination(result.pagination);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to fetch advanced reservations:', error);
+      const errorMessage = error.response?.data?.message ||
+                          error.message ||
+                          'Failed to load advanced reservations. Please try again.';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -88,6 +94,11 @@ const AdvancedReservations: React.FC = () => {
 
     if (priorityFilter !== 'all') {
       searchFilters.priority = priorityFilter;
+    }
+
+    // Add search term to filters (backend should handle this)
+    if (searchTerm.trim()) {
+      searchFilters.search = searchTerm.trim();
     }
 
     setFilters(searchFilters);
@@ -169,6 +180,31 @@ const AdvancedReservations: React.FC = () => {
         </Button>
       </div>
 
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+          <div className="flex">
+            <AlertTriangle className="h-4 w-4 text-red-400 mt-0.5 mr-3" />
+            <div className="flex-1">
+              <h3 className="text-sm font-medium text-red-800">Error</h3>
+              <p className="text-sm text-red-700 mt-1">{error}</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setError(null);
+                fetchReservations();
+                fetchStats();
+              }}
+              className="ml-3"
+            >
+              Retry
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Stats Cards */}
       {stats && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -247,6 +283,11 @@ const AdvancedReservations: React.FC = () => {
                   placeholder="Search reservations..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSearch();
+                    }
+                  }}
                   className="pl-9"
                 />
               </div>
@@ -388,6 +429,36 @@ const AdvancedReservations: React.FC = () => {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {pagination.pages > 1 && (
+            <div className="flex items-center justify-between pt-4">
+              <p className="text-sm text-gray-600">
+                Showing {((pagination.current - 1) * filters.limit! + 1)} to {Math.min(pagination.current * filters.limit!, pagination.total)} of {pagination.total} results
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilters(prev => ({ ...prev, page: prev.page! - 1 }))}
+                  disabled={pagination.current <= 1}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-gray-600">
+                  Page {pagination.current} of {pagination.pages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFilters(prev => ({ ...prev, page: prev.page! + 1 }))}
+                  disabled={pagination.current >= pagination.pages}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

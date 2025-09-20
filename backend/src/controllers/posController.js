@@ -8,19 +8,35 @@ import { v4 as uuidv4 } from 'uuid';
 // Outlet Management
 export const createOutlet = async (req, res) => {
   try {
+    console.log('Creating outlet with data:', req.body);
+    
+    // Validate required fields
+    const { name, type, location } = req.body;
+    if (!name || !type || !location) {
+      return res.status(400).json({
+        success: false,
+        message: 'Name, type, and location are required fields'
+      });
+    }
+    
     const outletData = {
       ...req.body,
       outletId: uuidv4()
     };
     
+    console.log('Outlet data to save:', outletData);
+    
     const outlet = new POSOutlet(outletData);
     await outlet.save();
+    
+    console.log('Outlet created successfully:', outlet._id);
     
     res.status(201).json({
       success: true,
       data: outlet
     });
   } catch (error) {
+    console.error('Error creating outlet:', error);
     res.status(400).json({
       success: false,
       message: error.message
@@ -30,15 +46,20 @@ export const createOutlet = async (req, res) => {
 
 export const getOutlets = async (req, res) => {
   try {
+    console.log('Fetching all outlets...');
+    
     const outlets = await POSOutlet.find({ isActive: true })
-      .populate('manager', 'firstName lastName email')
-      .populate('staff', 'firstName lastName email role');
+      .populate('manager', 'name email')
+      .populate('staff', 'name email role');
+    
+    console.log(`Found ${outlets.length} outlets`);
     
     res.json({
       success: true,
       data: outlets
     });
   } catch (error) {
+    console.error('Error fetching outlets:', error);
     res.status(500).json({
       success: false,
       message: error.message
@@ -410,6 +431,141 @@ export const getDashboardStats = async (req, res) => {
 };
 
 // Reporting
+// Calculate order totals with tax
+export const calculateOrderTotals = async (req, res) => {
+  try {
+    const { items, outletId, discounts = [] } = req.body;
+
+    // Validate input
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Items array is required'
+      });
+    }
+
+    // Get outlet for tax settings
+    let outlet;
+    if (outletId) {
+      outlet = await POSOutlet.findById(outletId);
+    }
+
+    // Default tax rates if outlet not found
+    const taxSettings = outlet?.taxSettings || {
+      defaultTaxRate: 18,
+      serviceTaxRate: 10,
+      gstRate: 18
+    };
+
+    // Calculate item totals
+    let subtotal = 0;
+    const calculatedItems = items.map(item => {
+      const itemTotal = item.price * item.quantity;
+      subtotal += itemTotal;
+      return {
+        ...item,
+        total: itemTotal
+      };
+    });
+
+    // Calculate discounts
+    let totalDiscount = 0;
+    discounts.forEach(discount => {
+      if (discount.type === 'percentage') {
+        totalDiscount += (subtotal * discount.value) / 100;
+      } else {
+        totalDiscount += discount.value;
+      }
+    });
+
+    // Calculate taxes on discounted amount
+    const taxableAmount = subtotal - totalDiscount;
+    const gstAmount = (taxableAmount * taxSettings.gstRate) / 100;
+    const serviceTax = (taxableAmount * taxSettings.serviceTaxRate) / 100;
+    const totalTax = gstAmount + serviceTax;
+
+    // Calculate final total
+    const grandTotal = taxableAmount + totalTax;
+
+    res.json({
+      success: true,
+      data: {
+        items: calculatedItems,
+        subtotal,
+        totalDiscount,
+        taxableAmount,
+        taxes: {
+          gstRate: taxSettings.gstRate,
+          gstAmount,
+          serviceTaxRate: taxSettings.serviceTaxRate,
+          serviceTax,
+          totalTax
+        },
+        grandTotal
+      }
+    });
+  } catch (error) {
+    console.error('Error calculating order totals:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// Calculate billing session totals
+export const calculateBillingTotals = async (req, res) => {
+  try {
+    const { session, splitPayments = [] } = req.body;
+
+    if (!session || !session.items) {
+      return res.status(400).json({
+        success: false,
+        message: 'Session with items is required'
+      });
+    }
+
+    // Calculate subtotal from items
+    const subtotal = session.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+    // Calculate item taxes
+    const totalItemTax = session.items.reduce((sum, item) => sum + ((item.tax || 0) * item.quantity), 0);
+
+    // Apply discounts
+    const totalDiscount = session.totalDiscount || 0;
+    const taxableAmount = subtotal - totalDiscount;
+
+    // Calculate grand total
+    const grandTotal = taxableAmount + totalItemTax;
+
+    // Calculate split payment totals
+    const totalSplitAmount = splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
+    const remainingAmount = grandTotal - totalSplitAmount;
+
+    res.json({
+      success: true,
+      data: {
+        subtotal,
+        totalDiscount,
+        taxableAmount,
+        totalItemTax,
+        grandTotal,
+        splitPayments: {
+          totalSplitAmount,
+          remainingAmount,
+          payments: splitPayments
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error calculating billing totals:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
 export const getSalesReport = async (req, res) => {
   try {
     const { outlet, startDate, endDate } = req.query;
@@ -474,5 +630,7 @@ export default {
   updateOrderStatus,
   processPayment,
   getDashboardStats,
-  getSalesReport
+  getSalesReport,
+  calculateOrderTotals,
+  calculateBillingTotals
 };

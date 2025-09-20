@@ -18,7 +18,7 @@ import {
   Edit,
   Calendar,
   Timer,
-  DollarSign,
+  IndianRupee,
   TrendingUp,
   Filter,
   Search,

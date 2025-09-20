@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { TrendingUp, TrendingDown, DollarSign, Target, Calendar, AlertTriangle } from 'lucide-react';
+import { TrendingUp, TrendingDown, IndianRupee, Target, Calendar, AlertTriangle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { currencyFormatter } from '@/utils/currencyUtils';
 
@@ -124,7 +124,7 @@ const RevenueDashboard: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardContent className="flex items-center p-6">
-            <DollarSign className="w-8 h-8 text-green-600 mr-4" />
+            <IndianRupee className="w-8 h-8 text-green-600 mr-4" />
             <div>
               <p className="text-sm font-medium text-gray-600">Total Revenue</p>
               <p className="text-2xl font-bold">{currencyFormatter(summary?.totalRevenue || 0)}</p>

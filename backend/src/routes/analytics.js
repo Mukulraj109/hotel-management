@@ -1,15 +1,17 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { 
+import {
   generateReport,
   getReportStatus,
   getCachedReport,
   clearReportCache,
+  clearDashboardCache,
   getReportTemplates,
   scheduleReport,
   exportReport,
   getDashboardMetrics,
   getRealtimeKPIs,
+  getStaffOperationalMetrics,
   forecastOccupancy,
   predictDemand,
   analyzeMarketTrends,
@@ -19,7 +21,11 @@ import {
   getCorporateBookings,
   getCorporatePayments,
   getBookingChannels,
-  getChannelROI
+  getChannelROI,
+  getRoomTypeProfitability,
+  getRevenueForecast,
+  getSmartRecommendations,
+  getProfitabilityMetrics
 } from '../controllers/analyticsController.js';
 
 const router = express.Router();
@@ -35,12 +41,14 @@ router.get('/reports/cached/:cacheKey', authorize(['admin', 'manager']), getCach
 // Report management
 router.get('/reports/templates', authorize(['admin', 'manager']), getReportTemplates);
 router.delete('/reports/cache/:reportType?', authorize(['admin']), clearReportCache);
+router.delete('/dashboard/cache/:cacheKey?', authorize(['admin']), clearDashboardCache);
 router.post('/reports/schedule', authorize(['admin']), scheduleReport);
 router.get('/reports/export/:reportId/:format', authorize(['admin', 'manager']), exportReport);
 
 // Dashboard and real-time metrics
-router.get('/dashboard/metrics', authorize(['admin', 'manager']), getDashboardMetrics);
+router.get('/dashboard/metrics', authorize(['admin', 'manager', 'staff']), getDashboardMetrics);
 router.get('/kpis/realtime', authorize(['admin', 'manager', 'staff']), getRealtimeKPIs);
+router.get('/staff/operational', authorize(['staff']), getStaffOperationalMetrics);
 
 // Advanced analytics endpoints
 router.get('/reports/executive-summary', authorize(['admin']), (req, res, next) => {
@@ -150,5 +158,11 @@ router.post('/corporate-payments', authorize(['admin', 'manager']), getCorporate
 // Booking Channel Analytics Routes
 router.post('/booking-channels', authorize(['admin', 'manager']), getBookingChannels);
 router.post('/booking-channels/roi', authorize(['admin', 'manager']), getChannelROI);
+
+// Enhanced Analytics Endpoints for Profitability Dashboard
+router.get('/room-type-profitability', authorize(['admin', 'manager']), getRoomTypeProfitability);
+router.get('/revenue-forecast', authorize(['admin', 'manager']), getRevenueForecast);
+router.get('/smart-recommendations', authorize(['admin', 'manager']), getSmartRecommendations);
+router.get('/profitability-metrics', authorize(['admin', 'manager']), getProfitabilityMetrics);
 
 export default router;

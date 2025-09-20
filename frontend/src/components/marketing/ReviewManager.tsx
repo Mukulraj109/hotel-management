@@ -122,21 +122,21 @@ const ReviewManager: React.FC = () => {
 
   const filteredReviews = reviews.filter(review => {
     // Tab filtering
-    if (activeTab === 'pending' && review.moderation.status !== 'pending') return false;
-    if (activeTab === 'approved' && review.moderation.status !== 'approved') return false;
-    if (activeTab === 'rejected' && review.moderation.status !== 'rejected') return false;
-    if (activeTab === 'flagged' && review.moderation.status !== 'flagged') return false;
+    if (activeTab === 'pending' && (!review.moderation || review.moderation.status !== 'pending')) return false;
+    if (activeTab === 'approved' && (!review.moderation || review.moderation.status !== 'approved')) return false;
+    if (activeTab === 'rejected' && (!review.moderation || review.moderation.status !== 'rejected')) return false;
+    if (activeTab === 'flagged' && (!review.moderation || review.moderation.status !== 'flagged')) return false;
 
     // Status filtering
-    if (filterStatus !== 'all' && review.moderation.status !== filterStatus) return false;
+    if (filterStatus !== 'all' && (!review.moderation || review.moderation.status !== filterStatus)) return false;
 
     // Sentiment filtering
-    if (filterSentiment !== 'all' && review.sentiment.label !== filterSentiment) return false;
+    if (filterSentiment !== 'all' && (!review.sentiment || review.sentiment.label !== filterSentiment)) return false;
 
     // Search filtering
-    if (searchTerm && !review.content.title?.toLowerCase().includes(searchTerm.toLowerCase()) &&
-        !review.content.review?.toLowerCase().includes(searchTerm.toLowerCase()) &&
-        !review.guest.name.toLowerCase().includes(searchTerm.toLowerCase())) {
+    if (searchTerm && !review.content?.title?.toLowerCase().includes(searchTerm.toLowerCase()) &&
+        !review.content?.review?.toLowerCase().includes(searchTerm.toLowerCase()) &&
+        !review.guest?.name?.toLowerCase().includes(searchTerm.toLowerCase())) {
       return false;
     }
 
@@ -177,7 +177,7 @@ const ReviewManager: React.FC = () => {
             <div>
               <p className="text-sm font-medium text-gray-600">Approved</p>
               <p className="text-2xl font-bold">
-                {reviews.filter(r => r.moderation.status === 'approved').length}
+                {reviews.filter(r => r && r.moderation && r.moderation.status === 'approved').length}
               </p>
             </div>
           </CardContent>
@@ -189,7 +189,7 @@ const ReviewManager: React.FC = () => {
             <div>
               <p className="text-sm font-medium text-gray-600">Pending</p>
               <p className="text-2xl font-bold">
-                {reviews.filter(r => r.moderation.status === 'pending').length}
+                {reviews.filter(r => r && r.moderation && r.moderation.status === 'pending').length}
               </p>
             </div>
           </CardContent>
@@ -202,7 +202,7 @@ const ReviewManager: React.FC = () => {
               <p className="text-sm font-medium text-gray-600">Avg Rating</p>
               <p className="text-2xl font-bold">
                 {reviews.length > 0 
-                  ? (reviews.reduce((sum, r) => sum + r.content.rating, 0) / reviews.length).toFixed(1)
+                  ? (reviews.reduce((sum, r) => sum + (r.content?.rating || 0), 0) / reviews.filter(r => r.content?.rating).length).toFixed(1)
                   : '0'
                 }
               </p>
@@ -283,7 +283,7 @@ const ReviewManager: React.FC = () => {
           ) : (
             <div className="grid gap-4">
               {filteredReviews.map((review) => {
-                const SentimentIcon = getSentimentIcon(review.sentiment.label);
+                const SentimentIcon = getSentimentIcon(review.sentiment?.label || 'neutral');
                 return (
                   <Card key={review._id} className="hover:shadow-lg transition-shadow">
                     <CardHeader>
@@ -292,41 +292,41 @@ const ReviewManager: React.FC = () => {
                           <div className="flex-shrink-0">
                             <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
                               <span className="text-lg font-semibold text-gray-600">
-                                {review.guest.name.charAt(0).toUpperCase()}
+                                {(review.guest?.name || 'U').charAt(0).toUpperCase()}
                               </span>
                             </div>
                           </div>
                           <div className="flex-1">
                             <div className="flex items-center space-x-2 mb-1">
-                              <h3 className="text-lg font-semibold">{review.guest.name}</h3>
-                              {review.guest.verified && (
+                              <h3 className="text-lg font-semibold">{review.guest?.name || 'Unknown Guest'}</h3>
+                              {review.guest?.verified && (
                                 <Badge variant="secondary" className="text-xs">Verified</Badge>
                               )}
                             </div>
                             <div className="flex items-center space-x-2 mb-2">
                               <div className="flex items-center">
-                                {renderStars(review.content.rating)}
+                                {renderStars(review.content?.rating || 0)}
                               </div>
                               <span className="text-sm text-gray-600">
-                                {review.content.rating}/5
+                                {review.content?.rating || 0}/5
                               </span>
                             </div>
-                            {review.content.title && (
+                            {review.content?.title && (
                               <h4 className="font-medium text-gray-900 mb-1">{review.content.title}</h4>
                             )}
-                            {review.content.review && (
+                            {review.content?.review && (
                               <p className="text-gray-600 text-sm line-clamp-2">{review.content.review}</p>
                             )}
                             <div className="flex items-center space-x-2 mt-2">
-                              <Badge className={getStatusColor(review.moderation.status)}>
-                                {review.moderation.status}
+                              <Badge className={getStatusColor(review.moderation?.status || 'unknown')}>
+                                {review.moderation?.status || 'unknown'}
                               </Badge>
-                              <Badge className={getSentimentColor(review.sentiment.label)}>
+                              <Badge className={getSentimentColor(review.sentiment?.label || 'neutral')}>
                                 <SentimentIcon className="w-3 h-3 mr-1" />
-                                {review.sentiment.label}
+                                {review.sentiment?.label || 'neutral'}
                               </Badge>
                               <span className="text-xs text-gray-500">
-                                Stayed: {new Date(review.content.stayDate).toLocaleDateString()}
+                                Stayed: {review.content?.stayDate ? new Date(review.content.stayDate).toLocaleDateString() : 'Unknown'}
                               </span>
                             </div>
                           </div>
@@ -340,7 +340,7 @@ const ReviewManager: React.FC = () => {
                             <MessageSquare className="w-4 h-4" />
                             Respond
                           </Button>
-                          {review.moderation.status === 'pending' && (
+                          {review.moderation?.status === 'pending' && (
                             <>
                               <Button
                                 size="sm"
@@ -384,15 +384,15 @@ const ReviewManager: React.FC = () => {
               <div className="bg-gray-50 p-4 rounded-lg">
                 <h4 className="font-medium mb-2">Original Review:</h4>
                 <div className="flex items-center space-x-2 mb-2">
-                  <span className="font-medium">{selectedReview.guest.name}</span>
+                  <span className="font-medium">{selectedReview.guest?.name || 'Unknown Guest'}</span>
                   <div className="flex items-center">
-                    {renderStars(selectedReview.content.rating)}
+                    {renderStars(selectedReview.content?.rating || 0)}
                   </div>
                 </div>
-                {selectedReview.content.title && (
+                {selectedReview.content?.title && (
                   <p className="font-medium mb-1">{selectedReview.content.title}</p>
                 )}
-                {selectedReview.content.review && (
+                {selectedReview.content?.review && (
                   <p className="text-gray-600">{selectedReview.content.review}</p>
                 )}
               </div>

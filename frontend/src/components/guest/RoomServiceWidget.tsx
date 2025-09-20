@@ -6,7 +6,7 @@ import {
   Tv,
   Bath,
   ShoppingCart,
-  DollarSign,
+  IndianRupee,
   Clock,
   CheckCircle,
   AlertTriangle,
@@ -342,7 +342,7 @@ export function RoomServiceWidget({
             <Card className="p-4 bg-blue-50 border-blue-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center">
-                  <DollarSign className="w-5 h-5 text-blue-600 mr-2" />
+                  <IndianRupee className="w-5 h-5 text-blue-600 mr-2" />
                   <div>
                     <h3 className="font-semibold text-blue-900">Room Service Charges</h3>
                     <p className="text-sm text-blue-700">

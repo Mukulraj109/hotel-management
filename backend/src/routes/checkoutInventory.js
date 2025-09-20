@@ -1,7 +1,7 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import CheckoutInventory from '../models/CheckoutInventory.js';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
@@ -74,7 +74,7 @@ router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   const booking = await Booking.findById(bookingId);
   if (!booking) {
     console.log('DEBUG: Booking not found:', bookingId);
-    throw new AppError('Booking not found', 404);
+    throw new ApplicationError('Booking not found', 404);
   }
 
   console.log('DEBUG: Booking found:', {
@@ -85,18 +85,18 @@ router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
 
   if (booking.status !== 'checked_in') {
     console.log('DEBUG: Invalid booking status:', booking.status);
-    throw new AppError('Booking must be checked in to perform inventory check', 400);
+    throw new ApplicationError('Booking must be checked in to perform inventory check', 400);
   }
 
   // Verify room exists and belongs to the booking
   const room = await Room.findById(roomId);
   if (!room) {
-    throw new AppError('Room not found', 404);
+    throw new ApplicationError('Room not found', 404);
   }
 
   const bookingRoom = booking.rooms.find(r => r.roomId.toString() === roomId);
   if (!bookingRoom) {
-    throw new AppError('Room does not belong to this booking', 400);
+    throw new ApplicationError('Room does not belong to this booking', 400);
   }
 
   // Calculate total price for each item
@@ -242,7 +242,7 @@ router.get('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
     ]);
 
   if (!checkoutInventory) {
-    throw new AppError('Checkout inventory check not found', 404);
+    throw new ApplicationError('Checkout inventory check not found', 404);
   }
 
   res.status(200).json({
@@ -287,7 +287,7 @@ router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =>
 
   const checkoutInventory = await CheckoutInventory.findById(req.params.id);
   if (!checkoutInventory) {
-    throw new AppError('Checkout inventory check not found', 404);
+    throw new ApplicationError('Checkout inventory check not found', 404);
   }
 
   if (items) {
@@ -338,11 +338,11 @@ router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =>
 router.post('/:id/complete', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   const checkoutInventory = await CheckoutInventory.findById(req.params.id);
   if (!checkoutInventory) {
-    throw new AppError('Checkout inventory check not found', 404);
+    throw new ApplicationError('Checkout inventory check not found', 404);
   }
 
   if (checkoutInventory.status !== 'pending') {
-    throw new AppError('Only pending inventory checks can be marked as completed', 400);
+    throw new ApplicationError('Only pending inventory checks can be marked as completed', 400);
   }
 
   // Update status to completed
@@ -399,11 +399,11 @@ router.post('/:id/payment', authorize('staff', 'admin'), catchAsync(async (req, 
 
   const checkoutInventory = await CheckoutInventory.findById(req.params.id);
   if (!checkoutInventory) {
-    throw new AppError('Checkout inventory check not found', 404);
+    throw new ApplicationError('Checkout inventory check not found', 404);
   }
 
   if (checkoutInventory.paymentStatus === 'paid') {
-    throw new AppError('Payment already processed', 400);
+    throw new ApplicationError('Payment already processed', 400);
   }
 
   // Update payment details
@@ -487,7 +487,7 @@ router.get('/booking/:bookingId', authorize('staff', 'admin'), catchAsync(async 
   const checkoutInventory = await CheckoutInventory.findByBooking(req.params.bookingId);
 
   if (!checkoutInventory) {
-    throw new AppError('Checkout inventory check not found for this booking', 404);
+    throw new ApplicationError('Checkout inventory check not found for this booking', 404);
   }
 
   res.status(200).json({

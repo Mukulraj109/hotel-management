@@ -100,6 +100,45 @@ const meetUpRequestSchema = new mongoose.Schema({
     isRequired: {
       type: Boolean,
       default: false
+    },
+    equipment: [{
+      type: String,
+      enum: ['projector', 'whiteboard', 'flipchart', 'sound_system', 'video_conference', 'laptop']
+    }],
+    services: [{
+      type: String,
+      enum: ['basic_refreshments', 'business_lunch', 'welcome_drinks', 'stationery_kit', 'photographer', 'concierge_support']
+    }],
+    cost: {
+      baseRoom: { type: Number, default: 0 },
+      equipment: { type: Number, default: 0 },
+      services: { type: Number, default: 0 },
+      subtotal: { type: Number, default: 0 },
+      tax: { type: Number, default: 0 },
+      total: { type: Number, default: 0 },
+      currency: { type: String, default: 'INR' },
+      breakdown: {
+        room: {
+          cost: Number,
+          duration: Number
+        },
+        equipment: [{
+          id: String,
+          name: String,
+          cost: Number
+        }],
+        services: [{
+          id: String,
+          name: String,
+          cost: Number
+        }]
+      }
+    },
+    confirmedAt: Date,
+    status: {
+      type: String,
+      enum: ['pending', 'confirmed', 'cancelled'],
+      default: 'pending'
     }
   },
   participants: {
@@ -236,6 +275,25 @@ const meetUpRequestSchema = new mongoose.Schema({
       default: false
     },
     followUpSentAt: Date
+  },
+  // Staff supervision fields
+  assignedStaff: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'User',
+    index: true
+  },
+  supervisionStatus: {
+    type: String,
+    enum: ['not_required', 'assigned', 'in_progress', 'completed'],
+    default: 'not_required',
+    index: true
+  },
+  supervisionNotes: {
+    type: String,
+    maxlength: [500, 'Supervision notes cannot exceed 500 characters']
+  },
+  supervisionCompletedAt: {
+    type: Date
   }
 }, {
   timestamps: true,
@@ -251,6 +309,12 @@ meetUpRequestSchema.index({ proposedDate: 1, status: 1 });
 meetUpRequestSchema.index({ type: 1, status: 1 });
 meetUpRequestSchema.index({ 'location.type': 1 });
 meetUpRequestSchema.index({ createdAt: -1 });
+// Staff supervision indexes
+meetUpRequestSchema.index({ assignedStaff: 1, supervisionStatus: 1 });
+meetUpRequestSchema.index({ hotelId: 1, supervisionStatus: 1 });
+meetUpRequestSchema.index({ hotelId: 1, assignedStaff: 1 });
+meetUpRequestSchema.index({ 'safety.hotelStaffPresent': 1 });
+meetUpRequestSchema.index({ 'safety.publicLocation': 1 });
 
 // Virtuals
 meetUpRequestSchema.virtual('isUpcoming').get(function() {
@@ -275,6 +339,21 @@ meetUpRequestSchema.virtual('participantCount').get(function() {
 
 meetUpRequestSchema.virtual('hasAvailableSpots').get(function() {
   return this.participants.confirmedParticipants.length < this.participants.maxParticipants;
+});
+
+meetUpRequestSchema.virtual('requiresSupervision').get(function() {
+  return this.safety?.hotelStaffPresent ||
+         !this.safety?.publicLocation ||
+         this.participants.maxParticipants > 4 ||
+         (this.location.type === 'other' || this.location.type === 'outdoor');
+});
+
+meetUpRequestSchema.virtual('isSupervisionPending').get(function() {
+  return this.supervisionStatus === 'assigned' || this.supervisionStatus === 'in_progress';
+});
+
+meetUpRequestSchema.virtual('isSupervisionCompleted').get(function() {
+  return this.supervisionStatus === 'completed';
 });
 
 // Static methods
@@ -399,6 +478,76 @@ meetUpRequestSchema.methods.suggestAlternative = function(date, time) {
   this.response.alternativeDate = date;
   this.response.alternativeTime = time;
   return this.save();
+};
+
+// Staff supervision methods
+meetUpRequestSchema.methods.assignStaffSupervision = function(staffId, notes = '') {
+  this.assignedStaff = staffId;
+  this.supervisionStatus = 'assigned';
+  this.supervisionNotes = notes;
+  return this.save();
+};
+
+meetUpRequestSchema.methods.updateSupervisionStatus = function(status, notes = '') {
+  this.supervisionStatus = status;
+  if (notes) this.supervisionNotes = notes;
+  if (status === 'completed') {
+    this.supervisionCompletedAt = new Date();
+  }
+  return this.save();
+};
+
+meetUpRequestSchema.methods.getSupervisionPriority = function() {
+  let priorityScore = 0;
+  const factors = [];
+
+  if (!this.safety?.publicLocation) {
+    priorityScore += 3;
+    factors.push('Private location');
+  }
+  if (this.safety?.hotelStaffPresent) {
+    priorityScore += 2;
+    factors.push('Staff presence required');
+  }
+  if (!this.safety?.verifiedOnly) {
+    priorityScore += 1;
+    factors.push('Unverified users allowed');
+  }
+
+  const meetUpHour = new Date(this.proposedDate).getHours();
+  if (meetUpHour < 6 || meetUpHour > 22) {
+    priorityScore += 2;
+    factors.push('Late/early hours');
+  }
+
+  if (this.participants.maxParticipants > 4) {
+    priorityScore += 1;
+    factors.push('Large group');
+  }
+
+  if (this.location.type === 'other' || this.location.type === 'outdoor') {
+    priorityScore += 1;
+    factors.push('Non-standard location');
+  }
+
+  let priority, label;
+  if (priorityScore >= 5) {
+    priority = 'high';
+    label = 'High Priority';
+  } else if (priorityScore >= 2) {
+    priority = 'medium';
+    label = 'Medium Priority';
+  } else {
+    priority = 'low';
+    label = 'Low Priority';
+  }
+
+  return {
+    priority,
+    label,
+    score: priorityScore,
+    factors
+  };
 };
 
 // Pre-save middleware

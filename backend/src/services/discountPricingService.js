@@ -4,7 +4,7 @@ import MarketSegment from '../models/MarketSegment.js';
 import JobType from '../models/JobType.js';
 import User from '../models/User.js';
 import AuditLog from '../models/AuditLog.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import mongoose from 'mongoose';
 
 class DiscountPricingService {
@@ -37,7 +37,7 @@ class DiscountPricingService {
     try {
       const discount = await SpecialDiscount.findById(discountId);
       if (!discount) {
-        throw new AppError('Special discount not found', 404);
+        throw new ApplicationError('Special discount not found', 404);
       }
 
       Object.assign(discount, updateData);
@@ -102,7 +102,7 @@ class DiscountPricingService {
     try {
       const discount = await SpecialDiscount.findById(discountId);
       if (!discount) {
-        throw new AppError('Special discount not found', 404);
+        throw new ApplicationError('Special discount not found', 404);
       }
 
       discount.isActive = false;
@@ -152,7 +152,7 @@ class DiscountPricingService {
     try {
       const pricing = await DynamicPricing.findById(pricingId);
       if (!pricing) {
-        throw new AppError('Dynamic pricing rule not found', 404);
+        throw new ApplicationError('Dynamic pricing rule not found', 404);
       }
 
       Object.assign(pricing, updateData);
@@ -207,11 +207,11 @@ class DiscountPricingService {
     try {
       const pricing = await DynamicPricing.findById(pricingId);
       if (!pricing) {
-        throw new AppError('Dynamic pricing rule not found', 404);
+        throw new ApplicationError('Dynamic pricing rule not found', 404);
       }
 
       if (!pricing.isApplicable(context)) {
-        throw new AppError('Pricing rule is not applicable to the given context', 400);
+        throw new ApplicationError('Pricing rule is not applicable to the given context', 400);
       }
 
       return pricing.calculatePrice(context);
@@ -225,7 +225,7 @@ class DiscountPricingService {
     try {
       const pricing = await DynamicPricing.findById(pricingId);
       if (!pricing) {
-        throw new AppError('Dynamic pricing rule not found', 404);
+        throw new ApplicationError('Dynamic pricing rule not found', 404);
       }
 
       pricing.isActive = false;
@@ -275,7 +275,7 @@ class DiscountPricingService {
     try {
       const segment = await MarketSegment.findById(segmentId);
       if (!segment) {
-        throw new AppError('Market segment not found', 404);
+        throw new ApplicationError('Market segment not found', 404);
       }
 
       Object.assign(segment, updateData);
@@ -337,7 +337,7 @@ class DiscountPricingService {
     try {
       const segment = await MarketSegment.findById(segmentId);
       if (!segment) {
-        throw new AppError('Market segment not found', 404);
+        throw new ApplicationError('Market segment not found', 404);
       }
 
       segment.isActive = false;
@@ -387,7 +387,7 @@ class DiscountPricingService {
     try {
       const jobType = await JobType.findById(jobTypeId);
       if (!jobType) {
-        throw new AppError('Job type not found', 404);
+        throw new ApplicationError('Job type not found', 404);
       }
 
       Object.assign(jobType, updateData);
@@ -456,7 +456,7 @@ class DiscountPricingService {
     try {
       const jobType = await JobType.findById(jobTypeId);
       if (!jobType) {
-        throw new AppError('Job type not found', 404);
+        throw new ApplicationError('Job type not found', 404);
       }
 
       jobType.isActive = false;

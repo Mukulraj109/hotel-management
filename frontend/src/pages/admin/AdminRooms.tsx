@@ -1,9 +1,15 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAdminRooms, useRoomMetrics, useUpdateRoomStatus, useBulkUpdateStatus } from '../../hooks/useRooms';
+import { useBulkCheckIn, useBulkCheckOut, useScheduleHousekeeping, useRequestMaintenance, useUpdateRoomStatus as useWorkflowRoomStatus } from '../../hooks/useWorkflow';
 import { MetricCard, RefreshButton, ChartCard, BarChart } from '../../components/dashboard';
+import { WorkflowModal } from '../../components/admin/WorkflowModal';
+import { PredictiveAnalyticsDashboard } from '../../components/analytics/PredictiveAnalyticsDashboard';
+import { PerformanceBenchmarking } from '../../components/analytics/PerformanceBenchmarking';
 import { formatPercentage, formatCurrency } from '../../utils/dashboardUtils';
 import { Room } from '../../services/roomsService';
+import analyticsService, { ProfitabilityData } from '../../services/analyticsService';
+import toast from 'react-hot-toast';
 
 export default function AdminRooms() {
   const { user } = useAuth();
@@ -25,23 +31,30 @@ export default function AdminRooms() {
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'reconnecting'>('connected');
   const [changedRooms, setChangedRooms] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'compact'>('grid');
+
+  // Analytics data state
+  const [analyticsData, setAnalyticsData] = useState<ProfitabilityData | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
   
   // Room status modal states
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [selectedRoomForStatus, setSelectedRoomForStatus] = useState<Room | null>(null);
   
+  // Workflow modal states
+  const [showWorkflowModal, setShowWorkflowModal] = useState(false);
+  const [workflowType, setWorkflowType] = useState<'checkin' | 'checkout' | 'housekeeping' | 'maintenance' | 'status_update'>('checkin');
+  const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
+  
+  // Analytics view states
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [analyticsView, setAnalyticsView] = useState<'predictive' | 'benchmarking'>('predictive');
+  
   // Use user's hotel ID or fallback
-  const hotelId = user?.hotelId || '68afe8080c02fcbe30092b8e';
+  const hotelId = user?.hotelId || '68c7ab1242a357d06adbb2aa';
   
   // Helper function to get room status (computed or fallback to static)
   const getRoomStatus = (room: Room) => {
     const status = room.computedStatus || room.status;
-    console.log(`Room ${room.roomNumber} status:`, {
-      staticStatus: room.status,
-      computedStatus: room.computedStatus,
-      finalStatus: status,
-      hasBooking: !!room.currentBooking
-    });
     return status;
   };
   
@@ -51,7 +64,7 @@ export default function AdminRooms() {
     limit: 100, // Get more rooms for accurate metrics
     enabled: !!hotelId,
     refetchInterval: realTimeEnabled ? autoRefreshInterval : false,
-    staleTime: realTimeEnabled ? 90000 : 10 * 60 * 1000, // 90s when real-time, 10min otherwise
+    staleTime: 0, // Force fresh data on every request
   });
   
   // Disable separate metrics query to reduce API calls since we calculate from rooms data
@@ -63,22 +76,139 @@ export default function AdminRooms() {
   const updateRoomStatus = useUpdateRoomStatus();
   const bulkUpdateStatus = useBulkUpdateStatus();
   
-  const isLoading = roomsQuery.isLoading || metricsQuery.isLoading;
+  // Workflow mutation hooks
+  const bulkCheckIn = useBulkCheckIn();
+  const bulkCheckOut = useBulkCheckOut();
+  const scheduleHousekeeping = useScheduleHousekeeping();
+  const requestMaintenance = useRequestMaintenance();
+  const updateRoomStatusWorkflow = useWorkflowRoomStatus();
+
+  // Fetch analytics data
+  const fetchAnalyticsData = useCallback(async () => {
+    if (!hotelId) return;
+
+    console.log('🔍 Fetching analytics data for hotelId:', hotelId);
+    setAnalyticsLoading(true);
+    try {
+      const data = await analyticsService.getProfitabilityMetrics('30d');
+      console.log('📊 Analytics data received:', data);
+      setAnalyticsData(data);
+    } catch (error) {
+      console.error('❌ Failed to fetch analytics data:', error);
+      setAnalyticsData(null);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [hotelId]);
+
+  // Fetch analytics data on mount and when rooms data changes
+  useEffect(() => {
+    fetchAnalyticsData();
+  }, [fetchAnalyticsData, roomsQuery.dataUpdatedAt]);
+
+  // Workflow handlers
+  const handleWorkflowAction = (type: 'checkin' | 'checkout' | 'housekeeping' | 'maintenance' | 'status_update', roomIds?: string[]) => {
+    const rooms = roomIds || (selectedFloor ? 
+      roomsQuery.data?.rooms?.filter(room => room.floor === selectedFloor).map(room => room._id) || [] :
+      []
+    );
+    
+    setWorkflowType(type);
+    setSelectedRoomIds(rooms);
+    setShowWorkflowModal(true);
+  };
+
+  const handleWorkflowConfirm = async (data: any) => {
+    try {
+      switch (workflowType) {
+        case 'checkin':
+          await bulkCheckIn.mutateAsync({
+            roomIds: selectedRoomIds,
+            guestData: {
+              name: data.guestName,
+              email: data.email,
+              phone: data.phone,
+              checkInDate: data.checkInDate,
+              checkOutDate: data.checkOutDate,
+              specialRequests: data.specialRequests,
+            },
+            paymentMethod: data.paymentMethod,
+            notes: data.notes,
+          });
+          toast.success('Bulk check-in completed successfully!');
+          break;
+          
+        case 'checkout':
+          await bulkCheckOut.mutateAsync({
+            roomIds: selectedRoomIds,
+            checkoutTime: data.checkoutTime,
+            paymentStatus: data.paymentStatus,
+            notes: data.notes,
+          });
+          toast.success('Bulk check-out completed successfully!');
+          break;
+          
+        case 'housekeeping':
+          await scheduleHousekeeping.mutateAsync({
+            roomIds: selectedRoomIds,
+            floorId: selectedFloor || undefined,
+            priority: data.priority,
+            tasks: data.tasks,
+            estimatedDuration: data.estimatedDuration,
+            specialInstructions: data.specialInstructions,
+          });
+          toast.success('Housekeeping scheduled successfully!');
+          break;
+          
+        case 'maintenance':
+          await requestMaintenance.mutateAsync({
+            roomIds: selectedRoomIds,
+            floorId: selectedFloor || undefined,
+            issueType: data.issueType,
+            priority: data.priority,
+            description: data.description,
+            estimatedCost: data.estimatedCost,
+            scheduledDate: data.scheduledDate,
+          });
+          toast.success('Maintenance request submitted successfully!');
+          break;
+          
+        case 'status_update':
+          await updateRoomStatusWorkflow.mutateAsync({
+            roomIds: selectedRoomIds,
+            newStatus: data.newStatus,
+            reason: data.reason,
+            notes: data.notes,
+          });
+          toast.success('Room status updated successfully!');
+          break;
+      }
+      
+      setShowWorkflowModal(false);
+    } catch (error) {
+      console.error('Workflow action failed:', error);
+      toast.error('Failed to complete workflow action. Please try again.');
+    }
+  };
+  
+  const isLoading = roomsQuery.isLoading || metricsQuery.isLoading || analyticsLoading;
+
+  console.log('🔄 Loading states:', {
+    roomsQueryLoading: roomsQuery.isLoading,
+    metricsQueryLoading: metricsQuery.isLoading,
+    analyticsLoading,
+    isLoading,
+    hasAnalyticsData: !!analyticsData,
+    analyticsDataPreview: analyticsData ? {
+      averageDailyRate: analyticsData.averageDailyRate,
+      revenuePAR: analyticsData.revenuePAR
+    } : null
+  });
   const error = roomsQuery.error || metricsQuery.error;
 
   // Filter rooms based on selected filters
   const filteredRooms = useMemo(() => {
     let rooms = roomsQuery.data?.rooms || [];
-    console.log('AdminRooms - Rooms data:', {
-      totalRooms: rooms.length,
-      rooms: rooms.map(room => ({
-        id: room._id,
-        roomNumber: room.roomNumber,
-        status: room.status,
-        computedStatus: room.computedStatus,
-        currentBooking: room.currentBooking
-      }))
-    });
     if (statusFilter !== 'all') {
       rooms = rooms.filter(room => getRoomStatus(room) === statusFilter);
     }
@@ -166,8 +296,17 @@ export default function AdminRooms() {
   // Calculate metrics from rooms data if metrics API doesn't exist
   const calculateMetrics = () => {
     const rooms = roomsQuery.data?.rooms || [];
-    if (rooms.length === 0) return null;
-    
+    console.log('📊 calculateMetrics - Input rooms:', {
+      roomsLength: rooms.length,
+      hasRoomsData: !!roomsQuery.data?.rooms,
+      queryData: roomsQuery.data
+    });
+
+    if (rooms.length === 0) {
+      console.log('⚠️ No rooms data available for metrics calculation');
+      return null;
+    }
+
     const totalRooms = rooms.length;
     const occupiedRooms = rooms.filter(r => getRoomStatus(r) === 'occupied').length;
     const reservedRooms = rooms.filter(r => getRoomStatus(r) === 'reserved').length;
@@ -175,8 +314,8 @@ export default function AdminRooms() {
     const maintenanceRooms = rooms.filter(r => getRoomStatus(r) === 'maintenance').length;
     const outOfOrderRooms = rooms.filter(r => getRoomStatus(r) === 'out_of_order').length;
     const dirtyRooms = rooms.filter(r => getRoomStatus(r) === 'dirty').length;
-    
-    return {
+
+    const metrics = {
       totalRooms,
       occupiedRooms,
       reservedRooms,
@@ -184,9 +323,12 @@ export default function AdminRooms() {
       maintenanceRooms,
       outOfOrderRooms,
       dirtyRooms,
-      occupancyRate: totalRooms > 0 ? ((occupiedRooms + reservedRooms) / totalRooms) * 100 : 0,
-      availabilityRate: totalRooms > 0 ? (availableRooms / totalRooms) * 100 : 0,
+      occupancyRate: totalRooms > 0 ? Math.round(((occupiedRooms + reservedRooms) / totalRooms) * 100 * 10) / 10 : 0,
+      availabilityRate: totalRooms > 0 ? Math.round((availableRooms / totalRooms) * 100 * 10) / 10 : 0,
     };
+
+    console.log('📊 calculateMetrics - Result:', metrics);
+    return metrics;
   };
 
   // Always use calculated metrics from real-time rooms data for consistency
@@ -195,12 +337,23 @@ export default function AdminRooms() {
   // Calculate floor-wise distribution
   const calculateFloorData = () => {
     const rooms = roomsQuery.data?.rooms || [];
-    if (rooms.length === 0) return [];
-    
+    console.log('🏨 calculateFloorData - Total rooms received:', rooms.length);
+    console.log('🏨 calculateFloorData - Hotel ID being used:', hotelId);
+    console.log('🏨 calculateFloorData - roomsQuery.data:', roomsQuery.data);
+    console.log('🏨 calculateFloorData - roomsQuery.isLoading:', roomsQuery.isLoading);
+    console.log('🏨 calculateFloorData - roomsQuery.error:', roomsQuery.error);
+
+    if (rooms.length === 0) {
+      console.log('🏨 calculateFloorData - No rooms found, returning empty array');
+      return [];
+    }
+
     const floorMap = new Map();
-    
+
     rooms.forEach(room => {
       const floor = room.floor;
+      console.log(`🏨 Processing room ${room.roomNumber} on floor ${floor} with status ${room.status}`);
+
       if (!floorMap.has(floor)) {
         floorMap.set(floor, {
           floor,
@@ -212,10 +365,10 @@ export default function AdminRooms() {
           dirty: 0,
         });
       }
-      
+
       const floorData = floorMap.get(floor);
       floorData.totalRooms++;
-      
+
       const roomStatus = getRoomStatus(room);
       switch (roomStatus) {
         case 'occupied':
@@ -238,26 +391,36 @@ export default function AdminRooms() {
           break;
       }
     });
-    
+
     // Convert to array and sort by floor number
-    return Array.from(floorMap.values()).sort((a, b) => a.floor - b.floor);
+    const result = Array.from(floorMap.values()).sort((a, b) => a.floor - b.floor);
+    console.log('🏨 calculateFloorData - Final floor data:', result);
+    return result;
   };
 
   const floorData = calculateFloorData();
+  
+  // Debug logging for floorData
+  console.log('🏨 Final floorData:', floorData);
+  console.log('🏨 floorData length:', floorData.length);
   
   // Throttled refresh to prevent API spam
   const [lastRefreshTime, setLastRefreshTime] = useState(0);
   const handleRefresh = () => {
     const now = Date.now();
-    // Throttle refresh to once per 10 seconds
-    if (now - lastRefreshTime < 10000) {
-      console.log('Refresh throttled - please wait');
+    // Throttle refresh to once per 5 seconds
+    if (now - lastRefreshTime < 5000) {
+      console.log('⏱️ Refresh throttled, please wait...');
       return;
     }
-    
+
+    console.log('🔄 Manual refresh triggered');
     setLastRefreshTime(now);
     setRefreshKey(prev => prev + 1);
+    
+    // Force invalidate and refetch
     roomsQuery.refetch();
+    fetchAnalyticsData();
     // Don't refetch metrics since it's disabled and we calculate from rooms data
   };
 
@@ -424,6 +587,18 @@ export default function AdminRooms() {
           <p className="text-gray-600 mt-1 text-sm sm:text-base">Manage and monitor all hotel rooms</p>
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
+          {/* Analytics Toggle */}
+          <button
+            onClick={() => setShowAnalytics(!showAnalytics)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              showAnalytics 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            {showAnalytics ? 'Hide Analytics' : 'Show Analytics'}
+          </button>
+          
           {/* Real-time Controls */}
           <div className="flex items-center space-x-2 bg-gray-50 rounded-lg p-2">
             {/* Connection Status Indicator */}
@@ -772,33 +947,120 @@ export default function AdminRooms() {
       {/* Phase 2: Floor-wise Distribution Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Floor Distribution Bar Chart */}
-        
         <ChartCard
           title="Rooms by Floor"
           subtitle="Total room count per floor"
           loading={isLoading}
-          error={(roomsQuery.error as any )?.message|| undefined}
+          error={(roomsQuery.error as any)?.message || undefined}
           onRefresh={() => roomsQuery.refetch()}
           height="400px"
         >
-          <BarChart
-            data={floorData.map(floor => ({
-              floor: `Floor ${floor.floor}`,
-              totalRooms: floor.totalRooms,
-              occupied: floor.occupied,
-              available: floor.available,
-              maintenance: floor.maintenance,
-              outOfOrder: floor.outOfOrder,
-            }))}
-            xDataKey="floor"
-            bars={[
-              { dataKey: 'totalRooms', name: 'Total Rooms', color: '#3b82f6' },
-            ]}
-            height={350}
-            showGrid={true}
-            showLegend={false}
-            showTooltip={true}
-          />
+          {floorData.length > 0 ? (
+            <div className="w-full h-[350px] p-4">
+              {/* Custom Chart Header */}
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Rooms by Floor</h3>
+                <div className="text-sm text-gray-600">Total: {floorData.reduce((sum, floor) => sum + floor.totalRooms, 0)} rooms</div>
+              </div>
+              
+              {/* Custom Chart */}
+              <div className="w-full h-full flex items-end justify-between px-4 pb-8">
+                {floorData.map((floor, index) => {
+                  const maxRooms = Math.max(...floorData.map(f => f.totalRooms));
+                  const barHeight = (floor.totalRooms / maxRooms) * 200; // Max height of 200px
+                  
+                  return (
+                    <div key={floor.floor} className="flex flex-col items-center group">
+                      {/* Tooltip */}
+                      <div className="absolute -top-12 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                        Floor {floor.floor}: {floor.totalRooms} rooms
+                      </div>
+                      
+                      {/* Bar */}
+                      <div 
+                        className="w-8 bg-blue-500 hover:bg-blue-600 transition-colors cursor-pointer rounded-t"
+                        style={{ height: `${barHeight}px` }}
+                        onClick={() => setSelectedFloor(floor.floor)}
+                        title={`Floor ${floor.floor}: ${floor.totalRooms} rooms`}
+                      />
+                      
+                      {/* Floor Label */}
+                      <span className="text-xs text-gray-600 mt-2 transform -rotate-45 origin-center">
+                        F{floor.floor}
+                      </span>
+                      
+                      {/* Room Count */}
+                      <span className="text-xs font-medium text-gray-800 mt-1">
+                        {floor.totalRooms}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              
+              {/* Quick Actions */}
+              <div className="mt-4 flex justify-center space-x-2">
+                <button
+                  onClick={() => handleWorkflowAction('checkin')}
+                  className="px-3 py-1 bg-green-500 text-white text-xs rounded hover:bg-green-600 transition-colors"
+                >
+                  Bulk Check-in
+                </button>
+                <button
+                  onClick={() => handleWorkflowAction('checkout')}
+                  className="px-3 py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition-colors"
+                >
+                  Bulk Check-out
+                </button>
+                <button
+                  onClick={() => handleWorkflowAction('status_update')}
+                  className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600 transition-colors"
+                >
+                  Update Status
+                </button>
+              </div>
+              
+              {/* Y-axis labels */}
+              <div className="absolute left-2 top-16 bottom-8 flex flex-col justify-between text-xs text-gray-500">
+                <span>12</span>
+                <span>9</span>
+                <span>6</span>
+                <span>3</span>
+                <span>0</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-center p-8">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No Room Data Available</h3>
+              <p className="text-gray-500 mb-4">Unable to load room data for the selected hotel.</p>
+              <div className="space-y-2">
+                <button
+                  onClick={() => roomsQuery.refetch()}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Refresh Data
+                </button>
+                <button
+                  onClick={() => {
+                    console.log('🔍 Debug Info:');
+                    console.log('Hotel ID:', hotelId);
+                    console.log('Rooms Query Data:', roomsQuery.data);
+                    console.log('Rooms Query Loading:', roomsQuery.isLoading);
+                    console.log('Rooms Query Error:', roomsQuery.error);
+                    console.log('Floor Data:', floorData);
+                  }}
+                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+                >
+                  Debug Info
+                </button>
+              </div>
+            </div>
+          )}
         </ChartCard>
 
         {/* Floor Status Breakdown */}
@@ -807,11 +1069,9 @@ export default function AdminRooms() {
           subtitle={selectedFloor ? `Floor ${selectedFloor} details` : 'Select a floor to view details'}
           loading={isLoading}
           error={(roomsQuery.error as any)?.message}
-        
           onRefresh={() => roomsQuery.refetch()}
           height="400px"
         >
-          
           {selectedFloor ? (
             <div className="p-4">
               {(() => {
@@ -854,10 +1114,41 @@ export default function AdminRooms() {
                       })}
                     </div>
                     
-                    <div className="mt-6 pt-4 border-t">
+                    {/* Floor Actions */}
+                    <div className="mt-6 pt-4 border-t space-y-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => handleWorkflowAction('housekeeping')}
+                          className="px-3 py-2 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors"
+                        >
+                          Schedule Housekeeping
+                        </button>
+                        <button
+                          onClick={() => handleWorkflowAction('maintenance')}
+                          className="px-3 py-2 bg-orange-500 text-white text-sm rounded hover:bg-orange-600 transition-colors"
+                        >
+                          Request Maintenance
+                        </button>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => handleWorkflowAction('checkin')}
+                          className="px-3 py-2 bg-green-500 text-white text-sm rounded hover:bg-green-600 transition-colors"
+                        >
+                          Bulk Check-in
+                        </button>
+                        <button
+                          onClick={() => handleWorkflowAction('checkout')}
+                          className="px-3 py-2 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition-colors"
+                        >
+                          Bulk Check-out
+                        </button>
+                      </div>
+                      
                       <button
                         onClick={() => setSelectedFloor(null)}
-                        className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                        className="w-full text-blue-600 hover:text-blue-700 text-sm font-medium py-2"
                       >
                         ← Back to all floors
                       </button>
@@ -867,15 +1158,20 @@ export default function AdminRooms() {
               })()}
             </div>
           ) : (
-            <div className="flex items-center justify-center h-full">
-              <div className="text-center text-gray-500">
-                <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="flex flex-col items-center justify-center h-full text-center p-8">
+              <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4">
+                <svg className="w-8 h-8 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
                     d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                 </svg>
-                <p className="text-lg font-medium">Click on a floor bar</p>
-                <p className="text-sm">to see detailed room status breakdown</p>
               </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Select a Floor</h3>
+              <p className="text-gray-500 mb-4">Click on a floor bar in the chart to see detailed room status breakdown</p>
+              {floorData.length > 0 && (
+                <div className="text-sm text-gray-400">
+                  Available floors: {floorData.map(f => f.floor).join(', ')}
+                </div>
+              )}
             </div>
           )}
         </ChartCard>
@@ -921,12 +1217,8 @@ export default function AdminRooms() {
           {/* Average Daily Rate (ADR) */}
           <MetricCard
             title="Average Daily Rate"
-           type='currency'
-            value={formatCurrency(
-              roomsQuery.data?.rooms && roomsQuery.data.rooms.length > 0
-                ? roomsQuery.data.rooms.reduce((sum, room) => sum + (room.currentRate || 0), 0) / roomsQuery.data.rooms.length
-                : 0
-            )}
+            type='currency'
+            value={analyticsData?.averageDailyRate || 0}
             icon={
               <div className="w-6 h-6 flex items-center justify-center text-lg font-bold">
                 ₹
@@ -945,15 +1237,10 @@ export default function AdminRooms() {
           <MetricCard
             title="Revenue Per Available Room"
             type='currency'
-            value={formatCurrency(
-              roomsQuery.data?.rooms && roomsQuery.data.rooms.length > 0 && metrics
-                ? (roomsQuery.data.rooms.reduce((sum, room) => sum + (room.currentRate || 0), 0) / roomsQuery.data.rooms.length) * 
-                  (metrics.occupancyRate / 100)
-                : 0
-            )}
+            value={analyticsData?.revenuePAR || 0}
             icon={
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
               </svg>
             }
@@ -969,35 +1256,31 @@ export default function AdminRooms() {
           {/* Occupancy Rate */}
           <MetricCard
             title="Occupancy Rate"
-            type='currency'
-            value={formatPercentage(metrics?.occupancyRate || 0)}
+            type='percentage'
+            value={formatPercentage(analyticsData?.occupancyRate || 0)}
             icon={
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             }
             color="purple"
             loading={isLoading}
             trend={{
-              value: metrics?.occupancyRate || 0,
-              direction: (metrics?.occupancyRate || 0) > 70 ? 'up' : 'down',
+              value: analyticsData?.occupancyRate || 0,
+              direction: (analyticsData?.occupancyRate || 0) > 70 ? 'up' : 'down',
               label: 'target: 80%'
             }}
           />
 
-          {/* Total Revenue Potential */}
+          {/* Daily Revenue Progress */}
           <MetricCard
-            title="Daily Revenue Potential"
+            title="Daily Revenue Progress"
             type="percentage"
-            value={formatCurrency(
-              roomsQuery.data?.rooms && roomsQuery.data.rooms.length > 0
-                ? roomsQuery.data.rooms.reduce((sum, room) => sum + (room.currentRate || 0), 0)
-                : 0
-            )}
+            value={`${((analyticsData?.occupancyRate || 0) / 80 * 100).toFixed(1)}%`}
             icon={
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
               </svg>
             }
@@ -1010,21 +1293,38 @@ export default function AdminRooms() {
         <div className="mt-8">
           <h3 className="text-lg font-medium text-gray-900 mb-4">Revenue by Room Type</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {(() => {
-              const rooms = roomsQuery.data?.rooms || [];
-              const roomTypes = ['single', 'double', 'suite', 'deluxe'];
-              
-              return roomTypes.map(type => {
+            {analyticsData?.roomTypeProfitability?.map(roomType => (
+              <div key={roomType.roomType} className="bg-gray-50 rounded-lg p-4">
+                <div className="text-sm font-medium text-gray-900 capitalize mb-2">
+                  {roomType.roomType} Rooms
+                </div>
+                <div className="space-y-1">
+                  <div className="text-xs text-gray-600">
+                    {Math.round(roomType.occupancyRate)}% occupied ({roomType.roomCount} rooms)
+                  </div>
+                  <div className="text-sm font-medium text-gray-900">
+                    Avg Rate: {formatCurrency(roomType.averageRate)}
+                  </div>
+                  <div className="text-lg font-bold text-green-600">
+                    {formatCurrency(roomType.revenue)}
+                  </div>
+                  <div className="text-xs text-gray-500">daily revenue</div>
+                </div>
+              </div>
+            )) || (
+              // Fallback to room calculation if analytics data not available
+              ['single', 'double', 'suite', 'deluxe'].map(type => {
+                const rooms = roomsQuery.data?.rooms || [];
                 const typeRooms = rooms.filter(room => room.type === type);
                 const totalRooms = typeRooms.length;
                 const occupiedRooms = typeRooms.filter(room => getRoomStatus(room) === 'occupied').length;
-                const averageRate = totalRooms > 0 
-                  ? typeRooms.reduce((sum, room) => sum + (room.currentRate || 0), 0) / totalRooms 
+                const averageRate = totalRooms > 0
+                  ? typeRooms.reduce((sum, room) => sum + (room.currentRate || 0), 0) / totalRooms
                   : 0;
                 const dailyRevenue = occupiedRooms * averageRate;
-                
+
                 if (totalRooms === 0) return null;
-                
+
                 return (
                   <div key={type} className="bg-gray-50 rounded-lg p-4">
                     <div className="text-sm font-medium text-gray-900 capitalize mb-2">
@@ -1044,8 +1344,8 @@ export default function AdminRooms() {
                     </div>
                   </div>
                 );
-              }).filter(Boolean);
-            })()}
+              }).filter(Boolean)
+            )}
           </div>
         </div>
 
@@ -1090,6 +1390,50 @@ export default function AdminRooms() {
           </div>
         </div>
       </div>
+
+      {/* Analytics Section */}
+      {showAnalytics && (
+        <div className="space-y-6">
+          {/* Analytics View Toggle */}
+          <div className="flex justify-center">
+            <div className="bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => setAnalyticsView('predictive')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  analyticsView === 'predictive'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Predictive Analytics
+              </button>
+              <button
+                onClick={() => setAnalyticsView('benchmarking')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  analyticsView === 'benchmarking'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Performance Benchmarking
+              </button>
+            </div>
+          </div>
+
+          {/* Analytics Content */}
+          {analyticsView === 'predictive' ? (
+            <PredictiveAnalyticsDashboard 
+              hotelId={hotelId} 
+              selectedFloor={selectedFloor || undefined}
+            />
+          ) : (
+            <PerformanceBenchmarking 
+              hotelId={hotelId} 
+              selectedFloor={selectedFloor || undefined}
+            />
+          )}
+        </div>
+      )}
 
       {/* Phase 4: Enhanced Room Status Overview */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden">
@@ -1657,6 +2001,17 @@ export default function AdminRooms() {
           </div>
         </div>
       )}
+
+      {/* Workflow Modal */}
+      <WorkflowModal
+        isOpen={showWorkflowModal}
+        onClose={() => setShowWorkflowModal(false)}
+        type={workflowType}
+        roomIds={selectedRoomIds}
+        floorId={selectedFloor || undefined}
+        onConfirm={handleWorkflowConfirm}
+        loading={bulkCheckIn.isPending || bulkCheckOut.isPending || scheduleHousekeeping.isPending || requestMaintenance.isPending || updateRoomStatusWorkflow.isPending}
+      />
 
     </div>
   );

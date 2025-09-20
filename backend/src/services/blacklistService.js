@@ -1,7 +1,7 @@
 import GuestBlacklist from '../models/GuestBlacklist.js';
 import User from '../models/User.js';
 import Booking from '../models/Booking.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import mongoose from 'mongoose';
 
 class BlacklistService {
@@ -13,7 +13,7 @@ class BlacklistService {
       const blacklistEntry = await GuestBlacklist.isGuestBlacklisted(guestId, hotelId);
       return blacklistEntry;
     } catch (error) {
-      throw new AppError('Failed to check guest blacklist status', 500);
+      throw new ApplicationError('Failed to check guest blacklist status', 500);
     }
   }
 
@@ -30,13 +30,13 @@ class BlacklistService {
       });
 
       if (existingBlacklist) {
-        throw new AppError('Guest is already blacklisted', 400);
+        throw new ApplicationError('Guest is already blacklisted', 400);
       }
 
       // Validate guest exists
       const guest = await User.findById(blacklistData.guestId);
       if (!guest || guest.role !== 'guest') {
-        throw new AppError('Guest not found', 404);
+        throw new ApplicationError('Guest not found', 404);
       }
 
       // Create blacklist entry
@@ -56,7 +56,7 @@ class BlacklistService {
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to add guest to blacklist', 500);
+      throw new ApplicationError('Failed to add guest to blacklist', 500);
     }
   }
 
@@ -68,7 +68,7 @@ class BlacklistService {
       const blacklistEntry = await GuestBlacklist.findById(blacklistId);
       
       if (!blacklistEntry) {
-        throw new AppError('Blacklist entry not found', 404);
+        throw new ApplicationError('Blacklist entry not found', 404);
       }
 
       blacklistEntry.isActive = false;
@@ -89,7 +89,7 @@ class BlacklistService {
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to remove guest from blacklist', 500);
+      throw new ApplicationError('Failed to remove guest from blacklist', 500);
     }
   }
 
@@ -105,7 +105,7 @@ class BlacklistService {
       );
 
       if (!blacklistEntry) {
-        throw new AppError('Blacklist entry not found', 404);
+        throw new ApplicationError('Blacklist entry not found', 404);
       }
 
       await blacklistEntry.populate([
@@ -118,7 +118,7 @@ class BlacklistService {
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to update blacklist entry', 500);
+      throw new ApplicationError('Failed to update blacklist entry', 500);
     }
   }
 
@@ -185,7 +185,7 @@ class BlacklistService {
         }
       };
     } catch (error) {
-      throw new AppError('Failed to fetch blacklist entries', 500);
+      throw new ApplicationError('Failed to fetch blacklist entries', 500);
     }
   }
 
@@ -197,7 +197,7 @@ class BlacklistService {
       const stats = await GuestBlacklist.getBlacklistStats(hotelId);
       return stats;
     } catch (error) {
-      throw new AppError('Failed to fetch blacklist statistics', 500);
+      throw new ApplicationError('Failed to fetch blacklist statistics', 500);
     }
   }
 
@@ -209,15 +209,15 @@ class BlacklistService {
       const blacklistEntry = await GuestBlacklist.findById(blacklistId);
       
       if (!blacklistEntry) {
-        throw new AppError('Blacklist entry not found', 404);
+        throw new ApplicationError('Blacklist entry not found', 404);
       }
 
       if (blacklistEntry.appealStatus === 'pending') {
-        throw new AppError('Appeal is already pending', 400);
+        throw new ApplicationError('Appeal is already pending', 400);
       }
 
       if (blacklistEntry.appealStatus === 'approved') {
-        throw new AppError('Appeal has already been approved', 400);
+        throw new ApplicationError('Appeal has already been approved', 400);
       }
 
       await blacklistEntry.submitAppeal(appealNotes);
@@ -231,7 +231,7 @@ class BlacklistService {
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to submit appeal', 500);
+      throw new ApplicationError('Failed to submit appeal', 500);
     }
   }
 
@@ -243,11 +243,11 @@ class BlacklistService {
       const blacklistEntry = await GuestBlacklist.findById(blacklistId);
       
       if (!blacklistEntry) {
-        throw new AppError('Blacklist entry not found', 404);
+        throw new ApplicationError('Blacklist entry not found', 404);
       }
 
       if (blacklistEntry.appealStatus !== 'pending') {
-        throw new AppError('No pending appeal found', 400);
+        throw new ApplicationError('No pending appeal found', 400);
       }
 
       await blacklistEntry.reviewAppeal(status, reviewedBy, notes);
@@ -262,7 +262,7 @@ class BlacklistService {
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to review appeal', 500);
+      throw new ApplicationError('Failed to review appeal', 500);
     }
   }
 
@@ -274,7 +274,7 @@ class BlacklistService {
       const expiredCount = await GuestBlacklist.autoExpireBlacklists(hotelId);
       return expiredCount;
     } catch (error) {
-      throw new AppError('Failed to auto-expire blacklists', 500);
+      throw new ApplicationError('Failed to auto-expire blacklists', 500);
     }
   }
 
@@ -286,7 +286,7 @@ class BlacklistService {
       const expiredBlacklists = await GuestBlacklist.getExpiredBlacklists(hotelId);
       return expiredBlacklists;
     } catch (error) {
-      throw new AppError('Failed to fetch expired blacklists', 500);
+      throw new ApplicationError('Failed to fetch expired blacklists', 500);
     }
   }
 
@@ -312,7 +312,7 @@ class BlacklistService {
         message: 'Guest is not blacklisted'
       };
     } catch (error) {
-      throw new AppError('Failed to validate booking against blacklist', 500);
+      throw new ApplicationError('Failed to validate booking against blacklist', 500);
     }
   }
 
@@ -332,7 +332,7 @@ class BlacklistService {
 
       return history;
     } catch (error) {
-      throw new AppError('Failed to fetch guest blacklist history', 500);
+      throw new ApplicationError('Failed to fetch guest blacklist history', 500);
     }
   }
 
@@ -351,7 +351,7 @@ class BlacklistService {
         modifiedCount: result.modifiedCount
       };
     } catch (error) {
-      throw new AppError('Failed to perform bulk update', 500);
+      throw new ApplicationError('Failed to perform bulk update', 500);
     }
   }
 
@@ -389,7 +389,7 @@ class BlacklistService {
 
       return blacklistEntries;
     } catch (error) {
-      throw new AppError('Failed to export blacklist data', 500);
+      throw new ApplicationError('Failed to export blacklist data', 500);
     }
   }
 }

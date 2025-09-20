@@ -23,37 +23,75 @@ class WebSocketService {
     // Create Socket.IO server
     this.io = new Server(server, {
       cors: {
-        origin: ["http://localhost:5173", "http://localhost:5174", "http://localhost:3000"],
-        credentials: true
+        origin: [
+          "http://localhost:5173",
+          "http://localhost:5174",
+          "http://localhost:3000",
+          "http://localhost:3001",
+          "http://localhost:4000",
+          "http://127.0.0.1:5173",
+          "http://127.0.0.1:5174",
+          "http://127.0.0.1:3000"
+        ],
+        credentials: true,
+        methods: ["GET", "POST"]
       },
-      path: '/ws/notifications'
+      path: '/ws/notifications',
+      transports: ['websocket', 'polling'],
+      allowEIO3: true
     });
 
     // Authentication middleware
     this.io.use((socket, next) => {
       try {
-        const token = socket.handshake.auth.token || socket.handshake.query.token;
-        
+        const token = socket.handshake.auth.token ||
+                     socket.handshake.query.token ||
+                     socket.handshake.headers.authorization?.replace('Bearer ', '');
+
+        logger.debug('WebSocket authentication attempt', {
+          hasToken: !!token,
+          tokenSource: token ? (socket.handshake.auth.token ? 'auth' :
+                               socket.handshake.query.token ? 'query' : 'header') : 'none',
+          userAgent: socket.handshake.headers['user-agent']
+        });
+
         if (!token) {
+          logger.warn('WebSocket authentication failed: no token provided');
           return next(new Error('Authentication token required'));
+        }
+
+        if (!process.env.JWT_SECRET) {
+          logger.error('WebSocket authentication failed: JWT_SECRET not configured');
+          return next(new Error('Server configuration error'));
         }
 
         // Verify JWT token
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+        if (!decoded.id) {
+          logger.warn('WebSocket authentication failed: invalid token payload', { decoded });
+          return next(new Error('Invalid token payload'));
+        }
+
         socket.userId = decoded.id;
-        socket.userRole = decoded.role;
+        socket.userRole = decoded.role || 'guest';
         socket.hotelId = decoded.hotelId;
-        
-        logger.info('WebSocket authentication successful', { 
-          userId: socket.userId, 
+
+        logger.info('WebSocket authentication successful', {
+          userId: socket.userId,
           role: socket.userRole,
-          hotelId: socket.hotelId 
+          hotelId: socket.hotelId,
+          socketId: socket.id
         });
-        
+
         next();
       } catch (error) {
-        logger.warn('WebSocket authentication failed', { error: error.message });
-        next(new Error('Authentication failed'));
+        logger.warn('WebSocket authentication failed', {
+          error: error.message,
+          hasToken: !!(socket.handshake.auth.token || socket.handshake.query.token),
+          hasJwtSecret: !!process.env.JWT_SECRET
+        });
+        next(new Error(`Authentication failed: ${error.message}`));
       }
     });
 

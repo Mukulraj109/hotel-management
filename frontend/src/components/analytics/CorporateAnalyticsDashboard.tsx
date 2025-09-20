@@ -9,7 +9,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import {
-  TrendingUp, TrendingDown, Building2, DollarSign, CreditCard, AlertTriangle,
+  TrendingUp, TrendingDown, Building2, IndianRupee, CreditCard, AlertTriangle,
   Clock, CheckCircle, Users, Calendar, Filter, Download, RefreshCw,
   AlertCircle, ChevronUp, ChevronDown, Star, Shield, Target, Zap,
   Mail, Phone, FileText, Eye, Edit, Send, Archive
@@ -302,7 +302,7 @@ const CorporateAnalyticsDashboard: React.FC = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Pending Dues</CardTitle>
-            <DollarSign className="w-4 h-4 text-gray-600" />
+            <IndianRupee className="w-4 h-4 text-gray-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(summary.totalPendingAmount)}</div>

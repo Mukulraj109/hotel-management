@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useQuery } from '@tanstack/react-query';
+import { staffAlertService } from '../services/staffAlertService';
 import {
   ClipboardCheck,
   Users,
+  Users2,
   Wrench,
   Package,
   BarChart3,
@@ -15,15 +18,22 @@ import {
   Bell,
   MessageSquare,
   CreditCard,
-  CheckSquare
+  CheckSquare,
+  ShoppingBag,
+  AlertTriangle
 } from 'lucide-react';
 
 const navigation = [
   { name: 'Dashboard', href: '/staff', icon: Home },
+  { name: 'Alert Center', href: '/staff/alerts', icon: Bell },
   { name: 'Daily Routine Check', href: '/staff/daily-routine-check', icon: CheckSquare },
+  { name: 'Meet-Up Supervision', href: '/staff/meetup-supervision', icon: Users2 },
   { name: 'Housekeeping', href: '/staff/housekeeping', icon: ClipboardCheck },
   { name: 'Maintenance', href: '/staff/maintenance', icon: Wrench },
   { name: 'Guest Services', href: '/staff/guest-services', icon: Users },
+  { name: 'Service Requests', href: '/staff/service-requests', icon: MessageSquare },
+  { name: 'Supply Requests', href: '/staff/supply-requests', icon: Package },
+  { name: 'Inventory Requests', href: '/staff/inventory-requests', icon: ShoppingBag },
   { name: 'Room Status', href: '/staff/rooms', icon: Users },
   { name: 'Inventory', href: '/staff/inventory', icon: Package },
   { name: 'Checkout Inventory', href: '/staff/checkout-inventory', icon: CreditCard },
@@ -35,6 +45,15 @@ export default function StaffLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Fetch alert summary for notification bell
+  const { data: alertSummary } = useQuery({
+    queryKey: ['staff-alerts-summary'],
+    queryFn: () => staffAlertService.getAlertSummary(),
+    refetchInterval: 30000, // Every 30 seconds
+    retry: 1,
+    staleTime: 25000 // Consider stale after 25 seconds
+  });
 
   const handleLogout = () => {
     logout();
@@ -137,22 +156,33 @@ export default function StaffLayout() {
           <div className="flex-1 px-4 flex justify-between">
             <div className="flex-1 flex">
               <div className="w-full flex md:ml-0">
-                <div className="flex items-center">
+                <div className="flex items-center space-x-4">
                   <h2 className="text-lg font-medium text-gray-900">
                     {navigation.find(item => isActivePath(item.href))?.name || 'Dashboard'}
                   </h2>
+                  
                 </div>
               </div>
             </div>
             <div className="ml-4 flex items-center md:ml-6 space-x-3">
-              {/* Notifications */}
-              <button className="bg-white p-1 rounded-full text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                <Bell className="h-6 w-6" />
-              </button>
 
-              {/* Messages */}
-              <button className="bg-white p-1 rounded-full text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                <MessageSquare className="h-6 w-6" />
+              {/* Alert Notifications */}
+              <button
+                onClick={() => navigate('/staff/alerts')}
+                className="relative bg-white p-1 rounded-full text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                title={`${alertSummary?.totalUnacknowledged || 0} unread alerts`}
+              >
+                <Bell className="h-6 w-6" />
+                {alertSummary?.totalUnacknowledged > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
+                    {alertSummary.totalUnacknowledged > 99 ? '99+' : alertSummary.totalUnacknowledged}
+                  </span>
+                )}
+                {alertSummary?.criticalCount > 0 && (
+                  <span className="absolute -top-1 -left-1 text-red-600">
+                    <AlertTriangle className="h-3 w-3" />
+                  </span>
+                )}
               </button>
 
               {/* User menu */}

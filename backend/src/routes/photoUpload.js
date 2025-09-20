@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
 
@@ -37,7 +37,7 @@ const fileFilter = (req, file, cb) => {
   if (mimetype && extname) {
     return cb(null, true);
   } else {
-    cb(new AppError('Only JPEG, JPG, PNG, and WebP images are allowed', 400));
+    cb(new ApplicationError('Only JPEG, JPG, PNG, and WebP images are allowed', 400));
   }
 };
 

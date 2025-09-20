@@ -2,7 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import User from '../models/User.js';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
@@ -441,7 +441,7 @@ router.post('/inventory/:itemId/order', catchAsync(async (req, res) => {
   });
 
   if (!inventoryItem) {
-    throw new AppError('Inventory item not found', 404);
+    throw new ApplicationError('Inventory item not found', 404);
   }
 
   // For this demo, we'll just increase the current stock to above threshold
@@ -479,7 +479,7 @@ router.patch('/rooms/:roomId/inspect', catchAsync(async (req, res) => {
   });
 
   if (!room) {
-    throw new AppError('Room not found', 404);
+    throw new ApplicationError('Room not found', 404);
   }
 
   // Update the lastCleaned date to current date/time

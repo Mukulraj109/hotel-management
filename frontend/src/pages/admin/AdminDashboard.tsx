@@ -24,12 +24,13 @@ import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { InventoryDashboardWidget } from '../../components/admin/InventoryDashboardWidget';
 import { InventoryNotifications } from '../../components/admin/InventoryNotifications';
+import { SupplyRequestDashboardWidget } from '../../components/admin/SupplyRequestDashboardWidget';
 
 export default function AdminDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  // Use user's hotelId, fallback to new seeded hotel ID if not available
-  const [selectedHotelId, setSelectedHotelId] = useState<string>(user?.hotelId || '68afe8080c02fcbe30092b8e');
+  // Use user's hotelId, fallback to fixed seeded hotel ID if not available
+  const [selectedHotelId, setSelectedHotelId] = useState<string>(user?.hotelId || '68c7ab1242a357d06adbb2aa');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [showRevenueBreakdown, setShowRevenueBreakdown] = useState(false);
   const [showOccupancyBreakdown, setShowOccupancyBreakdown] = useState(false);
@@ -185,7 +186,7 @@ export default function AdminDashboard() {
             options: user?.hotelId ? [
               { value: user.hotelId, label: 'THE PENTOUZ' },
             ] : [
-              { value: '68afe8080c02fcbe30092b8e', label: 'THE PENTOUZ' },
+              { value: '68c7ab1242a357d06adbb2aa', label: 'THE PENTOUZ' },
             ],
             placeholder: 'Select hotel',
           },
@@ -341,7 +342,7 @@ export default function AdminDashboard() {
           height="350px"
         >
           <LineChart
-            data={(revenueQuery.data?.data?.timeSeries || []) as any}
+            data={(revenueQuery.data?.data?.charts?.dailyRevenue || []) as any}
             xDataKey="date"
             lines={[
               {
@@ -371,8 +372,10 @@ export default function AdminDashboard() {
           <DonutChart
             data={occupancyQuery.data?.data?.roomTypeDistribution ? Object.entries(occupancyQuery.data.data.roomTypeDistribution).map(([roomType, data]: [string, any]) => ({
               name: roomType.charAt(0).toUpperCase() + roomType.slice(1),
-              value: data.occupied,
-              percentage: ((data.occupied / data.total) * 100)
+              value: data.total,
+              percentage: ((data.occupied / data.total) * 100),
+              occupied: data.occupied,
+              available: data.available
             })) : []}
             height={300}
             centerContent={
@@ -457,8 +460,14 @@ export default function AdminDashboard() {
       </ChartCard>
 
       {/* Inventory Dashboard Section */}
-      <InventoryDashboardWidget 
-        hotelId={selectedHotelId} 
+      <InventoryDashboardWidget
+        hotelId={selectedHotelId}
+        onNavigate={(path) => navigate(path)}
+      />
+
+      {/* Supply Request Dashboard Section */}
+      <SupplyRequestDashboardWidget
+        hotelId={selectedHotelId}
         onNavigate={(path) => navigate(path)}
       />
 

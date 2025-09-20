@@ -3,7 +3,7 @@ import OTAChannelManager from '../admin/OTAChannelManager';
 import { cn } from '../../utils/cn';
 import { 
   Globe, 
-  DollarSign, 
+  IndianRupee, 
   Languages, 
   Activity,
   BarChart3,
@@ -46,7 +46,7 @@ export const Phase5Demo: React.FC = () => {
       id: 'rate-distribution',
       title: 'Currency Rate Distribution',
       description: 'Automated rate conversion and distribution across channels',
-      icon: <DollarSign className="w-5 h-5" />,
+      icon: <IndianRupee className="w-5 h-5" />,
       category: 'distribution'
     },
     {
@@ -241,7 +241,7 @@ export const Phase5Demo: React.FC = () => {
 
             <div className="bg-white p-6 rounded-lg border text-center">
               <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-4">
-                <DollarSign className="w-6 h-6 text-green-600" />
+                <IndianRupee className="w-6 h-6 text-green-600" />
               </div>
               <h3 className="font-semibold text-gray-900 mb-2">Smart Pricing</h3>
               <p className="text-sm text-gray-600">

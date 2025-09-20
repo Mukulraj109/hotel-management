@@ -161,9 +161,9 @@ class RoomTypeController {
       const roomTypeData = {
         ...req.body,
         roomTypeId: req.body.roomTypeId || uuidv4(),
-        // Required fields with defaults
-        baseRate: req.body.baseRate || 1000,
-        totalRooms: req.body.totalRooms || 10,
+        // Required fields with defaults - map basePrice to baseRate for backend compatibility
+        baseRate: req.body.baseRate || req.body.basePrice || 1000,
+        totalRooms: req.body.totalRooms || 1,
         specifications: {
           maxOccupancy: 2,
           bedType: 'double',
@@ -237,9 +237,16 @@ class RoomTypeController {
 
       const oldValues = existingRoomType.toObject();
       
+      // Map basePrice to baseRate for backend compatibility
+      const updateData = { ...req.body };
+      if (updateData.basePrice !== undefined) {
+        updateData.baseRate = updateData.basePrice;
+        delete updateData.basePrice;
+      }
+      
       const roomType = await RoomType.findByIdAndUpdate(
         id,
-        req.body,
+        updateData,
         { new: true, runValidators: true }
       );
 
@@ -913,9 +920,9 @@ class RoomTypeController {
         code: req.body.code || uuidv4().substring(0, 8).toUpperCase(),
         createdBy: req.user?.id,
         updatedBy: req.user?.id,
-        // Required fields with defaults
-        baseRate: req.body.baseRate || 1000,
-        totalRooms: req.body.totalRooms || 10,
+        // Required fields with defaults - map basePrice to baseRate for backend compatibility
+        baseRate: req.body.baseRate || req.body.basePrice || 1000,
+        totalRooms: req.body.totalRooms || 1,
         specifications: {
           maxOccupancy: 2,
           bedType: 'double',

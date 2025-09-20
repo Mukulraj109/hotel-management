@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { toast } from '../../utils/toast';
 import {
   ShoppingCart,
-  DollarSign,
+  IndianRupee,
   CreditCard,
   Receipt,
   RefreshCw,
@@ -36,6 +36,7 @@ import {
   Search
 } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
+import { api } from '../../services/api';
 import billingSessionService, { BillingSession as BackendBillingSession, CreateBillingSessionRequest } from '../../services/billingSessionService';
 import guestLookupService from '../../services/guestLookupService';
 import { useAuth } from '../../context/AuthContext';
@@ -510,19 +511,53 @@ const UnifiedBillingSystem: React.FC = () => {
     calculateTotals(updatedSession);
   };
 
-  const calculateTotals = (session: BillingSession) => {
-    const subtotal = session.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const totalTax = session.items.reduce((sum, item) => sum + ((item.tax || 0) * item.quantity), 0);
-    const grandTotal = subtotal + totalTax - session.totalDiscount;
+  const calculateTotals = async (session: BillingSession) => {
+    if (!session.items || session.items.length === 0) {
+      const updatedSession = {
+        ...session,
+        subtotal: 0,
+        totalTax: 0,
+        grandTotal: 0
+      };
+      setCurrentSession(updatedSession);
+      return;
+    }
 
-    const updatedSession = {
-      ...session,
-      subtotal,
-      totalTax,
-      grandTotal
-    };
+    try {
+      // Use backend API to calculate billing totals
+      const response = await api.post('/pos/calculate/billing-totals', {
+        session: {
+          items: session.items,
+          totalDiscount: session.totalDiscount || 0
+        },
+        splitPayments: splitPayments
+      });
 
-    setCurrentSession(updatedSession);
+      if (response.data.success) {
+        const { subtotal, totalItemTax, grandTotal } = response.data.data;
+        const updatedSession = {
+          ...session,
+          subtotal,
+          totalTax: totalItemTax,
+          grandTotal
+        };
+        setCurrentSession(updatedSession);
+      }
+    } catch (error) {
+      console.error('Error calculating billing totals:', error);
+      // Fallback to local calculation if API fails
+      const subtotal = session.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      const totalTax = session.items.reduce((sum, item) => sum + ((item.tax || 0) * item.quantity), 0);
+      const grandTotal = subtotal + totalTax - session.totalDiscount;
+
+      const updatedSession = {
+        ...session,
+        subtotal,
+        totalTax,
+        grandTotal
+      };
+      setCurrentSession(updatedSession);
+    }
   };
 
   const processPayment = async (paymentMethod: string) => {
@@ -584,8 +619,27 @@ const UnifiedBillingSystem: React.FC = () => {
       return;
     }
 
-    const totalSplitAmount = splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
-    
+    // Calculate split payment totals using backend
+    let totalSplitAmount = 0;
+    try {
+      const response = await api.post('/pos/calculate/billing-totals', {
+        session: {
+          items: currentSession.items,
+          totalDiscount: currentSession.totalDiscount || 0
+        },
+        splitPayments: splitPayments
+      });
+      if (response.data.success) {
+        totalSplitAmount = response.data.data.splitPayments.totalSplitAmount;
+      } else {
+        // Fallback calculation
+        totalSplitAmount = splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
+      }
+    } catch (error) {
+      // Fallback calculation
+      totalSplitAmount = splitPayments.reduce((sum, payment) => sum + payment.amount, 0);
+    }
+
     if (Math.abs(totalSplitAmount - currentSession.grandTotal) > 0.01) {
       toast.error('Split payment amounts must equal the total bill');
       return;

@@ -421,7 +421,7 @@ serviceInclusionSchema.virtual('profitability').get(function() {
 });
 
 // Indexes
-serviceInclusionSchema.index({ inclusionId: 1 });
+// Note: inclusionId already has unique: true, no need for separate index
 serviceInclusionSchema.index({ type: 1, category: 1 });
 serviceInclusionSchema.index({ 'availability.isActive': 1 });
 serviceInclusionSchema.index({ 'eligibility.roomTypes': 1 });

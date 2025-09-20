@@ -102,29 +102,8 @@ const InvoiceManagement: React.FC = () => {
       
       const response = await financialService.getInvoices(filters);
       console.log('📄 Raw API response:', response);
-      console.log('📄 Response type:', typeof response);
-      console.log('📄 Response keys:', Object.keys(response || {}));
-      
-      // Handle different response structures
-      let invoicesData = [];
-      if (Array.isArray(response)) {
-        console.log('✅ Response is already an array');
-        invoicesData = response;
-      } else if (response.data && Array.isArray(response.data)) {
-        console.log('✅ Found data array in response.data');
-        invoicesData = response.data;
-      } else if (response.data && response.data.invoices && Array.isArray(response.data.invoices)) {
-        console.log('✅ Found invoices array in response.data.invoices');
-        invoicesData = response.data.invoices;
-      } else if (response.invoices && Array.isArray(response.invoices)) {
-        console.log('✅ Found invoices array in response.invoices');
-        invoicesData = response.invoices;
-      } else {
-        console.log('⚠️ No valid data structure found in response');
-        console.log('📄 Response.data type:', typeof response?.data);
-        console.log('📄 Response.data keys:', Object.keys(response?.data || {}));
-      }
-      
+
+      const invoicesData = response.data?.invoices || [];
       console.log('💰 Final invoices data to set:', invoicesData);
       console.log('💰 Data length:', invoicesData.length);
       console.log('💰 First invoice sample:', invoicesData[0]);
@@ -195,7 +174,7 @@ const InvoiceManagement: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         <Skeleton className="h-8 w-64" />
         <div className="space-y-4">
           {Array.from({ length: 10 }).map((_, i) => (
@@ -207,7 +186,7 @@ const InvoiceManagement: React.FC = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>

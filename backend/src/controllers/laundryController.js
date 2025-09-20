@@ -1,5 +1,5 @@
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import laundryService from '../services/laundryService.js';
 import LaundryTransaction from '../models/LaundryTransaction.js';
 import APIFeatures from '../utils/apiFeatures.js';
@@ -70,11 +70,11 @@ export const sendItemsToLaundry = catchAsync(async (req, res, next) => {
   } = req.body;
 
   if (!roomId || !items || !expectedReturnDate) {
-    return next(new AppError('Room ID, items, and expected return date are required', 400));
+    return next(new ApplicationError('Room ID, items, and expected return date are required', 400));
   }
 
   if (!Array.isArray(items) || items.length === 0) {
-    return next(new AppError('Items array is required and cannot be empty', 400));
+    return next(new ApplicationError('Items array is required and cannot be empty', 400));
   }
 
   const result = await laundryService.sendItemsToLaundry({
@@ -579,12 +579,12 @@ export const getLaundryTransaction = catchAsync(async (req, res, next) => {
     .populate('metadata.createdBy', 'name');
 
   if (!transaction) {
-    return next(new AppError('Laundry transaction not found', 404));
+    return next(new ApplicationError('Laundry transaction not found', 404));
   }
 
   // Check if user has access to this hotel's data
   if (transaction.hotelId.toString() !== req.user.hotelId.toString()) {
-    return next(new AppError('You do not have permission to access this transaction', 403));
+    return next(new ApplicationError('You do not have permission to access this transaction', 403));
   }
 
   res.json({

@@ -45,6 +45,7 @@ export default function StaffDashboard() {
     fetchDashboardData();
   }, []);
 
+
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
@@ -139,10 +140,18 @@ export default function StaffDashboard() {
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-6 sm:mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
-          Welcome, {user?.name}!
-        </h1>
-        <p className="text-gray-600 text-sm sm:text-base">Staff Dashboard - Today's Operations</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
+              Welcome, {user?.name}!
+            </h1>
+            <p className="text-gray-600 text-sm sm:text-base">Staff Dashboard - Today's Operations</p>
+          </div>
+          <Button onClick={fetchDashboardData} disabled={loading} variant="outline" size="sm">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh All Data
+          </Button>
+        </div>
       </div>
 
       {/* Tab Navigation */}

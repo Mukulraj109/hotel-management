@@ -33,6 +33,13 @@ export interface MaintenanceStats {
   overdueCount: number;
 }
 
+export interface Material {
+  name: string;
+  quantity: number;
+  unitCost?: number;
+  supplier?: string;
+}
+
 export interface CreateMaintenanceTaskData {
   title: string;
   description: string;
@@ -44,12 +51,13 @@ export interface CreateMaintenanceTaskData {
   estimatedDuration?: number;
   estimatedCost?: number;
   notes?: string;
+  materials?: Material[];
   hotelId?: string;
 }
 
 export interface MaintenanceFilters {
   status?: string;
-  taskType?: string;
+  type?: string;
   priority?: string;
   roomId?: string;
   assignedToUserId?: string;
@@ -96,7 +104,7 @@ class AdminMaintenanceService {
 
   async getTasks(filters: MaintenanceFilters = {}): Promise<ApiResponse<{ tasks: MaintenanceTask[]; pagination: any }>> {
     const queryParams = new URLSearchParams();
-    
+
     Object.entries(filters).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
         queryParams.append(key, value.toString());
@@ -105,15 +113,13 @@ class AdminMaintenanceService {
 
     const queryString = queryParams.toString();
     const endpoint = queryString ? `?${queryString}` : '';
-    
-    // Fetch available rooms to create a lookup cache
+
+    // Fetch available rooms to create a lookup cache if needed
     if (this.roomsCache.length === 0) {
       try {
         const userHotelId = await this.getUserHotelId();
-        console.log('Loading room cache with hotelId:', userHotelId);
         const roomsResponse = await this.getAvailableRooms(userHotelId);
         this.roomsCache = roomsResponse.data;
-        console.log('Loaded rooms cache:', this.roomsCache.length, 'rooms');
       } catch (error) {
         console.warn('Could not fetch rooms for mapping:', error);
         this.roomsCache = []; // Set empty array to prevent repeated failures
@@ -128,13 +134,9 @@ class AdminMaintenanceService {
         // Map room ID to room details from cache
         let roomDetails = null;
         if (task.roomId) {
-          console.log('Processing task roomId:', task.roomId, 'Cache size:', this.roomsCache.length);
-          console.log('Available rooms in cache:', this.roomsCache.map(r => ({ id: r._id, roomNumber: r.roomNumber })));
-          
           if (typeof task.roomId === 'string') {
             // If roomId is just a string ID, look it up in cache
             const cachedRoom = this.roomsCache.find(room => room._id === task.roomId);
-            console.log('Found cached room for string ID:', cachedRoom);
             if (cachedRoom) {
               roomDetails = {
                 _id: cachedRoom._id,
@@ -148,20 +150,17 @@ class AdminMaintenanceService {
                 roomNumber: `Room ${task.roomId.slice(-4)}`, // Use last 4 chars of ID as fallback
                 type: 'Unknown'
               };
-              console.log('Created fallback roomDetails for string ID:', roomDetails);
             }
           } else if (task.roomId && typeof task.roomId === 'object') {
             // If roomId is an object, use its data or enhance with cache
             const cachedRoom = this.roomsCache.find(room => room._id === task.roomId._id);
-            console.log('Found cached room for object ID:', cachedRoom);
-            
+
             roomDetails = {
               _id: task.roomId._id,
               roomNumber: task.roomId.roomNumber || task.roomId.number || cachedRoom?.roomNumber || `Room ${task.roomId._id?.slice(-4) || 'Unknown'}`,
               type: task.roomId.type || cachedRoom?.type || 'Unknown'
             };
           }
-          console.log('Final roomDetails:', roomDetails);
         }
 
         const transformedTask = {
@@ -197,21 +196,18 @@ class AdminMaintenanceService {
     // Check cache first (cache for 10 minutes)
     const now = Date.now();
     if (this.hotelIdCache && now < this.hotelIdCacheExpiry) {
-      console.log('Using cached hotelId:', this.hotelIdCache);
       return this.hotelIdCache;
     }
-    
+
     const token = localStorage.getItem('token');
     if (token) {
       try {
         const payload = JSON.parse(atob(token.split('.')[1]));
-        console.log('Checking JWT payload for hotelId...');
-        
+
         // Try different possible field names for hotelId
         const hotelId = payload.hotelId || payload.hotel || payload.hotelData?.id || payload.hotelData?._id;
-        
+
         if (hotelId) {
-          console.log('Found hotelId in token:', hotelId);
           // Cache the hotelId for 10 minutes
           this.hotelIdCache = hotelId;
           this.hotelIdCacheExpiry = now + 10 * 60 * 1000;
@@ -224,12 +220,10 @@ class AdminMaintenanceService {
     
     // Try to get hotelId from user profile API
     try {
-      console.log('Attempting to get hotelId from user profile...');
       const response = await this.fetchWithAuth('/auth/me', { baseURL: '/api/v1' });
       const userData = response.data?.user;
-      
+
       if (userData?.hotelId) {
-        console.log('Found hotelId from user profile:', userData.hotelId);
         this.hotelIdCache = userData.hotelId;
         this.hotelIdCacheExpiry = now + 10 * 60 * 1000;
         return userData.hotelId;
@@ -237,22 +231,14 @@ class AdminMaintenanceService {
     } catch (error) {
       console.warn('Could not get hotelId from user profile:', error);
     }
-    
-    // Use the correct hotelId that matches the database
-    const correctHotelId = '68afe8080c02fcbe30092b8e';
-    console.log('Using correct hotelId for maintenance:', correctHotelId);
-    
-    // Cache the correct hotelId for 10 minutes to avoid repeated lookups
-    this.hotelIdCache = correctHotelId;
-    this.hotelIdCacheExpiry = now + 10 * 60 * 1000;
-    
-    return correctHotelId;
+
+    // TODO: Replace with proper hotel ID endpoint when available
+    throw new Error('Unable to determine hotel ID for this user');
   }
 
   async createTask(taskData: CreateMaintenanceTaskData): Promise<ApiResponse<MaintenanceTask>> {
-    // Get hotelId from cache or token (no API calls)
+    // Get hotelId from cache or token
     const userHotelId = await this.getUserHotelId();
-    console.log('Using hotelId for task creation:', userHotelId);
 
     // Validate required fields before sending
     if (!taskData.title || !taskData.type || !taskData.priority) {
@@ -272,17 +258,15 @@ class AdminMaintenanceService {
       estimatedDuration: Number(taskData.estimatedDuration) || 60,
       estimatedCost: Number(taskData.estimatedCost) || 0,
     };
-    
+
     // Remove frontend-specific fields and undefined values
     delete backendData.assignedToUserId;
-    
+
     // Clean up undefined or empty string values for optional fields
     if (!backendData.roomId) delete backendData.roomId;
     if (!backendData.assignedTo) delete backendData.assignedTo;
     if (!backendData.description) delete backendData.description;
     if (!backendData.notes) delete backendData.notes;
-    
-    console.log('Sending backend data:', backendData);
     
     return this.fetchWithAuth('/', {
       method: 'POST',
@@ -293,18 +277,12 @@ class AdminMaintenanceService {
   async updateTask(taskId: string, updates: Partial<MaintenanceTask>): Promise<ApiResponse<MaintenanceTask>> {
     // Transform frontend data to match backend interface
     const backendUpdates: any = { ...updates };
-    
-    if (updates.taskType) {
-      backendUpdates.type = updates.taskType;
-      backendUpdates.category = updates.taskType; // Also set category for compatibility
-      delete backendUpdates.taskType;
-    }
-    
+
     if (updates.assignedToUserId) {
       backendUpdates.assignedTo = updates.assignedToUserId;
       delete backendUpdates.assignedToUserId;
     }
-    
+
     return this.fetchWithAuth(`/${taskId}`, {
       method: 'PATCH',
       body: JSON.stringify(backendUpdates),
@@ -319,10 +297,9 @@ class AdminMaintenanceService {
   }
 
   async getStats(hotelId?: string): Promise<ApiResponse<MaintenanceStats>> {
-    // Use provided hotelId or get from cache/token (no API calls)
+    // Use provided hotelId or get from cache/token
     const targetHotelId = hotelId || await this.getUserHotelId();
-    console.log('Using hotelId for stats:', targetHotelId);
-    
+
     const queryParams = new URLSearchParams();
     queryParams.append('hotelId', targetHotelId);
     const endpoint = `/stats?${queryParams.toString()}`;
@@ -348,10 +325,9 @@ class AdminMaintenanceService {
 
   // Get available staff members for assignment
   async getAvailableStaff(hotelId?: string): Promise<ApiResponse<Array<{ _id: string; name: string; email: string; department?: string }>>> {
-    // Use provided hotelId or get from cache/token (no API calls)
+    // Use provided hotelId or get from cache/token
     const targetHotelId = hotelId || await this.getUserHotelId();
-    console.log('Using hotelId for available staff:', targetHotelId);
-    
+
     const queryParams = new URLSearchParams();
     queryParams.append('hotelId', targetHotelId);
     const endpoint = `/available-staff?${queryParams.toString()}`;
@@ -360,10 +336,9 @@ class AdminMaintenanceService {
 
   // Get available rooms
   async getAvailableRooms(hotelId?: string): Promise<ApiResponse<Array<{ _id: string; roomNumber: string; type: string; floor?: string }>>> {
-    // Use provided hotelId or get from cache/token (no API calls)
+    // Use provided hotelId or get from cache/token
     const targetHotelId = hotelId || await this.getUserHotelId();
-    console.log('Using hotelId for available rooms:', targetHotelId);
-    
+
     const queryParams = new URLSearchParams();
     queryParams.append('hotelId', targetHotelId);
     const endpoint = `/available-rooms?${queryParams.toString()}`;

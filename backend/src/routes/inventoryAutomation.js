@@ -1,7 +1,7 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
 
@@ -60,7 +60,7 @@ router.post('/process-checkout', authorize('admin', 'manager', 'staff'), catchAs
   const { bookingId, roomId, options = {} } = req.body;
 
   if (!bookingId || !roomId) {
-    throw new AppError('Booking ID and Room ID are required', 400);
+    throw new ApplicationError('Booking ID and Room ID are required', 400);
   }
 
   // Import inventory automation service
@@ -335,7 +335,7 @@ router.put('/update-room-status/:roomId', authorize('admin', 'manager', 'staff')
   
   const roomInventory = await RoomInventory.findOne({ roomId, hotelId });
   if (!roomInventory) {
-    throw new AppError('Room inventory not found', 404);
+    throw new ApplicationError('Room inventory not found', 404);
   }
 
   // Update room status

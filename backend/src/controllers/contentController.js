@@ -3,7 +3,7 @@ import Translation from '../models/Translation.js';
 import translationService from '../services/translationService.js';
 import localizationUtils from '../utils/localizationUtils.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -131,7 +131,7 @@ class ContentController {
       // Get base content
       const content = await Content.getByKey(key, null, { includeDrafts: false });
       if (!content) {
-        return next(new AppError('Content not found', 404));
+        return next(new ApplicationError('Content not found', 404));
       }
 
       const renderedContent = content.render(templateVars, variation);
@@ -178,13 +178,13 @@ class ContentController {
 
     // Validate required fields
     if (!key || !namespace || !category || !title || !defaultContent) {
-      return next(new AppError('Key, namespace, category, title, and defaultContent are required', 400));
+      return next(new ApplicationError('Key, namespace, category, title, and defaultContent are required', 400));
     }
 
     // Check if content key already exists
     const existingContent = await Content.findOne({ key: key.toLowerCase() });
     if (existingContent) {
-      return next(new AppError('Content key already exists', 409));
+      return next(new ApplicationError('Content key already exists', 409));
     }
 
     const content = await Content.create({
@@ -252,7 +252,7 @@ class ContentController {
     });
 
     if (!content) {
-      return next(new AppError('Content not found', 404));
+      return next(new ApplicationError('Content not found', 404));
     }
 
     if (createVersion === 'true') {
@@ -292,11 +292,11 @@ class ContentController {
     });
 
     if (!content) {
-      return next(new AppError('Content not found', 404));
+      return next(new ApplicationError('Content not found', 404));
     }
 
     if (content.isSystem && permanent === 'true') {
-      return next(new AppError('Cannot permanently delete system content', 400));
+      return next(new ApplicationError('Cannot permanently delete system content', 400));
     }
 
     if (permanent === 'true') {
@@ -343,7 +343,7 @@ class ContentController {
     });
 
     if (!content) {
-      return next(new AppError('Content not found', 404));
+      return next(new ApplicationError('Content not found', 404));
     }
 
     await content.publish(req.user._id);
@@ -369,7 +369,7 @@ class ContentController {
     } = req.body;
 
     if (!targetLanguages || !Array.isArray(targetLanguages)) {
-      return next(new AppError('targetLanguages array is required', 400));
+      return next(new ApplicationError('targetLanguages array is required', 400));
     }
 
     const content = await Content.findOne({ 
@@ -378,11 +378,11 @@ class ContentController {
     });
 
     if (!content) {
-      return next(new AppError('Content not found', 404));
+      return next(new ApplicationError('Content not found', 404));
     }
 
     if (!content.translationConfig.isTranslatable) {
-      return next(new AppError('Content is not translatable', 400));
+      return next(new ApplicationError('Content is not translatable', 400));
     }
 
     // Get the content text to translate
@@ -453,7 +453,7 @@ class ContentController {
     });
 
     if (!content) {
-      return next(new AppError('Content not found', 404));
+      return next(new ApplicationError('Content not found', 404));
     }
 
     const options = {
@@ -528,7 +528,7 @@ class ContentController {
     } = req.body;
 
     if (!contentKeys || !Array.isArray(contentKeys) || !targetLanguages || !Array.isArray(targetLanguages)) {
-      return next(new AppError('contentKeys and targetLanguages arrays are required', 400));
+      return next(new ApplicationError('contentKeys and targetLanguages arrays are required', 400));
     }
 
     const results = [];

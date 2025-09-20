@@ -182,6 +182,99 @@ const inventoryItemSchema = new mongoose.Schema({
     type: String,
     trim: true
   }],
+  // Automated Reorder System
+  reorderSettings: {
+    autoReorderEnabled: {
+      type: Boolean,
+      default: false,
+      description: 'Whether automatic reordering is enabled for this item'
+    },
+    reorderPoint: {
+      type: Number,
+      min: [0, 'Reorder point must be non-negative'],
+      description: 'Stock level that triggers reorder alert'
+    },
+    reorderQuantity: {
+      type: Number,
+      min: [1, 'Reorder quantity must be at least 1'],
+      description: 'Quantity to reorder when threshold is reached'
+    },
+    preferredSupplier: {
+      name: {
+        type: String,
+        trim: true,
+        description: 'Primary supplier name for reorders'
+      },
+      contact: {
+        type: String,
+        trim: true,
+        description: 'Supplier contact information'
+      },
+      email: {
+        type: String,
+        trim: true,
+        lowercase: true,
+        description: 'Supplier email for automated orders'
+      },
+      leadTime: {
+        type: Number,
+        min: [0, 'Lead time must be non-negative'],
+        description: 'Expected delivery time in days'
+      }
+    },
+    lastReorderDate: {
+      type: Date,
+      description: 'Date of last reorder'
+    },
+    reorderHistory: [{
+      date: {
+        type: Date,
+        default: Date.now
+      },
+      quantity: {
+        type: Number,
+        required: true
+      },
+      supplier: {
+        type: String,
+        required: true
+      },
+      estimatedCost: {
+        type: Number,
+        min: [0, 'Cost must be non-negative']
+      },
+      actualCost: {
+        type: Number,
+        min: [0, 'Cost must be non-negative']
+      },
+      status: {
+        type: String,
+        enum: ['pending', 'approved', 'ordered', 'received', 'cancelled', 'rejected'],
+        default: 'pending'
+      },
+      approvedBy: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User'
+      },
+      orderDate: {
+        type: Date
+      },
+      expectedDeliveryDate: {
+        type: Date
+      },
+      actualDeliveryDate: {
+        type: Date
+      },
+      notes: {
+        type: String,
+        maxlength: [500, 'Notes cannot exceed 500 characters']
+      },
+      alertId: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'ReorderAlert'
+      }
+    }]
+  },
   createdBy: {
     type: mongoose.Schema.ObjectId,
     ref: 'User'
@@ -219,6 +312,29 @@ inventoryItemSchema.virtual('effectiveReplacementPrice').get(function() {
   if (this.replacementPrice) return this.replacementPrice;
   // Default markup of 180% of unit price for replacements
   return Math.round(this.unitPrice * 1.8);
+});
+
+// Virtual for reorder status
+inventoryItemSchema.virtual('needsReorder').get(function() {
+  if (!this.reorderSettings?.autoReorderEnabled) return false;
+  if (!this.reorderSettings?.reorderPoint) return false;
+  return this.currentStock <= this.reorderSettings.reorderPoint;
+});
+
+// Virtual for reorder urgency (days until stock out)
+inventoryItemSchema.virtual('reorderUrgency').get(function() {
+  if (!this.needsReorder) return null;
+
+  // Calculate estimated days until stockout based on usage patterns
+  // For now, return a simple calculation based on current stock
+  const dailyUsage = 1; // Default assumption - could be calculated from historical data
+  return Math.floor(this.currentStock / dailyUsage);
+});
+
+// Virtual for estimated reorder cost
+inventoryItemSchema.virtual('estimatedReorderCost').get(function() {
+  if (!this.reorderSettings?.reorderQuantity) return 0;
+  return this.unitPrice * this.reorderSettings.reorderQuantity;
 });
 
 // Pre-save middleware
@@ -278,6 +394,60 @@ inventoryItemSchema.statics.searchItems = function(hotelId, searchTerm) {
       { brand: new RegExp(searchTerm, 'i') }
     ]
   }).sort('name');
+};
+
+// Static method to get items that need reordering
+inventoryItemSchema.statics.getItemsNeedingReorder = function(hotelId) {
+  return this.find({
+    hotelId,
+    isActive: true,
+    'reorderSettings.autoReorderEnabled': true,
+    $expr: {
+      $and: [
+        { $ne: ['$reorderSettings.reorderPoint', null] },
+        { $lte: ['$currentStock', '$reorderSettings.reorderPoint'] }
+      ]
+    }
+  }).sort({ currentStock: 1 }); // Sort by most urgent (lowest stock first)
+};
+
+// Static method to get reorder-enabled items
+inventoryItemSchema.statics.getReorderEnabledItems = function(hotelId) {
+  return this.find({
+    hotelId,
+    isActive: true,
+    'reorderSettings.autoReorderEnabled': true
+  }).sort('name');
+};
+
+// Static method to add reorder history entry
+inventoryItemSchema.statics.addReorderHistoryEntry = function(itemId, reorderData) {
+  return this.findByIdAndUpdate(
+    itemId,
+    {
+      $push: { 'reorderSettings.reorderHistory': reorderData },
+      $set: { 'reorderSettings.lastReorderDate': new Date() }
+    },
+    { new: true }
+  );
+};
+
+// Instance method to configure reorder settings
+inventoryItemSchema.methods.configureReorder = function(settings) {
+  this.reorderSettings = {
+    ...this.reorderSettings,
+    ...settings
+  };
+  return this.save();
+};
+
+// Instance method to check if item needs immediate reorder
+inventoryItemSchema.methods.isUrgentReorder = function() {
+  if (!this.needsReorder) return false;
+
+  // Consider urgent if stock is critically low (less than 25% of reorder point)
+  const criticalLevel = Math.floor(this.reorderSettings.reorderPoint * 0.25);
+  return this.currentStock <= criticalLevel;
 };
 
 export default mongoose.model('InventoryItem', inventoryItemSchema);

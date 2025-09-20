@@ -1,5 +1,5 @@
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { guestManagementService } from '../services/guestManagementService.js';
 import AccountAttribute from '../models/AccountAttribute.js';
 import GuestType from '../models/GuestType.js';
@@ -41,7 +41,7 @@ export const getAccountAttribute = catchAsync(async (req, res, next) => {
     .populate('createdBy updatedBy', 'name email');
 
   if (!attribute) {
-    return next(new AppError('Account attribute not found', 404));
+    return next(new ApplicationError('Account attribute not found', 404));
   }
 
   res.status(200).json({
@@ -115,7 +115,7 @@ export const getGuestType = catchAsync(async (req, res, next) => {
     .populate('createdBy updatedBy', 'name email');
 
   if (!guestType) {
-    return next(new AppError('Guest type not found', 404));
+    return next(new ApplicationError('Guest type not found', 404));
   }
 
   res.status(200).json({
@@ -157,7 +157,7 @@ export const duplicateGuestType = catchAsync(async (req, res, next) => {
   const { newName } = req.body;
   
   if (!newName) {
-    return next(new AppError('New name is required for duplication', 400));
+    return next(new ApplicationError('New name is required for duplication', 400));
   }
 
   const guestType = await guestManagementService.duplicateGuestType(
@@ -210,7 +210,7 @@ export const getIdentificationType = catchAsync(async (req, res, next) => {
     .populate('createdBy updatedBy', 'name email');
 
   if (!identificationType) {
-    return next(new AppError('Identification type not found', 404));
+    return next(new ApplicationError('Identification type not found', 404));
   }
 
   res.status(200).json({
@@ -280,7 +280,7 @@ export const bulkUpdateDisplayOrder = catchAsync(async (req, res, next) => {
   const { updates } = req.body;
 
   if (!Array.isArray(updates) || updates.length === 0) {
-    return next(new AppError('Updates array is required', 400));
+    return next(new ApplicationError('Updates array is required', 400));
   }
 
   const results = await guestManagementService.bulkUpdateDisplayOrder(

@@ -22,6 +22,7 @@ import { Card } from '@/components/ui/card';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatDate, formatCurrency } from '../../utils/formatters';
 import { SERVICE_VARIATIONS } from '../../utils/currencyUtils';
+import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
 
 interface Booking {
@@ -76,6 +77,7 @@ export default function GuestRequests() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const { connectionState, connect, disconnect, on, off } = useRealTime();
 
   // Form state
   const [formData, setFormData] = useState({
@@ -91,8 +93,94 @@ export default function GuestRequests() {
     if (user) {
       fetchRequests();
       fetchBookings();
+      connect();
     }
-  }, [user, filter]);
+
+    return () => {
+      disconnect();
+    };
+  }, [user, filter, connect, disconnect]);
+
+  // Real-time event listeners for guest service request updates
+  useEffect(() => {
+    if (connectionState !== 'connected' || !user) return;
+
+    const handleGuestServiceUpdated = (data: any) => {
+      console.log('Guest service request updated:', data);
+      const updatedRequest = data.serviceRequest;
+      
+      // Only update if this request belongs to the current user
+      if (updatedRequest.userId?._id === user.id || updatedRequest.userId === user.id) {
+        setRequests(prev => prev.map(request => 
+          request._id === updatedRequest._id ? updatedRequest : request
+        ));
+
+        // Show toast notification for status changes
+        if (data.previousStatus && data.previousStatus !== updatedRequest.status) {
+          const statusMessages = {
+            'assigned': `Your ${updatedRequest.serviceType.replace('_', ' ')} request has been assigned to ${updatedRequest.assignedTo?.name || 'staff'}`,
+            'in_progress': `Your ${updatedRequest.serviceType.replace('_', ' ')} request is now in progress`,
+            'completed': `Your ${updatedRequest.serviceType.replace('_', ' ')} request has been completed`,
+            'cancelled': 'Your service request has been cancelled'
+          };
+          
+          const message = statusMessages[updatedRequest.status as keyof typeof statusMessages];
+          if (message) {
+            toast.success(message, {
+              duration: 5000,
+              icon: updatedRequest.status === 'completed' ? '✅' : 
+                    updatedRequest.status === 'cancelled' ? '❌' : '🔔'
+            });
+          }
+        }
+
+        // Show notification for staff notes
+        if (updatedRequest.notes && (!data.previousNotes || data.previousNotes !== updatedRequest.notes)) {
+          toast.info('Staff added a note to your request', {
+            duration: 4000,
+            icon: '📝'
+          });
+        }
+      }
+    };
+
+    const handleGuestServiceCreated = (data: any) => {
+      console.log('New guest service request created:', data);
+      const newRequest = data.serviceRequest;
+      
+      // Only add if this request belongs to the current user
+      if (newRequest.userId?._id === user.id || newRequest.userId === user.id) {
+        setRequests(prev => [newRequest, ...prev]);
+        toast.success('Your service request has been created successfully', {
+          duration: 4000,
+          icon: '✨'
+        });
+      }
+    };
+
+    const handleGuestServiceCancelled = (data: any) => {
+      console.log('Guest service request cancelled:', data);
+      const cancelledRequest = data.serviceRequest;
+      
+      // Only update if this request belongs to the current user
+      if (cancelledRequest.userId?._id === user.id || cancelledRequest.userId === user.id) {
+        setRequests(prev => prev.map(request => 
+          request._id === cancelledRequest._id ? cancelledRequest : request
+        ));
+      }
+    };
+
+    // Set up event listeners
+    on('guest-service:updated', handleGuestServiceUpdated);
+    on('guest-service:created', handleGuestServiceCreated);
+    on('guest-service:cancelled', handleGuestServiceCancelled);
+
+    return () => {
+      off('guest-service:updated', handleGuestServiceUpdated);
+      off('guest-service:created', handleGuestServiceCreated);
+      off('guest-service:cancelled', handleGuestServiceCancelled);
+    };
+  }, [connectionState, on, off, user]);
 
   const fetchRequests = async () => {
     try {
@@ -137,6 +225,7 @@ export default function GuestRequests() {
       const requestData: any = {
         bookingId: formData.bookingId,
         serviceType: formData.serviceType,
+        serviceVariation: formData.serviceVariations.length === 1 ? formData.serviceVariations[0] : 'multiple_services',
         serviceVariations: formData.serviceVariations,
         priority: formData.priority,
         specialInstructions: formData.specialInstructions
@@ -204,7 +293,19 @@ export default function GuestRequests() {
       {/* Header */}
       <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">My Service Requests</h1>
-        <p className="text-sm sm:text-base text-gray-600">Manage your hotel service requests and track their status</p>
+        <div className="flex items-center space-x-4">
+          <p className="text-sm sm:text-base text-gray-600">Manage your hotel service requests and track their status</p>
+          <div className="flex items-center space-x-2">
+            <div className={`w-2 h-2 rounded-full ${
+              connectionState === 'connected' ? 'bg-green-500' : 
+              connectionState === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+            }`} />
+            <span className="text-xs text-gray-500">
+              {connectionState === 'connected' ? 'Live Updates' : 
+               connectionState === 'connecting' ? 'Connecting...' : 'Offline'}
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Actions */}

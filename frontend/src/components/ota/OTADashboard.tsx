@@ -16,7 +16,7 @@ import {
   TrendingUp,
   TrendingDown,
   Users,
-  DollarSign,
+  IndianRupee,
   Calendar,
   Globe,
   Star,
@@ -530,7 +530,7 @@ const OTADashboard: React.FC = () => {
               direction: otaMetrics.periodComparison.revenue.direction,
               label: 'vs last period'
             }}
-            icon={<DollarSign className="w-5 h-5" />}
+            icon={<IndianRupee className="w-5 h-5" />}
             color="green"
             loading={loading}
           />

@@ -17,7 +17,7 @@ import {
   Upload,
   TrendingUp,
   TrendingDown,
-  DollarSign,
+  IndianRupee,
   Target,
   CheckCircle,
   Clock,
@@ -27,6 +27,7 @@ import {
 import { formatCurrency } from '@/utils/currencyUtils';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import financialService from '@/services/financialService';
 
 interface Budget {
   _id: string;
@@ -128,13 +129,35 @@ const BudgetManagement: React.FC = () => {
   ];
 
   useEffect(() => {
-    // Simulate API call
-    setTimeout(() => {
+    fetchBudgets();
+  }, []);
+
+  const fetchBudgets = async () => {
+    try {
+      setLoading(true);
+      const filters: any = {};
+      if (filterStatus) filters.status = filterStatus;
+
+      const response = await financialService.getBudgets(filters);
+      const budgetData = response.data?.budgets || [];
+
+      setBudgets(budgetData);
+      if (budgetData.length > 0) {
+        setSelectedBudget(budgetData[0]);
+      }
+
+      console.log('✅ Budget data loaded from backend:', budgetData.length, 'budgets');
+    } catch (error: any) {
+      console.error('❌ Failed to load budgets from backend:', error);
+      toast.error('Failed to load budgets from backend, using fallback data');
+
+      // Fallback to mock data
       setBudgets(mockBudgets);
       setSelectedBudget(mockBudgets[0]);
+    } finally {
       setLoading(false);
-    }, 1000);
-  }, []);
+    }
+  };
 
   const handleCreateBudget = () => {
     setShowBudgetDialog(true);
@@ -142,8 +165,35 @@ const BudgetManagement: React.FC = () => {
 
   const handleSubmitBudget = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success('Budget created successfully');
-    setShowBudgetDialog(false);
+    try {
+      const budgetData = {
+        budgetName: budgetFormData.budgetName,
+        budgetType: 'Operating',
+        fiscalYear: budgetFormData.fiscalYear,
+        currency: budgetFormData.currency,
+        status: budgetFormData.status.charAt(0).toUpperCase() + budgetFormData.status.slice(1),
+        budgetLines: []
+      };
+
+      await financialService.createBudget(budgetData);
+      await fetchBudgets();
+
+      toast.success('Budget created successfully');
+      setShowBudgetDialog(false);
+
+      // Reset form
+      setBudgetFormData({
+        budgetName: '',
+        fiscalYear: new Date().getFullYear(),
+        startDate: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
+        endDate: new Date(new Date().getFullYear(), 11, 31).toISOString().split('T')[0],
+        currency: 'INR',
+        status: 'draft'
+      });
+    } catch (error: any) {
+      console.error('❌ Failed to create budget:', error);
+      toast.error('Failed to create budget: ' + error.message);
+    }
   };
 
   const getVarianceColor = (percentage: number) => {
@@ -158,9 +208,16 @@ const BudgetManagement: React.FC = () => {
     return <Target className="w-4 h-4 text-yellow-600" />;
   };
 
+  // Apply filtering after data is loaded
+  useEffect(() => {
+    if (!loading) {
+      fetchBudgets();
+    }
+  }, [filterStatus]);
+
   const filteredBudgets = budgets.filter(budget => {
     const matchesSearch = budget.budgetName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = !filterStatus || budget.status === filterStatus;
+    const matchesStatus = !filterStatus || budget.status.toLowerCase() === filterStatus;
     return matchesSearch && matchesStatus;
   });
 
@@ -184,14 +241,14 @@ const BudgetManagement: React.FC = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row gap-4 sm:gap-0 sm:justify-between sm:items-center">
         <div>
           <h1 className="text-3xl font-bold">Budget Management</h1>
           <p className="text-gray-600">Plan, track, and analyze your financial budgets</p>
         </div>
-        <div className="flex space-x-2">
+        <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
           <Button variant="outline">
             <Upload className="w-4 h-4 mr-2" />
             Import
@@ -209,7 +266,7 @@ const BudgetManagement: React.FC = () => {
 
       {/* Summary Cards */}
       {selectedBudget && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-gray-600">Total Budgeted</CardTitle>
@@ -229,7 +286,7 @@ const BudgetManagement: React.FC = () => {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-bold">{formatCurrency(selectedBudget.totalActualAmount)}</p>
-                <DollarSign className="w-5 h-5 text-green-500" />
+                <IndianRupee className="w-5 h-5 text-green-500" />
               </div>
               <div className="mt-2">
                 <Progress value={budgetProgress} className="h-2" />

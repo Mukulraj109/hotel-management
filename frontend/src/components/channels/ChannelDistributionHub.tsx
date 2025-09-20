@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { toast } from '@/utils/toast';
+import { channelManagerService, type Channel, type SyncLog, type ChannelMetrics } from '@/services/channelManagerService';
 import {
   Globe,
   Wifi,
@@ -24,7 +25,7 @@ import {
   Clock,
   TrendingUp,
   TrendingDown,
-  DollarSign,
+  IndianRupee,
   Users,
   Calendar,
   Building,
@@ -38,7 +39,8 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
 
-interface Channel {
+// Use the Channel interface from the service
+interface TransformedChannel {
   id: string;
   name: string;
   type: 'ota' | 'gds' | 'direct' | 'corporate' | 'wholesaler' | 'metasearch';
@@ -63,7 +65,8 @@ interface Channel {
   };
 }
 
-interface SyncLog {
+// Use SyncLog and ChannelMetrics interfaces from the service
+interface TransformedSyncLog {
   id: string;
   channelId: string;
   channelName: string;
@@ -74,20 +77,11 @@ interface SyncLog {
   details?: any;
 }
 
-interface ChannelMetrics {
-  totalBookings: number;
-  totalRevenue: number;
-  averageCommission: number;
-  conversionRate: number;
-  responseTime: number;
-  errorRate: number;
-}
-
 const ChannelDistributionHub: React.FC = () => {
-  const [channels, setChannels] = useState<Channel[]>([]);
-  const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
+  const [channels, setChannels] = useState<TransformedChannel[]>([]);
+  const [syncLogs, setSyncLogs] = useState<TransformedSyncLog[]>([]);
   const [metrics, setMetrics] = useState<ChannelMetrics | null>(null);
-  const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
+  const [selectedChannel, setSelectedChannel] = useState<TransformedChannel | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -110,178 +104,39 @@ const ChannelDistributionHub: React.FC = () => {
   const fetchChannelData = async () => {
     setIsLoading(true);
     try {
-      // Mock API calls
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const mockChannels: Channel[] = [
-        {
-          id: 'booking',
-          name: 'Booking.com',
-          type: 'ota',
-          logo: '/logos/booking.png',
-          isActive: true,
-          isConnected: true,
-          connectionStatus: 'connected',
-          lastSync: new Date(Date.now() - 300000), // 5 minutes ago
-          commission: 15,
-          bookings: 145,
-          revenue: 875000,
-          availability: 85,
-          rateParity: true,
-          autoSync: true,
-          syncInterval: 15,
-          errorCount: 0,
-          settings: {
-            roomMapping: { 'standard': 'STD001', 'deluxe': 'DLX002' },
-            rateMapping: { 'best_available': 'BAR', 'advance_purchase': 'ADV' },
-            inventoryPool: 'main',
-            restrictions: []
-          }
-        },
-        {
-          id: 'expedia',
-          name: 'Expedia',
-          type: 'ota',
-          logo: '/logos/expedia.png',
-          isActive: true,
-          isConnected: true,
-          connectionStatus: 'connected',
-          lastSync: new Date(Date.now() - 180000), // 3 minutes ago
-          commission: 18,
-          bookings: 98,
-          revenue: 650000,
-          availability: 88,
-          rateParity: false,
-          autoSync: true,
-          syncInterval: 20,
-          errorCount: 0,
-          settings: {
-            roomMapping: { 'standard': 'STANDARD', 'deluxe': 'DELUXE' },
-            rateMapping: { 'best_available': 'PUBLIC' },
-            inventoryPool: 'ota',
-            restrictions: ['min_stay_2']
-          }
-        },
-        {
-          id: 'amadeus',
-          name: 'Amadeus GDS',
-          type: 'gds',
-          logo: '/logos/amadeus.png',
-          isActive: true,
-          isConnected: true,
-          connectionStatus: 'syncing',
-          lastSync: new Date(Date.now() - 900000), // 15 minutes ago
-          commission: 10,
-          bookings: 67,
-          revenue: 520000,
-          availability: 92,
-          rateParity: true,
-          autoSync: true,
-          syncInterval: 30,
-          errorCount: 1,
-          settings: {
-            roomMapping: { 'standard': 'A1', 'deluxe': 'A2' },
-            rateMapping: { 'corporate': 'CORP', 'government': 'GOV' },
-            inventoryPool: 'gds',
-            restrictions: []
-          }
-        },
-        {
-          id: 'website',
-          name: 'Direct Website',
-          type: 'direct',
-          logo: '/logos/direct.png',
-          isActive: true,
-          isConnected: true,
-          connectionStatus: 'connected',
-          lastSync: new Date(Date.now() - 60000), // 1 minute ago
-          commission: 0,
-          bookings: 234,
-          revenue: 1450000,
-          availability: 100,
-          rateParity: true,
-          autoSync: true,
-          syncInterval: 5,
-          errorCount: 0,
-          settings: {
-            roomMapping: {},
-            rateMapping: {},
-            inventoryPool: 'direct',
-            restrictions: []
-          }
-        },
-        {
-          id: 'google',
-          name: 'Google Hotel Ads',
-          type: 'metasearch',
-          logo: '/logos/google.png',
-          isActive: false,
-          isConnected: false,
-          connectionStatus: 'disconnected',
-          lastSync: new Date(Date.now() - 3600000), // 1 hour ago
-          commission: 12,
-          bookings: 23,
-          revenue: 145000,
-          availability: 0,
-          rateParity: false,
-          autoSync: false,
-          syncInterval: 60,
-          errorCount: 5,
-          settings: {
-            roomMapping: {},
-            rateMapping: {},
-            inventoryPool: 'meta',
-            restrictions: []
-          }
-        }
-      ];
+      // Fetch real data from API
+      const [channelsResponse, syncLogsResponse] = await Promise.all([
+        channelManagerService.getChannels(),
+        channelManagerService.getSyncHistory()
+      ]);
 
-      const mockSyncLogs: SyncLog[] = [
-        {
-          id: '1',
-          channelId: 'booking',
-          channelName: 'Booking.com',
-          type: 'inventory',
-          status: 'success',
-          message: 'Inventory successfully updated for 45 room types',
-          timestamp: new Date(Date.now() - 300000)
-        },
-        {
-          id: '2',
-          channelId: 'expedia',
-          channelName: 'Expedia',
-          type: 'rates',
-          status: 'warning',
-          message: 'Rate parity violation detected for weekends',
-          timestamp: new Date(Date.now() - 180000),
-          details: { affectedDates: ['2024-01-20', '2024-01-21'] }
-        },
-        {
-          id: '3',
-          channelId: 'amadeus',
-          channelName: 'Amadeus GDS',
-          type: 'bookings',
-          status: 'error',
-          message: 'Failed to retrieve new bookings: Connection timeout',
-          timestamp: new Date(Date.now() - 900000)
-        }
-      ];
+      if (channelsResponse.success && syncLogsResponse.success) {
+        // Transform backend data to match frontend expectations
+        const transformedChannels = channelManagerService.transformChannelData(channelsResponse.data);
+        const transformedSyncLogs = channelManagerService.transformSyncLogs(syncLogsResponse.data);
+        const calculatedMetrics = channelManagerService.transformChannelMetrics(channelsResponse.data, syncLogsResponse.data);
 
-      const mockMetrics: ChannelMetrics = {
-        totalBookings: 567,
-        totalRevenue: 3640000,
-        averageCommission: 11.2,
-        conversionRate: 3.4,
-        responseTime: 850,
-        errorRate: 2.1
-      };
-
-      setChannels(mockChannels);
-      setSyncLogs(mockSyncLogs);
-      setMetrics(mockMetrics);
+        setChannels(transformedChannels);
+        setSyncLogs(transformedSyncLogs);
+        setMetrics(calculatedMetrics);
+      } else {
+        throw new Error('Failed to fetch channel data');
+      }
     } catch (error) {
       console.error('Failed to fetch channel data:', error);
       toast.error('Failed to load channel data');
+
+      // Fallback to empty data instead of mock data
+      setChannels([]);
+      setSyncLogs([]);
+      setMetrics({
+        totalBookings: 0,
+        totalRevenue: 0,
+        averageCommission: 0,
+        conversionRate: 0,
+        responseTime: 0,
+        errorRate: 0
+      });
     } finally {
       setIsLoading(false);
     }
@@ -289,17 +144,18 @@ const ChannelDistributionHub: React.FC = () => {
 
   const toggleChannel = async (channelId: string, active: boolean) => {
     try {
-      // Mock API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      // Update channel status via API
+      await channelManagerService.updateChannel(channelId, { isActive: active });
+
       setChannels(prev => prev.map(channel =>
-        channel.id === channelId 
+        channel.id === channelId
           ? { ...channel, isActive: active, isConnected: active }
           : channel
       ));
-      
+
       toast.success(`Channel ${active ? 'activated' : 'deactivated'} successfully`);
     } catch (error) {
+      console.error('Error updating channel status:', error);
       toast.error('Failed to update channel status');
     }
   };
@@ -307,29 +163,41 @@ const ChannelDistributionHub: React.FC = () => {
   const syncChannel = async (channelId: string) => {
     try {
       setChannels(prev => prev.map(channel =>
-        channel.id === channelId 
+        channel.id === channelId
           ? { ...channel, connectionStatus: 'syncing' }
           : channel
       ));
 
-      // Mock sync operation
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
+      // Calculate sync date range (last 7 days)
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 7);
+
+      // Sync channel with real API call
+      await channelManagerService.syncToChannel(channelId, {
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0]
+      });
+
       setChannels(prev => prev.map(channel =>
-        channel.id === channelId 
-          ? { 
-              ...channel, 
+        channel.id === channelId
+          ? {
+              ...channel,
               connectionStatus: 'connected',
               lastSync: new Date(),
               errorCount: 0
             }
           : channel
       ));
-      
+
       toast.success('Channel synchronized successfully');
+
+      // Refresh data to show latest sync logs
+      fetchChannelData();
     } catch (error) {
+      console.error('Error syncing channel:', error);
       setChannels(prev => prev.map(channel =>
-        channel.id === channelId 
+        channel.id === channelId
           ? { ...channel, connectionStatus: 'error', errorCount: channel.errorCount + 1 }
           : channel
       ));
@@ -435,7 +303,7 @@ const ChannelDistributionHub: React.FC = () => {
                   <p className="text-sm text-gray-600">Total Revenue</p>
                   <p className="text-2xl font-bold">{formatCurrency(metrics.totalRevenue)}</p>
                 </div>
-                <DollarSign className="w-6 h-6 text-green-500" />
+                <IndianRupee className="w-6 h-6 text-green-500" />
               </div>
             </CardContent>
           </Card>

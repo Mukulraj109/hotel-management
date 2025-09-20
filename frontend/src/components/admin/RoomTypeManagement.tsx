@@ -5,7 +5,6 @@ import {
   Trash2,
   Settings,
   Users,
-  DollarSign,
   Bed,
   Eye,
   Upload,
@@ -72,7 +71,7 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
   };
 
   const handleCreate = async () => {
-    if (!formData.name || !formData.code || !formData.basePrice) {
+    if (!formData.name || !formData.code || !formData.basePrice || !formData.totalRooms) {
       setError('Please fill in all required fields');
       return;
     }
@@ -82,10 +81,12 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
         ...formData,
         hotelId,
         maxOccupancy: formData.maxOccupancy || 2,
-        basePrice: Number(formData.basePrice)
+        basePrice: Number(formData.basePrice),
+        totalRooms: Number(formData.totalRooms)
       } as CreateRoomTypeData);
       
-      setRoomTypes([...roomTypes, newRoomType]);
+      // Refresh the room types data to get updated statistics
+      await fetchRoomTypes();
       setShowCreateModal(false);
       setFormData({});
       setError(null);
@@ -95,7 +96,7 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
   };
 
   const handleUpdate = async () => {
-    if (!selectedRoomType || !formData.name || !formData.code || !formData.basePrice) {
+    if (!selectedRoomType || !formData.name || !formData.code || !formData.basePrice || !formData.totalRooms) {
       setError('Please fill in all required fields');
       return;
     }
@@ -106,13 +107,13 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
         {
           ...formData,
           basePrice: Number(formData.basePrice),
-          maxOccupancy: Number(formData.maxOccupancy)
+          maxOccupancy: Number(formData.maxOccupancy),
+          totalRooms: Number(formData.totalRooms)
         }
       );
       
-      setRoomTypes(roomTypes.map(rt => 
-        rt._id === selectedRoomType._id ? updatedRoomType : rt
-      ));
+      // Refresh the room types data to get updated statistics
+      await fetchRoomTypes();
       setShowEditModal(false);
       setSelectedRoomType(null);
       setFormData({});
@@ -129,7 +130,8 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
 
     try {
       await roomTypeService.deleteRoomType(roomType._id);
-      setRoomTypes(roomTypes.filter(rt => rt._id !== roomType._id));
+      // Refresh the room types data to get updated statistics
+      await fetchRoomTypes();
       setError(null);
     } catch (err: any) {
       setError(err.message || 'Failed to delete room type');
@@ -149,6 +151,7 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
       code: roomType.code,
       maxOccupancy: roomType.maxOccupancy,
       basePrice: roomType.basePrice,
+      totalRooms: roomType.totalRooms,
       description: roomType.description,
       amenities: roomType.amenities,
       legacyType: roomType.legacyType
@@ -262,7 +265,9 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
         
         <Card>
           <CardContent className="flex items-center p-6">
-            <DollarSign className="w-8 h-8 text-yellow-600" />
+            <div className="w-8 h-8 text-yellow-600 flex items-center justify-center">
+              <span className="text-2xl font-bold">₹</span>
+            </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Avg Base Rate</p>
               <p className="text-2xl font-bold text-gray-900">
@@ -442,18 +447,33 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Base Price (₹) *
-            </label>
-            <Input
-              type="number"
-              min="0"
-              step="50"
-              value={formData.basePrice || ''}
-              onChange={(e) => setFormData({ ...formData, basePrice: Number(e.target.value) })}
-              placeholder="2000"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Base Price (₹) *
+              </label>
+              <Input
+                type="number"
+                min="0"
+                step="50"
+                value={formData.basePrice || ''}
+                onChange={(e) => setFormData({ ...formData, basePrice: Number(e.target.value) })}
+                placeholder="2000"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Total Rooms *
+              </label>
+              <Input
+                type="number"
+                min="1"
+                max="100"
+                value={formData.totalRooms || ''}
+                onChange={(e) => setFormData({ ...formData, totalRooms: Number(e.target.value) })}
+                placeholder="10"
+              />
+            </div>
           </div>
 
           <div>
@@ -547,17 +567,31 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Base Price (₹) *
-            </label>
-            <Input
-              type="number"
-              min="0"
-              step="50"
-              value={formData.basePrice || ''}
-              onChange={(e) => setFormData({ ...formData, basePrice: Number(e.target.value) })}
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Base Price (₹) *
+              </label>
+              <Input
+                type="number"
+                min="0"
+                step="50"
+                value={formData.basePrice || ''}
+                onChange={(e) => setFormData({ ...formData, basePrice: Number(e.target.value) })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Total Rooms *
+              </label>
+              <Input
+                type="number"
+                min="1"
+                max="100"
+                value={formData.totalRooms || ''}
+                onChange={(e) => setFormData({ ...formData, totalRooms: Number(e.target.value) })}
+              />
+            </div>
           </div>
 
           <div>

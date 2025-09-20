@@ -3,7 +3,7 @@ import GuestType from '../models/GuestType.js';
 import IdentificationType from '../models/IdentificationType.js';
 import User from '../models/User.js';
 import AuditLog from '../models/AuditLog.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import mongoose from 'mongoose';
 
 class GuestManagementService {
@@ -36,7 +36,7 @@ class GuestManagementService {
     try {
       const attribute = await AccountAttribute.findById(attributeId);
       if (!attribute) {
-        throw new AppError('Account attribute not found', 404);
+        throw new ApplicationError('Account attribute not found', 404);
       }
 
       Object.assign(attribute, updateData);
@@ -78,11 +78,11 @@ class GuestManagementService {
     try {
       const attribute = await AccountAttribute.findById(attributeId);
       if (!attribute) {
-        throw new AppError('Account attribute not found', 404);
+        throw new ApplicationError('Account attribute not found', 404);
       }
 
       if (attribute.isSystem) {
-        throw new AppError('Cannot delete system-defined attributes', 400);
+        throw new ApplicationError('Cannot delete system-defined attributes', 400);
       }
 
       attribute.isActive = false;
@@ -132,7 +132,7 @@ class GuestManagementService {
     try {
       const guestType = await GuestType.findById(guestTypeId);
       if (!guestType) {
-        throw new AppError('Guest type not found', 404);
+        throw new ApplicationError('Guest type not found', 404);
       }
 
       Object.assign(guestType, updateData);
@@ -174,7 +174,7 @@ class GuestManagementService {
     try {
       const guestType = await GuestType.findById(guestTypeId);
       if (!guestType) {
-        throw new AppError('Guest type not found', 404);
+        throw new ApplicationError('Guest type not found', 404);
       }
 
       // Check if guest type is in use
@@ -184,7 +184,7 @@ class GuestManagementService {
       });
 
       if (usersWithType > 0) {
-        throw new AppError('Cannot delete guest type that is in use', 400);
+        throw new ApplicationError('Cannot delete guest type that is in use', 400);
       }
 
       guestType.isActive = false;
@@ -234,7 +234,7 @@ class GuestManagementService {
     try {
       const identificationType = await IdentificationType.findById(identificationTypeId);
       if (!identificationType) {
-        throw new AppError('Identification type not found', 404);
+        throw new ApplicationError('Identification type not found', 404);
       }
 
       Object.assign(identificationType, updateData);
@@ -276,7 +276,7 @@ class GuestManagementService {
     try {
       const identificationType = await IdentificationType.findById(identificationTypeId);
       if (!identificationType) {
-        throw new AppError('Identification type not found', 404);
+        throw new ApplicationError('Identification type not found', 404);
       }
 
       identificationType.isActive = false;
@@ -386,7 +386,7 @@ class GuestManagementService {
     try {
       const originalGuestType = await GuestType.findById(guestTypeId);
       if (!originalGuestType) {
-        throw new AppError('Guest type not found', 404);
+        throw new ApplicationError('Guest type not found', 404);
       }
 
       const duplicateData = originalGuestType.toObject();
@@ -444,7 +444,7 @@ class GuestManagementService {
             action = 'identification_type_display_order_updated';
             break;
           default:
-            throw new AppError(`Invalid type: ${type}`, 400);
+            throw new ApplicationError(`Invalid type: ${type}`, 400);
         }
 
         const item = await model.findByIdAndUpdate(

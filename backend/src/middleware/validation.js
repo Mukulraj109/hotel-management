@@ -1,6 +1,6 @@
 import Joi from 'joi';
 import mongoose from 'mongoose';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 
 export const validate = (schema) => {
   return (req, res, next) => {
@@ -8,7 +8,7 @@ export const validate = (schema) => {
     
     if (error) {
       const message = error.details.map(detail => detail.message).join(', ');
-      return next(new AppError(message, 400));
+      return next(new ApplicationError(message, 400));
     }
     
     next();
@@ -257,7 +257,7 @@ export const schemas = {
                     'any.required': 'Location name is required',
                     'string.max': 'Location name cannot exceed 100 characters'
                   }),
-                  details: Joi.string().max(200).optional().messages({
+                  details: Joi.string().max(200).optional().allow('').messages({
                     'string.max': 'Location details cannot exceed 200 characters'
                   })
                 }).required().messages({
@@ -314,7 +314,7 @@ export const schemas = {
                 }).optional()
               }),
               respondToMeetUpRequest: Joi.object({
-                message: Joi.string().max(300).optional().messages({
+                message: Joi.string().max(300).optional().allow('').messages({
                   'string.max': 'Response message cannot exceed 300 characters'
                 })
               }),
@@ -524,8 +524,69 @@ export const schemas = {
                     })
                   )
                 }).optional()
-              })
-            };
+              }),
+
+  // Meet-Up Room Booking validation schemas
+  checkRoomAvailability: Joi.object({
+    hotelId: Joi.string().required().messages({
+      'string.empty': 'Hotel ID is required',
+      'any.required': 'Hotel ID is required'
+    }),
+    date: Joi.date().iso().greater('now').required().messages({
+      'date.greater': 'Date must be in the future',
+      'any.required': 'Date is required'
+    }),
+    timeSlot: Joi.object({
+      start: Joi.string().pattern(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).required().messages({
+        'string.pattern.base': 'Start time must be in HH:MM format',
+        'any.required': 'Start time is required'
+      }),
+      end: Joi.string().pattern(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).required().messages({
+        'string.pattern.base': 'End time must be in HH:MM format',
+        'any.required': 'End time is required'
+      })
+    }).required().messages({
+      'any.required': 'Time slot is required'
+    }),
+    capacity: Joi.number().integer().min(2).max(20).required().messages({
+      'number.min': 'Capacity must be at least 2',
+      'number.max': 'Capacity cannot exceed 20',
+      'any.required': 'Capacity is required'
+    }),
+    roomType: Joi.string().optional()
+  }),
+
+  bookRoom: Joi.object({
+    meetUpId: Joi.string().required().messages({
+      'string.empty': 'Meet-up ID is required',
+      'any.required': 'Meet-up ID is required'
+    }),
+    roomId: Joi.string().required().messages({
+      'string.empty': 'Room ID is required',
+      'any.required': 'Room ID is required'
+    }),
+    equipment: Joi.array().items(Joi.string()).optional().default([]),
+    services: Joi.array().items(Joi.string()).optional().default([])
+  }),
+
+  calculateBookingCost: Joi.object({
+    hotelId: Joi.string().required().messages({
+      'string.empty': 'Hotel ID is required',
+      'any.required': 'Hotel ID is required'
+    }),
+    duration: Joi.number().min(0.5).max(12).required().messages({
+      'number.min': 'Duration must be at least 0.5 hours',
+      'number.max': 'Duration cannot exceed 12 hours',
+      'any.required': 'Duration is required'
+    }),
+    equipment: Joi.array().items(Joi.string()).optional().default([]),
+    services: Joi.array().items(Joi.string()).optional().default([]),
+    participants: Joi.number().integer().min(2).max(20).optional().default(2).messages({
+      'number.min': 'Participants must be at least 2',
+      'number.max': 'Participants cannot exceed 20'
+    })
+  })
+};
 
 // Additional validation middlewares
 
@@ -537,7 +598,7 @@ export const validateObjectId = (paramName) => {
     const id = req.params[paramName];
     
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return next(new AppError(`Invalid ${paramName} format`, 400));
+      return next(new ApplicationError(`Invalid ${paramName} format`, 400));
     }
     
     next();
@@ -550,7 +611,7 @@ export const validateObjectId = (paramName) => {
 export const validateBookingId = validateObjectId('bookingId');
 
 /**
- * Validate amendment ID specifically  
+ * Validate amendment ID specifically
  */
 export const validateAmendmentId = validateObjectId('amendmentId');
 
@@ -560,17 +621,17 @@ export const validateAmendmentId = validateObjectId('amendmentId');
 export const validateIdArray = (fieldName) => {
   return (req, res, next) => {
     const ids = req.body[fieldName];
-    
+
     if (!Array.isArray(ids)) {
-      return next(new AppError(`${fieldName} must be an array`, 400));
+      return next(new ApplicationError(`${fieldName} must be an array`, 400));
     }
-    
+
     for (const id of ids) {
       if (!mongoose.Types.ObjectId.isValid(id)) {
-        return next(new AppError(`Invalid ID format in ${fieldName}: ${id}`, 400));
+        return next(new ApplicationError(`Invalid ID format in ${fieldName}: ${id}`, 400));
       }
     }
-    
+
     next();
   };
 };

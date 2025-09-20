@@ -1,5 +1,6 @@
 import { BookingWidget, PromoCode, GuestCRM, EmailCampaign, LoyaltyProgram, LandingPage, ReviewManagement } from '../models/BookingEngine.js';
 import BookingEngineService from '../services/bookingEngineService.js';
+import WidgetTracking from '../models/WidgetTracking.js';
 import { v4 as uuidv4 } from 'uuid';
 
 const bookingEngineService = new BookingEngineService();
@@ -114,12 +115,47 @@ export const getWidgetCode = async (req, res) => {
 // Promo Code Management
 export const createPromoCode = async (req, res) => {
   try {
+    const {
+      code, name, description, type, discountValue, maxAmount, minBookingValue,
+      minNights, maxNights, applicableRoomTypes, firstTimeGuests, maxUsagePerGuest,
+      combinableWithOtherOffers, startDate, endDate, totalUsageLimit, guestSegments,
+      channels, isActive
+    } = req.body;
+
     const promoData = {
-      ...req.body,
-      codeId: uuidv4(),
-      code: req.body.code.toUpperCase()
+      codeId: req.body.codeId || uuidv4(),
+      code: code.toUpperCase(),
+      name,
+      description,
+      type,
+      discount: {
+        value: discountValue,
+        maxAmount
+      },
+      conditions: {
+        minBookingValue,
+        minNights,
+        maxNights,
+        applicableRoomTypes: applicableRoomTypes || [],
+        firstTimeGuests: firstTimeGuests || false,
+        maxUsagePerGuest: maxUsagePerGuest || 1,
+        combinableWithOtherOffers: combinableWithOtherOffers || false
+      },
+      validity: {
+        startDate: new Date(startDate),
+        endDate: new Date(endDate)
+      },
+      usage: {
+        totalUsageLimit,
+        currentUsage: 0
+      },
+      targeting: {
+        guestSegments: guestSegments || [],
+        channels: channels || []
+      },
+      isActive: isActive !== false
     };
-    
+
     const promoCode = new PromoCode(promoData);
     await promoCode.save();
     
@@ -719,9 +755,9 @@ export const getMarketingDashboard = async (req, res) => {
 export const processWidgetBooking = async (req, res) => {
   try {
     const { widgetId } = req.params;
-    
+
     const booking = await bookingEngineService.processWidgetBooking(req.body, widgetId);
-    
+
     res.status(201).json({
       success: true,
       data: booking
@@ -733,6 +769,335 @@ export const processWidgetBooking = async (req, res) => {
     });
   }
 };
+
+// Widget Tracking Endpoints
+export const trackWidgetEvent = async (req, res) => {
+  try {
+    const {
+      widgetId,
+      sessionId,
+      event,
+      url,
+      referrer,
+      userAgent,
+      screenResolution,
+      viewportSize,
+      eventData,
+      bookingData
+    } = req.body;
+
+    // Parse user agent for device information
+    const deviceInfo = parseUserAgent(userAgent);
+
+    // Parse URL parameters for UTM tracking
+    const urlParams = url ? new URL(url) : null;
+    const utmParams = urlParams ? {
+      source: urlParams.searchParams.get('utm_source'),
+      medium: urlParams.searchParams.get('utm_medium'),
+      campaign: urlParams.searchParams.get('utm_campaign'),
+      term: urlParams.searchParams.get('utm_term'),
+      content: urlParams.searchParams.get('utm_content')
+    } : {};
+
+    // Create tracking record
+    const tracking = new WidgetTracking({
+      trackingId: uuidv4(),
+      widgetId,
+      sessionId,
+      event,
+      url,
+      referrer,
+      userAgent,
+      ip: req.ip || req.connection.remoteAddress,
+      screenResolution,
+      viewportSize,
+      deviceType: deviceInfo.deviceType,
+      browser: deviceInfo.browser,
+      os: deviceInfo.os,
+      eventData: eventData || {},
+      bookingData: bookingData || {},
+      utmParams,
+      isConversion: event === 'conversion',
+      conversionValue: bookingData?.estimatedValue || 0,
+      timestamp: new Date()
+    });
+
+    await tracking.save();
+
+    // Update widget performance in real-time
+    if (event === 'impression' || event === 'click' || event === 'conversion') {
+      await updateWidgetPerformanceMetrics(widgetId, event, bookingData?.estimatedValue);
+    }
+
+    res.json({
+      success: true,
+      trackingId: tracking.trackingId
+    });
+
+  } catch (error) {
+    console.error('Widget tracking error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Tracking failed'
+    });
+  }
+};
+
+// Get widget analytics
+export const getWidgetAnalytics = async (req, res) => {
+  try {
+    const { widgetId } = req.params;
+    const { dateRange = 7 } = req.query;
+
+    // Get basic performance metrics
+    const performance = await WidgetTracking.getWidgetPerformance(widgetId, parseInt(dateRange));
+
+    // Get conversion funnel
+    const funnel = await WidgetTracking.getConversionFunnel(widgetId, parseInt(dateRange));
+
+    // Get time-series data for charts
+    const timeSeriesData = await getWidgetTimeSeriesData(widgetId, parseInt(dateRange));
+
+    // Get geographic data
+    const geoData = await getWidgetGeographicData(widgetId, parseInt(dateRange));
+
+    // Get device/browser breakdown
+    const deviceData = await getWidgetDeviceData(widgetId, parseInt(dateRange));
+
+    res.json({
+      success: true,
+      data: {
+        performance,
+        funnel,
+        timeSeries: timeSeriesData,
+        geographic: geoData,
+        devices: deviceData
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// Get all widgets performance summary
+export const getWidgetsPerformanceSummary = async (req, res) => {
+  try {
+    const { dateRange = 30 } = req.query;
+
+    const topWidgets = await WidgetTracking.getTopPerformingWidgets(10, parseInt(dateRange));
+
+    // Get overall metrics
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - parseInt(dateRange));
+
+    const overallMetrics = await WidgetTracking.aggregate([
+      {
+        $match: {
+          timestamp: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: '$event',
+          count: { $sum: 1 },
+          totalValue: { $sum: '$conversionValue' }
+        }
+      }
+    ]);
+
+    const summary = {
+      totalImpressions: 0,
+      totalClicks: 0,
+      totalConversions: 0,
+      totalRevenue: 0,
+      overallConversionRate: 0
+    };
+
+    overallMetrics.forEach(metric => {
+      switch (metric._id) {
+        case 'impression':
+          summary.totalImpressions = metric.count;
+          break;
+        case 'click':
+          summary.totalClicks = metric.count;
+          break;
+        case 'conversion':
+          summary.totalConversions = metric.count;
+          summary.totalRevenue = metric.totalValue || 0;
+          break;
+      }
+    });
+
+    if (summary.totalClicks > 0) {
+      summary.overallConversionRate = (summary.totalConversions / summary.totalClicks) * 100;
+    }
+
+    res.json({
+      success: true,
+      data: {
+        summary,
+        topWidgets
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// Helper functions
+function parseUserAgent(userAgent) {
+  if (!userAgent) return { deviceType: 'unknown', browser: 'unknown', os: 'unknown' };
+
+  const ua = userAgent.toLowerCase();
+
+  let deviceType = 'desktop';
+  if (/mobile|android|iphone|ipod|blackberry|iemobile/.test(ua)) {
+    deviceType = 'mobile';
+  } else if (/tablet|ipad/.test(ua)) {
+    deviceType = 'tablet';
+  }
+
+  let browser = 'unknown';
+  if (ua.includes('chrome')) browser = 'Chrome';
+  else if (ua.includes('firefox')) browser = 'Firefox';
+  else if (ua.includes('safari')) browser = 'Safari';
+  else if (ua.includes('edge')) browser = 'Edge';
+
+  let os = 'unknown';
+  if (ua.includes('windows')) os = 'Windows';
+  else if (ua.includes('mac')) os = 'macOS';
+  else if (ua.includes('linux')) os = 'Linux';
+  else if (ua.includes('android')) os = 'Android';
+  else if (ua.includes('ios')) os = 'iOS';
+
+  return { deviceType, browser, os };
+}
+
+async function updateWidgetPerformanceMetrics(widgetId, event, value = 0) {
+  try {
+    const updateField = {};
+    updateField[`performance.${event}s`] = 1;
+
+    if (event === 'conversion' && value > 0) {
+      // Update average booking value as well
+      const widget = await BookingWidget.findOne({ widgetId });
+      if (widget) {
+        const currentTotal = (widget.performance.averageBookingValue || 0) * (widget.performance.conversions || 0);
+        const newTotal = currentTotal + value;
+        const newConversions = (widget.performance.conversions || 0) + 1;
+        updateField['performance.averageBookingValue'] = newTotal / newConversions;
+      }
+    }
+
+    await BookingWidget.findOneAndUpdate(
+      { widgetId },
+      { $inc: updateField },
+      { new: true }
+    );
+
+    // Recalculate conversion rate
+    const widget = await BookingWidget.findOne({ widgetId });
+    if (widget && widget.performance.clicks > 0) {
+      widget.performance.conversionRate =
+        (widget.performance.conversions / widget.performance.clicks) * 100;
+      await widget.save();
+    }
+  } catch (error) {
+    console.error('Error updating widget metrics:', error);
+  }
+}
+
+async function getWidgetTimeSeriesData(widgetId, days) {
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+
+  return await WidgetTracking.aggregate([
+    {
+      $match: {
+        widgetId,
+        timestamp: { $gte: startDate }
+      }
+    },
+    {
+      $group: {
+        _id: {
+          date: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+          event: '$event'
+        },
+        count: { $sum: 1 }
+      }
+    },
+    {
+      $group: {
+        _id: '$_id.date',
+        events: {
+          $push: {
+            event: '$_id.event',
+            count: '$count'
+          }
+        }
+      }
+    },
+    { $sort: { _id: 1 } }
+  ]);
+}
+
+async function getWidgetGeographicData(widgetId, days) {
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+
+  return await WidgetTracking.aggregate([
+    {
+      $match: {
+        widgetId,
+        timestamp: { $gte: startDate },
+        country: { $exists: true, $ne: null }
+      }
+    },
+    {
+      $group: {
+        _id: '$country',
+        impressions: { $sum: { $cond: [{ $eq: ['$event', 'impression'] }, 1, 0] } },
+        conversions: { $sum: { $cond: [{ $eq: ['$event', 'conversion'] }, 1, 0] } }
+      }
+    },
+    { $sort: { impressions: -1 } },
+    { $limit: 10 }
+  ]);
+}
+
+async function getWidgetDeviceData(widgetId, days) {
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+
+  return await WidgetTracking.aggregate([
+    {
+      $match: {
+        widgetId,
+        timestamp: { $gte: startDate }
+      }
+    },
+    {
+      $group: {
+        _id: {
+          deviceType: '$deviceType',
+          browser: '$browser'
+        },
+        impressions: { $sum: { $cond: [{ $eq: ['$event', 'impression'] }, 1, 0] } },
+        conversions: { $sum: { $cond: [{ $eq: ['$event', 'conversion'] }, 1, 0] } }
+      }
+    },
+    { $sort: { impressions: -1 } }
+  ]);
+}
 
 export default {
   createBookingWidget,
@@ -761,5 +1126,8 @@ export default {
   respondToReview,
   moderateReview,
   getMarketingDashboard,
-  processWidgetBooking
+  processWidgetBooking,
+  trackWidgetEvent,
+  getWidgetAnalytics,
+  getWidgetsPerformanceSummary
 };

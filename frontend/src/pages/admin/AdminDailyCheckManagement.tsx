@@ -17,10 +17,13 @@ import {
   Search,
   Filter,
   Eye,
-  Edit
+  Edit,
+  X
 } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { dailyRoutineCheckService } from '../../services/dailyRoutineCheckService';
+import { useRealTime } from '../../services/realTimeService';
+import { TemplateEditModal } from '../../components/admin/TemplateEditModal';
 import toast from 'react-hot-toast';
 
 interface Staff {
@@ -65,9 +68,290 @@ interface Assignment {
   staffId: string;
 }
 
+// Templates Management Component
+const TemplatesManagement = () => {
+  const [templates, setTemplates] = useState([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(true);
+  const [editingRoomType, setEditingRoomType] = useState(null);
+  const [selectedRoomType, setSelectedRoomType] = useState('single');
+
+  useEffect(() => {
+    fetchTemplates();
+  }, []);
+
+  const fetchTemplates = async () => {
+    try {
+      setLoadingTemplates(true);
+      const response = await dailyRoutineCheckService.getInventoryTemplates();
+      setTemplates(response.data?.templates || []);
+    } catch (error) {
+      console.error('Failed to fetch templates:', error);
+      toast.error('Failed to load templates');
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const roomTypes = [
+    { value: 'single', label: 'Single Room', color: 'bg-blue-100 text-blue-800' },
+    { value: 'double', label: 'Double Room', color: 'bg-green-100 text-green-800' },
+    { value: 'deluxe', label: 'Deluxe Room', color: 'bg-purple-100 text-purple-800' },
+    { value: 'suite', label: 'Suite', color: 'bg-gold-100 text-gold-800' }
+  ];
+
+  const selectedTemplate = templates.find(t => t.roomType === selectedRoomType);
+
+  if (loadingTemplates) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <LoadingSpinner />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">Daily Check Templates</h2>
+          <p className="text-sm text-gray-600 mt-1">
+            Manage inventory templates for different room types. Each template defines the standard items to check during daily room inspections.
+          </p>
+        </div>
+        <Button
+          onClick={() => setEditingRoomType(selectedRoomType)}
+          className="bg-blue-600 hover:bg-blue-700"
+        >
+          <Edit className="w-4 h-4 mr-2" />
+          {selectedTemplate ? 'Edit Template' : 'Create Template'}
+        </Button>
+      </div>
+
+      {/* Room Type Selector */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Select Room Type</CardTitle>
+          <p className="text-sm text-gray-600">Choose a room type to view or edit its daily check template</p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {roomTypes.map(roomType => {
+              const template = templates.find(t => t.roomType === roomType.value);
+              const isSelected = selectedRoomType === roomType.value;
+
+              return (
+                <button
+                  key={roomType.value}
+                  onClick={() => setSelectedRoomType(roomType.value)}
+                  className={`p-4 border rounded-lg text-left transition-all ${
+                    isSelected
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <Badge className={roomType.color}>
+                      {roomType.label}
+                    </Badge>
+                    {template ? (
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    ) : (
+                      <AlertTriangle className="w-5 h-5 text-amber-500" />
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    {template
+                      ? `${template.fixedInventory?.length || 0} fixed + ${template.dailyInventory?.length || 0} daily items`
+                      : 'No template configured'
+                    }
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Est. {template?.estimatedCheckDuration || 15} minutes
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Template Details */}
+      {selectedTemplate ? (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Fixed Inventory */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-gray-600" />
+                  Fixed Inventory
+                </CardTitle>
+                <Badge variant="outline">
+                  {selectedTemplate.fixedInventory?.length || 0} items
+                </Badge>
+              </div>
+              <p className="text-sm text-gray-600">
+                Permanent items that remain in the room (furniture, appliances, fixtures)
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {selectedTemplate.fixedInventory?.map((item, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <h4 className="font-medium">{item.name}</h4>
+                      <p className="text-sm text-gray-600 capitalize">{item.category}</p>
+                      <p className="text-xs text-gray-500">{item.description}</p>
+                    </div>
+                    <div className="text-right">
+                      <Badge className="bg-blue-100 text-blue-800">
+                        {item.expectedCondition}
+                      </Badge>
+                      {item.unitPrice > 0 && (
+                        <p className="text-xs text-gray-500 mt-1">₹{item.unitPrice}</p>
+                      )}
+                    </div>
+                  </div>
+                )) || (
+                  <div className="text-center py-8">
+                    <Settings className="mx-auto h-8 w-8 text-gray-400 mb-3" />
+                    <p className="text-gray-500">No fixed inventory items configured</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Daily Inventory */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-gray-600" />
+                  Daily Inventory
+                </CardTitle>
+                <Badge variant="outline">
+                  {selectedTemplate.dailyInventory?.length || 0} items
+                </Badge>
+              </div>
+              <p className="text-sm text-gray-600">
+                Daily consumables and amenities that need regular replenishment
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {selectedTemplate.dailyInventory?.map((item, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <h4 className="font-medium">{item.name}</h4>
+                      <p className="text-sm text-gray-600 capitalize">{item.category}</p>
+                      <p className="text-xs text-gray-500">{item.description}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-green-100 text-green-800">
+                          Qty: {item.standardQuantity}
+                        </Badge>
+                        <Badge className="bg-yellow-100 text-yellow-800">
+                          {item.expectedCondition}
+                        </Badge>
+                      </div>
+                      {item.unitPrice > 0 && (
+                        <p className="text-xs text-gray-500 mt-1">₹{item.unitPrice} each</p>
+                      )}
+                    </div>
+                  </div>
+                )) || (
+                  <div className="text-center py-8">
+                    <Calendar className="mx-auto h-8 w-8 text-gray-400 mb-3" />
+                    <p className="text-gray-500">No daily inventory items configured</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        /* No Template Found */
+        <Card>
+          <CardContent className="p-8">
+            <div className="text-center">
+              <AlertTriangle className="mx-auto h-12 w-12 text-amber-500 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No Template Found</h3>
+              <p className="text-gray-500 mb-6">
+                No daily check template exists for {roomTypes.find(rt => rt.value === selectedRoomType)?.label} rooms.
+              </p>
+              <Button
+                onClick={() => setEditingRoomType(selectedRoomType)}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Create Template
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Template Summary */}
+      {selectedTemplate && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Template Summary</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="text-center p-4 bg-blue-50 rounded-lg">
+                <div className="text-2xl font-bold text-blue-600">
+                  {(selectedTemplate.fixedInventory?.length || 0) + (selectedTemplate.dailyInventory?.length || 0)}
+                </div>
+                <div className="text-sm text-gray-600">Total Items</div>
+              </div>
+
+              <div className="text-center p-4 bg-green-50 rounded-lg">
+                <div className="text-2xl font-bold text-green-600">
+                  {selectedTemplate.fixedInventory?.length || 0}
+                </div>
+                <div className="text-sm text-gray-600">Fixed Items</div>
+              </div>
+
+              <div className="text-center p-4 bg-yellow-50 rounded-lg">
+                <div className="text-2xl font-bold text-yellow-600">
+                  {selectedTemplate.dailyInventory?.length || 0}
+                </div>
+                <div className="text-sm text-gray-600">Daily Items</div>
+              </div>
+
+              <div className="text-center p-4 bg-purple-50 rounded-lg">
+                <div className="text-2xl font-bold text-purple-600">
+                  {selectedTemplate.estimatedCheckDuration || 15}
+                </div>
+                <div className="text-sm text-gray-600">Minutes</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Template Editing Modal */}
+      <TemplateEditModal
+        isOpen={!!editingRoomType}
+        onClose={() => setEditingRoomType(null)}
+        roomType={editingRoomType}
+        onSave={() => {
+          setEditingRoomType(null);
+          fetchTemplates();
+          toast.success('Template saved successfully!');
+        }}
+      />
+    </div>
+  );
+};
+
 export default function AdminDailyCheckManagement() {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [unassignedRooms, setUnassignedRooms] = useState<Room[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignmentMode, setAssignmentMode] = useState(false);
@@ -76,14 +360,58 @@ export default function AdminDailyCheckManagement() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [activeTab, setActiveTab] = useState<'overview' | 'assignments' | 'templates'>('overview');
 
+  // Real-time connection
+  const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
+
   useEffect(() => {
     fetchData();
+    
+    // Connect to real-time updates
+    connect().catch(console.error);
+    
+    return () => {
+      disconnect();
+    };
   }, []);
+
+  // Set up real-time event listeners
+  useEffect(() => {
+    if (!isConnected) return;
+    
+    const handleDailyCheckUpdate = (data: any) => {
+      console.log('Real-time daily check update:', data);
+      fetchData();
+      toast.success('Daily check data updated in real-time');
+    };
+    
+    const handleDailyCheckCreate = (data: any) => {
+      console.log('Real-time daily check assignment:', data);
+      fetchData();
+      toast.success('New daily check assignment created');
+    };
+    
+    const handleDailyCheckComplete = (data: any) => {
+      console.log('Real-time daily check completion:', data);
+      fetchData();
+      toast.success(`Room ${data.roomNumber} daily check completed!`);
+    };
+    
+    // Subscribe to daily check events
+    on('daily-check:assigned', handleDailyCheckCreate);
+    on('daily-check:completed', handleDailyCheckComplete);
+    on('daily-check:status_changed', handleDailyCheckUpdate);
+    
+    return () => {
+      off('daily-check:assigned', handleDailyCheckCreate);
+      off('daily-check:completed', handleDailyCheckComplete);
+      off('daily-check:status_changed', handleDailyCheckUpdate);
+    };
+  }, [isConnected, on, off]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [overviewRes, roomsRes, staffRes] = await Promise.all([
+      const [overviewRes, roomsRes, unassignedRes, staffRes] = await Promise.all([
         fetch('/api/v1/daily-routine-check/admin/overview', {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -96,7 +424,13 @@ export default function AdminDailyCheckManagement() {
             'Content-Type': 'application/json'
           }
         }),
-        fetch('/api/v1/users?role=staff', {
+        fetch('/api/v1/daily-routine-check/admin/unassigned-rooms', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+            'Content-Type': 'application/json'
+          }
+        }),
+        fetch('/api/v1/admin/users?role=staff', {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,
             'Content-Type': 'application/json'
@@ -106,10 +440,12 @@ export default function AdminDailyCheckManagement() {
 
       const overviewData = await overviewRes.json();
       const roomsData = await roomsRes.json();
+      const unassignedData = await unassignedRes.json();
       const staffData = await staffRes.json();
 
       setOverview(overviewData.data);
       setRooms(roomsData.data?.rooms || []);
+      setUnassignedRooms(unassignedData.data?.rooms || []);
       setStaff(staffData.data?.users || []);
     } catch (error) {
       console.error('Failed to fetch admin daily check data:', error);
@@ -163,6 +499,34 @@ export default function AdminDailyCheckManagement() {
     }
   };
 
+  // Calculate filtered statistics based on current filter
+  const getFilteredStats = () => {
+    if (!overview?.assignmentSummary) return { assigned: 0, completed: 0, pending: 0, unassigned: 0 };
+
+    let totalAssigned = 0;
+    let totalCompleted = 0;
+    let totalPending = 0;
+
+    overview.assignmentSummary.forEach(summary => {
+      summary.rooms.forEach(room => {
+        if (filterStatus === 'all' || filterStatus === room.status ||
+            (filterStatus === 'assigned' && (room.status === 'completed' || room.status === 'pending'))) {
+          totalAssigned++;
+          if (room.status === 'completed') totalCompleted++;
+          if (room.status === 'pending') totalPending++;
+        }
+      });
+    });
+
+    return {
+      assigned: filterStatus === 'all' ? overview.assignedRooms : totalAssigned,
+      completed: filterStatus === 'all' ? overview.completedToday : totalCompleted,
+      pending: filterStatus === 'all' ? overview.pendingChecks : totalPending,
+      unassigned: filterStatus === 'all' ? overview.unassignedRooms :
+                 (filterStatus === 'unassigned' ? overview.unassignedRooms : 0)
+    };
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -174,9 +538,26 @@ export default function AdminDailyCheckManagement() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Daily Check Management</h1>
-        <p className="text-gray-600">Manage daily routine checks, assignments, and templates</p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Daily Check Management</h1>
+          <p className="text-gray-600">Manage daily routine checks, assignments, and templates</p>
+        </div>
+        <div className="flex items-center space-x-3">
+          {/* Real-time connection status */}
+          <div className="flex items-center space-x-2">
+            <div className={`w-2 h-2 rounded-full ${
+              connectionState === 'connected' ? 'bg-green-500' : 
+              connectionState === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+            }`}></div>
+            <span className="text-xs text-gray-500 capitalize">{connectionState}</span>
+          </div>
+          
+          <Button onClick={fetchData} variant="secondary" size="sm" disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Tab Navigation */}
@@ -350,7 +731,13 @@ export default function AdminDailyCheckManagement() {
                 </>
               ) : (
                 <Button
-                  onClick={() => setAssignmentMode(true)}
+                  onClick={() => {
+                    setAssignmentMode(true);
+                    // Auto-switch to unassigned filter when entering assignment mode
+                    if (filterStatus !== 'all' && filterStatus !== 'unassigned') {
+                      setFilterStatus('unassigned');
+                    }
+                  }}
                   className="bg-blue-600 hover:bg-blue-700"
                 >
                   <Plus className="w-4 h-4 mr-2" />
@@ -381,28 +768,40 @@ export default function AdminDailyCheckManagement() {
               <option value="all">All Rooms</option>
               <option value="assigned">Assigned</option>
               <option value="unassigned">Unassigned</option>
+              <option value="completed">Completed</option>
+              <option value="pending">Pending</option>
             </select>
           </div>
 
-          {/* Room Assignment Grid */}
-          {assignmentMode ? (
+          {/* Assignment Mode View */}
+          {assignmentMode && (filterStatus === 'all' || filterStatus === 'unassigned') ? (
             <Card>
               <CardHeader>
                 <CardTitle>Assign Rooms to Staff</CardTitle>
+                <p className="text-sm text-gray-600 mt-1">
+                  Select staff members for unassigned rooms. Only rooms without current assignments are shown.
+                </p>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {rooms
-                    .filter(room => 
-                      room.roomNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                      room.type.toLowerCase().includes(searchTerm.toLowerCase())
-                    )
+                  {unassignedRooms
+                    .filter(room => {
+                      // Filter by search term
+                      const matchesSearch = room.roomNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        room.type.toLowerCase().includes(searchTerm.toLowerCase());
+                      return matchesSearch;
+                    })
                     .map((room) => {
                       const assignment = selectedAssignments.find(a => a.roomId === room._id);
                       return (
-                        <div key={room._id} className="border rounded-lg p-4">
+                        <div key={room._id} className="border rounded-lg p-4 bg-yellow-50 border-yellow-200">
                           <div className="mb-3">
-                            <h4 className="font-medium">Room {room.roomNumber}</h4>
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-medium">Room {room.roomNumber}</h4>
+                              <Badge variant="outline" className="text-yellow-700 border-yellow-300">
+                                Unassigned
+                              </Badge>
+                            </div>
                             <p className="text-sm text-gray-600 capitalize">{room.type} • Floor {room.floor}</p>
                           </div>
                           <div className="space-y-2">
@@ -420,7 +819,7 @@ export default function AdminDailyCheckManagement() {
                               <option value="">Select staff member...</option>
                               {staff.map((member) => (
                                 <option key={member._id} value={member._id}>
-                                  {member.name}
+                                  {member.name} ({member.role})
                                 </option>
                               ))}
                             </select>
@@ -439,20 +838,293 @@ export default function AdminDailyCheckManagement() {
                       );
                     })}
                 </div>
+                {unassignedRooms.length === 0 && (
+                  <div className="text-center py-8">
+                    <CheckCircle className="mx-auto h-8 w-8 text-green-500 mb-3" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">All Rooms Assigned</h3>
+                    <p className="text-gray-500">All rooms have been assigned to staff members.</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
+          ) : assignmentMode && (filterStatus === 'assigned' || filterStatus === 'completed' || filterStatus === 'pending') ? (
+            // Show message when trying to assign already assigned rooms
+            <Card>
+              <CardContent>
+                <div className="text-center py-8">
+                  <AlertTriangle className="mx-auto h-8 w-8 text-yellow-500 mb-3" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Cannot Assign {filterStatus.charAt(0).toUpperCase() + filterStatus.slice(1)} Rooms</h3>
+                  <p className="text-gray-500 mb-4">
+                    Assignment mode is only available for unassigned rooms.
+                    {filterStatus === 'assigned' && ' These rooms already have staff assignments.'}
+                    {filterStatus === 'completed' && ' These rooms have been completed and cannot be reassigned.'}
+                    {filterStatus === 'pending' && ' These rooms are already assigned and pending completion.'}
+                  </p>
+                  <Button
+                    onClick={() => setFilterStatus('unassigned')}
+                    className="mr-2"
+                  >
+                    Show Unassigned Rooms
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setAssignmentMode(false)}
+                  >
+                    Exit Assignment Mode
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : filterStatus === 'unassigned' && !assignmentMode ? (
+            /* Unassigned Rooms View */
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-orange-600" />
+                      Unassigned Rooms ({unassignedRooms.length})
+                    </span>
+                    <Button
+                      onClick={() => {
+                        setAssignmentMode(true);
+                        setFilterStatus('unassigned');
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Assign These Rooms
+                    </Button>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {unassignedRooms.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {unassignedRooms
+                        .filter(room =>
+                          room.roomNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          room.type.toLowerCase().includes(searchTerm.toLowerCase())
+                        )
+                        .map((room) => (
+                          <div key={room._id} className="border rounded-lg p-4 bg-orange-50 border-orange-200">
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="font-medium text-gray-900">Room {room.roomNumber}</h4>
+                              <Badge variant="outline" className="text-orange-700 border-orange-300">
+                                Unassigned
+                              </Badge>
+                            </div>
+                            <div className="text-sm text-gray-600 space-y-1">
+                              <p><span className="font-medium">Type:</span> {room.type}</p>
+                              <p><span className="font-medium">Floor:</span> {room.floor}</p>
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <CheckCircle className="mx-auto h-8 w-8 text-green-500 mb-3" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">All Rooms Assigned</h3>
+                      <p className="text-gray-500">All rooms have been assigned to staff members for today's checks.</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
           ) : (
-            <div className="text-center py-12">
-              <Users className="mx-auto h-8 w-8 text-gray-400 mb-3" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Room Assignment Mode</h3>
-              <p className="text-gray-500 mb-4">Click "Assign Rooms" to start assigning rooms to staff members</p>
-              <Button
-                onClick={() => setAssignmentMode(true)}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Start Assigning
-              </Button>
+            /* Current Assignments View */
+            <div className="space-y-6">
+              {/* Assignment Statistics */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card className="p-4">
+                  <div className="flex items-center">
+                    <div className="p-2 bg-blue-100 rounded-lg">
+                      <Users className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-600">Assigned</p>
+                      <p className="text-xl font-semibold text-gray-900">
+                        {getFilteredStats().assigned}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="p-4">
+                  <div className="flex items-center">
+                    <div className="p-2 bg-green-100 rounded-lg">
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-600">Completed</p>
+                      <p className="text-xl font-semibold text-gray-900">
+                        {getFilteredStats().completed}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="p-4">
+                  <div className="flex items-center">
+                    <div className="p-2 bg-yellow-100 rounded-lg">
+                      <Clock className="w-5 h-5 text-yellow-600" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-600">Pending</p>
+                      <p className="text-xl font-semibold text-gray-900">
+                        {getFilteredStats().pending}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+
+                <Card className="p-4">
+                  <div className="flex items-center">
+                    <div className="p-2 bg-red-100 rounded-lg">
+                      <AlertTriangle className="w-5 h-5 text-red-600" />
+                    </div>
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-gray-600">Unassigned</p>
+                      <p className="text-xl font-semibold text-gray-900">
+                        {getFilteredStats().unassigned}
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+
+              {/* Room List with Assignment Status */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>All Rooms - Assignment Status</CardTitle>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Overview of all rooms with their current assignment and completion status.
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {/* Assigned Rooms */}
+                    {overview?.assignmentSummary?.filter(summary => {
+                      // Filter staff summaries based on current filter
+                      if (filterStatus === 'all') return true;
+                      if (filterStatus === 'assigned') return summary.rooms.length > 0;
+                      // Only show staff that have rooms matching the filter
+                      return summary.rooms.some(room => room.status === filterStatus);
+                    }).map((summary, index) => (
+                      <div key={index} className="border rounded-lg p-4 bg-gray-50">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                              <span className="text-blue-600 font-semibold text-sm">
+                                {summary.staff.name.split(' ').map(n => n[0]).join('')}
+                              </span>
+                            </div>
+                            <div>
+                              <h4 className="font-medium text-gray-900">{summary.staff.name}</h4>
+                              <p className="text-sm text-gray-600">{summary.staff.email}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Badge variant="outline" className="bg-blue-50">
+                              {summary.totalAssigned} rooms
+                            </Badge>
+                            <Badge className="bg-green-100 text-green-800">
+                              {summary.completed} completed
+                            </Badge>
+                            <Badge className="bg-yellow-100 text-yellow-800">
+                              {summary.pending} pending
+                            </Badge>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                          {summary.rooms
+                            .filter(room => {
+                              if (filterStatus === 'all') return true;
+                              if (filterStatus === 'completed') return room.status === 'completed';
+                              if (filterStatus === 'pending') return room.status === 'pending';
+                              return true;
+                            })
+                            .filter(room =>
+                              room.roomNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              room.type.toLowerCase().includes(searchTerm.toLowerCase())
+                            )
+                            .map((room, roomIndex) => (
+                            <div key={roomIndex} className="text-xs p-3 bg-white rounded border">
+                              <div className="font-medium">Room {room.roomNumber}</div>
+                              <div className="text-gray-600 capitalize">{room.type}</div>
+                              <Badge
+                                size="sm"
+                                className={`mt-1 ${getStatusColor(room.status)}`}
+                              >
+                                {room.status}
+                              </Badge>
+                              {room.checkedAt && (
+                                <div className="text-gray-500 text-xs mt-1">
+                                  {new Date(room.checkedAt).toLocaleTimeString([], {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Unassigned Rooms Section */}
+                    {overview && overview.unassignedRooms > 0 && (
+                      <div className="border rounded-lg p-4 bg-red-50 border-red-200">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                              <AlertTriangle className="w-5 h-5 text-red-600" />
+                            </div>
+                            <div>
+                              <h4 className="font-medium text-red-900">Unassigned Rooms</h4>
+                              <p className="text-sm text-red-700">These rooms need staff assignment</p>
+                            </div>
+                          </div>
+                          <Badge className="bg-red-100 text-red-800">
+                            {overview.unassignedRooms} rooms
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            onClick={() => {
+                              setAssignmentMode(true);
+                              // Auto-switch to unassigned filter when entering assignment mode
+                              if (filterStatus !== 'all' && filterStatus !== 'unassigned') {
+                                setFilterStatus('unassigned');
+                              }
+                            }}
+                            className="bg-red-600 hover:bg-red-700"
+                            size="sm"
+                          >
+                            <Plus className="w-4 h-4 mr-2" />
+                            Assign These Rooms
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {(!overview?.assignmentSummary || overview.assignmentSummary.length === 0) && (
+                      <div className="text-center py-8">
+                        <Users className="mx-auto h-8 w-8 text-gray-400 mb-3" />
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">No Room Assignments</h3>
+                        <p className="text-gray-500 mb-4">Start by assigning rooms to staff members</p>
+                        <Button
+                          onClick={() => setAssignmentMode(true)}
+                          className="bg-blue-600 hover:bg-blue-700"
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          Assign Rooms
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           )}
         </div>
@@ -460,25 +1132,7 @@ export default function AdminDailyCheckManagement() {
 
       {/* Templates Tab */}
       {activeTab === 'templates' && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">Inventory Templates</h2>
-            <Button className="bg-blue-600 hover:bg-blue-700">
-              <Edit className="w-4 h-4 mr-2" />
-              Manage Templates
-            </Button>
-          </div>
-
-          <Card>
-            <CardContent className="p-6">
-              <div className="text-center py-8">
-                <Settings className="mx-auto h-8 w-8 text-gray-400 mb-3" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Template Management</h3>
-                <p className="text-gray-500">Template management interface will be available here</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <TemplatesManagement />
       )}
     </div>
   );

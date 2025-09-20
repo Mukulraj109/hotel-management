@@ -15,10 +15,11 @@ import { LineChart } from '../dashboard/charts/LineChart';
 import { BarChart } from '../dashboard/charts/BarChart';
 import { DonutChart } from '../dashboard/charts/PieChart';
 import { formatCurrency, formatDate, formatPercent } from '../../utils/formatters';
+import { corporateService } from '../../services/corporateService';
 
 interface CreditTransaction {
   _id: string;
-  companyId: {
+  corporateCompanyId: {
     _id: string;
     name: string;
     email: string;
@@ -62,7 +63,9 @@ const CorporateCreditManagement: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState('overview');
   const [showCreditModal, setShowCreditModal] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<CorporateCompany | null>(null);
+  const [selectedTransaction, setSelectedTransaction] = useState<CreditTransaction | null>(null);
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<string[]>([]);
   const [filters, setFilters] = useState({
     status: 'all',
@@ -76,14 +79,11 @@ const CorporateCreditManagement: React.FC = () => {
   const { data: transactions, isLoading: transactionsLoading } = useQuery({
     queryKey: ['creditTransactions', filters],
     queryFn: async () => {
-      const params = new URLSearchParams();
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== 'all') params.append(key, value);
-      });
-      
-      const response = await fetch(`/api/v1/corporate/credit/transactions?${params}`);
-      if (!response.ok) throw new Error('Failed to fetch transactions');
-      return response.json();
+      const filtersForApi = Object.fromEntries(
+        Object.entries(filters).filter(([key, value]) => value !== 'all')
+      );
+      const response = await corporateService.getAllCreditTransactions(filtersForApi);
+      return response.data;
     }
   });
 
@@ -91,9 +91,8 @@ const CorporateCreditManagement: React.FC = () => {
   const { data: companies, isLoading: companiesLoading } = useQuery({
     queryKey: ['corporateCompanies'],
     queryFn: async () => {
-      const response = await fetch('/api/v1/corporate/companies');
-      if (!response.ok) throw new Error('Failed to fetch companies');
-      return response.json();
+      const response = await corporateService.getAllCompanies();
+      return response.data;
     }
   });
 
@@ -101,9 +100,8 @@ const CorporateCreditManagement: React.FC = () => {
   const { data: creditAnalysis, isLoading: analysisLoading } = useQuery<CreditAnalysis>({
     queryKey: ['creditAnalysis'],
     queryFn: async () => {
-      const response = await fetch('/api/v1/corporate/admin/credit-analysis');
-      if (!response.ok) throw new Error('Failed to fetch credit analysis');
-      return response.json();
+      const response = await corporateService.getCreditAnalysis();
+      return response.data;
     }
   });
 
@@ -111,9 +109,8 @@ const CorporateCreditManagement: React.FC = () => {
   const { data: lowCreditCompanies } = useQuery({
     queryKey: ['lowCreditCompanies'],
     queryFn: async () => {
-      const response = await fetch('/api/v1/corporate/companies/low-credit?threshold=10000');
-      if (!response.ok) throw new Error('Failed to fetch low credit companies');
-      return response.json();
+      const response = await corporateService.getLowCreditCompanies(10000);
+      return response.data;
     }
   });
 
@@ -121,22 +118,25 @@ const CorporateCreditManagement: React.FC = () => {
   const { data: monthlyReport } = useQuery({
     queryKey: ['monthlyReport'],
     queryFn: async () => {
-      const response = await fetch('/api/v1/corporate/credit/monthly-report');
-      if (!response.ok) throw new Error('Failed to fetch monthly report');
-      return response.json();
+      const response = await corporateService.getMonthlyCreditReport();
+      return response.data;
+    }
+  });
+
+  // Fetch dashboard metrics
+  const { data: dashboardMetrics, isLoading: metricsLoading } = useQuery({
+    queryKey: ['dashboardMetrics'],
+    queryFn: async () => {
+      const response = await corporateService.getDashboardMetrics();
+      return response.data;
     }
   });
 
   // Update credit mutation
   const updateCreditMutation = useMutation({
     mutationFn: async ({ companyId, amount, description }: { companyId: string; amount: number; description: string }) => {
-      const response = await fetch(`/api/v1/corporate/companies/${companyId}/update-credit`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, description })
-      });
-      if (!response.ok) throw new Error('Failed to update credit');
-      return response.json();
+      const response = await corporateService.updateCompanyCredit(companyId, amount, description);
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['corporateCompanies'] });
@@ -154,11 +154,8 @@ const CorporateCreditManagement: React.FC = () => {
   // Approve transaction mutation
   const approveTransactionMutation = useMutation({
     mutationFn: async (transactionId: string) => {
-      const response = await fetch(`/api/v1/corporate/credit/transactions/${transactionId}/approve`, {
-        method: 'PATCH'
-      });
-      if (!response.ok) throw new Error('Failed to approve transaction');
-      return response.json();
+      const response = await corporateService.approveCreditTransaction(transactionId);
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['creditTransactions'] });
@@ -172,17 +169,17 @@ const CorporateCreditManagement: React.FC = () => {
 
   // Reject transaction mutation
   const rejectTransactionMutation = useMutation({
-    mutationFn: async (transactionId: string) => {
-      const response = await fetch(`/api/v1/corporate/credit/transactions/${transactionId}/reject`, {
-        method: 'PATCH'
-      });
-      if (!response.ok) throw new Error('Failed to reject transaction');
-      return response.json();
+    mutationFn: async ({ transactionId, reason }: { transactionId: string; reason: string }) => {
+      const response = await corporateService.rejectCreditTransaction(transactionId, reason);
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['creditTransactions'] });
       queryClient.invalidateQueries({ queryKey: ['creditAnalysis'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardMetrics'] });
       toast.success('Transaction rejected successfully');
+      setShowRejectModal(false);
+      setSelectedTransaction(null);
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Failed to reject transaction');
@@ -192,13 +189,8 @@ const CorporateCreditManagement: React.FC = () => {
   // Bulk approve mutation
   const bulkApproveMutation = useMutation({
     mutationFn: async (transactionIds: string[]) => {
-      const response = await fetch('/api/v1/corporate/credit/bulk-approve', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transactionIds })
-      });
-      if (!response.ok) throw new Error('Failed to bulk approve transactions');
-      return response.json();
+      const response = await corporateService.bulkApproveCreditTransactions(transactionIds);
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['creditTransactions'] });
@@ -214,17 +206,13 @@ const CorporateCreditManagement: React.FC = () => {
   // Create credit transaction mutation
   const createTransactionMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await fetch('/api/v1/corporate/credit/transactions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      if (!response.ok) throw new Error('Failed to create transaction');
-      return response.json();
+      const response = await corporateService.createCreditTransaction(data);
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['creditTransactions'] });
       queryClient.invalidateQueries({ queryKey: ['creditAnalysis'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboardMetrics'] });
       toast.success('Transaction created successfully');
       setShowTransactionModal(false);
     },
@@ -254,7 +242,7 @@ const CorporateCreditManagement: React.FC = () => {
     }
   };
 
-  if (transactionsLoading || companiesLoading || analysisLoading) {
+  if (transactionsLoading || companiesLoading || analysisLoading || metricsLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <LoadingSpinner />
@@ -262,46 +250,79 @@ const CorporateCreditManagement: React.FC = () => {
     );
   }
 
+
   const transactionColumns = [
     {
+      key: 'corporateCompanyId',
       header: 'Company',
-      accessor: (transaction: CreditTransaction) => transaction.companyId?.name || 'N/A'
+      render: (value: any, transaction: CreditTransaction) => (
+        <div className="font-medium text-gray-900">
+          {transaction.corporateCompanyId?.name || 'N/A'}
+        </div>
+      )
     },
     {
+      key: 'amount',
       header: 'Amount',
-      accessor: (transaction: CreditTransaction) => formatCurrency(Math.abs(transaction.amount))
+      render: (value: number, transaction: CreditTransaction) => (
+        <div className="font-semibold text-right">
+          <span className={transaction.transactionType === 'debit' ? 'text-red-600' : 'text-green-600'}>
+            {transaction.transactionType === 'debit' ? '-' : '+'}{formatCurrency(Math.abs(transaction.amount))}
+          </span>
+        </div>
+      )
     },
     {
+      key: 'transactionType',
       header: 'Type',
-      accessor: (transaction: CreditTransaction) => (
-        <Badge className={getTransactionTypeColor(transaction.transactionType)}>
-          {transaction.transactionType}
+      render: (value: string, transaction: CreditTransaction) => (
+        <Badge className={`${getTransactionTypeColor(transaction.transactionType)} font-medium`}>
+          {transaction.transactionType.charAt(0).toUpperCase() + transaction.transactionType.slice(1)}
         </Badge>
       )
     },
     {
+      key: 'status',
       header: 'Status',
-      accessor: (transaction: CreditTransaction) => (
-        <Badge className={getStatusColor(transaction.status)}>
-          {transaction.status}
+      render: (value: string, transaction: CreditTransaction) => (
+        <Badge className={`${getStatusColor(transaction.status)} font-medium`}>
+          {transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1)}
         </Badge>
       )
     },
     {
+      key: 'description',
       header: 'Description',
-      accessor: (transaction: CreditTransaction) => transaction.description || 'N/A'
+      render: (value: string, transaction: CreditTransaction) => (
+        <div className="max-w-xs">
+          <span className="text-gray-700 truncate block" title={transaction.description}>
+            {transaction.description || 'N/A'}
+          </span>
+        </div>
+      )
     },
     {
+      key: 'balance',
       header: 'Balance',
-      accessor: (transaction: CreditTransaction) => formatCurrency(transaction.balance)
+      render: (value: number, transaction: CreditTransaction) => (
+        <div className="font-medium text-right text-gray-900">
+          {formatCurrency(transaction.balance)}
+        </div>
+      )
     },
     {
+      key: 'createdAt',
       header: 'Date',
-      accessor: (transaction: CreditTransaction) => formatDate(transaction.createdAt)
+      render: (value: string, transaction: CreditTransaction) => (
+        <div className="text-sm text-gray-600">
+          {formatDate(transaction.createdAt)}
+        </div>
+      )
     },
     {
+      key: 'actions',
       header: 'Actions',
-      accessor: (transaction: CreditTransaction) => (
+      render: (value: any, transaction: CreditTransaction) => (
         <div className="flex space-x-2">
           {transaction.status === 'pending' && (
             <>
@@ -310,18 +331,32 @@ const CorporateCreditManagement: React.FC = () => {
                 size="sm"
                 onClick={() => approveTransactionMutation.mutate(transaction._id)}
                 disabled={approveTransactionMutation.isPending}
+                className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100 hover:border-green-300"
               >
-                Approve
+                ✓ Approve
               </Button>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => rejectTransactionMutation.mutate(transaction._id)}
+                onClick={() => {
+                  setSelectedTransaction(transaction);
+                  setShowRejectModal(true);
+                }}
                 disabled={rejectTransactionMutation.isPending}
+                className="bg-red-50 border-red-200 text-red-700 hover:bg-red-100 hover:border-red-300"
               >
-                Reject
+                ✕ Reject
               </Button>
             </>
+          )}
+          {transaction.status === 'processed' && (
+            <span className="text-xs text-gray-500 italic">Completed</span>
+          )}
+          {transaction.status === 'approved' && (
+            <span className="text-xs text-green-600 italic">Approved</span>
+          )}
+          {transaction.status === 'rejected' && (
+            <span className="text-xs text-red-600 italic">Rejected</span>
           )}
         </div>
       )
@@ -330,31 +365,37 @@ const CorporateCreditManagement: React.FC = () => {
 
   const companyColumns = [
     {
+      key: 'name',
       header: 'Company',
-      accessor: (company: CorporateCompany) => company.name
+      render: (value: string, company: CorporateCompany) => company.name
     },
     {
+      key: 'creditLimit',
       header: 'Credit Limit',
-      accessor: (company: CorporateCompany) => formatCurrency(company.creditLimit)
+      render: (value: number, company: CorporateCompany) => formatCurrency(company.creditLimit)
     },
     {
+      key: 'availableCredit',
       header: 'Available Credit',
-      accessor: (company: CorporateCompany) => formatCurrency(company.availableCredit)
+      render: (value: number, company: CorporateCompany) => formatCurrency(company.availableCredit)
     },
     {
+      key: 'utilization',
       header: 'Utilization',
-      accessor: (company: CorporateCompany) => {
+      render: (value: any, company: CorporateCompany) => {
         const utilization = ((company.creditLimit - company.availableCredit) / company.creditLimit) * 100;
         return formatPercent(utilization / 100);
       }
     },
     {
+      key: 'outstandingBalance',
       header: 'Outstanding',
-      accessor: (company: CorporateCompany) => formatCurrency(company.outstandingBalance || 0)
+      render: (value: number, company: CorporateCompany) => formatCurrency(company.outstandingBalance || 0)
     },
     {
+      key: 'actions',
       header: 'Actions',
-      accessor: (company: CorporateCompany) => (
+      render: (value: any, company: CorporateCompany) => (
         <Button
           variant="outline"
           size="sm"
@@ -400,17 +441,18 @@ const CorporateCreditManagement: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <MetricCard
               title="Total Credit Exposure"
-              value={formatCurrency(creditAnalysis?.summary?.totalOverdueAmount || 0)}
+              value={dashboardMetrics?.overview?.totalUsedCredit || 0}
+              type="currency"
               icon="💳"
               trend={{
                 value: 5.2,
-                isPositive: false,
+                direction: "down",
                 label: "vs last month"
               }}
             />
             <MetricCard
               title="Companies with Credit"
-              value={creditAnalysis?.summary?.totalCompaniesWithCredit || 0}
+              value={dashboardMetrics?.overview?.companiesWithActiveCredit || 0}
               icon="🏢"
               trend={{
                 value: 3,
@@ -420,17 +462,18 @@ const CorporateCreditManagement: React.FC = () => {
             />
             <MetricCard
               title="Avg Utilization"
-              value={formatPercent((creditAnalysis?.summary?.averageCreditUtilization || 0) / 100)}
+              value={dashboardMetrics?.overview?.averageUtilization || 0}
+              type="percentage"
               icon="📊"
               trend={{
                 value: 2.1,
-                isPositive: false,
+                direction: "down",
                 label: "vs last month"
               }}
             />
             <MetricCard
               title="Low Credit Alerts"
-              value={lowCreditCompanies?.data?.length || 0}
+              value={dashboardMetrics?.overview?.lowCreditAlerts || 0}
               icon="⚠️"
               trend={{
                 value: 1,
@@ -469,10 +512,10 @@ const CorporateCreditManagement: React.FC = () => {
               </CardHeader>
               <CardContent>
                 <LineChart
-                  data={creditAnalysis?.paymentTrends?.map((item: any) => ({
+                  data={dashboardMetrics?.monthlyUsage?.map((item: any) => ({
                     date: `${item._id.year}-${item._id.month.toString().padStart(2, '0')}`,
                     amount: item.totalAmount || 0,
-                    count: item.count || 0
+                    count: item.transactionCount || 0
                   })) || []}
                   xDataKey="date"
                   lines={[
@@ -523,58 +566,137 @@ const CorporateCreditManagement: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="transactions" className="space-y-6">
-          <div className="flex justify-between items-center">
-            <div className="flex space-x-4">
-              <Select
-                value={filters.status}
-                onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
-              >
-                <option value="all">All Status</option>
-                <option value="pending">Pending</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-                <option value="processed">Processed</option>
-              </Select>
-              <Select
-                value={filters.transactionType}
-                onValueChange={(value) => setFilters(prev => ({ ...prev, transactionType: value }))}
-              >
-                <option value="all">All Types</option>
-                <option value="credit">Credit</option>
-                <option value="debit">Debit</option>
-                <option value="payment">Payment</option>
-                <option value="adjustment">Adjustment</option>
-                <option value="refund">Refund</option>
-              </Select>
+          {/* Enhanced Filter Section */}
+          <div className="bg-white rounded-lg border shadow-sm p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex flex-col space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Filter by Status</label>
+                  <select
+                    value={filters.status}
+                    onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+                    className="min-w-[140px] px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="processed">Processed</option>
+                  </select>
+                </div>
+                <div className="flex flex-col space-y-2">
+                  <label className="text-sm font-medium text-gray-700">Filter by Type</label>
+                  <select
+                    value={filters.transactionType}
+                    onChange={(e) => setFilters(prev => ({ ...prev, transactionType: e.target.value }))}
+                    className="min-w-[140px] px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                  >
+                    <option value="all">All Types</option>
+                    <option value="credit">Credit</option>
+                    <option value="debit">Debit</option>
+                    <option value="payment">Payment</option>
+                    <option value="adjustment">Adjustment</option>
+                    <option value="refund">Refund</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex flex-col items-end">
+                  <span className="text-sm text-gray-600">
+                    {transactions?.transactions?.length || 0} transactions
+                  </span>
+                  {(filters.status !== 'all' || filters.transactionType !== 'all') && (
+                    <div className="flex gap-2 mt-1">
+                      {filters.status !== 'all' && (
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                          Status: {filters.status}
+                        </span>
+                      )}
+                      {filters.transactionType !== 'all' && (
+                        <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                          Type: {filters.transactionType}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {selectedTransactionIds.length > 0 && (
+                  <Button
+                    onClick={() => bulkApproveMutation.mutate(selectedTransactionIds)}
+                    disabled={bulkApproveMutation.isPending}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    Approve Selected ({selectedTransactionIds.length})
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
 
-          <Card>
-            <CardContent>
-              <DataTable
-                columns={transactionColumns}
-                data={transactions?.data || []}
-                searchPlaceholder="Search transactions..."
-                onSelectionChange={setSelectedTransactionIds}
-                selectable={true}
-              />
+          {/* Enhanced Table Section */}
+          <Card className="shadow-sm">
+            <CardContent className="p-0">
+              <div className="overflow-hidden">
+                <DataTable
+                  columns={transactionColumns}
+                  data={transactions?.transactions || []}
+                  searchPlaceholder="Search by company, description, or reference..."
+                  searchable={true}
+                  className="border-0"
+                />
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="companies" className="space-y-6">
-          <Card>
-            <CardContent>
-              <DataTable
-                columns={companyColumns}
-                data={companies?.data || []}
-                searchPlaceholder="Search companies..."
-              />
+          {/* Companies Header */}
+          <div className="bg-white rounded-lg border shadow-sm p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Corporate Companies</h3>
+                <p className="text-sm text-gray-600 mt-1">Manage corporate credit accounts and limits</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-600">
+                  {companies?.data?.length || 0} companies
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Enhanced Companies Table */}
+          <Card className="shadow-sm">
+            <CardContent className="p-0">
+              <div className="overflow-hidden">
+                <DataTable
+                  columns={companyColumns}
+                  data={companies?.data || []}
+                  searchPlaceholder="Search by company name, email, or GST number..."
+                  searchable={true}
+                  className="border-0"
+                />
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="analysis" className="space-y-6">
+          {/* Analysis Header */}
+          <div className="bg-white rounded-lg border shadow-sm p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Credit Analysis & Reports</h3>
+                <p className="text-sm text-gray-600 mt-1">Comprehensive credit utilization and performance analytics</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-gray-600">
+                  Last updated: {new Date().toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
@@ -657,6 +779,21 @@ const CorporateCreditManagement: React.FC = () => {
         companies={companies?.data || []}
         onSubmit={(data) => createTransactionMutation.mutate(data)}
         isLoading={createTransactionMutation.isPending}
+      />
+
+      {/* Reject Transaction Modal */}
+      <RejectTransactionModal
+        isOpen={showRejectModal}
+        onClose={() => {
+          setShowRejectModal(false);
+          setSelectedTransaction(null);
+        }}
+        transaction={selectedTransaction}
+        onSubmit={(reason) => rejectTransactionMutation.mutate({
+          transactionId: selectedTransaction!._id,
+          reason
+        })}
+        isLoading={rejectTransactionMutation.isPending}
       />
     </div>
   );
@@ -811,6 +948,64 @@ const TransactionModal: React.FC<{
           </Button>
           <Button type="submit" disabled={isLoading}>
             {isLoading ? 'Creating...' : 'Create Transaction'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+// Reject Transaction Modal Component
+const RejectTransactionModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  transaction: CreditTransaction | null;
+  onSubmit: (reason: string) => void;
+  isLoading: boolean;
+}> = ({ isOpen, onClose, transaction, onSubmit, isLoading }) => {
+  const [reason, setReason] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reason.trim()) return;
+    onSubmit(reason);
+    setReason('');
+  };
+
+  if (!transaction) return null;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Reject Transaction">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-1">Transaction Details</label>
+          <div className="p-3 bg-gray-50 rounded-lg">
+            <div className="font-medium">{transaction.companyId?.name}</div>
+            <div className="text-sm text-gray-600">
+              {formatCurrency(Math.abs(transaction.amount))} - {transaction.transactionType}
+            </div>
+            <div className="text-sm text-gray-600">{transaction.description}</div>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">Rejection Reason *</label>
+          <textarea
+            className="w-full p-3 border rounded-lg resize-none"
+            rows={4}
+            placeholder="Please provide a reason for rejecting this transaction..."
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            required
+          />
+        </div>
+
+        <div className="flex justify-end space-x-3">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={isLoading || !reason.trim()}>
+            {isLoading ? 'Rejecting...' : 'Reject Transaction'}
           </Button>
         </div>
       </form>

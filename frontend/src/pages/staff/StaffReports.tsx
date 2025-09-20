@@ -2,19 +2,61 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { BarChart3, TrendingUp, Calendar, Download, RefreshCw, AlertTriangle } from 'lucide-react';
+import { BarChart3, TrendingUp, Calendar, Download, RefreshCw, AlertTriangle, Receipt, Wifi, WifiOff } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { staffDashboardService, StaffTodayData, StaffActivityData } from '../../services/staffDashboardService';
+import { useRealTime } from '../../services/realTimeService';
+import { reportsService, CheckoutInventoryData } from '../../services/reportsService';
+import { formatCurrency } from '../../utils/formatters';
 
 export default function StaffReports() {
   const [todayData, setTodayData] = useState<StaffTodayData | null>(null);
   const [activityData, setActivityData] = useState<StaffActivityData | null>(null);
+  const [checkoutInventoryData, setCheckoutInventoryData] = useState<CheckoutInventoryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Real-time connection
+  const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
 
   useEffect(() => {
     fetchTodayData();
   }, []);
+
+  // Real-time connection setup
+  useEffect(() => {
+    connect();
+    return () => {
+      disconnect();
+    };
+  }, [connect, disconnect]);
+
+  // Set up real-time event listeners
+  useEffect(() => {
+    if (!isConnected) return;
+    
+    const handleCheckoutInventoryUpdate = (data: any) => {
+      console.log('Real-time checkout inventory update:', data);
+      fetchCheckoutInventoryData();
+    };
+    
+    const handleReportsUpdate = (data: any) => {
+      console.log('Real-time reports update:', data);
+      fetchTodayData();
+    };
+    
+    on('checkout-inventory:created', handleCheckoutInventoryUpdate);
+    on('checkout-inventory:completed', handleCheckoutInventoryUpdate);
+    on('checkout-inventory:payment_processed', handleCheckoutInventoryUpdate);
+    on('reports:updated', handleReportsUpdate);
+    
+    return () => {
+      off('checkout-inventory:created', handleCheckoutInventoryUpdate);
+      off('checkout-inventory:completed', handleCheckoutInventoryUpdate);
+      off('checkout-inventory:payment_processed', handleCheckoutInventoryUpdate);
+      off('reports:updated', handleReportsUpdate);
+    };
+  }, [isConnected, on, off]);
 
   const fetchTodayData = async () => {
     try {
@@ -28,11 +70,34 @@ export default function StaffReports() {
       console.log('Staff Reports Debug - Activity Response:', activityResponse);
       setTodayData(todayResponse.data.today);
       setActivityData(activityResponse.data);
+      
+      // Also fetch checkout inventory data
+      await fetchCheckoutInventoryData();
     } catch (err) {
       console.error('Failed to fetch today data:', err);
       setError('Failed to load data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCheckoutInventoryData = async () => {
+    try {
+      const today = new Date();
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59).toISOString();
+      
+      const checkoutResponse = await reportsService.getCheckoutInventoryReport({
+        startDate: startOfDay,
+        endDate: endOfDay,
+        groupBy: 'day'
+      });
+      
+      console.log('Checkout Inventory Report:', checkoutResponse);
+      setCheckoutInventoryData(checkoutResponse);
+    } catch (err) {
+      console.error('Failed to fetch checkout inventory data:', err);
+      // Don't set error for checkout data, as other data might still be valid
     }
   };
 
@@ -84,7 +149,20 @@ export default function StaffReports() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Reports & Analytics</h1>
           <p className="text-gray-600">View performance metrics and generate reports</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex items-center gap-3">
+          {/* Real-time connection status */}
+          <div className={`flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+            isConnected 
+              ? 'bg-green-100 text-green-800' 
+              : 'bg-red-100 text-red-800'
+          }`}>
+            {isConnected ? (
+              <><Wifi className="w-3 h-3 mr-1" /> Live Updates</>
+            ) : (
+              <><WifiOff className="w-3 h-3 mr-1" /> Offline</>
+            )}
+          </div>
+          
           <Button
             onClick={fetchTodayData}
             disabled={loading}
@@ -237,6 +315,65 @@ export default function StaffReports() {
           </CardContent>
         </Card>
 
+        {/* Checkout Inventory Analytics */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Receipt className="h-5 w-5 mr-2 text-orange-600" />
+              Checkout Inventory Today
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {checkoutInventoryData ? (
+                <>
+                  <div className="flex items-center justify-between p-3 bg-orange-50 rounded-lg">
+                    <div>
+                      <p className="font-medium">Total Checkouts</p>
+                      <p className="text-sm text-gray-600">Today</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-orange-600">{checkoutInventoryData.summary.totalCheckouts}</div>
+                      <Badge variant="outline" className="text-orange-700">
+                        {checkoutInventoryData.summary.totalCheckouts >= 5 ? 'High' : 
+                         checkoutInventoryData.summary.totalCheckouts >= 2 ? 'Normal' : 'Low'}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                    <div>
+                      <p className="font-medium">Total Value</p>
+                      <p className="text-sm text-gray-600">Revenue</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-green-600">{formatCurrency(checkoutInventoryData.summary.totalValue)}</div>
+                      <Badge variant="outline" className="text-green-700">Revenue</Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                    <div>
+                      <p className="font-medium">Average Value</p>
+                      <p className="text-sm text-gray-600">Per checkout</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-blue-600">{formatCurrency(checkoutInventoryData.summary.averageValue)}</div>
+                      <Badge variant="outline" className="text-blue-700">
+                        {checkoutInventoryData.summary.averageValue >= 500 ? 'High' : 
+                         checkoutInventoryData.summary.averageValue >= 200 ? 'Normal' : 'Low'}
+                      </Badge>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Receipt className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+                  <p>No checkout data available today</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Quick Reports */}
         <Card>
           <CardHeader>
@@ -262,6 +399,10 @@ export default function StaffReports() {
               <Button className="w-full justify-start" variant="outline">
                 <Download className="h-4 w-4 mr-2" />
                 Guest Services Report
+              </Button>
+              <Button className="w-full justify-start" variant="outline">
+                <Download className="h-4 w-4 mr-2" />
+                Checkout Inventory Report
               </Button>
             </div>
           </CardContent>

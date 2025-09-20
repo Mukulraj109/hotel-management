@@ -116,6 +116,29 @@ export interface TestResult {
   testCriteria: TestCriteria;
 }
 
+export interface AutoAssignCriteria {
+  guestType?: string;
+  roomType?: string;
+  priority?: 'low' | 'medium' | 'high' | 'vip';
+  maxBookings?: number;
+}
+
+export interface AutoAssignResult {
+  assigned: number;
+  failed: number;
+  skipped: number;
+  details: Array<{
+    bookingId: string;
+    bookingNumber?: string;
+    guestName: string;
+    status: 'assigned' | 'failed' | 'skipped';
+    assignedRoom?: string;
+    roomType?: string;
+    rule?: string;
+    reason?: string;
+  }>;
+}
+
 class AssignmentRulesService {
   private baseURL = '/assignment-rules';
 
@@ -173,6 +196,12 @@ class AssignmentRulesService {
   // Test assignment rule
   async testAssignmentRule(id: string, testCriteria: TestCriteria): Promise<TestResult> {
     const response = await api.post(`${this.baseURL}/${id}/test`, { testCriteria });
+    return response.data.data;
+  }
+
+  // Auto-assign rooms based on assignment rules
+  async autoAssignRooms(criteria?: AutoAssignCriteria): Promise<AutoAssignResult> {
+    const response = await api.post(`${this.baseURL}/auto-assign`, { criteria });
     return response.data.data;
   }
 

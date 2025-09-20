@@ -52,17 +52,32 @@ class StaffService {
   // Get all staff members with filtering and pagination
   async getStaffMembers(params: StaffQueryParams = {}): Promise<StaffResponse> {
     const queryParams = new URLSearchParams();
-    
+
     if (params.page) queryParams.append('page', params.page.toString());
     if (params.limit) queryParams.append('limit', params.limit.toString());
     if (params.search) queryParams.append('search', params.search);
-    if (params.role) queryParams.append('role', params.role);
+
+    // For staff management, always filter by role unless explicitly specified
+    // This ensures we only get staff and admin users, never guests
+    if (params.role) {
+      queryParams.append('role', params.role);
+    } else {
+      // When no specific role is requested, the backend will default to staff/admin only
+      // But we can be explicit to ensure we're getting staff management data
+    }
+
     if (params.isActive !== undefined) queryParams.append('isActive', params.isActive.toString());
 
     const response = await api.get(`/admin/users?${queryParams.toString()}`);
+
+    // Filter out any guest users that might have slipped through (extra safety)
+    const staffUsers = response.data.data.users.filter((user: StaffMember) =>
+      user.role === 'staff' || user.role === 'admin'
+    );
+
     return {
-      staff: response.data.data.users,
-      pagination: response.data.data.pagination
+      staff: staffUsers,
+      pagination: response.data.data.pagination // Keep original pagination from backend
     };
   }
 
@@ -98,8 +113,12 @@ class StaffService {
     regularStaff: number;
   }> {
     const response = await api.get('/admin/users');
-    const staff = response.data.data.users;
-    
+
+    // Filter to only include staff and admin users, exclude guests
+    const staff = response.data.data.users.filter((user: StaffMember) =>
+      user.role === 'staff' || user.role === 'admin'
+    );
+
     return {
       total: staff.length,
       active: staff.filter((s: StaffMember) => s.isActive).length,

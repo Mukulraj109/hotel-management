@@ -78,6 +78,7 @@ export default function InventoryRequests() {
     }
   }, [user, filter]);
 
+
   const fetchRequests = async () => {
     try {
       setLoading(true);
@@ -116,6 +117,8 @@ export default function InventoryRequests() {
       await guestServiceService.createServiceRequest({
         bookingId: formData.bookingId,
         serviceType: 'other',
+        serviceVariation: 'inventory_request',
+        serviceVariations: ['inventory_request'],
         title: formData.title,
         description: formData.description,
         priority: formData.priority,
@@ -185,10 +188,12 @@ export default function InventoryRequests() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-8 flex justify-between items-center">
+      <div className="mb-8 flex justify-between items-start">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Inventory Requests</h1>
-          <p className="text-gray-600">Request additional items or report missing/damaged inventory</p>
+          <div className="flex items-center space-x-4">
+            <p className="text-gray-600">Request additional items or report missing/damaged inventory</p>
+          </div>
         </div>
         <Button onClick={() => setShowCreateForm(true)}>
           <Plus className="h-4 w-4 mr-2" />

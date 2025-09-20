@@ -5,6 +5,9 @@ import regionalAnalyticsService from './regionalAnalyticsService.js';
 import multiLanguageMetricsService from './multiLanguageMetricsService.js';
 import exchangeRateService from './exchangeRateService.js';
 import { getRedisClient } from '../config/redis.js';
+import Booking from '../models/Booking.js';
+import Room from '../models/Room.js';
+import User from '../models/User.js';
 
 class RevenueOptimizationService {
   constructor() {
@@ -497,24 +500,123 @@ class RevenueOptimizationService {
     };
   }
 
-  // Helper methods for calculations (simplified implementations)
+  // Helper methods for calculations (real data implementations)
   async getHistoricalPerformance(hotelId, timeHorizon) {
-    // Mock historical performance data
-    return {
-      totalRevenue: 250000,
-      occupancyRate: 72.5,
-      averageDailyRate: 185.50,
-      roomNights: 1347,
-      guestCount: 982,
-      repeatGuestRate: 28.5,
-      channelMix: {
-        direct: 25,
-        booking_com: 35,
-        expedia: 20,
-        corporate: 15,
-        other: 5
+    try {
+      // Calculate date range based on time horizon
+      const endDate = new Date();
+      const startDate = new Date();
+
+      switch (timeHorizon) {
+        case '7d':
+          startDate.setDate(endDate.getDate() - 7);
+          break;
+        case '30d':
+          startDate.setDate(endDate.getDate() - 30);
+          break;
+        case '90d':
+          startDate.setDate(endDate.getDate() - 90);
+          break;
+        case '1y':
+          startDate.setFullYear(endDate.getFullYear() - 1);
+          break;
+        default:
+          startDate.setDate(endDate.getDate() - 30);
       }
-    };
+
+      // Get real booking data for the hotel
+      const bookings = await Booking.find({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        checkIn: { $gte: startDate, $lte: endDate },
+        status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+      }).populate('userId', 'email createdAt');
+
+      // Calculate total revenue
+      const totalRevenue = bookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
+
+      // Calculate room nights and occupancy
+      const totalRoomNights = bookings.reduce((sum, booking) => sum + (booking.nights || 0), 0);
+      const totalRooms = await Room.countDocuments({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        isActive: true
+      });
+      const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+      const possibleRoomNights = totalRooms * days;
+      const occupancyRate = possibleRoomNights > 0 ? (totalRoomNights / possibleRoomNights) * 100 : 0;
+
+      // Calculate average daily rate
+      const averageDailyRate = totalRoomNights > 0 ? totalRevenue / totalRoomNights : 0;
+
+      // Get unique guests
+      const uniqueGuests = new Set(bookings.map(b => b.userId?._id?.toString()).filter(Boolean));
+      const guestCount = uniqueGuests.size;
+
+      // Calculate repeat guest rate
+      const guestBookingCounts = new Map();
+      bookings.forEach(booking => {
+        if (booking.userId?._id) {
+          const guestId = booking.userId._id.toString();
+          guestBookingCounts.set(guestId, (guestBookingCounts.get(guestId) || 0) + 1);
+        }
+      });
+      const repeatGuests = Array.from(guestBookingCounts.values()).filter(count => count > 1).length;
+      const repeatGuestRate = guestCount > 0 ? (repeatGuests / guestCount) * 100 : 0;
+
+      // Calculate channel mix (simplified - based on source field or default distribution)
+      const channelCounts = {};
+      const totalBookingsCount = bookings.length;
+
+      bookings.forEach(booking => {
+        const source = booking.source || 'direct';
+        channelCounts[source] = (channelCounts[source] || 0) + 1;
+      });
+
+      const channelMix = {};
+      Object.entries(channelCounts).forEach(([channel, count]) => {
+        channelMix[channel] = totalBookingsCount > 0 ? Math.round((count / totalBookingsCount) * 100) : 0;
+      });
+
+      // Ensure we have the standard channels, fill with defaults if missing
+      const standardChannels = ['direct', 'booking_com', 'expedia', 'corporate', 'other'];
+      standardChannels.forEach(channel => {
+        if (!channelMix[channel]) {
+          channelMix[channel] = 0;
+        }
+      });
+
+      return {
+        totalRevenue: Math.round(totalRevenue),
+        occupancyRate: Math.round(occupancyRate * 10) / 10,
+        averageDailyRate: Math.round(averageDailyRate * 100) / 100,
+        roomNights: totalRoomNights,
+        guestCount,
+        repeatGuestRate: Math.round(repeatGuestRate * 10) / 10,
+        channelMix,
+        timeHorizon,
+        dateRange: { startDate, endDate }
+      };
+    } catch (error) {
+      logger.error('Error calculating historical performance:', error);
+
+      // Graceful fallback with minimal data
+      return {
+        totalRevenue: 0,
+        occupancyRate: 0,
+        averageDailyRate: 0,
+        roomNights: 0,
+        guestCount: 0,
+        repeatGuestRate: 0,
+        channelMix: {
+          direct: 0,
+          booking_com: 0,
+          expedia: 0,
+          corporate: 0,
+          other: 0
+        },
+        timeHorizon,
+        error: 'Unable to calculate historical performance'
+      };
+    }
   }
 
   getRiskAdjustmentFactor(riskTolerance) {

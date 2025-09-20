@@ -5,10 +5,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
 import DraggableReservation from './DraggableReservation';
-import { Search, Filter, Users, Clock, Star } from 'lucide-react';
+import { Search, Filter, Users, Clock, Star, CheckSquare, Square, Zap } from 'lucide-react';
 import { cn } from '@/utils/cn';
 import { bookingService } from '@/services/bookingService';
+import { dragDropManager } from '@/utils/DragDropManager';
 import { format } from 'date-fns';
 
 interface Reservation {
@@ -60,11 +62,28 @@ const ReservationSidebar: React.FC<ReservationSidebarProps> = ({
   const [roomTypeFilter, setRoomTypeFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'all' | 'unassigned' | 'assigned'>('unassigned');
   const [loading, setLoading] = useState(true);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedCount, setSelectedCount] = useState(0);
 
   // Fetch real booking data from the database
   useEffect(() => {
     fetchReservations();
   }, [selectedDate, refreshTrigger]);
+
+  // Update selection count when selection changes
+  useEffect(() => {
+    const updateSelectionCount = () => {
+      setSelectedCount(dragDropManager.getSelectionCount());
+    };
+
+    // Update count initially
+    updateSelectionCount();
+
+    // Set up an interval to check for changes (since we don't have events from dragDropManager)
+    const interval = setInterval(updateSelectionCount, 100);
+
+    return () => clearInterval(interval);
+  }, [selectionMode]);
 
   const fetchReservations = async () => {
     try {
@@ -76,6 +95,8 @@ const ReservationSidebar: React.FC<ReservationSidebarProps> = ({
       
       const response = await bookingService.getBookings({
         // Get bookings that are checking in today or are currently staying
+        // Exclude checked-out bookings by default
+        status: statusFilter === 'all' ? 'confirmed,pending,checked_in' : statusFilter,
         page: 1,
         limit: 100 // Get more bookings for the sidebar
       });
@@ -199,6 +220,43 @@ const ReservationSidebar: React.FC<ReservationSidebarProps> = ({
   const unassignedCount = reservations.filter(res => !res.assignedRoom).length;
   const assignedCount = reservations.filter(res => res.assignedRoom).length;
 
+  const handleSelectionModeToggle = () => {
+    const newSelectionMode = !selectionMode;
+    setSelectionMode(newSelectionMode);
+
+    if (!newSelectionMode) {
+      // Clear all selections when disabling selection mode
+      dragDropManager.clearSelection();
+      setSelectedCount(0);
+    }
+  };
+
+  const handleSelectAll = () => {
+    const visibleReservations = filteredReservations;
+    visibleReservations.forEach(reservation => {
+      dragDropManager.addToSelection(reservation.id);
+    });
+    setSelectedCount(dragDropManager.getSelectionCount());
+  };
+
+  const handleClearSelection = () => {
+    dragDropManager.clearSelection();
+    setSelectedCount(0);
+  };
+
+  const handleBulkAssignment = async () => {
+    const selectedIds = dragDropManager.getSelectedReservations();
+    const selectedReservations = reservations.filter(r => selectedIds.includes(r.id));
+
+    if (selectedReservations.length === 0) {
+      return;
+    }
+
+    // This would open a bulk assignment dialog or use smart assignment
+    console.log('Bulk assignment for', selectedReservations.length, 'reservations');
+    // TODO: Implement bulk assignment logic
+  };
+
   return (
     <Card className={cn('h-full flex flex-col', className)}>
       <CardHeader className={cn('pb-3', isCompact && 'p-3')}>
@@ -206,26 +264,87 @@ const ReservationSidebar: React.FC<ReservationSidebarProps> = ({
           'flex items-center justify-between',
           isCompact ? 'text-sm' : 'text-base'
         )}>
-          <span className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <Users className="w-4 h-4" />
-            Reservations
-          </span>
-          <Badge variant="outline">
-            {filteredReservations.length}/{reservations.length}
-          </Badge>
+            <span>Reservations</span>
+            {selectionMode && selectedCount > 0 && (
+              <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                {selectedCount} selected
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline">
+              {filteredReservations.length}/{reservations.length}
+            </Badge>
+            <Button
+              variant={selectionMode ? "default" : "outline"}
+              size="sm"
+              onClick={handleSelectionModeToggle}
+              className={cn(
+                'h-6 px-2',
+                selectionMode
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                  : 'border-blue-300 text-blue-600 hover:bg-blue-50'
+              )}
+            >
+              {selectionMode ? <CheckSquare className="w-3 h-3" /> : <Square className="w-3 h-3" />}
+            </Button>
+          </div>
         </CardTitle>
         
-        {/* Quick stats */}
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="text-center p-2 bg-red-50 rounded">
-            <div className="font-medium text-red-700">{unassignedCount}</div>
-            <div className="text-red-600">Unassigned</div>
+        {/* Quick stats and selection controls */}
+        {selectionMode ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-600">Selection Mode Active</span>
+              <div className="flex gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSelectAll}
+                  disabled={filteredReservations.length === 0}
+                  className="h-6 px-2 text-xs"
+                >
+                  Select All
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleClearSelection}
+                  disabled={selectedCount === 0}
+                  className="h-6 px-2 text-xs"
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+            {selectedCount > 0 && (
+              <div className="flex gap-2">
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleBulkAssignment}
+                  className="flex-1 h-7 text-xs bg-blue-600 hover:bg-blue-700"
+                >
+                  <Zap className="w-3 h-3 mr-1" />
+                  Bulk Assign ({selectedCount})
+                </Button>
+              </div>
+            )}
           </div>
-          <div className="text-center p-2 bg-green-50 rounded">
-            <div className="font-medium text-green-700">{assignedCount}</div>
-            <div className="text-green-600">Assigned</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="text-center p-2 bg-red-50 rounded">
+              <div className="font-medium text-red-700">{unassignedCount}</div>
+              <div className="text-red-600">Unassigned</div>
+            </div>
+            <div className="text-center p-2 bg-green-50 rounded">
+              <div className="font-medium text-green-700">{assignedCount}</div>
+              <div className="text-green-600">Assigned</div>
+            </div>
           </div>
-        </div>
+        )}
       </CardHeader>
       
       <CardContent className={cn('flex-1 flex flex-col gap-3 overflow-hidden', isCompact && 'p-3 pt-0')}>
@@ -251,6 +370,7 @@ const ReservationSidebar: React.FC<ReservationSidebarProps> = ({
               <SelectItem value="confirmed">Confirmed ({getStatusCount('confirmed')})</SelectItem>
               <SelectItem value="pending">Pending ({getStatusCount('pending')})</SelectItem>
               <SelectItem value="checked_in">Checked In ({getStatusCount('checked_in')})</SelectItem>
+              <SelectItem value="checked_out">Checked Out ({getStatusCount('checked_out')})</SelectItem>
             </SelectContent>
           </Select>
           
@@ -338,6 +458,12 @@ const ReservationSidebar: React.FC<ReservationSidebarProps> = ({
                       reservation={reservation}
                       onDragStart={onDragStart}
                       isCompact={isCompact}
+                      selectionMode={selectionMode}
+                      onSelectionChange={(selected) => {
+                        // This will be handled automatically by the DragDropManager
+                        // but we can add any additional logic here if needed
+                        setSelectedCount(dragDropManager.getSelectionCount());
+                      }}
                     />
                     
                     {/* Priority indicator */}

@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Label } from '@/components/ui/label';
 import { 
   Code,
   Key,
@@ -45,6 +46,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
 import { apiManagementApi } from '../../services/api';
+import { APIKeyCreationForm } from './APIKeyCreationForm';
+import { WebhookCreationForm } from './WebhookCreationForm';
 
 interface APIEndpoint {
   id: string;
@@ -126,8 +129,16 @@ export const ComprehensiveAPIAccess: React.FC = () => {
   const [selectedEndpoint, setSelectedEndpoint] = useState<APIEndpoint | null>(null);
   const [showKeyCreator, setShowKeyCreator] = useState(false);
   const [showWebhookCreator, setShowWebhookCreator] = useState(false);
+  const [showDocumentation, setShowDocumentation] = useState(false);
+  const [documentation, setDocumentation] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [methodFilter, setMethodFilter] = useState('all');
+  const [dateFromFilter, setDateFromFilter] = useState('');
+  const [dateToFilter, setDateToFilter] = useState('');
+  const [sortBy, setSortBy] = useState('name');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [showSecrets, setShowSecrets] = useState<{ [key: string]: boolean }>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -320,87 +331,204 @@ export const ComprehensiveAPIAccess: React.FC = () => {
 
   useEffect(() => {
     loadData();
+
+    // Set up polling for real-time updates (every 45 seconds for better performance)
+    const interval = setInterval(() => {
+      loadData(true); // Silent reload without loading state
+    }, 45000);
+
+    return () => clearInterval(interval);
   }, []);
 
-  const loadData = async () => {
+  const loadData = async (silent = false) => {
     try {
-      setLoading(true);
-      setError(null);
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      }
 
-      const [keysResponse, webhooksResponse, metricsResponse] = await Promise.allSettled([
-        apiManagementApi.getAPIKeys(),
+      // Optimize API calls for better performance
+      const [keysResponse, webhooksResponse, metricsResponse, endpointsResponse] = await Promise.allSettled([
+        apiManagementApi.getAPIKeys({ includeUsage: 'false' }), // Skip usage data for faster loading
         apiManagementApi.getWebhooks(),
-        apiManagementApi.getMetrics()
+        apiManagementApi.getMetrics(),
+        apiManagementApi.getAllEndpoints({ includeUsage: 'false' }) // Skip usage data for faster loading
       ]);
 
       if (keysResponse.status === 'fulfilled') {
-        setApiKeys(keysResponse.value.data?.data || []);
+        console.log('API Keys response:', keysResponse.value);
+        setApiKeys(keysResponse.value.data?.data?.apiKeys || []);
       } else {
         console.error('Failed to load API keys:', keysResponse.reason);
+        if (!silent) setApiKeys(mockAPIKeys);
       }
 
       if (webhooksResponse.status === 'fulfilled') {
-        setWebhooks(webhooksResponse.value.data?.data || []);
+        console.log('Webhooks response:', webhooksResponse.value);
+        setWebhooks(webhooksResponse.value.data?.data?.webhooks || []);
       } else {
         console.error('Failed to load webhooks:', webhooksResponse.reason);
+        if (!silent) setWebhooks(mockWebhooks);
       }
 
       if (metricsResponse.status === 'fulfilled') {
-        setApiMetrics(metricsResponse.value.data?.data || null);
+        console.log('Metrics response:', metricsResponse.value);
+        const rawMetrics = metricsResponse.value.data?.data;
+        if (rawMetrics) {
+          // Transform the API response to match the expected interface
+          const transformedMetrics = {
+            totalRequests: rawMetrics.totalRequests || 0,
+            requestsToday: rawMetrics.requestsToday || 0, // Now provided by optimized API
+            avgResponseTime: rawMetrics.averageResponseTime || 0,
+            errorRate: parseFloat(rawMetrics.errorRate) || 0,
+            topEndpoints: rawMetrics.topEndpoints || [], // Use data from API
+            statusCodes: rawMetrics.statusCodes || {} // Use data from API
+          };
+          setApiMetrics(transformedMetrics);
+        } else {
+          setApiMetrics(null);
+        }
       } else {
         console.error('Failed to load metrics:', metricsResponse.reason);
-        // Fallback to mock metrics for demo
-        setApiMetrics(mockAPIMetrics);
+        if (!silent) setApiMetrics(mockAPIMetrics);
       }
 
-      // Load top endpoints for fake endpoint data
-      try {
-        const endpointsResponse = await apiManagementApi.getTopEndpoints();
-        if (endpointsResponse.data?.data) {
-          setApiEndpoints(endpointsResponse.data.data);
-        } else {
-          // Fallback to mock endpoints for demo
-          setApiEndpoints(mockAPIEndpoints);
-        }
-      } catch (error) {
-        console.error('Failed to load endpoints:', error);
-        // Fallback to mock endpoints for demo
-        setApiEndpoints(mockAPIEndpoints);
+      if (endpointsResponse.status === 'fulfilled') {
+        console.log('Endpoints response:', endpointsResponse.value);
+        setApiEndpoints(endpointsResponse.value.data?.data || []);
+      } else {
+        console.error('Failed to load endpoints:', endpointsResponse.reason);
+        if (!silent) setApiEndpoints(mockAPIEndpoints);
       }
 
     } catch (error) {
       console.error('Failed to load API management data:', error);
-      setError('Failed to load data. Please try again.');
-      
-      // Fallback to mock data for demo
-      setApiEndpoints(mockAPIEndpoints);
-      setApiKeys(mockAPIKeys);
-      setWebhooks(mockWebhooks);
-      setApiMetrics(mockAPIMetrics);
+      if (!silent) {
+        setError('Failed to load data. Using fallback data.');
+
+        // Set mock data on error during initial load only
+        setApiEndpoints(mockAPIEndpoints);
+        setApiKeys(mockAPIKeys);
+        setWebhooks(mockWebhooks);
+        setApiMetrics(mockAPIMetrics);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
-  const filteredEndpoints = apiEndpoints.filter(endpoint => {
-    const matchesSearch = endpoint.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         endpoint.path.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = categoryFilter === 'all' || endpoint.category === categoryFilter;
-    
-    return matchesSearch && matchesCategory;
-  });
+  const loadDocumentation = async () => {
+    try {
+      const response = await apiManagementApi.getAPIDocumentation();
+      setDocumentation(response.data.data);
+      setShowDocumentation(true);
+    } catch (error) {
+      console.error('Failed to load API documentation:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load API documentation",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Ensure apiEndpoints is always an array to prevent filter errors
+  const safeApiEndpoints = Array.isArray(apiEndpoints) ? apiEndpoints : [];
+  
+  // Wrap filter operation in try-catch to prevent any crashes
+  let filteredEndpoints: APIEndpoint[] = [];
+  try {
+    filteredEndpoints = safeApiEndpoints.filter(endpoint => {
+      // Add comprehensive null checks to prevent undefined errors
+      if (!endpoint || typeof endpoint !== 'object') return false;
+
+      const name = (endpoint.name && typeof endpoint.name === 'string') ? endpoint.name : '';
+      const path = (endpoint.path && typeof endpoint.path === 'string') ? endpoint.path : '';
+      const category = (endpoint.category && typeof endpoint.category === 'string') ? endpoint.category : '';
+      const method = (endpoint.method && typeof endpoint.method === 'string') ? endpoint.method : '';
+      const status = (endpoint.status && typeof endpoint.status === 'string') ? endpoint.status : '';
+      const lastUsed = endpoint.lastUsed ? new Date(endpoint.lastUsed) : null;
+
+      const searchTermLower = (searchTerm && typeof searchTerm === 'string') ? searchTerm.toLowerCase() : '';
+
+      const matchesSearch = name.toLowerCase().includes(searchTermLower) ||
+                           path.toLowerCase().includes(searchTermLower) ||
+                           method.toLowerCase().includes(searchTermLower);
+
+      const matchesCategory = categoryFilter === 'all' || category === categoryFilter;
+      const matchesStatus = statusFilter === 'all' || status === statusFilter;
+      const matchesMethod = methodFilter === 'all' || method === methodFilter;
+
+      const matchesDateFrom = !dateFromFilter || !lastUsed || lastUsed >= new Date(dateFromFilter);
+      const matchesDateTo = !dateToFilter || !lastUsed || lastUsed <= new Date(dateToFilter + 'T23:59:59');
+
+      return matchesSearch && matchesCategory && matchesStatus && matchesMethod && matchesDateFrom && matchesDateTo;
+    });
+
+    // Apply sorting
+    filteredEndpoints.sort((a, b) => {
+      let valueA: any, valueB: any;
+
+      switch (sortBy) {
+        case 'name':
+          valueA = a.name || '';
+          valueB = b.name || '';
+          break;
+        case 'method':
+          valueA = a.method || '';
+          valueB = b.method || '';
+          break;
+        case 'requests':
+          valueA = a.usage?.requests || 0;
+          valueB = b.usage?.requests || 0;
+          break;
+        case 'errors':
+          valueA = a.usage?.errors || 0;
+          valueB = b.usage?.errors || 0;
+          break;
+        case 'response_time':
+          valueA = a.usage?.avgResponseTime || 0;
+          valueB = b.usage?.avgResponseTime || 0;
+          break;
+        case 'last_used':
+          valueA = a.lastUsed ? new Date(a.lastUsed) : new Date(0);
+          valueB = b.lastUsed ? new Date(b.lastUsed) : new Date(0);
+          break;
+        default:
+          valueA = a.name || '';
+          valueB = b.name || '';
+      }
+
+      if (typeof valueA === 'string') {
+        valueA = valueA.toLowerCase();
+        valueB = (valueB || '').toLowerCase();
+      }
+
+      if (sortOrder === 'asc') {
+        return valueA < valueB ? -1 : valueA > valueB ? 1 : 0;
+      } else {
+        return valueA > valueB ? -1 : valueA < valueB ? 1 : 0;
+      }
+    });
+  } catch (error) {
+    console.error('Error filtering endpoints:', error);
+    // Return empty array as fallback
+    filteredEndpoints = [];
+  }
 
   const toggleKeyStatus = async (keyId: string) => {
     try {
-      const key = apiKeys.find(k => k.id === keyId);
+      const key = Array.isArray(apiKeys) ? apiKeys.find(k => k._id === keyId) : null;
       if (!key) return;
 
       await apiManagementApi.toggleAPIKeyStatus(keyId);
-      
-      setApiKeys(apiKeys.map(k => 
-        k.id === keyId ? { ...k, isActive: !k.isActive } : k
+
+      setApiKeys((apiKeys || []).map(k =>
+        k._id === keyId ? { ...k, isActive: !k.isActive } : k
       ));
-      
+
       toast({
         title: "API Key Updated",
         description: `${key.name} has been ${!key.isActive ? 'activated' : 'deactivated'}`
@@ -416,17 +544,17 @@ export const ComprehensiveAPIAccess: React.FC = () => {
 
   const toggleWebhookStatus = async (webhookId: string) => {
     try {
-      const webhook = webhooks.find(w => w.id === webhookId);
+      const webhook = (webhooks || []).find(w => w._id === webhookId);
       if (!webhook) return;
 
       // Note: We'll need to add a toggle endpoint for webhooks, for now update directly
       const updatedWebhook = { ...webhook, isActive: !webhook.isActive };
       await apiManagementApi.updateWebhook(webhookId, updatedWebhook);
-      
-      setWebhooks(webhooks.map(w => 
-        w.id === webhookId ? { ...w, isActive: !w.isActive } : w
+
+      setWebhooks((webhooks || []).map(w =>
+        w._id === webhookId ? { ...w, isActive: !w.isActive } : w
       ));
-      
+
       toast({
         title: "Webhook Updated",
         description: `${webhook.name} has been ${!webhook.isActive ? 'activated' : 'deactivated'}`
@@ -482,7 +610,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Total Requests</p>
-                <p className="text-2xl font-bold">{apiMetrics?.totalRequests.toLocaleString()}</p>
+                <p className="text-2xl font-bold">{(apiMetrics?.totalRequests || 0).toLocaleString()}</p>
               </div>
               <BarChart3 className="h-8 w-8 text-blue-500" />
             </div>
@@ -494,7 +622,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Requests Today</p>
-                <p className="text-2xl font-bold">{apiMetrics?.requestsToday.toLocaleString()}</p>
+                <p className="text-2xl font-bold">{(apiMetrics?.requestsToday || 0).toLocaleString()}</p>
               </div>
               <Activity className="h-8 w-8 text-green-500" />
             </div>
@@ -533,7 +661,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {apiMetrics?.topEndpoints.map((endpoint, index) => (
+            {(apiMetrics?.topEndpoints || []).map((endpoint, index) => (
               <div key={endpoint.endpoint} className="flex items-center justify-between p-3 border rounded-lg">
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white font-bold">
@@ -542,13 +670,13 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                   <div>
                     <div className="font-medium">{endpoint.endpoint}</div>
                     <div className="text-sm text-muted-foreground">
-                      {endpoint.requests.toLocaleString()} requests
+                      {(endpoint.requests || 0).toLocaleString()} requests
                     </div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="font-bold">{endpoint.requests.toLocaleString()}</div>
-                  <div className="text-sm text-red-500">{endpoint.errors} errors</div>
+                  <div className="font-bold">{(endpoint.requests || 0).toLocaleString()}</div>
+                  <div className="text-sm text-red-500">{endpoint.errors || 0} errors</div>
                 </div>
               </div>
             ))}
@@ -570,7 +698,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                   code.startsWith('4') ? 'text-yellow-600' :
                   code.startsWith('5') ? 'text-red-600' : 'text-gray-600'
                 }`}>
-                  {count.toLocaleString()}
+                  {(count || 0).toLocaleString()}
                 </div>
                 <div className="text-sm text-muted-foreground">{code}</div>
               </div>
@@ -615,35 +743,138 @@ export const ComprehensiveAPIAccess: React.FC = () => {
 
   const renderEndpoints = () => (
     <div className="space-y-6">
-      {/* Filters */}
+      {/* Enhanced Filters */}
       <Card>
         <CardContent className="p-4">
-          <div className="flex items-center space-x-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search endpoints..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+          <div className="space-y-4">
+            {/* Primary Search and Actions */}
+            <div className="flex items-center space-x-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search endpoints, methods, or paths..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                New Endpoint
+              </Button>
             </div>
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="Reservations">Reservations</SelectItem>
-                <SelectItem value="Inventory">Inventory</SelectItem>
-                <SelectItem value="Payments">Payments</SelectItem>
-                <SelectItem value="Guests">Guests</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              New Endpoint
-            </Button>
+
+            {/* Advanced Filters Row */}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="Authentication">Authentication</SelectItem>
+                  <SelectItem value="Bookings">Bookings</SelectItem>
+                  <SelectItem value="Room Management">Room Management</SelectItem>
+                  <SelectItem value="Guest Management">Guest Management</SelectItem>
+                  <SelectItem value="Analytics">Analytics</SelectItem>
+                  <SelectItem value="API Management">API Management</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={methodFilter} onValueChange={setMethodFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Methods</SelectItem>
+                  <SelectItem value="GET">GET</SelectItem>
+                  <SelectItem value="POST">POST</SelectItem>
+                  <SelectItem value="PUT">PUT</SelectItem>
+                  <SelectItem value="DELETE">DELETE</SelectItem>
+                  <SelectItem value="PATCH">PATCH</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="deprecated">Deprecated</SelectItem>
+                  <SelectItem value="beta">Beta</SelectItem>
+                  <SelectItem value="maintenance">Maintenance</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="method">Method</SelectItem>
+                  <SelectItem value="requests">Requests</SelectItem>
+                  <SelectItem value="errors">Errors</SelectItem>
+                  <SelectItem value="response_time">Response Time</SelectItem>
+                  <SelectItem value="last_used">Last Used</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Button
+                variant="outline"
+                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                className="w-full"
+              >
+                {sortOrder === 'asc' ? 'A→Z' : 'Z→A'}
+                {sortOrder === 'asc' ? <TrendingUp className="ml-2 h-4 w-4" /> : <TrendingDown className="ml-2 h-4 w-4" />}
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSearchTerm('');
+                  setCategoryFilter('all');
+                  setMethodFilter('all');
+                  setStatusFilter('all');
+                  setDateFromFilter('');
+                  setDateToFilter('');
+                  setSortBy('name');
+                  setSortOrder('asc');
+                }}
+                className="w-full"
+              >
+                <Filter className="mr-2 h-4 w-4" />
+                Clear
+              </Button>
+            </div>
+
+            {/* Date Range Filters */}
+            <div className="flex items-center space-x-4 pt-2 border-t">
+              <Label className="text-sm font-medium whitespace-nowrap">Last Used:</Label>
+              <div className="flex items-center space-x-2">
+                <Input
+                  type="date"
+                  value={dateFromFilter}
+                  onChange={(e) => setDateFromFilter(e.target.value)}
+                  className="w-40"
+                  placeholder="From"
+                />
+                <span className="text-muted-foreground">to</span>
+                <Input
+                  type="date"
+                  value={dateToFilter}
+                  onChange={(e) => setDateToFilter(e.target.value)}
+                  className="w-40"
+                  placeholder="To"
+                />
+              </div>
+              <div className="flex-1" />
+              <Badge variant="secondary" className="ml-auto">
+                {filteredEndpoints.length} endpoints
+              </Badge>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -672,17 +903,17 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-3 gap-6 text-right">
                   <div>
-                    <div className="text-lg font-bold">{endpoint.usage.requests.toLocaleString()}</div>
+                    <div className="text-lg font-bold">{(endpoint.usage?.requests || 0).toLocaleString()}</div>
                     <div className="text-xs text-muted-foreground">Requests</div>
                   </div>
                   <div>
-                    <div className={`text-lg font-bold ${endpoint.usage.errors > 50 ? 'text-red-600' : 'text-green-600'}`}>
-                      {endpoint.usage.errors}
+                    <div className={`text-lg font-bold ${(endpoint.usage?.errors || 0) > 50 ? 'text-red-600' : 'text-green-600'}`}>
+                      {endpoint.usage?.errors || 0}
                     </div>
                     <div className="text-xs text-muted-foreground">Errors</div>
                   </div>
                   <div>
-                    <div className="text-lg font-bold">{endpoint.usage.avgResponseTime}ms</div>
+                    <div className="text-lg font-bold">{endpoint.usage?.avgResponseTime || 0}ms</div>
                     <div className="text-xs text-muted-foreground">Avg Response</div>
                   </div>
                 </div>
@@ -705,8 +936,8 @@ export const ComprehensiveAPIAccess: React.FC = () => {
       </div>
 
       <div className="space-y-4">
-        {apiKeys.map(apiKey => (
-          <Card key={apiKey.id}>
+        {Array.isArray(apiKeys) && apiKeys.length > 0 ? apiKeys.map(apiKey => (
+          <Card key={apiKey._id}>
             <CardContent className="p-6">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
@@ -719,48 +950,48 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                       {apiKey.isActive ? 'Active' : 'Inactive'}
                     </Badge>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">
                       <span className="text-sm font-medium">Key:</span>
                       <code className="bg-muted px-2 py-1 rounded text-sm font-mono">
-                        {showSecrets[apiKey.id] ? apiKey.key : '•'.repeat(apiKey.key.length)}
+                        {showSecrets[apiKey._id] ? apiKey.keyId : '•'.repeat(apiKey.keyId?.length || 20)}
                       </code>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => toggleSecretVisibility(apiKey.id)}
+                        onClick={() => toggleSecretVisibility(apiKey._id)}
                       >
-                        {showSecrets[apiKey.id] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        {showSecrets[apiKey._id] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => copyToClipboard(apiKey.key, 'API Key')}
+                        onClick={() => copyToClipboard(apiKey.keyId, 'API Key')}
                       >
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>
-                    
+
                     <div className="text-sm text-muted-foreground">
-                      <div>Created by {apiKey.createdBy} on {new Date(apiKey.createdAt).toLocaleDateString()}</div>
+                      <div>Created by {apiKey.createdBy?.name || 'Unknown'} on {new Date(apiKey.createdAt).toLocaleDateString()}</div>
                       {apiKey.expiresAt && (
                         <div>Expires: {new Date(apiKey.expiresAt).toLocaleDateString()}</div>
                       )}
-                      {apiKey.usage.lastUsed && (
+                      {apiKey.usage?.lastUsed && (
                         <div>Last used: {new Date(apiKey.usage.lastUsed).toLocaleString()}</div>
                       )}
                     </div>
 
                     <div className="flex flex-wrap gap-1 mt-2">
-                      {apiKey.permissions.slice(0, 3).map(permission => (
-                        <Badge key={permission} variant="outline" className="text-xs">
-                          {permission}
+                      {(apiKey.permissions || []).slice(0, 3).map((permission, index) => (
+                        <Badge key={index} variant="outline" className="text-xs">
+                          {permission.resource ? `${permission.resource}:${permission.actions.join(',')}` : permission}
                         </Badge>
                       ))}
-                      {apiKey.permissions.length > 3 && (
+                      {(apiKey.permissions || []).length > 3 && (
                         <Badge variant="outline" className="text-xs">
-                          +{apiKey.permissions.length - 3} more
+                          +{(apiKey.permissions || []).length - 3} more
                         </Badge>
                       )}
                     </div>
@@ -769,20 +1000,20 @@ export const ComprehensiveAPIAccess: React.FC = () => {
 
                 <div className="text-right space-y-2">
                   <div>
-                    <div className="text-lg font-bold">{apiKey.usage.requests.toLocaleString()}</div>
+                    <div className="text-lg font-bold">{(apiKey.usage?.totalRequests || 0).toLocaleString()}</div>
                     <div className="text-xs text-muted-foreground">Total Requests</div>
                   </div>
                   <div>
                     <div className="text-sm">
-                      {apiKey.usage.rateLimitUsed.toLocaleString()} / {apiKey.usage.rateLimit.toLocaleString()}
+                      {(apiKey.rateLimitUsage?.today?.requests || 0).toLocaleString()} / {(apiKey.rateLimit?.requestsPerDay || 0).toLocaleString()}
                     </div>
-                    <div className="text-xs text-muted-foreground">Rate Limit</div>
+                    <div className="text-xs text-muted-foreground">Rate Limit (Today)</div>
                   </div>
                   <div className="flex space-x-2">
                     <Button
                       variant={apiKey.isActive ? 'outline' : 'default'}
                       size="sm"
-                      onClick={() => toggleKeyStatus(apiKey.id)}
+                      onClick={() => toggleKeyStatus(apiKey._id)}
                     >
                       {apiKey.isActive ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
                     </Button>
@@ -797,7 +1028,11 @@ export const ComprehensiveAPIAccess: React.FC = () => {
               </div>
             </CardContent>
           </Card>
-        ))}
+        )) : (
+          <div className="text-center py-8 text-gray-500">
+            No API keys found
+          </div>
+        )}
       </div>
     </div>
   );
@@ -813,8 +1048,8 @@ export const ComprehensiveAPIAccess: React.FC = () => {
       </div>
 
       <div className="space-y-4">
-        {webhooks.map(webhook => (
-          <Card key={webhook.id}>
+        {Array.isArray(webhooks) ? webhooks.map(webhook =>
+          <Card key={webhook._id}>
             <CardContent className="p-6">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
@@ -824,7 +1059,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                       {webhook.isActive ? 'Active' : 'Inactive'}
                     </Badge>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">
                       <span className="text-sm font-medium">URL:</span>
@@ -839,23 +1074,16 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                         <Copy className="h-4 w-4" />
                       </Button>
                     </div>
-                    
+
                     <div className="flex items-center space-x-2">
-                      <span className="text-sm font-medium">Secret:</span>
-                      <code className="bg-muted px-2 py-1 rounded text-sm font-mono">
-                        {showSecrets[webhook.id] ? webhook.secret : '•'.repeat(webhook.secret.length)}
-                      </code>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => toggleSecretVisibility(webhook.id)}
-                      >
-                        {showSecrets[webhook.id] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
+                      <span className="text-sm font-medium">Created:</span>
+                      <div className="text-sm text-muted-foreground">
+                        {new Date(webhook.createdAt).toLocaleDateString()}
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap gap-1 mt-2">
-                      {webhook.events.map(event => (
+                      {(webhook.events || []).map(event => (
                         <Badge key={event} variant="secondary" className="text-xs">
                           {event}
                         </Badge>
@@ -866,22 +1094,22 @@ export const ComprehensiveAPIAccess: React.FC = () => {
 
                 <div className="text-right space-y-2">
                   <div>
-                    <div className="text-lg font-bold">{webhook.stats.totalDeliveries}</div>
+                    <div className="text-lg font-bold">{webhook.stats?.totalDeliveries || 0}</div>
                     <div className="text-xs text-muted-foreground">Total Deliveries</div>
                   </div>
                   <div>
-                    <div className="text-sm text-green-600">{webhook.stats.successfulDeliveries}</div>
+                    <div className="text-sm text-green-600">{webhook.stats?.successfulDeliveries || 0}</div>
                     <div className="text-xs text-muted-foreground">Successful</div>
                   </div>
                   <div>
-                    <div className="text-sm text-red-600">{webhook.stats.failedDeliveries}</div>
+                    <div className="text-sm text-red-600">{webhook.stats?.failedDeliveries || 0}</div>
                     <div className="text-xs text-muted-foreground">Failed</div>
                   </div>
                   <div className="flex space-x-2">
                     <Button
                       variant={webhook.isActive ? 'outline' : 'default'}
                       size="sm"
-                      onClick={() => toggleWebhookStatus(webhook.id)}
+                      onClick={() => toggleWebhookStatus(webhook._id)}
                     >
                       {webhook.isActive ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
                     </Button>
@@ -896,7 +1124,11 @@ export const ComprehensiveAPIAccess: React.FC = () => {
               </div>
             </CardContent>
           </Card>
-        ))}
+        ) : (
+          <div className="text-center py-8 text-gray-500">
+            No webhooks found
+          </div>
+        )}
       </div>
     </div>
   );
@@ -944,9 +1176,15 @@ export const ComprehensiveAPIAccess: React.FC = () => {
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight">API Management</h2>
+        <div className="flex items-center space-x-3">
+          <h2 className="text-3xl font-bold tracking-tight">API Management</h2>
+          <Badge variant="outline" className="flex items-center space-x-1">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            <span className="text-xs">Live Data</span>
+          </Badge>
+        </div>
         <div className="flex space-x-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={loadDocumentation}>
             <FileText className="mr-2 h-4 w-4" />
             API Documentation
           </Button>
@@ -1026,15 +1264,15 @@ export const ComprehensiveAPIAccess: React.FC = () => {
 
               <div className="grid grid-cols-3 gap-4">
                 <div className="text-center p-4 border rounded-lg">
-                  <div className="text-2xl font-bold">{selectedEndpoint.usage.requests.toLocaleString()}</div>
+                  <div className="text-2xl font-bold">{(selectedEndpoint?.usage?.requests || 0).toLocaleString()}</div>
                   <div className="text-sm text-muted-foreground">Total Requests</div>
                 </div>
                 <div className="text-center p-4 border rounded-lg">
-                  <div className="text-2xl font-bold text-red-600">{selectedEndpoint.usage.errors}</div>
+                  <div className="text-2xl font-bold text-red-600">{selectedEndpoint?.usage?.errors || 0}</div>
                   <div className="text-sm text-muted-foreground">Errors</div>
                 </div>
                 <div className="text-center p-4 border rounded-lg">
-                  <div className="text-2xl font-bold">{selectedEndpoint.usage.avgResponseTime}ms</div>
+                  <div className="text-2xl font-bold">{selectedEndpoint?.usage?.avgResponseTime || 0}ms</div>
                   <div className="text-sm text-muted-foreground">Avg Response Time</div>
                 </div>
               </div>
@@ -1062,6 +1300,247 @@ export const ComprehensiveAPIAccess: React.FC = () => {
                   <BarChart3 className="mr-2 h-4 w-4" />
                   View Analytics
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* API Key Creation Modal */}
+      {showKeyCreator && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center">
+                  <Key className="mr-3 h-5 w-5" />
+                  Create API Key
+                </CardTitle>
+                <Button variant="outline" onClick={() => setShowKeyCreator(false)}>
+                  <XCircle className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <APIKeyCreationForm onClose={() => setShowKeyCreator(false)} onSuccess={() => {
+                setShowKeyCreator(false);
+                loadAPIKeys();
+              }} />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Webhook Creation Modal */}
+      {showWebhookCreator && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center">
+                  <Webhook className="mr-3 h-5 w-5" />
+                  Add Webhook
+                </CardTitle>
+                <Button variant="outline" onClick={() => setShowWebhookCreator(false)}>
+                  <XCircle className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <WebhookCreationForm onClose={() => setShowWebhookCreator(false)} onSuccess={() => {
+                setShowWebhookCreator(false);
+                loadWebhooks();
+              }} />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* API Documentation Modal */}
+      {showDocumentation && documentation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <Card className="w-full max-w-6xl max-h-[90vh] overflow-y-auto">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center">
+                  <FileText className="mr-3 h-5 w-5" />
+                  {documentation.info?.title || 'API Documentation'}
+                </CardTitle>
+                <Button variant="outline" onClick={() => setShowDocumentation(false)}>
+                  <XCircle className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* API Information */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">API Information</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label>Version</Label>
+                    <div className="text-sm text-muted-foreground">{documentation.info?.version}</div>
+                  </div>
+                  <div>
+                    <Label>Contact</Label>
+                    <div className="text-sm text-muted-foreground">{documentation.info?.contact?.email}</div>
+                  </div>
+                </div>
+                <div>
+                  <Label>Description</Label>
+                  <div className="text-sm text-muted-foreground">{documentation.info?.description}</div>
+                </div>
+              </div>
+
+              {/* Server URLs */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Servers</h3>
+                <div className="space-y-2">
+                  {documentation.servers?.map((server: any, index: number) => (
+                    <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div>
+                        <code className="font-mono text-sm">{server.url}</code>
+                        <div className="text-xs text-muted-foreground">{server.description}</div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => copyToClipboard(server.url, 'Server URL')}
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Authentication */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Authentication</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Shield className="h-4 w-4" />
+                        <span className="font-medium">Bearer Token (JWT)</span>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Use JWT token in Authorization header
+                      </div>
+                      <code className="block bg-muted p-2 rounded mt-2 text-xs">
+                        Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+                      </code>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Key className="h-4 w-4" />
+                        <span className="font-medium">API Key</span>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Use API key in x-api-key header
+                      </div>
+                      <code className="block bg-muted p-2 rounded mt-2 text-xs">
+                        x-api-key: rk_test_abcd1234...
+                      </code>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+
+              {/* Rate Limits */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Rate Limits</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {Object.entries(documentation.rateLimit?.limits || {}).map(([type, limit]) => (
+                    <Card key={type}>
+                      <CardContent className="p-4 text-center">
+                        <div className="font-medium capitalize">{type}</div>
+                        <div className="text-2xl font-bold text-blue-600">{limit}</div>
+                        <div className="text-xs text-muted-foreground">requests</div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+
+              {/* API Endpoints by Category */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">API Endpoints</h3>
+                <div className="space-y-6">
+                  {documentation.endpoints?.map((categoryGroup: any, index: number) => (
+                    <div key={index}>
+                      <h4 className="font-medium text-lg mb-3">{categoryGroup.category}</h4>
+                      <div className="space-y-3">
+                        {categoryGroup.endpoints?.map((endpoint: any, endpointIndex: number) => (
+                          <Card key={endpointIndex}>
+                            <CardContent className="p-4">
+                              <div className="flex items-start justify-between mb-3">
+                                <div className="flex items-center gap-3">
+                                  <Badge className={`${getMethodColor(endpoint.method)} text-white`}>
+                                    {endpoint.method}
+                                  </Badge>
+                                  <code className="font-mono text-sm">{endpoint.path}</code>
+                                </div>
+                              </div>
+                              <div className="text-sm font-medium mb-1">{endpoint.summary}</div>
+                              <div className="text-sm text-muted-foreground">{endpoint.description}</div>
+
+                              {endpoint.parameters && endpoint.parameters.length > 0 && (
+                                <div className="mt-3">
+                                  <div className="text-sm font-medium mb-2">Parameters:</div>
+                                  <div className="grid grid-cols-1 gap-2">
+                                    {endpoint.parameters.map((param: any, paramIndex: number) => (
+                                      <div key={paramIndex} className="flex items-center gap-2 text-xs">
+                                        <code className="bg-muted px-1 rounded">{param.name}</code>
+                                        <span className="text-muted-foreground">({param.in})</span>
+                                        {param.required && <Badge variant="destructive" className="text-xs">required</Badge>}
+                                        <span className="text-muted-foreground">- {param.description}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Code Examples */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Code Examples</h3>
+                <div className="space-y-4">
+                  {Object.entries(documentation.examples || {}).map(([key, example]: [string, any]) => (
+                    <Card key={key}>
+                      <CardContent className="p-4">
+                        <div className="font-medium mb-2 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</div>
+                        <div className="text-sm text-muted-foreground mb-3">{example.description}</div>
+                        <pre className="bg-muted p-3 rounded text-xs overflow-x-auto">
+                          <code>{example.code}</code>
+                        </pre>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+
+              {/* Error Codes */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Error Codes</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {Object.entries(documentation.errorCodes || {}).map(([code, description]) => (
+                    <div key={code} className="flex items-start gap-3 p-3 border rounded-lg">
+                      <Badge variant={code.startsWith('2') ? 'default' : code.startsWith('4') ? 'secondary' : 'destructive'}>
+                        {code}
+                      </Badge>
+                      <div className="text-sm text-muted-foreground">{description}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>

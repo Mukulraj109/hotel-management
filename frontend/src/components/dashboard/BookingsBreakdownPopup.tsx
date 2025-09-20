@@ -8,7 +8,7 @@ import {
   BookOpen, 
   TrendingUp,
   Users,
-  DollarSign,
+  IndianRupee,
   AlertCircle,
   CheckCircle,
   XCircle,

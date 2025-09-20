@@ -1,7 +1,7 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import LaundryTemplate from '../models/LaundryTemplate.js';
 import InventoryItem from '../models/InventoryItem.js';
 
@@ -90,7 +90,7 @@ router.get('/:id', authorize('admin', 'manager', 'staff'), catchAsync(async (req
     .populate('lastUpdatedBy', 'name email');
 
   if (!template) {
-    throw new AppError('Laundry template not found', 404);
+    throw new ApplicationError('Laundry template not found', 404);
   }
 
   res.status(200).json({
@@ -172,7 +172,7 @@ router.post('/', authorize('admin', 'manager'), catchAsync(async (req, res) => {
     });
     
     if (existingItems.length !== itemIds.length) {
-      throw new AppError('One or more inventory items not found or inactive', 400);
+      throw new ApplicationError('One or more inventory items not found or inactive', 400);
     }
   }
 
@@ -239,7 +239,7 @@ router.put('/:id', authorize('admin', 'manager'), catchAsync(async (req, res) =>
 
   const template = await LaundryTemplate.findOne({ _id: id, hotelId });
   if (!template) {
-    throw new AppError('Laundry template not found', 404);
+    throw new ApplicationError('Laundry template not found', 404);
   }
 
   // Validate item IDs if provided
@@ -253,7 +253,7 @@ router.put('/:id', authorize('admin', 'manager'), catchAsync(async (req, res) =>
       });
       
       if (existingItems.length !== itemIds.length) {
-        throw new AppError('One or more inventory items not found or inactive', 400);
+        throw new ApplicationError('One or more inventory items not found or inactive', 400);
       }
     }
   }
@@ -308,11 +308,11 @@ router.delete('/:id', authorize('admin', 'manager'), catchAsync(async (req, res)
 
   const template = await LaundryTemplate.findOne({ _id: id, hotelId });
   if (!template) {
-    throw new AppError('Laundry template not found', 404);
+    throw new ApplicationError('Laundry template not found', 404);
   }
 
   if (template.isDefault) {
-    throw new AppError('Cannot delete default template. Set another template as default first.', 400);
+    throw new ApplicationError('Cannot delete default template. Set another template as default first.', 400);
   }
 
   await LaundryTemplate.findByIdAndDelete(id);
@@ -349,7 +349,7 @@ router.post('/:id/set-default', authorize('admin', 'manager'), catchAsync(async 
 
   const template = await LaundryTemplate.findOne({ _id: id, hotelId });
   if (!template) {
-    throw new AppError('Laundry template not found', 404);
+    throw new ApplicationError('Laundry template not found', 404);
   }
 
   // Set this template as default and unset others for the same room type
@@ -390,7 +390,7 @@ router.get('/room-type/:roomType', authorize('admin', 'manager', 'staff'), catch
 
   const template = await LaundryTemplate.getForRoomType(hotelId, roomType);
   if (!template) {
-    throw new AppError(`No default template found for room type: ${roomType}`, 404);
+    throw new ApplicationError(`No default template found for room type: ${roomType}`, 404);
   }
 
   res.status(200).json({
@@ -417,7 +417,7 @@ router.post('/create-defaults', authorize('admin', 'manager'), catchAsync(async 
   // Check if default templates already exist
   const existingTemplates = await LaundryTemplate.find({ hotelId, isDefault: true });
   if (existingTemplates.length > 0) {
-    throw new AppError('Default templates already exist. Delete existing ones first.', 400);
+    throw new ApplicationError('Default templates already exist. Delete existing ones first.', 400);
   }
 
   const templates = await LaundryTemplate.createDefaultTemplates(hotelId, userId);
@@ -471,7 +471,7 @@ router.post('/:id/test', authorize('admin', 'manager', 'staff'), catchAsync(asyn
 
   const template = await LaundryTemplate.findOne({ _id: id, hotelId });
   if (!template) {
-    throw new AppError('Laundry template not found', 404);
+    throw new ApplicationError('Laundry template not found', 404);
   }
 
   const testResults = template.calculateLaundryItems(guestCount, season, roomCondition);

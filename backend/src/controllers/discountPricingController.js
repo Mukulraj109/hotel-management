@@ -1,5 +1,5 @@
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { discountPricingService } from '../services/discountPricingService.js';
 import SpecialDiscount from '../models/SpecialDiscount.js';
 import DynamicPricing from '../models/DynamicPricing.js';
@@ -48,7 +48,7 @@ export const getSpecialDiscount = catchAsync(async (req, res, next) => {
     .populate('createdBy updatedBy', 'name email');
 
   if (!discount) {
-    return next(new AppError('Special discount not found', 404));
+    return next(new ApplicationError('Special discount not found', 404));
   }
 
   res.status(200).json({
@@ -144,7 +144,7 @@ export const getDynamicPricing = catchAsync(async (req, res, next) => {
     .populate('createdBy updatedBy', 'name email');
 
   if (!pricing) {
-    return next(new AppError('Dynamic pricing rule not found', 404));
+    return next(new ApplicationError('Dynamic pricing rule not found', 404));
   }
 
   res.status(200).json({
@@ -238,7 +238,7 @@ export const getMarketSegment = catchAsync(async (req, res, next) => {
     .populate('createdBy updatedBy', 'name email');
 
   if (!segment) {
-    return next(new AppError('Market segment not found', 404));
+    return next(new ApplicationError('Market segment not found', 404));
   }
 
   res.status(200).json({
@@ -336,7 +336,7 @@ export const getJobType = catchAsync(async (req, res, next) => {
     .populate('department', 'name code');
 
   if (!jobType) {
-    return next(new AppError('Job type not found', 404));
+    return next(new ApplicationError('Job type not found', 404));
   }
 
   res.status(200).json({
@@ -407,7 +407,7 @@ export const bulkUpdateDiscountStatus = catchAsync(async (req, res, next) => {
   const { updates } = req.body;
 
   if (!Array.isArray(updates) || updates.length === 0) {
-    return next(new AppError('Updates array is required', 400));
+    return next(new ApplicationError('Updates array is required', 400));
   }
 
   const results = await discountPricingService.bulkUpdateDiscountStatus(
@@ -427,7 +427,7 @@ export const bulkUpdatePricingStatus = catchAsync(async (req, res, next) => {
   const { updates } = req.body;
 
   if (!Array.isArray(updates) || updates.length === 0) {
-    return next(new AppError('Updates array is required', 400));
+    return next(new ApplicationError('Updates array is required', 400));
   }
 
   const results = await discountPricingService.bulkUpdatePricingStatus(

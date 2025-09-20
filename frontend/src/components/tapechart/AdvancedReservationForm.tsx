@@ -85,6 +85,13 @@ const AdvancedReservationForm: React.FC<AdvancedReservationFormProps> = ({
     setLoading(true);
     setErrors({});
 
+    // Basic validation
+    if (!formData.bookingId) {
+      setErrors({ bookingId: 'Please select a booking' });
+      setLoading(false);
+      return;
+    }
+
     try {
       let result: AdvancedReservation;
       if (reservation) {
@@ -95,8 +102,28 @@ const AdvancedReservationForm: React.FC<AdvancedReservationFormProps> = ({
       onSuccess(result);
     } catch (error: any) {
       console.error('Failed to save advanced reservation:', error);
+
+      // Handle validation errors
       if (error.response?.data?.errors) {
-        setErrors(error.response.data.errors);
+        if (Array.isArray(error.response.data.errors)) {
+          // Handle express-validator errors
+          const validationErrors: Record<string, string> = {};
+          error.response.data.errors.forEach((err: any) => {
+            validationErrors[err.path || err.param] = err.msg || err.message;
+          });
+          setErrors(validationErrors);
+        } else {
+          setErrors(error.response.data.errors);
+        }
+      } else if (error.response?.data?.message) {
+        // Handle general error messages
+        setErrors({ general: error.response.data.message });
+      } else if (error.message) {
+        // Handle network or other errors
+        setErrors({ general: error.message });
+      } else {
+        // Handle unknown errors
+        setErrors({ general: 'An unexpected error occurred. Please try again.' });
       }
     } finally {
       setLoading(false);
@@ -161,6 +188,18 @@ const AdvancedReservationForm: React.FC<AdvancedReservationFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {errors.general && (
+        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+          <div className="flex">
+            <AlertTriangle className="h-4 w-4 text-red-400 mt-0.5 mr-3" />
+            <div>
+              <h3 className="text-sm font-medium text-red-800">Error</h3>
+              <p className="text-sm text-red-700 mt-1">{errors.general}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Tabs defaultValue="basic" className="w-full">
         <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="basic">Basic Info</TabsTrigger>

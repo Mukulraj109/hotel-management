@@ -280,77 +280,85 @@ export default function AdminWebSettings() {
   const status = getSettingsStatus();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Web Settings</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Web Settings</h1>
+          <p className="text-sm sm:text-base text-gray-600 mt-1">
             Configure your hotel's web presence and booking system
           </p>
         </div>
         
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
           {/* Status Badge */}
           <Badge 
             variant={status.status === 'healthy' ? 'default' : status.status === 'warning' ? 'secondary' : 'destructive'}
-            className="flex items-center"
+            className="flex items-center justify-center sm:justify-start text-xs sm:text-sm px-2 py-1"
           >
             {status.status === 'healthy' ? <CheckCircle className="w-3 h-3 mr-1" /> :
              status.status === 'warning' ? <AlertTriangle className="w-3 h-3 mr-1" /> :
              <AlertTriangle className="w-3 h-3 mr-1" />}
-            {status.message}
+            <span className="hidden sm:inline">{status.message}</span>
+            <span className="sm:hidden">{status.status === 'healthy' ? 'OK' : status.status === 'warning' ? 'Warn' : 'Error'}</span>
           </Badge>
 
           {/* Action Buttons */}
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={handlePreviewToggle}
-          >
-            <Eye className="w-4 h-4 mr-2" />
-            {previewMode ? 'Exit Preview' : 'Preview'}
-          </Button>
-
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={handleExportSettings}
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Export
-          </Button>
-
-          <label className="cursor-pointer">
+          <div className="grid grid-cols-2 sm:flex gap-2">
             <Button 
               variant="outline" 
               size="sm"
-              asChild
+              onClick={handlePreviewToggle}
+              className="text-xs sm:text-sm"
             >
-              <span>
-                <Upload className="w-4 h-4 mr-2" />
-                Import
-              </span>
+              <Eye className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
+              <span className="hidden sm:inline">{previewMode ? 'Exit Preview' : 'Preview'}</span>
+              <span className="sm:hidden">Preview</span>
             </Button>
-            <input
-              type="file"
-              accept=".json"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleImportSettings(file);
-              }}
-            />
-          </label>
 
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={loadSettings}
-          >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
-          </Button>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleExportSettings}
+              className="text-xs sm:text-sm"
+            >
+              <Download className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Export</span>
+            </Button>
+
+            <label className="cursor-pointer">
+              <Button 
+                variant="outline" 
+                size="sm"
+                asChild
+                className="text-xs sm:text-sm"
+              >
+                <span>
+                  <Upload className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Import</span>
+                </span>
+              </Button>
+              <input
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImportSettings(file);
+                }}
+              />
+            </label>
+
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={loadSettings}
+              className="text-xs sm:text-sm"
+            >
+              <RefreshCw className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-2" />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -365,33 +373,35 @@ export default function AdminWebSettings() {
       )}
 
       {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 sm:gap-6">
         {/* Settings Panel */}
-        <div className="lg:col-span-3">
+        <div className="xl:col-span-3">
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                Configuration
+            <CardHeader className="pb-4">
+              <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <span className="text-base sm:text-lg">Configuration</span>
                 
                 <div className="flex items-center space-x-2">
                   <Button
                     onClick={() => handleSaveSettings(settings)}
                     disabled={saving || !hasChanges}
                     size="sm"
+                    className="w-full sm:w-auto text-xs sm:text-sm"
                   >
                     {saving ? (
-                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      <RefreshCw className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 animate-spin" />
                     ) : (
-                      <Save className="w-4 h-4 mr-2" />
+                      <Save className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                     )}
-                    Save Changes
+                    <span className="hidden sm:inline">Save Changes</span>
+                    <span className="sm:hidden">Save</span>
                   </Button>
                 </div>
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0">
               <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8">
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-1 h-auto">
                   {[
                     { id: 'general', label: 'General' },
                     { id: 'booking', label: 'Booking' },
@@ -404,9 +414,14 @@ export default function AdminWebSettings() {
                   ].map((tab) => {
                     const IconComponent = getTabIcon(tab.id);
                     return (
-                      <TabsTrigger key={tab.id} value={tab.id} className="flex items-center">
-                        <IconComponent className="w-4 h-4 mr-1" />
-                        <span className="hidden lg:inline">{tab.label}</span>
+                      <TabsTrigger 
+                        key={tab.id} 
+                        value={tab.id} 
+                        className="flex items-center justify-center text-xs sm:text-sm px-2 py-2 min-h-[2.5rem]"
+                      >
+                        <IconComponent className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                        <span className="hidden sm:inline">{tab.label}</span>
+                        <span className="sm:hidden">{tab.label.substring(0, 3)}</span>
                       </TabsTrigger>
                     );
                   })}
@@ -434,17 +449,17 @@ export default function AdminWebSettings() {
         </div>
 
         {/* Sidebar */}
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           {/* Preview Panel */}
           {previewMode && (
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Eye className="w-5 h-5 mr-2" />
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center text-sm sm:text-base">
+                  <Eye className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
                   Preview
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="pt-0">
                 <SettingsPreview 
                   settings={settings}
                   section={activeTab}
@@ -455,82 +470,86 @@ export default function AdminWebSettings() {
 
           {/* Quick Actions */}
           <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm sm:text-base">Quick Actions</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="pt-0 space-y-2 sm:space-y-3">
               <Button 
                 variant="outline" 
                 size="sm" 
-                className="w-full justify-start"
+                className="w-full justify-start text-xs sm:text-sm"
                 onClick={() => handleTestConfiguration('payment_gateway', settings.payment?.gateways?.[0])}
               >
-                <TestTube className="w-4 h-4 mr-2" />
-                Test Payment Gateway
+                <TestTube className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+                <span className="hidden sm:inline">Test Payment Gateway</span>
+                <span className="sm:hidden">Test Payment</span>
               </Button>
               
               <Button 
                 variant="outline" 
                 size="sm" 
-                className="w-full justify-start"
+                className="w-full justify-start text-xs sm:text-sm"
                 onClick={() => handleTestConfiguration('google_analytics', settings.integrations?.googleAnalytics)}
               >
-                <TestTube className="w-4 h-4 mr-2" />
-                Test Analytics
+                <TestTube className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+                <span className="hidden sm:inline">Test Analytics</span>
+                <span className="sm:hidden">Test Analytics</span>
               </Button>
               
               <Button 
                 variant="outline" 
                 size="sm" 
-                className="w-full justify-start"
+                className="w-full justify-start text-xs sm:text-sm"
                 onClick={handleExportSettings}
               >
-                <Download className="w-4 h-4 mr-2" />
-                Export Settings
+                <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+                <span className="hidden sm:inline">Export Settings</span>
+                <span className="sm:hidden">Export</span>
               </Button>
               
               <Button 
                 variant="destructive" 
                 size="sm" 
-                className="w-full justify-start"
+                className="w-full justify-start text-xs sm:text-sm"
                 onClick={handleResetSettings}
               >
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Reset to Default
+                <RotateCcw className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
+                <span className="hidden sm:inline">Reset to Default</span>
+                <span className="sm:hidden">Reset</span>
               </Button>
             </CardContent>
           </Card>
 
           {/* Settings Overview */}
           <Card>
-            <CardHeader>
-              <CardTitle>Configuration Status</CardTitle>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm sm:text-base">Configuration Status</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="pt-0 space-y-2 sm:space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">General Settings</span>
-                <Badge variant={settings.general?.hotelName ? 'default' : 'secondary'}>
+                <span className="text-xs sm:text-sm text-gray-600">General Settings</span>
+                <Badge variant={settings.general?.hotelName ? 'default' : 'secondary'} className="text-xs">
                   {settings.general?.hotelName ? 'Complete' : 'Incomplete'}
                 </Badge>
               </div>
               
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Payment Gateway</span>
-                <Badge variant={settings.payment?.gateways?.some(g => g.isActive) ? 'default' : 'secondary'}>
+                <span className="text-xs sm:text-sm text-gray-600">Payment Gateway</span>
+                <Badge variant={settings.payment?.gateways?.some(g => g.isActive) ? 'default' : 'secondary'} className="text-xs">
                   {settings.payment?.gateways?.some(g => g.isActive) ? 'Active' : 'Inactive'}
                 </Badge>
               </div>
               
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">SEO Settings</span>
-                <Badge variant={settings.seo?.metaTags?.title ? 'default' : 'secondary'}>
+                <span className="text-xs sm:text-sm text-gray-600">SEO Settings</span>
+                <Badge variant={settings.seo?.metaTags?.title ? 'default' : 'secondary'} className="text-xs">
                   {settings.seo?.metaTags?.title ? 'Configured' : 'Not Set'}
                 </Badge>
               </div>
               
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Integrations</span>
-                <Badge variant="secondary">
+                <span className="text-xs sm:text-sm text-gray-600">Integrations</span>
+                <Badge variant="secondary" className="text-xs">
                   {settings.integrations ? Object.keys(settings.integrations).length : 0} Active
                 </Badge>
               </div>

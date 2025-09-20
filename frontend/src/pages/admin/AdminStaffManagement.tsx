@@ -21,7 +21,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/Modal';
-import { Select } from '@/components/ui/select';
 import { DataTable } from '../../components/dashboard/DataTable';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { staffService } from '../../services/staffService';
@@ -400,16 +399,24 @@ export default function AdminStaffManagement() {
                 />
               </div>
             </div>
-                         <Select value={roleFilter} onValueChange={setRoleFilter} className="w-full sm:w-40">
-               <option value="all">All Roles</option>
-               <option value="staff">Staff</option>
-               <option value="admin">Admin</option>
-             </Select>
-             <Select value={statusFilter} onValueChange={setStatusFilter} className="w-full sm:w-40">
-               <option value="all">All Status</option>
-               <option value="true">Active</option>
-               <option value="false">Inactive</option>
-             </Select>
+                         <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="w-full sm:w-40 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+            >
+              <option value="all">All Roles</option>
+              <option value="staff">Staff</option>
+              <option value="admin">Admin</option>
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full sm:w-40 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+            >
+              <option value="all">All Status</option>
+              <option value="true">Active</option>
+              <option value="false">Inactive</option>
+            </select>
           </div>
         </CardContent>
       </Card>
@@ -427,7 +434,7 @@ export default function AdminStaffManagement() {
           ) : (
             <DataTable
               columns={columns}
-              data={staffData?.staff || []}
+              data={staffData?.staff?.filter(s => s.role === 'staff' || s.role === 'admin') || []}
               pagination={staffData?.pagination}
             />
           )}
@@ -504,13 +511,15 @@ export default function AdminStaffManagement() {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Role *
             </label>
-            <Select
+            <select
               value={formData.role}
-              onValueChange={(value: 'staff' | 'admin') => setFormData({ ...formData, role: value })}
+              onChange={(e) => setFormData({ ...formData, role: e.target.value as 'staff' | 'admin' })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+              required
             >
               <option value="staff">Staff</option>
               <option value="admin">Admin</option>
-            </Select>
+            </select>
           </div>
 
           <div className="flex justify-end space-x-3 pt-4">
@@ -578,13 +587,15 @@ export default function AdminStaffManagement() {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Role *
             </label>
-            <Select
+            <select
               value={formData.role}
-              onValueChange={(value: 'staff' | 'admin') => setFormData({ ...formData, role: value })}
+              onChange={(e) => setFormData({ ...formData, role: e.target.value as 'staff' | 'admin' })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+              required
             >
               <option value="staff">Staff</option>
               <option value="admin">Admin</option>
-            </Select>
+            </select>
           </div>
 
           <div className="flex justify-end space-x-3 pt-4">

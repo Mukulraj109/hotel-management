@@ -5,10 +5,25 @@ import {
   getCorporateCompany,
   updateCorporateCompany,
   deleteCorporateCompany,
+  toggleCorporateCompanyStatus,
   getCorporateCompanyCreditSummary,
   getCorporateCompanyBookings,
   getLowCreditCompanies,
-  updateCorporateCredit
+  updateCorporateCredit,
+  getCorporateDashboardMetrics,
+  runCreditMonitoring,
+  getCreditMonitoringSummary,
+  validateBookingCredit,
+  processBookingCredit,
+  requestCreditLimitIncrease,
+  processCreditLimitRequest,
+  processCreditAdjustment,
+  getPendingCreditRequests,
+  getTransactionHistoryTimeline,
+  getTransactionAnalytics,
+  verifyTransactionIntegrity,
+  batchVerifyTransactions,
+  runDailyIntegrityAudit
 } from '../controllers/corporateController.js';
 
 import {
@@ -19,7 +34,8 @@ import {
   confirmGroupBooking,
   cancelGroupBooking,
   getUpcomingGroupBookings,
-  updateGroupBookingRoom
+  updateGroupBookingRoom,
+  toggleGroupBookingStatus
 } from '../controllers/groupBookingController.js';
 
 import {
@@ -138,6 +154,17 @@ router
 
 /**
  * @swagger
+ * /api/v1/corporate/companies/{id}/toggle-status:
+ *   patch:
+ *     summary: Toggle company active/inactive status
+ *     tags: [Corporate]
+ */
+router
+  .route('/companies/:id/toggle-status')
+  .patch(authorize('admin', 'staff'), toggleCorporateCompanyStatus);
+
+/**
+ * @swagger
  * /api/v1/corporate/companies/{id}/bookings:
  *   get:
  *     summary: Get all bookings for a corporate company
@@ -157,6 +184,130 @@ router
 router
   .route('/companies/:id/update-credit')
   .patch(authorize('admin'), updateCorporateCredit);
+
+/**
+ * @swagger
+ * /api/v1/corporate/dashboard/metrics:
+ *   get:
+ *     summary: Get corporate credit dashboard metrics
+ *     tags: [Corporate]
+ */
+router
+  .route('/dashboard/metrics')
+  .get(authorize('admin', 'staff'), getCorporateDashboardMetrics);
+
+// Credit Monitoring Routes
+/**
+ * @swagger
+ * /api/v1/corporate/monitoring/status:
+ *   get:
+ *     summary: Run credit monitoring check
+ *     tags: [Corporate Credit Monitoring]
+ */
+router
+  .route('/monitoring/status')
+  .get(authorize('admin', 'staff'), runCreditMonitoring);
+
+/**
+ * @swagger
+ * /api/v1/corporate/monitoring/summary:
+ *   get:
+ *     summary: Get credit monitoring summary
+ *     tags: [Corporate Credit Monitoring]
+ */
+router
+  .route('/monitoring/summary')
+  .get(authorize('admin', 'staff'), getCreditMonitoringSummary);
+
+/**
+ * @swagger
+ * /api/v1/corporate/credit/validate:
+ *   post:
+ *     summary: Validate booking credit availability
+ *     tags: [Corporate Credit Monitoring]
+ */
+router
+  .route('/credit/validate')
+  .post(authorize('admin', 'staff'), validateBookingCredit);
+
+/**
+ * @swagger
+ * /api/v1/corporate/credit/process-booking:
+ *   post:
+ *     summary: Process booking credit transaction
+ *     tags: [Corporate Credit Monitoring]
+ */
+router
+  .route('/credit/process-booking')
+  .post(authorize('admin', 'staff'), processBookingCredit);
+
+// Credit Approval Workflow Routes
+/**
+ * @swagger
+ * /api/v1/corporate/credit/request-limit-increase:
+ *   post:
+ *     summary: Request credit limit increase
+ *     tags: [Corporate Credit Approval]
+ */
+router
+  .route('/credit/request-limit-increase')
+  .post(authorize('admin', 'staff'), requestCreditLimitIncrease);
+
+/**
+ * @swagger
+ * /api/v1/corporate/credit/process-limit-request:
+ *   post:
+ *     summary: Approve or reject credit limit request
+ *     tags: [Corporate Credit Approval]
+ */
+router
+  .route('/credit/process-limit-request')
+  .post(authorize('admin'), processCreditLimitRequest);
+
+/**
+ * @swagger
+ * /api/v1/corporate/credit/adjustment:
+ *   post:
+ *     summary: Process manual credit adjustment
+ *     tags: [Corporate Credit Approval]
+ */
+router
+  .route('/credit/adjustment')
+  .post(authorize('admin'), processCreditAdjustment);
+
+/**
+ * @swagger
+ * /api/v1/corporate/credit/pending-requests:
+ *   get:
+ *     summary: Get pending credit requests
+ *     tags: [Corporate Credit Approval]
+ */
+router
+  .route('/credit/pending-requests')
+  .get(authorize('admin', 'staff'), getPendingCreditRequests);
+
+// Transaction History Timeline Routes
+/**
+ * @swagger
+ * /api/v1/corporate/credit/transaction-timeline/{companyId}:
+ *   get:
+ *     summary: Get detailed transaction history timeline for a company
+ *     tags: [Corporate Credit Timeline]
+ */
+router
+  .route('/credit/transaction-timeline/:companyId')
+  .get(authorize('admin', 'staff'), getTransactionHistoryTimeline);
+
+/**
+ * @swagger
+ * /api/v1/corporate/credit/transaction-analytics/{companyId}:
+ *   get:
+ *     summary: Get transaction analytics for a company
+ *     tags: [Corporate Credit Timeline]
+ */
+router
+  .route('/credit/transaction-analytics/:companyId')
+  .get(authorize('admin', 'staff'), getTransactionAnalytics);
 
 // Group Booking Routes
 /**
@@ -471,5 +622,134 @@ router
 router
   .route('/admin/credit-analysis')
   .get(authorize('admin'), getCreditAnalysis);
+
+// Security Routes
+/**
+ * @swagger
+ * /api/v1/corporate/security/verify-transaction/{transactionId}:
+ *   get:
+ *     summary: Verify transaction integrity
+ *     tags: [Corporate Security]
+ */
+router
+  .route('/security/verify-transaction/:transactionId')
+  .get(authorize('admin', 'manager'), verifyTransactionIntegrity);
+
+/**
+ * @swagger
+ * /api/v1/corporate/security/batch-verify:
+ *   post:
+ *     summary: Batch verify multiple transactions
+ *     tags: [Corporate Security]
+ */
+router
+  .route('/security/batch-verify')
+  .post(authorize('admin', 'manager'), batchVerifyTransactions);
+
+/**
+ * @swagger
+ * /api/v1/corporate/security/daily-audit:
+ *   post:
+ *     summary: Run daily transaction integrity audit
+ *     tags: [Corporate Security]
+ */
+router
+  .route('/security/daily-audit')
+  .post(authorize('admin'), runDailyIntegrityAudit);
+
+// ===== GROUP BOOKING ROUTES =====
+
+/**
+ * @swagger
+ * /api/v1/corporate/group-bookings:
+ *   get:
+ *     summary: Get all group bookings
+ *     tags: [Group Bookings]
+ *   post:
+ *     summary: Create a new group booking
+ *     tags: [Group Bookings]
+ */
+router
+  .route('/group-bookings')
+  .get(authorize('admin', 'staff'), getAllGroupBookings)
+  .post(
+    authorize('admin', 'staff'),
+    validate(groupBookingValidation.create),
+    createGroupBooking
+  );
+
+/**
+ * @swagger
+ * /api/v1/corporate/group-bookings/upcoming:
+ *   get:
+ *     summary: Get upcoming group bookings
+ *     tags: [Group Bookings]
+ */
+router
+  .route('/group-bookings/upcoming')
+  .get(authorize('admin', 'staff'), getUpcomingGroupBookings);
+
+/**
+ * @swagger
+ * /api/v1/corporate/group-bookings/{id}:
+ *   get:
+ *     summary: Get a group booking by ID
+ *     tags: [Group Bookings]
+ *   patch:
+ *     summary: Update a group booking
+ *     tags: [Group Bookings]
+ */
+router
+  .route('/group-bookings/:id')
+  .get(authorize('admin', 'staff'), getGroupBooking)
+  .patch(
+    authorize('admin', 'staff'),
+    validate(groupBookingValidation.update),
+    updateGroupBooking
+  );
+
+/**
+ * @swagger
+ * /api/v1/corporate/group-bookings/{id}/toggle-status:
+ *   patch:
+ *     summary: Toggle group booking status (draft/confirmed/cancelled)
+ *     tags: [Group Bookings]
+ */
+router
+  .route('/group-bookings/:id/toggle-status')
+  .patch(authorize('admin', 'staff'), toggleGroupBookingStatus);
+
+/**
+ * @swagger
+ * /api/v1/corporate/group-bookings/{id}/confirm:
+ *   patch:
+ *     summary: Confirm group booking and create individual bookings
+ *     tags: [Group Bookings]
+ */
+router
+  .route('/group-bookings/:id/confirm')
+  .patch(authorize('admin', 'staff'), confirmGroupBooking);
+
+/**
+ * @swagger
+ * /api/v1/corporate/group-bookings/{id}/cancel:
+ *   patch:
+ *     summary: Cancel group booking or specific rooms
+ *     tags: [Group Bookings]
+ */
+router
+  .route('/group-bookings/:id/cancel')
+  .patch(authorize('admin', 'staff'), cancelGroupBooking);
+
+/**
+ * @swagger
+ * /api/v1/corporate/group-bookings/{id}/rooms/{roomIndex}:
+ *   patch:
+ *     summary: Update specific room in group booking
+ *     tags: [Group Bookings]
+ */
+router
+  .route('/group-bookings/:id/rooms/:roomIndex')
+  .patch(authorize('admin', 'staff'), updateGroupBookingRoom);
 
 export default router;

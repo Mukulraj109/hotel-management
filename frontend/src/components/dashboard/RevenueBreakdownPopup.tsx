@@ -6,7 +6,7 @@ import { LoadingSpinner } from '../LoadingSpinner';
 import { 
   TrendingUp, 
   PieChart, 
-  DollarSign,
+  IndianRupee,
   Calendar,
   Users,
   CreditCard,
@@ -157,7 +157,7 @@ export const RevenueBreakdownPopup: React.FC<RevenueBreakdownPopupProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <div className="p-1 bg-green-100 rounded">
-                      <DollarSign className="h-4 w-4 text-green-600" />
+                      <IndianRupee className="h-4 w-4 text-green-600" />
                     </div>
                     <span className="text-sm font-semibold text-green-800">Total Revenue</span>
                   </div>
@@ -174,7 +174,7 @@ export const RevenueBreakdownPopup: React.FC<RevenueBreakdownPopupProps> = ({
               <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
                 <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
                   <h4 className="text-sm font-semibold text-gray-700 flex items-center">
-                    <DollarSign className="h-4 w-4 mr-2 text-blue-500" />
+                    <IndianRupee className="h-4 w-4 mr-2 text-blue-500" />
                     Revenue Sources
                   </h4>
                 </div>

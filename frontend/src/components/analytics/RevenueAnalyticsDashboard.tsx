@@ -4,7 +4,7 @@ import {
   LineChart, Line, PieChart, Pie, Cell, Area, AreaChart, ScatterChart, Scatter
 } from 'recharts';
 import { 
-  TrendingUp, TrendingDown, DollarSign, Globe, Users, Calendar,
+  TrendingUp, TrendingDown, IndianRupee, Globe, Users, Calendar,
   Filter, Download, Refresh, Settings, AlertTriangle, CheckCircle,
   Target, Zap, BarChart3, PieChart as PieChartIcon, Activity,
   Languages, MapPin, Clock, ArrowUpRight, ArrowDownRight
@@ -122,7 +122,7 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
       value: `${CURRENCY_SYMBOLS[currency] || '$'}350K`,
       change: '+15.5%',
       trend: 'up',
-      icon: DollarSign,
+      icon: IndianRupee,
       color: 'text-green-600',
       bgColor: 'bg-green-50'
     },

@@ -4,7 +4,7 @@ import Booking from '../models/Booking.js';
 import Payment from '../models/Payment.js';
 import { authenticate } from '../middleware/auth.js';
 import { validate, schemas } from '../middleware/validation.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
@@ -47,21 +47,21 @@ router.post('/intent',
     // Get booking
     const booking = await Booking.findById(bookingId);
     if (!booking) {
-      throw new AppError('Booking not found', 404);
+      throw new ApplicationError('Booking not found', 404);
     }
 
     // Check if user owns the booking
     if (booking.userId.toString() !== req.user._id.toString()) {
-      throw new AppError('You do not have permission to pay for this booking', 403);
+      throw new ApplicationError('You do not have permission to pay for this booking', 403);
     }
 
     // Check if booking is still valid for payment
     if (booking.status === 'cancelled') {
-      throw new AppError('Cannot pay for a cancelled booking', 400);
+      throw new ApplicationError('Cannot pay for a cancelled booking', 400);
     }
 
     if (booking.paymentStatus === 'paid') {
-      throw new AppError('Booking has already been paid', 400);
+      throw new ApplicationError('Booking has already been paid', 400);
     }
 
     // Use booking amount if not provided
@@ -130,7 +130,7 @@ router.post('/confirm',
     const { paymentIntentId } = req.body;
 
     if (!paymentIntentId) {
-      throw new AppError('Payment Intent ID is required', 400);
+      throw new ApplicationError('Payment Intent ID is required', 400);
     }
 
     // Retrieve payment intent from Stripe
@@ -167,7 +167,7 @@ router.post('/confirm',
         }
       });
     } else {
-      throw new AppError('Payment has not been completed', 400);
+      throw new ApplicationError('Payment has not been completed', 400);
     }
   })
 );
@@ -205,7 +205,7 @@ router.post('/refund',
     const { paymentIntentId, amount, reason } = req.body;
 
     if (!paymentIntentId) {
-      throw new AppError('Payment Intent ID is required', 400);
+      throw new ApplicationError('Payment Intent ID is required', 400);
     }
 
     // Find payment record
@@ -213,13 +213,13 @@ router.post('/refund',
       .populate('bookingId');
 
     if (!payment) {
-      throw new AppError('Payment not found', 404);
+      throw new ApplicationError('Payment not found', 404);
     }
 
     // Check permissions (admin/staff or booking owner)
     if (req.user.role === 'guest' && 
         payment.bookingId.userId.toString() !== req.user._id.toString()) {
-      throw new AppError('You do not have permission to refund this payment', 403);
+      throw new ApplicationError('You do not have permission to refund this payment', 403);
     }
 
     // Create refund in Stripe

@@ -27,14 +27,18 @@ import {
   History,
   BarChart3,
   Filter,
-  Search
+  Search,
+  RefreshCw
 } from 'lucide-react';
 import { digitalKeyService, DigitalKey, KeyStats, GenerateKeyRequest, ShareKeyRequest } from '../../services/digitalKeyService';
+import { bookingService } from '../../services/bookingService';
+import { Booking } from '../../types/booking';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, formatDate } from '../../utils/formatters';
+import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
 import { QRCodeSVG as QRCode } from 'qrcode.react';
 
@@ -50,15 +54,161 @@ export default function DigitalKeysDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
 
   const queryClient = useQueryClient();
+  const { connectionState, connect, disconnect, on, off } = useRealTime();
+
+  // Real-time WebSocket connection setup
+  useEffect(() => {
+    connect();
+    return () => {
+      disconnect();
+    };
+  }, [connect, disconnect]);
+
+  // Real-time event listeners for digital key updates
+  useEffect(() => {
+    if (connectionState !== 'connected') return;
+
+    const handleDigitalKeyCreated = (data: any) => {
+      console.log('Digital key created:', data);
+      const newKey = data.digitalKey;
+      
+      // Invalidate and refetch keys data to include the new key
+      queryClient.invalidateQueries({ queryKey: ['digital-keys'] });
+      queryClient.invalidateQueries({ queryKey: ['key-stats'] });
+      
+      toast.success(`Digital key for Room ${newKey.roomId?.number || 'N/A'} has been generated!`, {
+        duration: 5000,
+        icon: '🔑'
+      });
+    };
+
+    const handleDigitalKeyUpdated = (data: any) => {
+      console.log('Digital key updated:', data);
+      const updatedKey = data.digitalKey;
+      
+      // Update the cache with the new key data
+      queryClient.setQueryData(['digital-keys'], (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          keys: oldData.keys.map((key: DigitalKey) => 
+            key._id === updatedKey._id ? updatedKey : key
+          )
+        };
+      });
+
+      // Show notification for key status changes
+      if (data.previousStatus && data.previousStatus !== updatedKey.status) {
+        const statusMessages = {
+          'revoked': `Digital key for Room ${updatedKey.roomId?.number || 'N/A'} has been revoked`,
+          'expired': `Digital key for Room ${updatedKey.roomId?.number || 'N/A'} has expired`,
+          'used': `Digital key for Room ${updatedKey.roomId?.number || 'N/A'} was used for access`
+        };
+        
+        const message = statusMessages[updatedKey.status as keyof typeof statusMessages];
+        if (message) {
+          toast.info(message, {
+            duration: 4000,
+            icon: updatedKey.status === 'revoked' ? '🚫' : 
+                  updatedKey.status === 'expired' ? '⏰' : '🚪'
+          });
+        }
+      }
+
+      // Invalidate stats if key status changed significantly
+      if (data.previousStatus && data.previousStatus !== updatedKey.status) {
+        queryClient.invalidateQueries({ queryKey: ['key-stats'] });
+      }
+    };
+
+    const handleDigitalKeyShared = (data: any) => {
+      console.log('Digital key shared:', data);
+      const sharedKey = data.digitalKey;
+      
+      // Update the cache with sharing information
+      queryClient.invalidateQueries({ queryKey: ['digital-keys'] });
+      queryClient.invalidateQueries({ queryKey: ['shared-keys'] });
+      queryClient.invalidateQueries({ queryKey: ['key-stats'] });
+      
+      toast.success(`Digital key for Room ${sharedKey.roomId?.number || 'N/A'} has been shared with ${data.sharedWith?.name || 'user'}`, {
+        duration: 4000,
+        icon: '🤝'
+      });
+    };
+
+    const handleDigitalKeyShareRevoked = (data: any) => {
+      console.log('Digital key share revoked:', data);
+      const key = data.digitalKey;
+      
+      // Update the cache
+      queryClient.invalidateQueries({ queryKey: ['digital-keys'] });
+      queryClient.invalidateQueries({ queryKey: ['shared-keys'] });
+      
+      toast.info(`Share access revoked for Room ${key.roomId?.number || 'N/A'}`, {
+        duration: 4000,
+        icon: '❌'
+      });
+    };
+
+    const handleDigitalKeyAccessed = (data: any) => {
+      console.log('Digital key accessed:', data);
+      const accessedKey = data.digitalKey;
+      
+      // Update the cache with new usage count
+      queryClient.setQueryData(['digital-keys'], (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          keys: oldData.keys.map((key: DigitalKey) => 
+            key._id === accessedKey._id ? { 
+              ...key, 
+              currentUses: accessedKey.currentUses,
+              remainingUses: accessedKey.remainingUses,
+              lastUsed: accessedKey.lastUsed
+            } : key
+          )
+        };
+      });
+
+      toast.success(`Room ${accessedKey.roomId?.number || 'N/A'} accessed successfully`, {
+        duration: 3000,
+        icon: '🚪'
+      });
+
+      // Refresh stats
+      queryClient.invalidateQueries({ queryKey: ['key-stats'] });
+    };
+
+    // Set up event listeners
+    on('digital-key:created', handleDigitalKeyCreated);
+    on('digital-key:updated', handleDigitalKeyUpdated);
+    on('digital-key:shared', handleDigitalKeyShared);
+    on('digital-key:share-revoked', handleDigitalKeyShareRevoked);
+    on('digital-key:accessed', handleDigitalKeyAccessed);
+
+    return () => {
+      off('digital-key:created', handleDigitalKeyCreated);
+      off('digital-key:updated', handleDigitalKeyUpdated);
+      off('digital-key:shared', handleDigitalKeyShared);
+      off('digital-key:share-revoked', handleDigitalKeyShareRevoked);
+      off('digital-key:accessed', handleDigitalKeyAccessed);
+    };
+  }, [connectionState, on, off, queryClient]);
 
   // Queries
-  const { data: keysData, isLoading: keysLoading } = useQuery({
+  const { data: keysData, isLoading: keysLoading, error: keysError } = useQuery({
     queryKey: ['digital-keys', currentPage, statusFilter, typeFilter],
     queryFn: () => digitalKeyService.getKeys({
       page: currentPage,
       status: statusFilter || undefined,
       type: typeFilter || undefined
-    })
+    }),
+    retry: 2,
+    staleTime: 5 * 60 * 1000,
+    onError: (error: any) => {
+      console.error('Digital keys fetch error:', error);
+      toast.error('Failed to load digital keys');
+    }
   });
 
   const { data: sharedKeysData, isLoading: sharedKeysLoading } = useQuery({
@@ -176,10 +326,22 @@ export default function DigitalKeysDashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-start">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Digital Room Keys</h1>
-          <p className="text-gray-600">Manage your digital room access keys</p>
+          <div className="flex items-center space-x-4">
+            <p className="text-gray-600">Manage your digital room access keys</p>
+            <div className="flex items-center space-x-2">
+              <div className={`w-2 h-2 rounded-full ${
+                connectionState === 'connected' ? 'bg-green-500' : 
+                connectionState === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+              }`} />
+              <span className="text-xs text-gray-500">
+                {connectionState === 'connected' ? 'Live Updates' : 
+                 connectionState === 'connecting' ? 'Connecting...' : 'Offline'}
+              </span>
+            </div>
+          </div>
         </div>
         <Button
           onClick={() => setShowGenerateModal(true)}
@@ -256,16 +418,54 @@ export default function DigitalKeysDashboard() {
       {/* Content */}
       {activeTab === 'my-keys' && (
         <div className="grid gap-6">
-          {filteredKeys.length === 0 ? (
+          {keysLoading ? (
+            <div className="flex justify-center py-8">
+              <LoadingSpinner />
+            </div>
+          ) : keysError ? (
+            <Card className="p-8 text-center">
+              <AlertTriangle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Keys</h3>
+              <p className="text-gray-600 mb-4">
+                There was a problem loading your digital keys. Please try again.
+              </p>
+              <Button onClick={() => queryClient.invalidateQueries(['digital-keys'])}>
+                Try Again
+              </Button>
+            </Card>
+          ) : filteredKeys.length === 0 ? (
             <Card className="p-8 text-center">
               <Key className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No digital keys found</h3>
               <p className="text-gray-600 mb-4">
-                Generate your first digital room key to get started.
+                {keysData?.keys && keysData.keys.length === 0 
+                  ? "You haven't generated any digital keys yet. Generate your first key from one of your confirmed bookings." 
+                  : "No keys match your current search filters. Try adjusting your filters or search terms."
+                }
               </p>
-              <Button onClick={() => setShowGenerateModal(true)}>
-                Generate Key
-              </Button>
+              <div className="flex gap-2 justify-center">
+                <Button onClick={() => setShowGenerateModal(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Generate Key
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => window.location.href = '/guest/bookings'}
+                  className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                >
+                  <Calendar className="w-4 h-4 mr-2" />
+                  View Bookings
+                </Button>
+                {keysData?.keys && keysData.keys.length > 0 && (
+                  <Button variant="outline" onClick={() => {
+                    setSearchTerm('');
+                    setStatusFilter('');
+                    setTypeFilter('');
+                  }}>
+                    Clear Filters
+                  </Button>
+                )}
+              </div>
             </Card>
           ) : (
             <div className="grid gap-4">
@@ -404,6 +604,48 @@ export default function DigitalKeysDashboard() {
   );
 }
 
+interface QRCodeDisplayProps {
+  qrCode: string;
+  keyId: string;
+}
+
+function QRCodeDisplay({ qrCode, keyId }: QRCodeDisplayProps) {
+  try {
+    // Try to use the qrCode data URL directly if it's already generated
+    if (qrCode.startsWith('data:image/')) {
+      return (
+        <img 
+          src={qrCode} 
+          alt={`QR Code for key ${keyId}`}
+          className="w-30 h-30 border border-gray-200 rounded"
+        />
+      );
+    }
+    
+    // Fallback to generating QR code with error handling
+    return (
+      <div className="w-30 h-30 flex items-center justify-center border border-gray-200 rounded bg-gray-50">
+        <QRCode
+          value={qrCode.length > 200 ? qrCode.substring(0, 200) : qrCode}
+          size={120}
+          level="L" // Use lowest error correction for maximum data capacity
+          includeMargin={true}
+        />
+      </div>
+    );
+  } catch (error) {
+    console.error('QR Code generation error:', error);
+    return (
+      <div className="w-30 h-30 flex items-center justify-center border border-gray-200 rounded bg-gray-100">
+        <div className="text-center p-2">
+          <QrCode className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+          <span className="text-xs text-gray-500">QR Code</span>
+        </div>
+      </div>
+    );
+  }
+}
+
 interface KeyCardProps {
   digitalKey: DigitalKey;
   onViewDetails: () => void;
@@ -433,11 +675,16 @@ function KeyCard({
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-4">
             <div className="text-2xl">{typeInfo.icon}</div>
-            <div>
+            <div className="flex-1">
               <h3 className="text-lg font-semibold text-gray-900">
                 Room {digitalKey.roomId.number}
               </h3>
               <p className="text-sm text-gray-600">{digitalKey.hotelId.name}</p>
+              {digitalKey.bookingId && (
+                <p className="text-xs text-gray-500">
+                  Booking #{digitalKey.bookingId.bookingNumber} • {formatDate(digitalKey.bookingId.checkIn)} - {formatDate(digitalKey.bookingId.checkOut)}
+                </p>
+              )}
             </div>
             <div className="flex gap-2">
               <span className={`px-2 py-1 rounded-full text-xs font-medium ${typeInfo.color}`}>
@@ -485,7 +732,7 @@ function KeyCard({
             </div>
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button
               variant="outline"
               size="sm"
@@ -495,6 +742,17 @@ function KeyCard({
               <Eye className="w-4 h-4" />
               Details
             </Button>
+            {digitalKey.bookingId && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.location.href = '/guest/bookings'}
+                className="flex items-center gap-2 text-blue-600 border-blue-600 hover:bg-blue-50"
+              >
+                <Calendar className="w-4 h-4" />
+                View Booking
+              </Button>
+            )}
             {digitalKeyService.canShareKey(digitalKey) && (
               <Button
                 variant="outline"
@@ -549,12 +807,7 @@ function KeyCard({
 
         <div className="ml-6">
           <div id={`qr-${digitalKey._id}`}>
-            <QRCode
-              value={digitalKey.qrCode}
-              size={120}
-              level="M"
-              includeMargin={true}
-            />
+            <QRCodeDisplay qrCode={digitalKey.qrCode} keyId={digitalKey._id} />
           </div>
         </div>
       </div>
@@ -650,27 +903,133 @@ function GenerateKeyModal({ onClose, onSubmit, isLoading }: GenerateKeyModalProp
     }
   });
 
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+
+  // Fetch eligible bookings for key generation
+  const { data: bookingsData, isLoading: bookingsLoading, error: bookingsError } = useQuery({
+    queryKey: ['eligible-bookings-for-keys'],
+    queryFn: async () => {
+      const response = await bookingService.getUserBookings();
+      const bookingsData = response.data?.bookings || response.data || [];
+      // Filter for eligible bookings (confirmed/checked-in and not expired)
+      return Array.isArray(bookingsData) ? bookingsData.filter((booking: Booking) => 
+        ['confirmed', 'checked_in'].includes(booking.status) && 
+        new Date(booking.checkOut) > new Date()
+      ) : [];
+    },
+    retry: 2,
+    staleTime: 5 * 60 * 1000,
+    onError: (error: any) => {
+      console.error('Bookings fetch error:', error);
+      toast.error('Failed to load bookings');
+    }
+  });
+
+  const handleBookingSelect = (bookingId: string) => {
+    const booking = bookingsData?.find((b: Booking) => b._id === bookingId);
+    setSelectedBooking(booking || null);
+    setFormData(prev => ({ ...prev, bookingId }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validation
+    if (!formData.bookingId) {
+      toast.error('Please select a booking');
+      return;
+    }
+    
+    if (!selectedBooking) {
+      toast.error('Invalid booking selection');
+      return;
+    }
+    
+    // Additional validation for booking eligibility
+    if (!['confirmed', 'checked_in'].includes(selectedBooking.status)) {
+      toast.error('Only confirmed or checked-in bookings are eligible for key generation');
+      return;
+    }
+    
+    if (new Date(selectedBooking.checkOut) <= new Date()) {
+      toast.error('Cannot generate keys for expired bookings');
+      return;
+    }
+    
     onSubmit(formData);
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <Card className="w-full max-w-md p-6">
+      <Card className="w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
         <h2 className="text-xl font-semibold mb-4">Generate Digital Key</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Booking ID
+              Select Booking
             </label>
-            <Input
-              value={formData.bookingId}
-              onChange={(e) => setFormData(prev => ({ ...prev, bookingId: e.target.value }))}
-              placeholder="Enter booking ID"
-              required
-            />
+            {bookingsLoading ? (
+              <div className="flex items-center justify-center py-4">
+                <LoadingSpinner />
+                <span className="ml-2 text-sm text-gray-600">Loading bookings...</span>
+              </div>
+            ) : bookingsError ? (
+              <div className="text-center py-4 text-red-500">
+                <AlertTriangle className="w-5 h-5 mx-auto mb-2" />
+                <p className="text-sm">Failed to load bookings</p>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => window.location.reload()}
+                  className="mt-2"
+                >
+                  Try Again
+                </Button>
+              </div>
+            ) : bookingsData && bookingsData.length > 0 ? (
+              <select
+                value={formData.bookingId}
+                onChange={(e) => handleBookingSelect(e.target.value)}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                required
+              >
+                <option value="">Select a booking...</option>
+                {bookingsData.map((booking: Booking) => (
+                  <option key={booking._id} value={booking._id}>
+                    {booking.bookingNumber} - Room {booking.rooms[0]?.roomId?.roomNumber || 'N/A'} 
+                    ({formatDate(booking.checkIn)} to {formatDate(booking.checkOut)})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="text-center py-4 text-gray-500">
+                <Calendar className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                <p>No eligible bookings found</p>
+                <p className="text-xs mt-1 mb-3">You need confirmed bookings to generate digital keys</p>
+                <Button 
+                  variant="outline" 
+                  onClick={() => window.location.href = '/guest/bookings'}
+                  className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                >
+                  <Calendar className="w-4 h-4 mr-2" />
+                  View My Bookings
+                </Button>
+              </div>
+            )}
           </div>
+
+          {/* Show selected booking details */}
+          {selectedBooking && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <h4 className="font-medium text-blue-900 mb-2">Selected Booking</h4>
+              <div className="text-sm text-blue-800 space-y-1">
+                <p><strong>Booking:</strong> {selectedBooking.bookingNumber}</p>
+                <p><strong>Room:</strong> {selectedBooking.rooms[0]?.roomId?.roomNumber || 'N/A'} - {selectedBooking.rooms[0]?.roomId?.type || 'Standard'}</p>
+                <p><strong>Dates:</strong> {formatDate(selectedBooking.checkIn)} to {formatDate(selectedBooking.checkOut)}</p>
+                <p><strong>Status:</strong> <span className="capitalize">{selectedBooking.status}</span></p>
+              </div>
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Key Type
@@ -707,9 +1066,20 @@ function GenerateKeyModal({ onClose, onSubmit, isLoading }: GenerateKeyModalProp
             </Button>
             <Button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || !formData.bookingId || !selectedBooking || bookingsLoading}
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
             >
-              {isLoading ? 'Generating...' : 'Generate Key'}
+              {isLoading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Generating Key...
+                </>
+              ) : (
+                <>
+                  <Key className="w-4 h-4 mr-2" />
+                  Generate Key
+                </>
+              )}
             </Button>
           </div>
         </form>

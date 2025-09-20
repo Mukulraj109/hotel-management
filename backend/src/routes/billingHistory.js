@@ -5,7 +5,7 @@ import Payment from '../models/Payment.js';
 import Booking from '../models/Booking.js';
 import User from '../models/User.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
@@ -65,7 +65,7 @@ router.get('/user', catchAsync(async (req, res) => {
     });
 
   if (!user) {
-    throw new AppError('User not found', 404);
+    throw new ApplicationError('User not found', 404);
   }
 
   // Sort billing history by date (newest first)
@@ -526,7 +526,7 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
   const targetHotelId = req.user.role === 'staff' ? req.user.hotelId : hotelId;
   
   if (!targetHotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   // Calculate date range based on period
@@ -695,7 +695,7 @@ router.get('/export', authorize('staff', 'admin'), catchAsync(async (req, res) =
   const targetHotelId = req.user.role === 'staff' ? req.user.hotelId : hotelId;
   
   if (!targetHotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   // Use the same logic as the main endpoint but without pagination

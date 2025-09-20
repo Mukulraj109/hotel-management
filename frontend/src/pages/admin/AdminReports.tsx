@@ -4,12 +4,15 @@ import ReportBuilder from './reports/ReportBuilder';
 import BusinessIntelligenceDashboard from '../../components/reports/BusinessIntelligenceDashboard';
 import ExecutiveDashboard from '../../components/admin/ExecutiveDashboard';
 import { MetricCard, ChartCard, LineChart, BarChart } from '../../components/dashboard';
+import { useRealTime } from '../../services/realTimeService';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useDashboardReports, useReportDateRanges, useExportReport } from '../../hooks/useReports';
 import { formatCurrency, formatPercentage } from '../../utils/dashboardUtils';
+import { Wifi, WifiOff, Receipt } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 export default function AdminReports() {
   const { user } = useAuth();
@@ -30,6 +33,9 @@ export default function AdminReports() {
   const reportsQuery = useDashboardReports(hotelId, currentRange, { enabled: currentView === 'overview' });
   const exportMutation = useExportReport();
 
+  // Real-time connection
+  const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
+
   // Auto refresh functionality
   React.useEffect(() => {
     if (!autoRefresh) return;
@@ -40,6 +46,53 @@ export default function AdminReports() {
     
     return () => clearInterval(interval);
   }, [autoRefresh, reportsQuery.refetchAll]);
+
+  // Real-time connection setup
+  React.useEffect(() => {
+    connect();
+    return () => {
+      disconnect();
+    };
+  }, [connect, disconnect]);
+
+  // Set up real-time event listeners
+  React.useEffect(() => {
+    if (!isConnected) return;
+    
+    const handleCheckoutInventoryUpdate = (data: any) => {
+      console.log('Real-time checkout inventory update:', data);
+      reportsQuery.refetchAll();
+      toast.success(`Checkout inventory updated: Room ${data.roomNumber || 'N/A'}`);
+    };
+    
+    const handleRevenueUpdate = (data: any) => {
+      console.log('Real-time revenue update:', data);
+      reportsQuery.refetchAll();
+      toast.success('Revenue data updated in real-time');
+    };
+    
+    const handleBookingUpdate = (data: any) => {
+      console.log('Real-time booking update:', data);
+      reportsQuery.refetchAll();
+      toast.success('Booking data updated');
+    };
+    
+    on('checkout-inventory:created', handleCheckoutInventoryUpdate);
+    on('checkout-inventory:completed', handleCheckoutInventoryUpdate);
+    on('checkout-inventory:payment_processed', handleCheckoutInventoryUpdate);
+    on('booking:created', handleBookingUpdate);
+    on('booking:updated', handleBookingUpdate);
+    on('revenue:updated', handleRevenueUpdate);
+    
+    return () => {
+      off('checkout-inventory:created', handleCheckoutInventoryUpdate);
+      off('checkout-inventory:completed', handleCheckoutInventoryUpdate);
+      off('checkout-inventory:payment_processed', handleCheckoutInventoryUpdate);
+      off('booking:created', handleBookingUpdate);
+      off('booking:updated', handleBookingUpdate);
+      off('revenue:updated', handleRevenueUpdate);
+    };
+  }, [isConnected, on, off, reportsQuery.refetchAll]);
 
   if (currentView === 'builder') {
     return <ReportBuilder />;
@@ -105,6 +158,19 @@ export default function AdminReports() {
           <p className="text-gray-600 mt-1">Comprehensive business intelligence and reporting</p>
         </div>
         <div className="flex items-center space-x-3">
+          {/* Real-time connection status */}
+          <div className={`flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+            isConnected 
+              ? 'bg-green-100 text-green-800' 
+              : 'bg-red-100 text-red-800'
+          }`}>
+            {isConnected ? (
+              <><Wifi className="w-3 h-3 mr-1" /> Live Updates</>
+            ) : (
+              <><WifiOff className="w-3 h-3 mr-1" /> Offline</>
+            )}
+          </div>
+          
           <Button
             variant={currentView === 'executive' ? 'primary' : 'secondary'}
             onClick={() => setCurrentView('executive')}

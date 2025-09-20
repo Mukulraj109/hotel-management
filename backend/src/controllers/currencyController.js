@@ -2,7 +2,7 @@ import Currency from '../models/Currency.js';
 import exchangeRateService from '../services/exchangeRateService.js';
 import currencyUtils from '../utils/currencyUtils.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -71,7 +71,7 @@ class CurrencyController {
     const currency = await query;
 
     if (!currency) {
-      return next(new AppError('Currency not found', 404));
+      return next(new ApplicationError('Currency not found', 404));
     }
 
     res.status(200).json({
@@ -101,13 +101,13 @@ class CurrencyController {
 
     // Validate required fields
     if (!code || !name || !symbol) {
-      return next(new AppError('Code, name, and symbol are required', 400));
+      return next(new ApplicationError('Code, name, and symbol are required', 400));
     }
 
     // Check if currency already exists
     const existingCurrency = await Currency.findOne({ code: code.toUpperCase() });
     if (existingCurrency) {
-      return next(new AppError('Currency already exists', 409));
+      return next(new ApplicationError('Currency already exists', 409));
     }
 
     // If this is set as base currency, ensure no other base currency exists
@@ -176,7 +176,7 @@ class CurrencyController {
     );
 
     if (!currency) {
-      return next(new AppError('Currency not found', 404));
+      return next(new ApplicationError('Currency not found', 404));
     }
 
     logger.info('Currency updated', {
@@ -201,11 +201,11 @@ class CurrencyController {
 
     const currency = await Currency.findOne({ code: code.toUpperCase() });
     if (!currency) {
-      return next(new AppError('Currency not found', 404));
+      return next(new ApplicationError('Currency not found', 404));
     }
 
     if (currency.isBaseCurrency) {
-      return next(new AppError('Cannot delete base currency', 400));
+      return next(new ApplicationError('Cannot delete base currency', 400));
     }
 
     currency.isActive = false;
@@ -229,7 +229,7 @@ class CurrencyController {
     const { amount, from, to } = req.query;
 
     if (!amount || !from || !to) {
-      return next(new AppError('Amount, from, and to currency are required', 400));
+      return next(new ApplicationError('Amount, from, and to currency are required', 400));
     }
 
     const result = await exchangeRateService.convertCurrency(
@@ -297,7 +297,7 @@ class CurrencyController {
     ]);
 
     if (!fromCurrency || !toCurrency) {
-      return next(new AppError('One or both currencies not found', 404));
+      return next(new ApplicationError('One or both currencies not found', 404));
     }
 
     const rate = toCurrency.exchangeRate / fromCurrency.exchangeRate;
@@ -342,12 +342,12 @@ class CurrencyController {
     const { channel, isDefault = false, formatting = {} } = req.body;
 
     if (!channel) {
-      return next(new AppError('Channel is required', 400));
+      return next(new ApplicationError('Channel is required', 400));
     }
 
     const currency = await Currency.findOne({ code: code.toUpperCase() });
     if (!currency) {
-      return next(new AppError('Currency not found', 404));
+      return next(new ApplicationError('Currency not found', 404));
     }
 
     await currency.addChannelSupport(channel, isDefault, formatting);
@@ -374,7 +374,7 @@ class CurrencyController {
     const { amount, currency, channel } = req.query;
 
     if (!amount || !currency) {
-      return next(new AppError('Amount and currency are required', 400));
+      return next(new ApplicationError('Amount and currency are required', 400));
     }
 
     const formatted = await currencyUtils.formatCurrency(
@@ -436,7 +436,7 @@ class CurrencyController {
     const { conversions, targetCurrency } = req.body;
 
     if (!conversions || !Array.isArray(conversions) || !targetCurrency) {
-      return next(new AppError('Conversions array and target currency are required', 400));
+      return next(new ApplicationError('Conversions array and target currency are required', 400));
     }
 
     const results = await currencyUtils.batchConvertCurrency(conversions, targetCurrency);
@@ -471,7 +471,7 @@ class CurrencyController {
     const { baseCurrency = 'USD', targetCurrencies } = req.query;
     
     if (!targetCurrencies) {
-      return next(new AppError('targetCurrencies parameter is required', 400));
+      return next(new ApplicationError('targetCurrencies parameter is required', 400));
     }
 
     const targetCurrenciesList = targetCurrencies.split(',');
@@ -485,7 +485,7 @@ class CurrencyController {
     const validCodes = validCurrencies.map(c => c.code);
     
     if (!validCodes.includes(baseCurrency)) {
-      return next(new AppError(`Base currency ${baseCurrency} is not supported`, 400));
+      return next(new ApplicationError(`Base currency ${baseCurrency} is not supported`, 400));
     }
 
     const conversionRates = {};

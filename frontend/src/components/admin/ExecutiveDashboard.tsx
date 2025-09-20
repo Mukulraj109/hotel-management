@@ -11,7 +11,9 @@ import {
   RefreshCw,
   Download,
   Filter,
-  AlertCircle
+  AlertCircle,
+  FileText,
+  FileSpreadsheet
 } from 'lucide-react';
 import { api } from '../../services/api';
 
@@ -58,29 +60,98 @@ interface DashboardData {
     message: string;
     timestamp: string;
   }>;
+  trends?: {
+    revenue: Array<{date: string, value: number}>;
+    occupancy: Array<{date: string, value: number}>;
+    adr: Array<{date: string, value: number}>;
+  };
+  forecasts?: {
+    revenue: {nextWeek: number, nextMonth: number};
+    occupancy: {nextWeek: number, nextMonth: number};
+  };
+  comparisons?: {
+    previousPeriod: {
+      revenue: number;
+      occupancy: number;
+      adr: number;
+    };
+    yearOverYear: {
+      revenue: number;
+      occupancy: number;
+      adr: number;
+    };
+  };
+  operationalMetrics?: {
+    todaysCheckins: number;
+    currentOccupancy: number;
+    todaysCheckouts: number;
+    todaysRevenue: number;
+    availableRooms: number;
+  };
 }
 
 const ExecutiveDashboard: React.FC = () => {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState('30d');
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [cacheStatus, setCacheStatus] = useState<{cached: boolean, cacheAge?: number}>({cached: false});
+  const [userRole, setUserRole] = useState<string>('admin');
+
+  const [notifications, setNotifications] = useState<Array<{id: string, message: string, type: string, timestamp: Date}>>([]);
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
+      setError(null);
+
+      console.log('🚀 [DEBUG] Fetching dashboard data...');
+      console.log('📊 [DEBUG] Selected period:', selectedPeriod);
+      console.log('🔗 [DEBUG] API URL:', `/analytics/dashboard/metrics?period=${selectedPeriod}`);
+
       const response = await api.get(`/analytics/dashboard/metrics?period=${selectedPeriod}`);
-      
-      if (response.data) {
+
+      console.log('📥 [DEBUG] Full API response:', response);
+      console.log('📊 [DEBUG] Response data:', response.data);
+      console.log('✅ [DEBUG] Response success flag:', response.data?.success);
+
+      if (response.data && response.data.success) {
         const result = response.data;
+        console.log('🎯 [DEBUG] Dashboard data received:', result.data);
+        console.log('📈 [DEBUG] KPIs data:', result.data?.kpis);
+        console.log('💰 [DEBUG] Revenue value:', result.data?.kpis?.revenue?.value);
+        console.log('🏨 [DEBUG] Bookings count:', result.data?.kpis?.bookings?.value);
+        console.log('📋 [DEBUG] Metadata:', result.metadata);
+        console.log('⚠️ [DEBUG] Alerts:', result.data?.alerts);
+
         setDashboardData(result.data);
         setLastUpdated(new Date());
+
+        // Update cache status
+        if (result.metadata) {
+          console.log('🗄️ [DEBUG] Cache status:', {
+            cached: result.metadata.cached || false,
+            cacheAge: result.metadata.cacheAge
+          });
+          setCacheStatus({
+            cached: result.metadata.cached || false,
+            cacheAge: result.metadata.cacheAge
+          });
+        }
+      } else {
+        console.error('❌ [DEBUG] Invalid response format:', response.data);
+        throw new Error('Invalid response format from server');
       }
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
+    } catch (error: any) {
+      console.error('💥 [DEBUG] Error fetching dashboard data:', error);
+      console.error('📛 [DEBUG] Error response:', error.response);
+      console.error('📛 [DEBUG] Error message:', error.message);
+      setError(error.response?.data?.message || error.message || 'Failed to load dashboard data');
     } finally {
       setLoading(false);
+      console.log('🏁 [DEBUG] Dashboard data fetch completed');
     }
   };
 
@@ -94,39 +165,63 @@ const ExecutiveDashboard: React.FC = () => {
       
       if (response.ok) {
         const result = await response.json();
-        // Update only the real-time metrics without full reload
-        if (dashboardData) {
-          setDashboardData(prev => ({
-            ...prev!,
-            kpis: {
-              ...prev!.kpis,
-              revenue: { 
-                ...prev!.kpis.revenue, 
-                value: result.data.today.revenue 
-              },
-              occupancy: { 
-                ...prev!.kpis.occupancy, 
-                value: result.data.today.occupancy.occupancy_rate 
-              },
-              adr: { 
-                ...prev!.kpis.adr, 
-                value: result.data.today.adr 
-              },
-              revpar: { 
-                ...prev!.kpis.revpar, 
-                value: result.data.today.revpar 
+        if (result.success && result.data) {
+          // Update only the real-time metrics without full reload
+          if (dashboardData) {
+            setDashboardData(prev => ({
+              ...prev!,
+              kpis: {
+                ...prev!.kpis,
+                revenue: { 
+                  ...prev!.kpis.revenue, 
+                  value: result.data.today.revenue 
+                },
+                occupancy: { 
+                  ...prev!.kpis.occupancy, 
+                  value: result.data.today.occupancy.occupancy_rate 
+                },
+                adr: { 
+                  ...prev!.kpis.adr, 
+                  value: result.data.today.adr 
+                },
+                revpar: { 
+                  ...prev!.kpis.revpar, 
+                  value: result.data.today.revpar 
+                }
               }
-            }
-          }));
+            }));
+          }
         }
+      } else {
+        console.warn('Real-time KPIs endpoint not available');
       }
     } catch (error) {
       console.error('Error fetching real-time KPIs:', error);
+      // Don't set error state for real-time updates to avoid disrupting main dashboard
     }
   };
 
   useEffect(() => {
+    console.log('🔄 [DEBUG] useEffect triggered - fetching dashboard data');
+    console.log('📅 [DEBUG] Selected period changed to:', selectedPeriod);
+
     fetchDashboardData();
+
+    // Get user role from localStorage or context
+    const storedUser = localStorage.getItem('user');
+    console.log('👤 [DEBUG] Stored user data:', storedUser);
+
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        console.log('👤 [DEBUG] Parsed user:', user);
+        console.log('🔑 [DEBUG] User role:', user.role);
+        setUserRole(user.role || 'staff');
+      } catch (error) {
+        console.error('❌ [DEBUG] Error parsing user data:', error);
+        setUserRole('staff');
+      }
+    }
   }, [selectedPeriod]);
 
   useEffect(() => {
@@ -143,18 +238,32 @@ const ExecutiveDashboard: React.FC = () => {
   }, [autoRefresh, dashboardData]);
 
   const formatValue = (value: number | string, format: string): string => {
-    if (typeof value === 'string') return value;
+    // Handle null, undefined, or invalid values
+    if (value === null || value === undefined || value === '') {
+      return format === 'currency' ? '₹0' : format === 'percentage' ? '0.0%' : '0';
+    }
+    
+    if (typeof value === 'string') {
+      const numValue = parseFloat(value);
+      if (isNaN(numValue)) return '0';
+      value = numValue;
+    }
+    
+    // Ensure value is a number
+    if (typeof value !== 'number' || isNaN(value)) {
+      return format === 'currency' ? '₹0' : format === 'percentage' ? '0.0%' : '0';
+    }
     
     switch (format) {
       case 'currency':
-        return new Intl.NumberFormat('en-US', {
+        return new Intl.NumberFormat('en-IN', {
           style: 'currency',
           currency: 'INR',
           minimumFractionDigits: 0,
           maximumFractionDigits: 0
         }).format(value);
       case 'percentage':
-        return `${value.toFixed(1)}%`;
+        return `${Math.max(0, Math.min(100, value)).toFixed(1)}%`;
       case 'decimal':
         return value.toFixed(2);
       default:
@@ -173,8 +282,10 @@ const ExecutiveDashboard: React.FC = () => {
     }
   };
 
-  const exportReport = async () => {
+  const exportReport = async (format: 'pdf' | 'csv' | 'excel' = 'pdf') => {
     try {
+      setLoading(true);
+      
       const response = await fetch('/api/v1/analytics/reports/executive-summary', {
         method: 'POST',
         headers: {
@@ -184,7 +295,9 @@ const ExecutiveDashboard: React.FC = () => {
         body: JSON.stringify({
           parameters: {
             period: selectedPeriod,
-            export_format: 'pdf'
+            export_format: format,
+            include_charts: format === 'pdf',
+            include_raw_data: format !== 'pdf'
           }
         })
       });
@@ -194,14 +307,22 @@ const ExecutiveDashboard: React.FC = () => {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `executive-report-${selectedPeriod}.pdf`;
+        a.download = `executive-dashboard-${selectedPeriod}-${new Date().toISOString().split('T')[0]}.${format}`;
         document.body.appendChild(a);
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
+        
+        // Show success message
+        console.log(`Report exported successfully as ${format.toUpperCase()}`);
+      } else {
+        throw new Error(`Export failed: ${response.statusText}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error exporting report:', error);
+      setError(`Failed to export report: ${error.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -214,14 +335,48 @@ const ExecutiveDashboard: React.FC = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="space-y-6 p-6">
+        <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-md">
+          <div className="flex">
+            <AlertCircle className="h-5 w-5 text-red-400" />
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">
+                Error Loading Dashboard
+              </h3>
+              <div className="mt-2 text-sm text-red-700">
+                <p>{error}</p>
+              </div>
+              <div className="mt-4">
+                <button
+                  onClick={fetchDashboardData}
+                  className="bg-red-100 hover:bg-red-200 text-red-800 px-4 py-2 rounded-md text-sm font-medium"
+                >
+                  Try Again
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Executive Dashboard</h1>
-          <p className="text-gray-600 mt-1">
-            Last updated: {lastUpdated.toLocaleTimeString()}
+          <p className="text-gray-600 mt-1 flex items-center space-x-4">
+            <span>Last updated: {lastUpdated.toLocaleTimeString()}</span>
+            {cacheStatus.cached && (
+              <span className="flex items-center text-green-600">
+                <Activity className="h-3 w-3 mr-1" />
+                Cached ({Math.round((cacheStatus.cacheAge || 0) / 1000)}s ago)
+              </span>
+            )}
           </p>
         </div>
         
@@ -256,13 +411,42 @@ const ExecutiveDashboard: React.FC = () => {
             Refresh
           </button>
           
-          <button
-            onClick={exportReport}
-            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </button>
+          <div className="relative group">
+            <button
+              onClick={() => exportReport('pdf')}
+              className="flex items-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </button>
+            
+            {/* Export format dropdown */}
+            <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200">
+              <div className="py-1">
+                <button
+                  onClick={() => exportReport('pdf')}
+                  className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  Export as PDF
+                </button>
+                <button
+                  onClick={() => exportReport('csv')}
+                  className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Export as CSV
+                </button>
+                <button
+                  onClick={() => exportReport('excel')}
+                  className="flex items-center w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Export as Excel
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -347,7 +531,7 @@ const ExecutiveDashboard: React.FC = () => {
                     {formatValue(channel.revenue, 'currency')}
                   </div>
                   <div className="text-xs text-gray-500">
-                    {channel.percentage.toFixed(1)}%
+                    {channel.percentage?.toFixed(1) || '0.0'}%
                   </div>
                 </div>
               </div>
@@ -441,6 +625,195 @@ const ExecutiveDashboard: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Advanced Analytics Section - Admin/Manager Only */}
+      {dashboardData?.trends && (userRole === 'admin' || userRole === 'manager') && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Trend Analysis</h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 bg-blue-50 rounded-lg">
+              <h4 className="font-medium text-blue-900 mb-2">Revenue Trend</h4>
+              <div className="text-2xl font-bold text-blue-600">
+                {dashboardData?.trends?.revenue && dashboardData.trends.revenue.length > 0 && 
+                  formatValue(dashboardData.trends.revenue[dashboardData.trends.revenue.length - 1].value, 'currency')
+                }
+              </div>
+              <p className="text-sm text-blue-700">Last 7 days</p>
+            </div>
+            <div className="p-4 bg-green-50 rounded-lg">
+              <h4 className="font-medium text-green-900 mb-2">Occupancy Trend</h4>
+              <div className="text-2xl font-bold text-green-600">
+                {dashboardData?.trends?.occupancy && dashboardData.trends.occupancy.length > 0 && 
+                  `${dashboardData.trends.occupancy[dashboardData.trends.occupancy.length - 1]?.value?.toFixed(1) || '0.0'}%`
+                }
+              </div>
+              <p className="text-sm text-green-700">Last 7 days</p>
+            </div>
+            <div className="p-4 bg-purple-50 rounded-lg">
+              <h4 className="font-medium text-purple-900 mb-2">ADR Trend</h4>
+              <div className="text-2xl font-bold text-purple-600">
+                {dashboardData?.trends?.adr && dashboardData.trends.adr.length > 0 && 
+                  formatValue(dashboardData.trends.adr[dashboardData.trends.adr.length - 1].value, 'currency')
+                }
+              </div>
+              <p className="text-sm text-purple-700">Last 7 days</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Forecasting Section - Admin/Manager Only */}
+      {dashboardData?.forecasts && (userRole === 'admin' || userRole === 'manager') && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Forecasting</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg">
+              <h4 className="font-medium text-gray-900 mb-3">Revenue Forecast</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Next Week:</span>
+                  <span className="font-semibold text-blue-600">
+                    {dashboardData?.forecasts?.revenue && formatValue(dashboardData.forecasts.revenue.nextWeek, 'currency')}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Next Month:</span>
+                  <span className="font-semibold text-blue-600">
+                    {dashboardData?.forecasts?.revenue && formatValue(dashboardData.forecasts.revenue.nextMonth, 'currency')}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg">
+              <h4 className="font-medium text-gray-900 mb-3">Occupancy Forecast</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Next Week:</span>
+                  <span className="font-semibold text-green-600">
+                    {dashboardData?.forecasts?.occupancy?.nextWeek?.toFixed(1) || '0.0'}%
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Next Month:</span>
+                  <span className="font-semibold text-green-600">
+                    {dashboardData?.forecasts?.occupancy?.nextMonth?.toFixed(1) || '0.0'}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Comparative Analysis - Admin/Manager Only */}
+      {dashboardData?.comparisons && (userRole === 'admin' || userRole === 'manager') && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Comparative Analysis</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <h4 className="font-medium text-gray-900 mb-3">Previous Period Comparison</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Revenue Change:</span>
+                  <span className={`font-semibold ${dashboardData?.comparisons?.previousPeriod?.revenue && dashboardData.comparisons.previousPeriod.revenue >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {dashboardData?.comparisons?.previousPeriod?.revenue && dashboardData.comparisons.previousPeriod.revenue >= 0 ? '+' : ''}{dashboardData?.comparisons?.previousPeriod?.revenue?.toFixed(1) || '0.0'}%
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Occupancy Change:</span>
+                  <span className={`font-semibold ${dashboardData?.comparisons?.previousPeriod?.occupancy && dashboardData.comparisons.previousPeriod.occupancy >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {dashboardData?.comparisons?.previousPeriod?.occupancy && dashboardData.comparisons.previousPeriod.occupancy >= 0 ? '+' : ''}{dashboardData?.comparisons?.previousPeriod?.occupancy?.toFixed(1) || '0.0'}%
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">ADR Change:</span>
+                  <span className={`font-semibold ${dashboardData?.comparisons?.previousPeriod?.adr && dashboardData.comparisons.previousPeriod.adr >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {dashboardData?.comparisons?.previousPeriod?.adr && dashboardData.comparisons.previousPeriod.adr >= 0 ? '+' : ''}{dashboardData?.comparisons?.previousPeriod?.adr?.toFixed(1) || '0.0'}%
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <h4 className="font-medium text-gray-900 mb-3">Year Over Year</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Revenue Change:</span>
+                  <span className={`font-semibold ${dashboardData?.comparisons?.yearOverYear?.revenue && dashboardData.comparisons.yearOverYear.revenue >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {dashboardData?.comparisons?.yearOverYear?.revenue && dashboardData.comparisons.yearOverYear.revenue >= 0 ? '+' : ''}{dashboardData?.comparisons?.yearOverYear?.revenue?.toFixed(1) || '0.0'}%
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">Occupancy Change:</span>
+                  <span className={`font-semibold ${dashboardData?.comparisons?.yearOverYear?.occupancy && dashboardData.comparisons.yearOverYear.occupancy >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {dashboardData?.comparisons?.yearOverYear?.occupancy && dashboardData.comparisons.yearOverYear.occupancy >= 0 ? '+' : ''}{dashboardData?.comparisons?.yearOverYear?.occupancy?.toFixed(1) || '0.0'}%
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-gray-600">ADR Change:</span>
+                  <span className={`font-semibold ${dashboardData?.comparisons?.yearOverYear?.adr && dashboardData.comparisons.yearOverYear.adr >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {dashboardData?.comparisons?.yearOverYear?.adr && dashboardData.comparisons.yearOverYear.adr >= 0 ? '+' : ''}{dashboardData?.comparisons?.yearOverYear?.adr?.toFixed(1) || '0.0'}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Staff-Specific Operational Metrics */}
+      {userRole === 'staff' && dashboardData?.operationalMetrics && (
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">Operational Overview</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-4 bg-blue-50 rounded-lg">
+              <h4 className="font-medium text-blue-900 mb-2">Today's Check-ins</h4>
+              <div className="text-2xl font-bold text-blue-600">
+                {dashboardData?.operationalMetrics?.todaysCheckins}
+              </div>
+              <p className="text-sm text-blue-700">Expected arrivals</p>
+            </div>
+            <div className="p-4 bg-green-50 rounded-lg">
+              <h4 className="font-medium text-green-900 mb-2">Current Occupancy</h4>
+              <div className="text-2xl font-bold text-green-600">
+                {dashboardData?.operationalMetrics?.currentOccupancy && formatValue(dashboardData.operationalMetrics.currentOccupancy, 'percentage')}
+              </div>
+              <p className="text-sm text-green-700">Rooms occupied</p>
+            </div>
+            <div className="p-4 bg-yellow-50 rounded-lg">
+              <h4 className="font-medium text-yellow-900 mb-2">Check-outs Today</h4>
+              <div className="text-2xl font-bold text-yellow-600">
+                {dashboardData?.operationalMetrics?.todaysCheckouts}
+              </div>
+              <p className="text-sm text-yellow-700">Expected departures</p>
+            </div>
+            <div className="p-4 bg-purple-50 rounded-lg">
+              <h4 className="font-medium text-purple-900 mb-2">Available Rooms</h4>
+              <div className="text-2xl font-bold text-purple-600">
+                {dashboardData?.operationalMetrics?.availableRooms}
+              </div>
+              <p className="text-sm text-purple-700">Ready for check-in</p>
+            </div>
+          </div>
+          
+          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium text-gray-900 mb-3">Quick Actions</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <button className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                View Check-ins
+              </button>
+              <button className="p-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                Room Status
+              </button>
+              <button className="p-3 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors">
+                Check-outs
+              </button>
+              <button className="p-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors">
+                Reports
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

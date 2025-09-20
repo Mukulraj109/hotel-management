@@ -64,6 +64,7 @@ class RealTimeService extends EventEmitter {
   private shouldReconnect = true;
   private subscriptions = new Set<string>();
   private messageQueue: any[] = [];
+  private disabledLogShown = false;
 
   constructor(config: RealTimeConfig = {}) {
     super();
@@ -73,7 +74,7 @@ class RealTimeService extends EventEmitter {
       reconnectInterval: config.reconnectInterval || 3000,
       maxReconnectAttempts: config.maxReconnectAttempts || 10,
       heartbeatInterval: config.heartbeatInterval || 30000,
-      debug: config.debug || false,
+      debug: config.debug !== undefined ? config.debug : (import.meta.env?.DEV || false),
     };
   }
 
@@ -94,16 +95,34 @@ class RealTimeService extends EventEmitter {
 
   public connect(): Promise<void> {
     return new Promise((resolve, reject) => {
+      // TEMPORARILY DISABLE WEBSOCKET CONNECTIONS TO FIX CONNECTION LOOPS
+      if (!this.disabledLogShown) {
+        this.log('WebSocket connections temporarily disabled for performance optimization');
+        this.disabledLogShown = true;
+      }
+      resolve();
+      return;
+
+      this.log('Attempting to connect to WebSocket server', {
+        url: this.config.url,
+        isConnected: this.isConnected,
+        isConnecting: this.isConnecting
+      });
+
       if (this.isConnected || this.isConnecting) {
+        this.log('Already connected or connecting, resolving immediately');
         resolve();
         return;
       }
 
       const token = this.getAuthToken();
       if (!token) {
+        this.log('No authentication token available for WebSocket connection');
         reject(new Error('No authentication token available'));
         return;
       }
+
+      this.log('Starting WebSocket connection with token');
 
       this.isConnecting = true;
       this.shouldReconnect = true;
@@ -115,11 +134,18 @@ class RealTimeService extends EventEmitter {
           auth: {
             token
           },
+          query: {
+            token // Also send in query for compatibility
+          },
           autoConnect: false,
           reconnection: true,
           reconnectionAttempts: this.config.maxReconnectAttempts,
           reconnectionDelay: this.config.reconnectInterval,
-          timeout: 10000
+          reconnectionDelayMax: 10000,
+          timeout: 15000,
+          transports: ['websocket', 'polling'],
+          forceNew: false,
+          withCredentials: true
         });
 
         // Connection event handlers
@@ -149,9 +175,11 @@ class RealTimeService extends EventEmitter {
         });
 
         this.socket.on('connect_error', (error) => {
+          this.log('Socket connection error:', error.message);
           this.handleError(error);
           if (this.isConnecting) {
-            reject(error);
+            this.isConnecting = false;
+            reject(new Error(`Connection failed: ${error.message}`));
           }
         });
 
@@ -180,10 +208,11 @@ class RealTimeService extends EventEmitter {
         // Connection timeout
         setTimeout(() => {
           if (this.isConnecting && !this.isConnected) {
+            this.log('Socket connection timeout after 15 seconds');
             reject(new Error('Socket connection timeout'));
             this.disconnect();
           }
-        }, 10000);
+        }, 15000);
 
       } catch (error) {
         this.isConnecting = false;
@@ -328,6 +357,9 @@ class RealTimeService extends EventEmitter {
   }
 
   public getConnectionState(): 'connected' | 'connecting' | 'disconnected' {
+    // Always return disconnected when WebSocket is disabled
+    return 'disconnected';
+
     if (this.isConnected) return 'connected';
     if (this.isConnecting) return 'connecting';
     return 'disconnected';

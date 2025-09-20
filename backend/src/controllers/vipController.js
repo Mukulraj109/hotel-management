@@ -1,6 +1,6 @@
 import vipService from '../services/vipService.js';
 import VIPGuest from '../models/VIPGuest.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 // Get all VIP guests
@@ -45,12 +45,12 @@ export const getVIPGuest = catchAsync(async (req, res) => {
     .populate('assignedConcierge', 'name email');
 
   if (!vipGuest) {
-    throw new AppError('VIP guest not found', 404);
+    throw new ApplicationError('VIP guest not found', 404);
   }
 
   // Check if user has access to this VIP guest
   if (vipGuest.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('Access denied', 403);
+    throw new ApplicationError('Access denied', 403);
   }
 
   res.json({
@@ -140,7 +140,7 @@ export const assignConcierge = catchAsync(async (req, res) => {
   const { conciergeId } = req.body;
 
   if (!conciergeId) {
-    throw new AppError('Concierge ID is required', 400);
+    throw new ApplicationError('Concierge ID is required', 400);
   }
 
   const vipGuest = await vipService.assignConcierge(
@@ -211,7 +211,7 @@ export const bulkUpdateVIPGuests = catchAsync(async (req, res) => {
   const { vipIds, updateData } = req.body;
 
   if (!Array.isArray(vipIds) || vipIds.length === 0) {
-    throw new AppError('VIP IDs array is required', 400);
+    throw new ApplicationError('VIP IDs array is required', 400);
   }
 
   const result = await vipService.bulkUpdateVIPGuests(
@@ -254,7 +254,7 @@ export const validateVIPBooking = catchAsync(async (req, res) => {
   const { hotelId } = req.query;
 
   if (!guestId) {
-    throw new AppError('Guest ID is required', 400);
+    throw new ApplicationError('Guest ID is required', 400);
   }
 
   const targetHotelId = hotelId || req.user.hotelId;
@@ -281,7 +281,7 @@ export const updateQualificationAfterStay = catchAsync(async (req, res) => {
   const { guestId, stayData } = req.body;
 
   if (!guestId || !stayData) {
-    throw new AppError('Guest ID and stay data are required', 400);
+    throw new ApplicationError('Guest ID and stay data are required', 400);
   }
 
   const vipGuest = await vipService.updateQualificationAfterStay(

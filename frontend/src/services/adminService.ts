@@ -215,6 +215,23 @@ class AdminService {
     return response.data;
   }
 
+  async checkInBooking(id: string, paymentDetails?: {
+    paymentMethods: Array<{
+      method: 'cash' | 'card' | 'upi' | 'online_portal' | 'corporate';
+      amount: number;
+      reference?: string;
+      notes?: string;
+    }>;
+  }): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const response = await api.patch(`/bookings/${id}/check-in`, { paymentDetails });
+    return response.data;
+  }
+
+  async checkOutBooking(id: string): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const response = await api.patch(`/bookings/${id}/check-out`);
+    return response.data;
+  }
+
   async createBooking(bookingData: {
     hotelId: string;
     userId: string;

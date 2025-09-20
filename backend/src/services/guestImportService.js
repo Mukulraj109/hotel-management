@@ -1,6 +1,6 @@
 import User from '../models/User.js';
 import Salutation from '../models/Salutation.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import csv from 'csv-parser';
 import * as XLSX from 'xlsx';
 import fs from 'fs';
@@ -49,7 +49,7 @@ class GuestImportService {
           resolve({ results, errors, totalRows: lineNumber });
         })
         .on('error', (error) => {
-          reject(new AppError(`CSV processing error: ${error.message}`, 400));
+          reject(new ApplicationError(`CSV processing error: ${error.message}`, 400));
         });
     });
   }
@@ -73,7 +73,7 @@ class GuestImportService {
       });
 
       if (jsonData.length === 0) {
-        throw new AppError('Excel file is empty', 400);
+        throw new ApplicationError('Excel file is empty', 400);
       }
 
       const results = [];
@@ -114,7 +114,7 @@ class GuestImportService {
 
       return { results, errors, totalRows: jsonData.length };
     } catch (error) {
-      throw new AppError(`Excel processing error: ${error.message}`, 400);
+      throw new ApplicationError(`Excel processing error: ${error.message}`, 400);
     }
   }
 

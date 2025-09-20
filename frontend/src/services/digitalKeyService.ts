@@ -104,6 +104,59 @@ export interface KeyStats {
   }>;
 }
 
+export interface AdminAnalytics {
+  overview: {
+    totalKeys: number;
+    activeKeys: number;
+    expiredKeys: number;
+    revokedKeys: number;
+    totalUses: number;
+    uniqueUsers: number;
+  };
+  breakdowns: {
+    byType: Array<{
+      _id: string;
+      count: number;
+    }>;
+    byHotel: Array<{
+      _id: string;
+      hotelName: string;
+      count: number;
+    }>;
+  };
+  trends: {
+    usage: Array<{
+      _id: {
+        year: number;
+        month: number;
+        day: number;
+      };
+      count: number;
+    }>;
+    timeRange: string;
+  };
+  activity: {
+    recent: Array<{
+      keyId: string;
+      action: string;
+      timestamp: string;
+      user: {
+        name: string;
+        email: string;
+      };
+      hotel: string;
+      deviceInfo?: any;
+    }>;
+    topUsers: Array<{
+      _id: string;
+      name: string;
+      email: string;
+      keyCount: number;
+      totalUses: number;
+    }>;
+  };
+}
+
 export interface GenerateKeyRequest {
   bookingId: string;
   type?: 'primary' | 'temporary' | 'emergency';
@@ -216,6 +269,59 @@ class DigitalKeyService {
   async getStats(): Promise<KeyStats> {
     const response = await api.get('/digital-keys/stats/overview');
     return response.data.data;
+  }
+
+  // Admin-specific methods
+  async getAdminKeys(params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    type?: string;
+    hotel?: string;
+    search?: string;
+  }): Promise<DigitalKeysResponse> {
+    const response = await api.get('/digital-keys/admin', { params });
+    return response.data.data;
+  }
+
+  async getAdminAnalytics(timeRange: string = '30d'): Promise<AdminAnalytics> {
+    const response = await api.get(`/digital-keys/admin/analytics`, {
+      params: { timeRange }
+    });
+    return response.data.data;
+  }
+
+  async getAdminActivityLogs(params?: {
+    page?: number;
+    limit?: number;
+    action?: string;
+    userId?: string;
+    timeRange?: string;
+  }): Promise<{
+    logs: AccessLog[];
+    pagination: {
+      currentPage: number;
+      totalPages: number;
+      totalItems: number;
+      hasNext: boolean;
+      hasPrev: boolean;
+    };
+  }> {
+    const response = await api.get('/digital-keys/admin/activity-logs', { params });
+    return response.data.data;
+  }
+
+  async exportAdminKeys(params?: {
+    status?: string;
+    type?: string;
+    hotel?: string;
+    format?: 'csv' | 'excel';
+  }): Promise<Blob> {
+    const response = await api.get('/digital-keys/admin/export', {
+      params,
+      responseType: 'blob'
+    });
+    return response.data;
   }
 
   // Utility functions

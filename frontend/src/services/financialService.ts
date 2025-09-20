@@ -252,6 +252,11 @@ class FinancialService {
     return response.data;
   }
 
+  async getFlattenedAccounts() {
+    const response = await apiClient.get('/financial/chart-of-accounts/flattened');
+    return response.data;
+  }
+
   async createAccount(accountData: Partial<ChartOfAccount>) {
     const response = await apiClient.post('/financial/chart-of-accounts', accountData);
     return response.data;
@@ -326,19 +331,41 @@ class FinancialService {
   }
 
   // Payments
-  async getPayments(filters?: { 
-    method?: string; 
-    status?: string; 
-    startDate?: string; 
-    endDate?: string 
+  async getPayments(filters?: {
+    method?: string;
+    status?: string;
+    type?: string;
+    startDate?: string;
+    endDate?: string;
+    includeStats?: boolean;
   }) {
     const params = new URLSearchParams();
     if (filters?.method) params.append('method', filters.method);
     if (filters?.status) params.append('status', filters.status);
+    if (filters?.type) params.append('type', filters.type);
     if (filters?.startDate) params.append('startDate', filters.startDate);
     if (filters?.endDate) params.append('endDate', filters.endDate);
-    
+    if (filters?.includeStats) params.append('includeStats', 'true');
+
     const response = await apiClient.get(`/financial/payments?${params}`);
+    return response.data;
+  }
+
+  async getPaymentStatistics(filters?: {
+    method?: string;
+    status?: string;
+    type?: string;
+    startDate?: string;
+    endDate?: string;
+  }) {
+    const params = new URLSearchParams();
+    if (filters?.method) params.append('method', filters.method);
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.type) params.append('type', filters.type);
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+
+    const response = await apiClient.get(`/financial/payments/statistics?${params}`);
     return response.data;
   }
 
@@ -385,6 +412,11 @@ class FinancialService {
 
   async updateBudgetActuals(budgetId: string) {
     const response = await apiClient.post(`/financial/budgets/${budgetId}/update-actuals`);
+    return response.data;
+  }
+
+  async getBudgetStatistics() {
+    const response = await apiClient.get('/financial/budgets/statistics');
     return response.data;
   }
 
@@ -463,8 +495,18 @@ class FinancialService {
     const params = new URLSearchParams();
     if (filters?.startDate) params.append('startDate', filters.startDate);
     if (filters?.endDate) params.append('endDate', filters.endDate);
-    
+
     const response = await apiClient.get(`/financial/reports/financial-ratios?${params}`);
+    return response.data;
+  }
+
+  // Comprehensive Financial Statement (combines all reports with backend calculations)
+  async getComprehensiveFinancialStatement(filters?: { startDate?: string; endDate?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+
+    const response = await apiClient.get(`/financial/reports/comprehensive?${params}`);
     return response.data;
   }
 

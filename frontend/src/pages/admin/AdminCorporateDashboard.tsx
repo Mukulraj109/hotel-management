@@ -7,7 +7,7 @@ import {
   TrendingUp,
   AlertTriangle,
   Calendar,
-  DollarSign,
+  IndianRupee,
   FileText,
   Clock,
   Target,
@@ -355,7 +355,7 @@ function OverviewContent({ overview, topCompanies, revenueChartData, companyDist
            title="Monthly Revenue"
            value={overview.revenue.monthly}
            type="currency"
-           icon={<DollarSign className="w-5 h-5" />}
+           icon={<IndianRupee className="w-5 h-5" />}
            trend={{
              value: overview.revenue.yearly,
              label: 'total this year',

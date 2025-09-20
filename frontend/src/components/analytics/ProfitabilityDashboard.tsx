@@ -7,7 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   TrendingUp,
   TrendingDown,
-  DollarSign,
+  IndianRupee,
   BarChart3,
   PieChart,
   Target,
@@ -23,6 +23,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
+import analyticsService, { ProfitabilityData } from '@/services/analyticsService';
 
 interface ProfitabilityMetrics {
   totalRevenue: number;
@@ -65,11 +66,25 @@ interface ProfitabilityDashboardProps {
   className?: string;
 }
 
+interface Recommendation {
+  title: string;
+  description: string;
+  potential?: string;
+  savings?: string;
+  type: string;
+}
+
+interface SmartRecommendations {
+  revenueOpportunities: Recommendation[];
+  costOptimizations: Recommendation[];
+}
+
 const ProfitabilityDashboard: React.FC<ProfitabilityDashboardProps> = ({ className = '' }) => {
   const [selectedPeriod, setSelectedPeriod] = useState('30d');
   const [metrics, setMetrics] = useState<ProfitabilityMetrics | null>(null);
   const [roomTypeProfitability, setRoomTypeProfitability] = useState<RoomTypeProfitability[]>([]);
   const [forecast, setForecast] = useState<ForecastData[]>([]);
+  const [recommendations, setRecommendations] = useState<SmartRecommendations | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // Mock data - replace with actual API calls
@@ -159,15 +174,117 @@ const ProfitabilityDashboard: React.FC<ProfitabilityDashboardProps> = ({ classNa
   ];
 
   useEffect(() => {
-    // Simulate API loading
+    fetchAnalyticsData();
+  }, [selectedPeriod]);
+
+  const fetchAnalyticsData = async () => {
     setIsLoading(true);
-    setTimeout(() => {
+    try {
+      console.log('Fetching profitability data for period:', selectedPeriod);
+      const data: ProfitabilityData = await analyticsService.getProfitabilityMetrics(selectedPeriod);
+
+      console.log('Profitability data received:', data);
+
+      // Set all data from the single API call
+      setMetrics(data);
+      setRoomTypeProfitability(data.roomTypeProfitability || []);
+      setForecast(data.forecast || []);
+      setRecommendations(data.recommendations || { revenueOpportunities: [], costOptimizations: [] });
+
+    } catch (error) {
+      console.error('Error fetching profitability analytics:', error);
+      // Fallback to mock data
       setMetrics(mockMetrics);
       setRoomTypeProfitability(mockRoomTypeProfitability);
       setForecast(mockForecast);
+      setRecommendations({ revenueOpportunities: [], costOptimizations: [] });
+    } finally {
       setIsLoading(false);
-    }, 1000);
-  }, [selectedPeriod]);
+    }
+  };
+
+  const fetchRoomTypeProfitability = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/v1/analytics/room-type-profitability?period=${selectedPeriod}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data && data.data.length > 0) {
+          setRoomTypeProfitability(data.data);
+        } else {
+          // Fallback to mock data if no real data available
+          setRoomTypeProfitability(mockRoomTypeProfitability);
+        }
+      } else {
+        setRoomTypeProfitability(mockRoomTypeProfitability);
+      }
+    } catch (error) {
+      console.error('Error fetching room type profitability:', error);
+      setRoomTypeProfitability(mockRoomTypeProfitability);
+    }
+  };
+
+  const fetchForecastData = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/v1/analytics/revenue-forecast?days=7`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data && data.data.length > 0) {
+          setForecast(data.data);
+        } else {
+          setForecast(mockForecast);
+        }
+      } else {
+        setForecast(mockForecast);
+      }
+    } catch (error) {
+      console.error('Error fetching forecast data:', error);
+      setForecast(mockForecast);
+    }
+  };
+
+  const fetchRecommendations = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`/api/v1/analytics/smart-recommendations?period=${selectedPeriod}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data) {
+          setRecommendations(data.data);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching recommendations:', error);
+    }
+  };
+
+  const getRoomTypeName = (roomNumber: string) => {
+    // Convert room numbers to room types
+    const roomNum = parseInt(roomNumber);
+    if (roomNum >= 1001) return 'Presidential Suite';
+    if (roomNum >= 801) return 'Executive Suite';
+    if (roomNum >= 501) return 'Deluxe Suite';
+    return 'Standard Suite';
+  };
 
   const getChangeIcon = (change: number) => {
     if (change > 0) return <TrendingUp className="w-4 h-4 text-green-500" />;
@@ -464,23 +581,26 @@ const ProfitabilityDashboard: React.FC<ProfitabilityDashboardProps> = ({ classNa
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="p-3 bg-green-50 rounded-lg">
-                  <div className="flex items-center gap-2 mb-1">
-                    <ArrowUpRight className="w-4 h-4 text-green-600" />
-                    <span className="font-medium text-green-800">Increase Executive Suite rates</span>
+                {recommendations && recommendations.revenueOpportunities.length > 0 ? (
+                  recommendations.revenueOpportunities.map((opportunity, index) => (
+                    <div key={index} className="p-3 bg-green-50 rounded-lg">
+                      <div className="flex items-center gap-2 mb-1">
+                        <ArrowUpRight className="w-4 h-4 text-green-600" />
+                        <span className="font-medium text-green-800">{opportunity.title}</span>
+                      </div>
+                      <p className="text-sm text-green-700">{opportunity.description}</p>
+                      <div className="text-xs text-green-600 mt-1">Potential: {opportunity.potential}</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Brain className="w-4 h-4 text-gray-600" />
+                      <span className="font-medium text-gray-700">Analyzing data...</span>
+                    </div>
+                    <p className="text-sm text-gray-600">No specific revenue opportunities identified based on current data. System is analyzing performance patterns.</p>
                   </div>
-                  <p className="text-sm text-green-700">Current occupancy is 68%. Consider 15% rate increase for weekend bookings.</p>
-                  <div className="text-xs text-green-600 mt-1">Potential: +$8,500/month</div>
-                </div>
-                
-                <div className="p-3 bg-blue-50 rounded-lg">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Zap className="w-4 h-4 text-blue-600" />
-                    <span className="font-medium text-blue-800">Upsell packages</span>
-                  </div>
-                  <p className="text-sm text-blue-700">Target Standard Suite guests with spa packages during low occupancy periods.</p>
-                  <div className="text-xs text-blue-600 mt-1">Potential: +$3,200/month</div>
-                </div>
+                )}
               </CardContent>
             </Card>
 
@@ -492,23 +612,26 @@ const ProfitabilityDashboard: React.FC<ProfitabilityDashboardProps> = ({ classNa
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="p-3 bg-orange-50 rounded-lg">
-                  <div className="flex items-center gap-2 mb-1">
-                    <ArrowDownRight className="w-4 h-4 text-orange-600" />
-                    <span className="font-medium text-orange-800">Optimize housekeeping</span>
+                {recommendations && recommendations.costOptimizations.length > 0 ? (
+                  recommendations.costOptimizations.map((optimization, index) => (
+                    <div key={index} className="p-3 bg-orange-50 rounded-lg">
+                      <div className="flex items-center gap-2 mb-1">
+                        <ArrowDownRight className="w-4 h-4 text-orange-600" />
+                        <span className="font-medium text-orange-800">{optimization.title}</span>
+                      </div>
+                      <p className="text-sm text-orange-700">{optimization.description}</p>
+                      <div className="text-xs text-orange-600 mt-1">Savings: {optimization.savings}</div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Zap className="w-4 h-4 text-gray-600" />
+                      <span className="font-medium text-gray-700">Operations optimized</span>
+                    </div>
+                    <p className="text-sm text-gray-600">No critical cost optimization opportunities found. Current operations appear to be running efficiently.</p>
                   </div>
-                  <p className="text-sm text-orange-700">Presidential Suite costs are 20% above benchmark. Review cleaning protocols.</p>
-                  <div className="text-xs text-orange-600 mt-1">Savings: -$1,800/month</div>
-                </div>
-                
-                <div className="p-3 bg-red-50 rounded-lg">
-                  <div className="flex items-center gap-2 mb-1">
-                    <Users className="w-4 h-4 text-red-600" />
-                    <span className="font-medium text-red-800">Staffing efficiency</span>
-                  </div>
-                  <p className="text-sm text-red-700">Consider dynamic staffing for mid-week periods when occupancy drops below 70%.</p>
-                  <div className="text-xs text-red-600 mt-1">Savings: -$4,100/month</div>
-                </div>
+                )}
               </CardContent>
             </Card>
           </div>

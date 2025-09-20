@@ -85,18 +85,29 @@ export const groupBookingValidation = {
     checkOut: Joi.date().required().greater(Joi.ref('checkIn')),
     rooms: Joi.array().items(Joi.object({
       guestName: Joi.string().required().trim(),
-      guestEmail: Joi.string().email().lowercase(),
-      guestPhone: Joi.string().pattern(/^\+?[\d\s-()]+$/),
-      employeeId: Joi.string().trim(),
-      department: Joi.string().trim(),
+      guestEmail: Joi.string().email().lowercase().allow('').optional(),
+      guestPhone: Joi.string().pattern(/^\+?[\d\s-()]+$/).allow('').optional(),
+      employeeId: Joi.string().trim().allow('').optional(),
+      department: Joi.string().trim().allow('').optional(),
       roomType: Joi.string().valid('single', 'double', 'suite', 'deluxe').required(),
-      rate: Joi.number().min(0),
-      specialRequests: Joi.string().max(500),
+      roomId: Joi.alternatives().try(
+        Joi.string().hex().length(24),
+        Joi.object(),
+        Joi.allow(null)
+      ).optional(),
+      rate: Joi.number().min(0).optional(),
+      specialRequests: Joi.string().max(500).allow(''),
+      bookingId: Joi.alternatives().try(
+        Joi.string().hex().length(24),
+        Joi.object(),
+        Joi.allow(null)
+      ).optional(),
+      status: Joi.string().valid('pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled').optional(),
       guestPreferences: Joi.object({
-        bedType: Joi.string(),
-        floor: Joi.string(),
-        smokingAllowed: Joi.boolean()
-      })
+        bedType: Joi.string().allow('').optional(),
+        floor: Joi.string().allow('').optional(),
+        smokingAllowed: Joi.boolean().optional()
+      }).optional()
     })).min(1).required(),
     paymentMethod: Joi.string().valid('corporate_credit', 'direct_billing', 'advance_payment').default('corporate_credit'),
     eventDetails: Joi.object({
@@ -132,22 +143,43 @@ export const groupBookingValidation = {
   
   update: Joi.object({
     groupName: Joi.string().trim().max(200),
+    corporateCompanyId: Joi.alternatives().try(
+      Joi.string().hex().length(24),
+      Joi.object(),
+      Joi.allow(null)
+    ).optional(),
     checkIn: Joi.date().greater('now'),
     checkOut: Joi.date(),
     rooms: Joi.array().items(Joi.object({
-      guestName: Joi.string().trim(),
-      guestEmail: Joi.string().email().lowercase(),
-      guestPhone: Joi.string().pattern(/^\+?[\d\s-()]+$/),
-      employeeId: Joi.string().trim(),
-      department: Joi.string().trim(),
-      roomType: Joi.string().valid('single', 'double', 'suite', 'deluxe'),
-      rate: Joi.number().min(0),
-      specialRequests: Joi.string().max(500),
+      _id: Joi.alternatives().try(
+        Joi.string().hex().length(24),
+        Joi.object(),
+        Joi.allow(null)
+      ).optional(),
+      guestName: Joi.string().trim().optional(),
+      guestEmail: Joi.string().email().lowercase().allow('').optional(),
+      guestPhone: Joi.string().pattern(/^\+?[\d\s-()]+$/).allow('').optional(),
+      employeeId: Joi.string().trim().allow('').optional(),
+      department: Joi.string().trim().allow('').optional(),
+      roomType: Joi.string().valid('single', 'double', 'suite', 'deluxe').optional(),
+      roomId: Joi.alternatives().try(
+        Joi.string().hex().length(24),
+        Joi.object(),
+        Joi.allow(null)
+      ).optional(),
+      rate: Joi.number().min(0).optional(),
+      specialRequests: Joi.string().max(500).allow(''),
+      bookingId: Joi.alternatives().try(
+        Joi.string().hex().length(24),
+        Joi.object(),
+        Joi.allow(null)
+      ).optional(),
+      status: Joi.string().valid('pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled').optional(),
       guestPreferences: Joi.object({
-        bedType: Joi.string(),
-        floor: Joi.string(),
-        smokingAllowed: Joi.boolean()
-      })
+        bedType: Joi.string().allow('').optional(),
+        floor: Joi.string().allow('').optional(),
+        smokingAllowed: Joi.boolean().optional()
+      }).optional()
     })),
     paymentMethod: Joi.string().valid('corporate_credit', 'direct_billing', 'advance_payment'),
     eventDetails: Joi.object({
@@ -268,8 +300,8 @@ export const corporateUserValidation = {
     guestType: Joi.string().valid('corporate').default('corporate'),
     corporateDetails: Joi.object({
       corporateCompanyId: Joi.string().required().hex().length(24),
-      employeeId: Joi.string().trim(),
-      department: Joi.string().trim(),
+      employeeId: Joi.string().trim().allow('').optional(),
+      department: Joi.string().trim().allow('').optional(),
       designation: Joi.string().trim(),
       costCenter: Joi.string().trim(),
       approvalRequired: Joi.boolean().default(false),
@@ -281,8 +313,8 @@ export const corporateUserValidation = {
     name: Joi.string().trim().max(100),
     phone: Joi.string().pattern(/^\+?[\d\s-()]+$/),
     corporateDetails: Joi.object({
-      employeeId: Joi.string().trim(),
-      department: Joi.string().trim(),
+      employeeId: Joi.string().trim().allow('').optional(),
+      department: Joi.string().trim().allow('').optional(),
       designation: Joi.string().trim(),
       costCenter: Joi.string().trim(),
       approvalRequired: Joi.boolean(),
@@ -296,7 +328,11 @@ export const corporateBookingValidation = {
   create: Joi.object({
     hotelId: Joi.string().required().hex().length(24),
     rooms: Joi.array().items(Joi.object({
-      roomId: Joi.string().hex().length(24),
+      roomId: Joi.alternatives().try(
+        Joi.string().hex().length(24),
+        Joi.object(),
+        Joi.allow(null)
+      ).optional(),
       rate: Joi.number().min(0)
     })).min(1).required(),
     checkIn: Joi.date().required().greater('now'),
@@ -309,8 +345,8 @@ export const corporateBookingValidation = {
     corporateBooking: Joi.object({
       corporateCompanyId: Joi.string().required().hex().length(24),
       groupBookingId: Joi.string().hex().length(24),
-      employeeId: Joi.string().trim(),
-      department: Joi.string().trim(),
+      employeeId: Joi.string().trim().allow('').optional(),
+      department: Joi.string().trim().allow('').optional(),
       costCenter: Joi.string().trim(),
       purchaseOrderNumber: Joi.string().trim(),
       approverEmail: Joi.string().email().lowercase(),
@@ -333,8 +369,8 @@ export const corporateBookingValidation = {
       specialRequests: Joi.string()
     }),
     corporateBooking: Joi.object({
-      employeeId: Joi.string().trim(),
-      department: Joi.string().trim(),
+      employeeId: Joi.string().trim().allow('').optional(),
+      department: Joi.string().trim().allow('').optional(),
       costCenter: Joi.string().trim(),
       purchaseOrderNumber: Joi.string().trim(),
       approverEmail: Joi.string().email().lowercase(),

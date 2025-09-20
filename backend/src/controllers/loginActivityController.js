@@ -2,7 +2,7 @@ import loginAnalyticsService from '../services/loginAnalyticsService.js';
 import LoginSession from '../models/LoginSession.js';
 import User from '../models/User.js';
 import AuditLog from '../models/AuditLog.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import mongoose from 'mongoose';
 
@@ -15,7 +15,7 @@ export const getLoginAnalytics = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
   if (groupBy) options.groupBy = groupBy;
@@ -37,7 +37,7 @@ export const getLoginPatterns = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
   if (patternType) options.patternType = patternType;
@@ -59,7 +59,7 @@ export const getSecurityMetrics = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
 
@@ -80,7 +80,7 @@ export const getUserBehaviorAnalysis = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
   if (userId) options.userId = userId;
@@ -102,7 +102,7 @@ export const getComplianceReport = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
   if (complianceType) options.complianceType = complianceType;
@@ -143,7 +143,7 @@ export const getSessionDetails = catchAsync(async (req, res) => {
   }).populate('userId', 'name email role');
 
   if (!session) {
-    throw new AppError('Session not found', 404);
+    throw new ApplicationError('Session not found', 404);
   }
 
   res.json({
@@ -162,11 +162,11 @@ export const endSession = catchAsync(async (req, res) => {
   });
 
   if (!session) {
-    throw new AppError('Session not found', 404);
+    throw new ApplicationError('Session not found', 404);
   }
 
   if (!session.isActive) {
-    throw new AppError('Session is already ended', 400);
+    throw new ApplicationError('Session is already ended', 400);
   }
 
   await session.endSession();
@@ -214,7 +214,7 @@ export const updateSessionRiskScore = catchAsync(async (req, res) => {
   const { riskScore, reason } = req.body;
 
   if (riskScore < 0 || riskScore > 100) {
-    throw new AppError('Risk score must be between 0 and 100', 400);
+    throw new ApplicationError('Risk score must be between 0 and 100', 400);
   }
 
   const session = await LoginSession.findOne({
@@ -223,7 +223,7 @@ export const updateSessionRiskScore = catchAsync(async (req, res) => {
   });
 
   if (!session) {
-    throw new AppError('Session not found', 404);
+    throw new ApplicationError('Session not found', 404);
   }
 
   session.riskScore = riskScore;
@@ -274,7 +274,7 @@ export const addSecurityFlag = catchAsync(async (req, res) => {
   ];
 
   if (!validFlags.includes(flag)) {
-    throw new AppError('Invalid security flag', 400);
+    throw new ApplicationError('Invalid security flag', 400);
   }
 
   const session = await LoginSession.findOne({
@@ -283,7 +283,7 @@ export const addSecurityFlag = catchAsync(async (req, res) => {
   });
 
   if (!session) {
-    throw new AppError('Session not found', 404);
+    throw new ApplicationError('Session not found', 404);
   }
 
   await session.addSecurityFlag(flag);
@@ -328,7 +328,7 @@ export const getUserSessionHistory = catchAsync(async (req, res) => {
         $lte: new Date(range.end)
       };
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
 
@@ -441,7 +441,7 @@ export const exportLoginAnalytics = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
 

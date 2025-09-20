@@ -16,7 +16,7 @@ import {
   Minus, 
   Building, 
   Users, 
-  DollarSign,
+  IndianRupee,
   Mail,
   Phone,
   AlertCircle
@@ -59,7 +59,7 @@ const RoomBlockForm: React.FC<RoomBlockFormProps> = ({
       phone: '',
       title: ''
     },
-    billingInstructions: '',
+    billingInstructions: 'master_account',
     specialInstructions: '',
     amenities: [],
     cateringRequirements: '',
@@ -77,22 +77,12 @@ const RoomBlockForm: React.FC<RoomBlockFormProps> = ({
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
 
-  // Set hotelId from user context or use fallback
+  // Set hotelId from user context
   useEffect(() => {
     if (user?.hotelId) {
       setFormData(prev => ({ ...prev, hotelId: user.hotelId }));
     } else {
-      // Fallback: Get hotel ID from seeded data
-      const fetchDefaultHotel = async () => {
-        try {
-          // For now, use the hotel ID from the seeded data
-          // In a real app, this would be fetched from an API
-          setFormData(prev => ({ ...prev, hotelId: '68afe8080c02fcbe30092b8e' }));
-        } catch (error) {
-          console.error('Failed to fetch default hotel:', error);
-        }
-      };
-      fetchDefaultHotel();
+      console.warn('No hotelId found in user context. Hotel-specific operations may fail.');
     }
   }, [user]);
 
@@ -122,13 +112,13 @@ const RoomBlockForm: React.FC<RoomBlockFormProps> = ({
 
   // Fetch available rooms when dates change
   useEffect(() => {
-    if (startDate && endDate && formData.hotelId) {
+    if (startDate && endDate && formData.hotelId && startDate < endDate) {
       fetchAvailableRooms();
     }
   }, [startDate, endDate, formData.hotelId]);
 
   const fetchAvailableRooms = async () => {
-    if (!startDate || !endDate || !formData.hotelId) return;
+    if (!startDate || !endDate || !formData.hotelId || startDate >= endDate) return;
 
     try {
       setLoadingRooms(true);
@@ -140,6 +130,7 @@ const RoomBlockForm: React.FC<RoomBlockFormProps> = ({
       setAvailableRooms(rooms);
     } catch (error) {
       console.error('Failed to fetch available rooms:', error);
+      setAvailableRooms([]);
     } finally {
       setLoadingRooms(false);
     }
@@ -232,7 +223,7 @@ const RoomBlockForm: React.FC<RoomBlockFormProps> = ({
       newErrors.rooms = 'At least one room must be selected';
     }
 
-    if (!formData.billingInstructions.trim()) {
+    if (!formData.billingInstructions) {
       newErrors.billingInstructions = 'Billing instructions are required';
     }
 
@@ -254,11 +245,15 @@ const RoomBlockForm: React.FC<RoomBlockFormProps> = ({
     try {
       setLoading(true);
       
+      // Generate unique blockId
+      const blockId = `block_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
       const submitData: CreateRoomBlockData = {
         ...formData,
+        blockId,
         startDate: startDate!.toISOString(),
         endDate: endDate!.toISOString(),
-        hotelId: '68afe8080c02fcbe30092b8e' // Hardcoded hotel ID for demo
+        totalRooms: formData.roomIds.length
       };
 
       const newRoomBlock = await roomBlockService.createRoomBlock(submitData);
@@ -421,17 +416,16 @@ const RoomBlockForm: React.FC<RoomBlockFormProps> = ({
                   <div
                     key={room._id}
                     className={cn(
-                      "border rounded-lg p-3 cursor-pointer transition-colors",
+                      "border rounded-lg p-3 transition-colors",
                       formData.roomIds.includes(room._id)
                         ? "border-blue-500 bg-blue-50"
                         : "border-gray-200 hover:border-gray-300"
                     )}
-                    onClick={() => handleRoomSelection(room, !formData.roomIds.includes(room._id))}
                   >
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         checked={formData.roomIds.includes(room._id)}
-                        onChange={() => {}}
+                        onCheckedChange={(checked) => handleRoomSelection(room, checked as boolean)}
                       />
                       <div className="flex-1">
                         <div className="font-medium">{room.roomNumber}</div>
@@ -514,14 +508,16 @@ const RoomBlockForm: React.FC<RoomBlockFormProps> = ({
         <CardContent className="space-y-4">
           <div>
             <Label htmlFor="billingInstructions">Billing Instructions *</Label>
-            <Textarea
-              id="billingInstructions"
-              value={formData.billingInstructions}
-              onChange={(e) => handleInputChange('billingInstructions', e.target.value)}
-              placeholder="Enter billing instructions"
-              rows={3}
-              className={cn(errors.billingInstructions && 'border-red-500')}
-            />
+            <Select value={formData.billingInstructions} onValueChange={(value: any) => handleInputChange('billingInstructions', value)}>
+              <SelectTrigger className={cn(errors.billingInstructions && 'border-red-500')}>
+                <SelectValue placeholder="Select billing type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="master_account">Master Account</SelectItem>
+                <SelectItem value="individual_folios">Individual Folios</SelectItem>
+                <SelectItem value="split_billing">Split Billing</SelectItem>
+              </SelectContent>
+            </Select>
             {errors.billingInstructions && <p className="text-sm text-red-500 mt-1">{errors.billingInstructions}</p>}
           </div>
 

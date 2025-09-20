@@ -1,7 +1,7 @@
 import express from 'express';
 import IncidentReport from '../models/IncidentReport.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
@@ -84,7 +84,7 @@ router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
 
   // Validate hotel access for admin users
   if (req.user.role === 'admin' && !req.body.hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   // Set witness count
@@ -258,12 +258,12 @@ router.get('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
     .populate('documents.uploadedBy', 'name');
 
   if (!incident) {
-    throw new AppError('Incident report not found', 404);
+    throw new ApplicationError('Incident report not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && incident.hotelId._id.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only view incidents for your hotel', 403);
+    throw new ApplicationError('You can only view incidents for your hotel', 403);
   }
 
   res.json({
@@ -322,12 +322,12 @@ router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =>
   const incident = await IncidentReport.findById(req.params.id);
   
   if (!incident) {
-    throw new AppError('Incident report not found', 404);
+    throw new ApplicationError('Incident report not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && incident.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only update incidents for your hotel', 403);
+    throw new ApplicationError('You can only update incidents for your hotel', 403);
   }
 
   const allowedUpdates = [
@@ -401,12 +401,12 @@ router.post('/:id/assign', authorize('staff', 'admin'), catchAsync(async (req, r
   const incident = await IncidentReport.findById(req.params.id);
   
   if (!incident) {
-    throw new AppError('Incident report not found', 404);
+    throw new ApplicationError('Incident report not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && incident.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only assign incidents for your hotel', 403);
+    throw new ApplicationError('You can only assign incidents for your hotel', 403);
   }
 
   await incident.assignIncident(assignedTo);
@@ -465,12 +465,12 @@ router.post('/:id/actions', authorize('staff', 'admin'), catchAsync(async (req, 
   const incident = await IncidentReport.findById(req.params.id);
   
   if (!incident) {
-    throw new AppError('Incident report not found', 404);
+    throw new ApplicationError('Incident report not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && incident.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only add actions to incidents for your hotel', 403);
+    throw new ApplicationError('You can only add actions to incidents for your hotel', 403);
   }
 
   await incident.addAction(action, req.user._id, notes || '', cost || 0);
@@ -519,7 +519,7 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   const [stats, criticalIncidents, recentIncidents, trends] = await Promise.all([
@@ -610,7 +610,7 @@ router.get('/critical', authorize('staff', 'admin'), catchAsync(async (req, res)
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   const criticalIncidents = await IncidentReport.getCriticalIncidents(hotelId);
@@ -651,7 +651,7 @@ router.get('/trends', authorize('staff', 'admin'), catchAsync(async (req, res) =
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   const trends = await IncidentReport.getIncidentTrends(hotelId, parseInt(days));

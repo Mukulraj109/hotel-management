@@ -18,7 +18,7 @@ const apiManagementRateLimit = rateLimit({
   legacyHeaders: false
 });
 
-router.use(apiManagementRateLimit);
+// router.use(apiManagementRateLimit); // Disabled to prevent crashes
 
 // API Keys Management
 router.route('/api-keys')
@@ -53,14 +53,20 @@ router.post('/webhooks/:id/regenerate-secret',
   apiManagementController.regenerateWebhookSecret
 );
 
+// API Endpoints Catalog
+router.get('/endpoints',
+  authorize('admin', 'manager'),
+  apiManagementController.getAllEndpoints
+);
+
 // Metrics and Analytics
-router.get('/metrics', 
-  authorize('admin', 'manager'), 
+router.get('/metrics',
+  authorize('admin', 'manager'),
   apiManagementController.getMetrics
 );
 
-router.get('/metrics/endpoints', 
-  authorize('admin', 'manager'), 
+router.get('/metrics/endpoints',
+  authorize('admin', 'manager'),
   apiManagementController.getTopEndpoints
 );
 
@@ -80,9 +86,15 @@ router.get('/metrics/webhooks',
 );
 
 // Export functionality
-router.get('/export/logs', 
-  authorize('admin'), 
+router.get('/export/logs',
+  authorize('admin'),
   apiManagementController.exportLogs
+);
+
+// API Documentation
+router.get('/documentation',
+  authorize('admin', 'manager'),
+  apiManagementController.getAPIDocumentation
 );
 
 export default router;

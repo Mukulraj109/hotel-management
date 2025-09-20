@@ -9,7 +9,7 @@ import InventoryTransaction from '../models/InventoryTransaction.js';
 import Room from '../models/Room.js';
 import Booking from '../models/Booking.js';
 import User from '../models/User.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import inventoryNotificationService from '../services/inventoryNotificationService.js';
 import { validate, schemas } from '../middleware/validation.js';
 
@@ -65,7 +65,7 @@ router.post('/', authenticate, authorize('staff', 'admin'), catchAsync(async (re
   // Verify room exists and belongs to hotel
   const room = await Room.findOne({ _id: roomId, hotelId });
   if (!room) {
-    throw new AppError('Room not found', 404);
+    throw new ApplicationError('Room not found', 404);
   }
 
   // Get inventory items for validation
@@ -76,7 +76,7 @@ router.post('/', authenticate, authorize('staff', 'admin'), catchAsync(async (re
   });
 
   if (inventoryItems.length !== itemIds.length) {
-    throw new AppError('Some inventory items not found', 400);
+    throw new ApplicationError('Some inventory items not found', 400);
   }
 
   // Create inventory items array with required data
@@ -273,16 +273,16 @@ router.get('/:id', authenticate, authorize('staff', 'admin'), catchAsync(async (
     .populate('items.itemId', 'name category unitPrice');
 
   if (!dailyCheck) {
-    throw new AppError('Daily inventory check not found', 404);
+    throw new ApplicationError('Daily inventory check not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && dailyCheck.checkedBy._id.toString() !== req.user._id.toString()) {
-    throw new AppError('You can only view your own inventory checks', 403);
+    throw new ApplicationError('You can only view your own inventory checks', 403);
   }
 
   if (req.user.role === 'staff' && dailyCheck.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only view checks for your hotel', 403);
+    throw new ApplicationError('You can only view checks for your hotel', 403);
   }
 
   res.json({
@@ -327,12 +327,12 @@ router.patch('/:id', authenticate, authorize('staff', 'admin'), catchAsync(async
   const dailyCheck = await DailyInventoryCheck.findById(req.params.id);
   
   if (!dailyCheck) {
-    throw new AppError('Daily inventory check not found', 404);
+    throw new ApplicationError('Daily inventory check not found', 404);
   }
 
   // Check permissions
   if (req.user.role === 'staff' && dailyCheck.checkedBy.toString() !== req.user._id.toString()) {
-    throw new AppError('You can only update your own inventory checks', 403);
+    throw new ApplicationError('You can only update your own inventory checks', 403);
   }
 
   const { status, items, notes } = req.body;
@@ -382,12 +382,12 @@ router.patch('/:id/complete', authenticate, authorize('staff', 'admin'), catchAs
   const dailyCheck = await DailyInventoryCheck.findById(req.params.id);
   
   if (!dailyCheck) {
-    throw new AppError('Daily inventory check not found', 404);
+    throw new ApplicationError('Daily inventory check not found', 404);
   }
 
   // Check permissions
   if (req.user.role === 'staff' && dailyCheck.checkedBy.toString() !== req.user._id.toString()) {
-    throw new AppError('You can only complete your own inventory checks', 403);
+    throw new ApplicationError('You can only complete your own inventory checks', 403);
   }
 
   await dailyCheck.markCompleted();
@@ -444,12 +444,12 @@ router.post('/:id/issues', authenticate, authorize('staff', 'admin'), catchAsync
   const dailyCheck = await DailyInventoryCheck.findById(req.params.id);
   
   if (!dailyCheck) {
-    throw new AppError('Daily inventory check not found', 404);
+    throw new ApplicationError('Daily inventory check not found', 404);
   }
 
   // Check permissions
   if (req.user.role === 'staff' && dailyCheck.checkedBy.toString() !== req.user._id.toString()) {
-    throw new AppError('You can only add issues to your own inventory checks', 403);
+    throw new ApplicationError('You can only add issues to your own inventory checks', 403);
   }
 
   await dailyCheck.addIssue(itemId, issue, priority);

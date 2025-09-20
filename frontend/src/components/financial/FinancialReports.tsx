@@ -104,34 +104,20 @@ const FinancialReports: React.FC = () => {
   const fetchFinancialData = async () => {
     try {
       setLoading(true);
-      
-      // Fetch real data from backend
-      const [
-        trialBalance,
-        cashFlow,
-        financialRatios
-      ] = await Promise.all([
-        financialService.getTrialBalance({
-          startDate: format(filter.startDate, 'yyyy-MM-dd'),
-          endDate: format(filter.endDate, 'yyyy-MM-dd')
-        }),
-        financialService.getCashFlowStatement({
-          startDate: format(filter.startDate, 'yyyy-MM-dd'),
-          endDate: format(filter.endDate, 'yyyy-MM-dd')
-        }),
-        financialService.getFinancialRatios({
-          startDate: format(filter.startDate, 'yyyy-MM-dd'),
-          endDate: format(filter.endDate, 'yyyy-MM-dd')
-        })
-      ]);
 
-      // Process trial balance to create income statement and balance sheet
-      const processedData = processFinancialData(trialBalance.data, cashFlow.data, financialRatios.data);
-      setFinancialData(processedData);
-      
+      // Use the comprehensive financial statement endpoint with backend calculations
+      const response = await financialService.getComprehensiveFinancialStatement({
+        startDate: format(filter.startDate, 'yyyy-MM-dd'),
+        endDate: format(filter.endDate, 'yyyy-MM-dd')
+      });
+
+      console.log('✅ Using backend-calculated financial statements:', response);
+      setFinancialData(response.data);
+
     } catch (error: any) {
-      toast.error('Failed to fetch financial data: ' + error.message);
-      
+      console.error('❌ Failed to load backend financial data:', error);
+      toast.error('Failed to fetch financial data from backend, using fallback data');
+
       // Fallback to sample data if API fails
       setFinancialData(getSampleData());
     } finally {
@@ -139,95 +125,9 @@ const FinancialReports: React.FC = () => {
     }
   };
 
-  const processFinancialData = (trialBalance: any, cashFlow: any, ratios: any): FinancialStatement => {
-    // Process trial balance data to categorize accounts
-    const revenue = {
-      roomRevenue: getAccountBalance(trialBalance, 'Room Revenue') || 2850000,
-      fbRevenue: getAccountBalance(trialBalance, 'F&B Revenue') || 950000,
-      otherRevenue: getAccountBalance(trialBalance, 'Other Revenue') || 150000,
-      totalRevenue: 0
-    };
-    revenue.totalRevenue = revenue.roomRevenue + revenue.fbRevenue + revenue.otherRevenue;
-
-    const expenses = {
-      operatingExpenses: getAccountBalance(trialBalance, 'Operating Expenses') || 1200000,
-      staffExpenses: getAccountBalance(trialBalance, 'Staff Expenses') || 800000,
-      marketingExpenses: getAccountBalance(trialBalance, 'Marketing Expenses') || 200000,
-      adminExpenses: getAccountBalance(trialBalance, 'Administrative Expenses') || 300000,
-      totalExpenses: 0
-    };
-    expenses.totalExpenses = expenses.operatingExpenses + expenses.staffExpenses + expenses.marketingExpenses + expenses.adminExpenses;
-
-    const assets = {
-      currentAssets: getAccountBalanceByType(trialBalance, 'Asset', 'Current Asset') || 2500000,
-      fixedAssets: getAccountBalanceByType(trialBalance, 'Asset', 'Fixed Asset') || 15000000,
-      totalAssets: 0
-    };
-    assets.totalAssets = assets.currentAssets + assets.fixedAssets;
-
-    const liabilities = {
-      currentLiabilities: getAccountBalanceByType(trialBalance, 'Liability', 'Current Liability') || 1350000,
-      longTermLiabilities: getAccountBalanceByType(trialBalance, 'Liability', 'Long-term Liability') || 8000000,
-      totalLiabilities: 0
-    };
-    liabilities.totalLiabilities = liabilities.currentLiabilities + liabilities.longTermLiabilities;
-
-    const equity = {
-      retainedEarnings: getAccountBalanceByType(trialBalance, 'Equity', 'Retained Earnings') || 6150000,
-      totalEquity: 0
-    };
-    equity.totalEquity = assets.totalAssets - liabilities.totalLiabilities;
-
-    return {
-      incomeStatement: {
-        revenue,
-        expenses,
-        netIncome: revenue.totalRevenue - expenses.totalExpenses,
-        grossProfit: revenue.totalRevenue - expenses.operatingExpenses,
-        operatingIncome: revenue.totalRevenue - expenses.totalExpenses
-      },
-      balanceSheet: {
-        assets,
-        liabilities,
-        equity
-      },
-      cashFlow: cashFlow || {
-        operatingActivities: 1200000,
-        investingActivities: -500000,
-        financingActivities: -200000,
-        netCashFlow: 500000,
-        beginningCash: 800000,
-        endingCash: 1300000
-      },
-      ratios: ratios || {
-        currentRatio: assets.currentAssets / liabilities.currentLiabilities,
-        debtToEquity: liabilities.totalLiabilities / equity.totalEquity,
-        returnOnAssets: ((revenue.totalRevenue - expenses.totalExpenses) / assets.totalAssets) * 100,
-        returnOnEquity: ((revenue.totalRevenue - expenses.totalExpenses) / equity.totalEquity) * 100,
-        profitMargin: ((revenue.totalRevenue - expenses.totalExpenses) / revenue.totalRevenue) * 100,
-        grossMargin: ((revenue.totalRevenue - expenses.operatingExpenses) / revenue.totalRevenue) * 100
-      }
-    };
-  };
-
-  const getAccountBalance = (trialBalance: any[], accountName: string): number => {
-    const account = trialBalance?.find((acc: any) => 
-      acc.accountName?.toLowerCase().includes(accountName.toLowerCase())
-    );
-    return account?.balance || 0;
-  };
-
-  const getAccountBalanceByType = (trialBalance: any[], accountType: string, subType?: string): number => {
-    if (!trialBalance) return 0;
-    
-    return trialBalance
-      .filter((acc: any) => {
-        const matchesType = acc.accountType === accountType;
-        const matchesSubType = !subType || acc.accountSubType === subType;
-        return matchesType && matchesSubType;
-      })
-      .reduce((sum: number, acc: any) => sum + (acc.balance || 0), 0);
-  };
+  // Note: processFinancialData, getAccountBalance, and getAccountBalanceByType functions
+  // have been removed as calculations are now performed on the backend via the
+  // comprehensive financial statement endpoint for better consistency and performance.
 
   const getSampleData = (): FinancialStatement => ({
     incomeStatement: {
@@ -482,14 +382,14 @@ const FinancialReports: React.FC = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row gap-4 sm:gap-0 sm:justify-between sm:items-center">
         <div>
           <h1 className="text-3xl font-bold">Financial Reports</h1>
           <p className="text-gray-600">Comprehensive financial analysis and reporting</p>
         </div>
-        <div className="flex space-x-2">
+        <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
           <Button variant="outline" onClick={() => handleExportReport('PDF')}>
             <Download className="w-4 h-4 mr-2" />
             Export PDF

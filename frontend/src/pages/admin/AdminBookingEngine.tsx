@@ -5,17 +5,15 @@ import BookingWidgetManager from '../../components/marketing/BookingWidgetManage
 import BookingEngineWidget from '../../components/booking/BookingEngineWidget';
 import EnhancedBookingEngine from '../../components/booking/EnhancedBookingEngine';
 import ChannelDistributionHub from '../../components/channels/ChannelDistributionHub';
-import BookingEngineTest from '../../components/test/BookingEngineTest';
 import EmailCampaignManager from '../../components/marketing/EmailCampaignManager';
 import PromoCodeManager from '../../components/marketing/PromoCodeManager';
 import ReviewManager from '../../components/marketing/ReviewManager';
-import ComponentTestSuite from '../../components/test/ComponentTestSuite';
 
 const AdminBookingEngine: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Tabs defaultValue="dashboard" className="w-full">
-        <TabsList className="grid w-full grid-cols-10">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
           <TabsTrigger value="widgets">Booking Widgets</TabsTrigger>
           <TabsTrigger value="engine">Legacy Engine</TabsTrigger>
@@ -24,8 +22,6 @@ const AdminBookingEngine: React.FC = () => {
           <TabsTrigger value="campaigns">Email Campaigns</TabsTrigger>
           <TabsTrigger value="promos">Promo Codes</TabsTrigger>
           <TabsTrigger value="reviews">Reviews</TabsTrigger>
-          <TabsTrigger value="test">API Test</TabsTrigger>
-          <TabsTrigger value="components">Components</TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard">
@@ -67,13 +63,6 @@ const AdminBookingEngine: React.FC = () => {
           <ReviewManager />
         </TabsContent>
 
-        <TabsContent value="test">
-          <BookingEngineTest />
-        </TabsContent>
-
-        <TabsContent value="components">
-          <ComponentTestSuite />
-        </TabsContent>
       </Tabs>
     </div>
   );

@@ -16,7 +16,7 @@ import {
   RefreshCw,
   Calendar,
   User,
-  DollarSign,
+  IndianRupee,
   Hash,
   AlertTriangle,
   CheckCircle2

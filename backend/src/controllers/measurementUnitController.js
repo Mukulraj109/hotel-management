@@ -1,7 +1,7 @@
 import MeasurementUnit from '../models/MeasurementUnit.js';
 import unitConversionService from '../services/unitConversionService.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -41,7 +41,7 @@ class MeasurementUnitController {
 
     // Validate required fields
     if (!name || !symbol || !displayName || !unitType || !unitSystem) {
-      return next(new AppError('Name, symbol, display name, unit type, and unit system are required', 400));
+      return next(new ApplicationError('Name, symbol, display name, unit type, and unit system are required', 400));
     }
 
     // Check for duplicate unit name in the same hotel
@@ -51,7 +51,7 @@ class MeasurementUnitController {
     });
 
     if (existingUnit) {
-      return next(new AppError('Unit with this name already exists', 409));
+      return next(new ApplicationError('Unit with this name already exists', 409));
     }
 
     // Check for duplicate symbol
@@ -61,7 +61,7 @@ class MeasurementUnitController {
     });
 
     if (existingSymbol) {
-      return next(new AppError('Unit with this symbol already exists', 409));
+      return next(new ApplicationError('Unit with this symbol already exists', 409));
     }
 
     const unitData = {
@@ -175,7 +175,7 @@ class MeasurementUnitController {
       .populate('conversionFactors.targetUnit', 'name symbol unitType');
 
     if (!unit) {
-      return next(new AppError('Measurement unit not found', 404));
+      return next(new ApplicationError('Measurement unit not found', 404));
     }
 
     res.status(200).json({
@@ -196,7 +196,7 @@ class MeasurementUnitController {
     });
 
     if (!unit) {
-      return next(new AppError('Measurement unit not found', 404));
+      return next(new ApplicationError('Measurement unit not found', 404));
     }
 
     // Check for duplicate name if name is being updated
@@ -208,7 +208,7 @@ class MeasurementUnitController {
       });
 
       if (existingUnit) {
-        return next(new AppError('Unit with this name already exists', 409));
+        return next(new ApplicationError('Unit with this name already exists', 409));
       }
     }
 
@@ -221,7 +221,7 @@ class MeasurementUnitController {
       });
 
       if (existingSymbol) {
-        return next(new AppError('Unit with this symbol already exists', 409));
+        return next(new ApplicationError('Unit with this symbol already exists', 409));
       }
     }
 
@@ -261,7 +261,7 @@ class MeasurementUnitController {
     });
 
     if (!unit) {
-      return next(new AppError('Measurement unit not found', 404));
+      return next(new ApplicationError('Measurement unit not found', 404));
     }
 
     // Check if unit is being used
@@ -314,7 +314,7 @@ class MeasurementUnitController {
     } = req.body;
 
     if (!fromUnitId || !toUnitId || value === undefined) {
-      return next(new AppError('From unit ID, to unit ID, and value are required', 400));
+      return next(new ApplicationError('From unit ID, to unit ID, and value are required', 400));
     }
 
     try {
@@ -330,7 +330,7 @@ class MeasurementUnitController {
         data: result
       });
     } catch (error) {
-      return next(new AppError(`Unit conversion failed: ${error.message}`, 400));
+      return next(new ApplicationError(`Unit conversion failed: ${error.message}`, 400));
     }
   });
 
@@ -345,7 +345,7 @@ class MeasurementUnitController {
     } = req.body;
 
     if (!conversions || !Array.isArray(conversions) || conversions.length === 0) {
-      return next(new AppError('Conversions array is required', 400));
+      return next(new ApplicationError('Conversions array is required', 400));
     }
 
     try {
@@ -363,7 +363,7 @@ class MeasurementUnitController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Batch conversion failed: ${error.message}`, 400));
+      return next(new ApplicationError(`Batch conversion failed: ${error.message}`, 400));
     }
   });
 
@@ -383,7 +383,7 @@ class MeasurementUnitController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to get available conversions: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to get available conversions: ${error.message}`, 400));
     }
   });
 
@@ -408,7 +408,7 @@ class MeasurementUnitController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to get units by type: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to get units by type: ${error.message}`, 400));
     }
   });
 
@@ -426,7 +426,7 @@ class MeasurementUnitController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to get base units: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to get base units: ${error.message}`, 400));
     }
   });
 
@@ -500,7 +500,7 @@ class MeasurementUnitController {
     const { targetUnitId, factor, offset = 0 } = req.body;
 
     if (!targetUnitId || factor === undefined) {
-      return next(new AppError('Target unit ID and conversion factor are required', 400));
+      return next(new ApplicationError('Target unit ID and conversion factor are required', 400));
     }
 
     const unit = await MeasurementUnit.findOne({
@@ -509,7 +509,7 @@ class MeasurementUnitController {
     });
 
     if (!unit) {
-      return next(new AppError('Measurement unit not found', 404));
+      return next(new ApplicationError('Measurement unit not found', 404));
     }
 
     try {
@@ -527,7 +527,7 @@ class MeasurementUnitController {
         message: 'Conversion factor added successfully'
       });
     } catch (error) {
-      return next(new AppError(`Failed to add conversion factor: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to add conversion factor: ${error.message}`, 400));
     }
   });
 
@@ -557,7 +557,7 @@ class MeasurementUnitController {
         data: report
       });
     } catch (error) {
-      return next(new AppError(`Conversion report generation failed: ${error.message}`, 500));
+      return next(new ApplicationError(`Conversion report generation failed: ${error.message}`, 500));
     }
   });
 
@@ -575,7 +575,7 @@ class MeasurementUnitController {
         data: validation
       });
     } catch (error) {
-      return next(new AppError(`Unit validation failed: ${error.message}`, 500));
+      return next(new ApplicationError(`Unit validation failed: ${error.message}`, 500));
     }
   });
 
@@ -617,7 +617,7 @@ class MeasurementUnitController {
     const { value } = req.body;
 
     if (value === undefined) {
-      return next(new AppError('Value is required', 400));
+      return next(new ApplicationError('Value is required', 400));
     }
 
     const unit = await MeasurementUnit.findOne({
@@ -626,7 +626,7 @@ class MeasurementUnitController {
     });
 
     if (!unit) {
-      return next(new AppError('Measurement unit not found', 404));
+      return next(new ApplicationError('Measurement unit not found', 404));
     }
 
     const result = unit.formatValue(value);

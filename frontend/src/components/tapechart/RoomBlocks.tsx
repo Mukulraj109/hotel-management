@@ -17,7 +17,7 @@ import {
   Phone,
   Mail,
   Clock,
-  DollarSign,
+  IndianRupee,
   AlertCircle,
   CheckCircle,
   XCircle,

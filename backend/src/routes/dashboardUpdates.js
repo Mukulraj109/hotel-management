@@ -1,7 +1,7 @@
 import express from 'express';
 import Notification from '../models/Notification.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
@@ -43,7 +43,7 @@ router.get('/notifications', catchAsync(async (req, res) => {
   const hotelId = req.user.hotelId;
 
   if (!hotelId) {
-    throw new AppError('Hotel ID is required for staff users', 400);
+    throw new ApplicationError('Hotel ID is required for staff users', 400);
   }
 
   // Build query
@@ -117,7 +117,7 @@ router.get('/activity-feed', catchAsync(async (req, res) => {
   const hotelId = req.user.hotelId;
 
   if (!hotelId) {
-    throw new AppError('Hotel ID is required for staff users', 400);
+    throw new ApplicationError('Hotel ID is required for staff users', 400);
   }
 
   // Build query for user activity notifications
@@ -185,7 +185,7 @@ router.get('/summary', catchAsync(async (req, res) => {
   const hotelId = req.user.hotelId;
 
   if (!hotelId) {
-    throw new AppError('Hotel ID is required for staff users', 400);
+    throw new ApplicationError('Hotel ID is required for staff users', 400);
   }
 
   const today = new Date();
@@ -287,7 +287,7 @@ router.patch('/mark-read', catchAsync(async (req, res) => {
   const hotelId = req.user.hotelId;
 
   if (!hotelId) {
-    throw new AppError('Hotel ID is required for staff users', 400);
+    throw new ApplicationError('Hotel ID is required for staff users', 400);
   }
 
   let updateQuery = { hotelId };
@@ -299,7 +299,7 @@ router.patch('/mark-read', catchAsync(async (req, res) => {
     // Mark specific notifications as read
     updateQuery._id = { $in: notificationIds };
   } else {
-    throw new AppError('Either notificationIds or markAllRead must be provided', 400);
+    throw new ApplicationError('Either notificationIds or markAllRead must be provided', 400);
   }
 
   const result = await Notification.updateMany(

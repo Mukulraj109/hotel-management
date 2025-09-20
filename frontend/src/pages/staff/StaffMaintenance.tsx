@@ -6,6 +6,8 @@ import { Wrench, Clock, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-rea
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { TaskCompletionModal, getDefaultSteps } from '../../components/staff/TaskCompletionModal';
 import { maintenanceService, MaintenanceTask } from '../../services/maintenanceService';
+import { useAuth } from '../../context/AuthContext';
+import { toast } from 'react-hot-toast';
 
 interface GroupedTasks {
   urgent: MaintenanceTask[];
@@ -15,6 +17,7 @@ interface GroupedTasks {
 }
 
 export default function StaffMaintenance() {
+  const { user } = useAuth();
   const [tasks, setTasks] = useState<GroupedTasks | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,31 +29,75 @@ export default function StaffMaintenance() {
     fetchTasks();
   }, []);
 
+
   const fetchTasks = async () => {
+    console.log('📋 Fetching maintenance tasks...');
     try {
       setLoading(true);
       setError(null);
       const groupedTasks = await maintenanceService.getTasksGrouped();
+      console.log('✅ Tasks fetched and set:', groupedTasks);
       setTasks(groupedTasks);
     } catch (err) {
-      console.error('Failed to fetch maintenance tasks:', err);
-      setError('Failed to load maintenance tasks');
+      console.error('❌ Failed to fetch maintenance tasks:', {
+        error: err.response?.data || err.message,
+        status: err.response?.status,
+        statusText: err.response?.statusText
+      });
+
+      let errorMessage = 'Failed to load maintenance tasks';
+      if (err.response?.status === 401) {
+        errorMessage = 'Authentication failed. Please login again.';
+      } else if (err.response?.status === 403) {
+        errorMessage = 'You do not have permission to view maintenance tasks.';
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      }
+
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
   };
 
   const handleStartTask = async (taskId: string) => {
+    console.log('🚀 Starting maintenance task:', taskId);
     try {
       setActionLoading(taskId);
-      await maintenanceService.startTask(taskId);
+      console.log('🔄 Calling maintenanceService.startTask...');
+      const result = await maintenanceService.startTask(taskId);
+      console.log('✅ Task started successfully:', result);
+
+      console.log('🔄 Refreshing tasks data...');
       await fetchTasks(); // Refresh data
-      // Show success feedback (optional)
-      console.log('Task started successfully');
+
+      toast.success('Task started successfully!');
+      console.log('✅ Task start flow completed');
     } catch (err) {
-      console.error('Failed to start task:', err);
-      setError('Failed to start task. Please try again.');
-      setTimeout(() => setError(null), 3000); // Clear error after 3 seconds
+      console.error('❌ Failed to start task:', {
+        taskId,
+        error: err.response?.data || err.message,
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        stack: err.stack
+      });
+
+      // More specific error messages
+      let errorMessage = 'Failed to start task. Please try again.';
+      if (err.response?.status === 401) {
+        errorMessage = 'Authentication failed. Please login again.';
+      } else if (err.response?.status === 403) {
+        errorMessage = 'You do not have permission to perform this action.';
+      } else if (err.response?.status === 404) {
+        errorMessage = 'Task not found. It may have been deleted.';
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      }
+
+      setError(errorMessage);
+      toast.error(errorMessage);
+      setTimeout(() => setError(null), 5000); // Clear error after 5 seconds
     } finally {
       setActionLoading(null);
     }
@@ -139,8 +186,18 @@ export default function StaffMaintenance() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Maintenance Management</h1>
-        <p className="text-gray-600">Handle maintenance requests and repairs</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Maintenance Management</h1>
+            <p className="text-gray-600">Handle maintenance requests and repairs</p>
+          </div>
+          <div className="flex items-center space-x-3">
+            <Button onClick={fetchTasks} variant="secondary" size="sm">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh
+            </Button>
+          </div>
+        </div>
         
         {error && (
           <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">

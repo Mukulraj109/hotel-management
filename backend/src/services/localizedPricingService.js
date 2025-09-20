@@ -3,6 +3,7 @@ import logger from '../utils/logger.js';
 import exchangeRateService from './exchangeRateService.js';
 import revenueManagementService from './revenueManagementService.js';
 import { getRedisClient } from '../config/redis.js';
+import RoomType from '../models/RoomType.js';
 
 class LocalizedPricingService {
   constructor() {
@@ -487,13 +488,50 @@ class LocalizedPricingService {
   }
 
   async getBaseRates(hotelId, roomTypeId) {
-    // This would query the hotel's base rates
-    // Returning mock data for now
-    return {
-      'standard': 150.00,
-      'deluxe': 200.00,
-      'suite': 350.00
-    };
+    try {
+      // Query real room types and their base rates from database
+      const query = { hotelId: new mongoose.Types.ObjectId(hotelId) };
+
+      // If specific room type requested, filter by it
+      if (roomTypeId) {
+        query._id = new mongoose.Types.ObjectId(roomTypeId);
+      }
+
+      const roomTypes = await RoomType.find(query).select('code name baseRate baseCurrency');
+
+      // Build rate map with room type codes as keys
+      const rates = {};
+      roomTypes.forEach(roomType => {
+        const key = roomType.code.toLowerCase() || roomType.name.toLowerCase().replace(/\s+/g, '');
+        rates[key] = roomType.baseRate || 0;
+      });
+
+      // If specific room type requested, return just that rate
+      if (roomTypeId && roomTypes.length > 0) {
+        return roomTypes[0].baseRate || 0;
+      }
+
+      // Return all rates if no specific room type requested
+      if (Object.keys(rates).length === 0) {
+        // Fallback to default rates if no room types found
+        logger.warn(`No room types found for hotel ${hotelId}, using fallback rates`);
+        return {
+          'standard': 150.00,
+          'deluxe': 200.00,
+          'suite': 350.00
+        };
+      }
+
+      return rates;
+    } catch (error) {
+      logger.error(`Error fetching base rates for hotel ${hotelId}:`, error);
+      // Return fallback rates on error
+      return {
+        'standard': 150.00,
+        'deluxe': 200.00,
+        'suite': 350.00
+      };
+    }
   }
 
   categorizeDemandLevel(demandScore) {

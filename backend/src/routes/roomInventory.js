@@ -6,7 +6,7 @@ import RoomInventory from '../models/RoomInventory.js';
 import InventoryTransaction from '../models/InventoryTransaction.js';
 import CheckoutInspection from '../models/CheckoutInspection.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 
@@ -48,7 +48,7 @@ router.get('/items', catchAsync(async (req, res) => {
   const hotelId = req.user.hotelId;
 
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   let query = { hotelId };
@@ -175,7 +175,7 @@ router.put('/items/:id', authorize('admin', 'staff'), catchAsync(async (req, res
   );
 
   if (!item) {
-    throw new AppError('Item not found', 404);
+    throw new ApplicationError('Item not found', 404);
   }
 
   res.json({
@@ -286,7 +286,7 @@ router.get('/rooms/:roomId', catchAsync(async (req, res) => {
   .populate('currentBookingId');
 
   if (!roomInventory) {
-    throw new AppError('Room inventory not found', 404);
+    throw new ApplicationError('Room inventory not found', 404);
   }
 
   res.json({
@@ -321,7 +321,7 @@ router.post('/rooms/:roomId/inspect', authorize('staff', 'admin'), catchAsync(as
 
   const roomInventory = await RoomInventory.findOne({ roomId, hotelId });
   if (!roomInventory) {
-    throw new AppError('Room inventory not found', 404);
+    throw new ApplicationError('Room inventory not found', 404);
   }
 
   const inspectionData = {
@@ -378,7 +378,7 @@ router.post('/rooms/:roomId/replace', authorize('staff', 'admin'), catchAsync(as
 
   const roomInventory = await RoomInventory.findOne({ roomId, hotelId });
   if (!roomInventory) {
-    throw new AppError('Room inventory not found', 404);
+    throw new ApplicationError('Room inventory not found', 404);
   }
 
   const session = await mongoose.startSession();
@@ -554,7 +554,7 @@ router.post('/checkout-inspection', authorize('staff', 'admin'), catchAsync(asyn
   // Check if inspection already exists
   const existingInspection = await CheckoutInspection.findOne({ bookingId });
   if (existingInspection) {
-    throw new AppError('Checkout inspection already exists for this booking', 409);
+    throw new ApplicationError('Checkout inspection already exists for this booking', 409);
   }
 
   // Create checkout inspection
@@ -659,7 +659,7 @@ router.get('/checkout-inspection/:bookingId', catchAsync(async (req, res) => {
   .populate('inventoryVerification.itemId');
 
   if (!inspection) {
-    throw new AppError('Checkout inspection not found', 404);
+    throw new ApplicationError('Checkout inspection not found', 404);
   }
 
   res.json({
@@ -695,7 +695,7 @@ router.put('/checkout-inspection/:bookingId', authorize('staff', 'admin'), catch
   .populate('inventoryVerification.itemId');
 
   if (!inspection) {
-    throw new AppError('Checkout inspection not found', 404);
+    throw new ApplicationError('Checkout inspection not found', 404);
   }
 
   // If damages are found that should be charged, create transaction

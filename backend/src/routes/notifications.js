@@ -3,7 +3,7 @@ import Notification from '../models/Notification.js';
 import NotificationPreference from '../models/NotificationPreference.js';
 import User from '../models/User.js';
 import { authenticate } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 
@@ -86,7 +86,7 @@ router.get('/preferences', catchAsync(async (req, res, next) => {
   // Get user to access hotelId
   const user = await User.findById(userId);
   if (!user) {
-    return next(new AppError('User not found', 404));
+    return next(new ApplicationError('User not found', 404));
   }
   
   // For guests, hotelId is optional, so we'll use a default or null
@@ -294,7 +294,7 @@ router.get('/:id', catchAsync(async (req, res, next) => {
     .populate('metadata.loyaltyTransactionId', 'points type description');
   
   if (!notification) {
-    return next(new AppError('Notification not found', 404));
+    return next(new ApplicationError('Notification not found', 404));
   }
   
   res.status(200).json({
@@ -311,7 +311,7 @@ router.patch('/:id/read', catchAsync(async (req, res, next) => {
   const notification = await Notification.findOne({ _id: id, userId });
   
   if (!notification) {
-    return next(new AppError('Notification not found', 404));
+    return next(new ApplicationError('Notification not found', 404));
   }
   
   await notification.markAsRead();
@@ -357,7 +357,7 @@ router.delete('/:id', catchAsync(async (req, res, next) => {
   const notification = await Notification.findOneAndDelete({ _id: id, userId });
   
   if (!notification) {
-    return next(new AppError('Notification not found', 404));
+    return next(new ApplicationError('Notification not found', 404));
   }
   
   res.status(200).json({
@@ -403,12 +403,12 @@ router.post('/test', validate(schemas.sendTestNotification), catchAsync(async (r
   // Get user preferences
   const preferences = await NotificationPreference.findOne({ userId });
   if (!preferences) {
-    return next(new AppError('Notification preferences not found', 404));
+    return next(new ApplicationError('Notification preferences not found', 404));
   }
   
   // Check if channel is enabled
   if (!preferences[channel] || !preferences[channel].enabled) {
-    return next(new AppError(`${channel} notifications are not enabled`, 400));
+    return next(new ApplicationError(`${channel} notifications are not enabled`, 400));
   }
   
   // Create test notification

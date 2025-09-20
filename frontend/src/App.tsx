@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import ErrorBoundary from './components/ui/ErrorBoundary';
+import { apiErrorInterceptor } from './services/apiErrorInterceptor';
 
 // Public Pages
 import HomePage from './pages/public/HomePage';
@@ -26,8 +27,16 @@ import GuestProfile from './pages/guest/GuestProfile';
 import GuestRequests from './pages/guest/GuestRequests';
 import InventoryRequests from './pages/guest/InventoryRequests';
 import LoyaltyDashboard from './pages/guest/LoyaltyDashboard';
+import AllOffers from './pages/guest/AllOffers';
+import LoyaltyTransactions from './pages/guest/LoyaltyTransactions';
+import FavoritesPage from './pages/guest/FavoritesPage';
+import RecommendationsPage from './pages/guest/RecommendationsPage';
 import { ContactlessGuestApp } from './components/guest/ContactlessGuestApp';
 import HotelServicesDashboard from './pages/guest/HotelServicesDashboard';
+import ServiceDetailsPage from './pages/guest/ServiceDetailsPage';
+import ServiceBookingPage from './pages/guest/ServiceBookingPage';
+import ServiceBookingConfirmation from './pages/guest/ServiceBookingConfirmation';
+import MyServiceBookings from './pages/guest/MyServiceBookings';
 import NotificationsDashboard from './pages/guest/NotificationsDashboard';
 import DigitalKeysDashboard from './pages/guest/DigitalKeysDashboard';
 import MeetUpRequestsDashboard from './pages/guest/MeetUpRequestsDashboard';
@@ -53,6 +62,9 @@ import AdminReports from './pages/admin/AdminReports';
 import AdminOTA from './pages/admin/AdminOTA';
 import BillingHistory from './pages/admin/BillingHistory';
 import AdminBypassCheckoutPage from './pages/admin/AdminBypassCheckout';
+import AdminBypassApprovalsPage from './pages/admin/AdminBypassApprovals';
+import AdminSecurityDashboardPage from './pages/admin/AdminSecurityDashboard';
+import AdminFinancialAnalyticsPage from './pages/admin/AdminFinancialAnalytics';
 import AdminCorporateDashboard from './pages/admin/AdminCorporateDashboard';
 import AdminTapeChart from './pages/admin/AdminTapeChart';
 import AdminPOS from './pages/admin/AdminPOS';
@@ -79,6 +91,13 @@ import OverbookingConfiguration from './components/admin/OverbookingConfiguratio
 import AdminWebSettings from './pages/admin/AdminWebSettings';
 import AdminBookingFormBuilder from './pages/admin/AdminBookingFormBuilder';
 import AdminAutomation from './pages/admin/AdminAutomation';
+import AdminOfferManagement from './pages/admin/AdminOfferManagement';
+import AdminServiceManagement from './pages/admin/AdminServiceManagement';
+import AdminDigitalKeyManagement from './pages/admin/AdminDigitalKeyManagement';
+import AdminMeetUpManagement from './pages/admin/AdminMeetUpManagement';
+import AdminInventoryRequests from './pages/admin/AdminInventoryRequests';
+import AdminServiceRequests from './pages/admin/AdminServiceRequests';
+import AdminCheckoutInventoryManagement from './pages/admin/AdminCheckoutInventoryManagement';
 
 // Staff Pages
 import StaffDashboard from './pages/staff/StaffDashboard';
@@ -86,9 +105,14 @@ import StaffDashboard from './pages/staff/StaffDashboard';
 import StaffHousekeeping from './pages/staff/StaffHousekeeping';
 import StaffMaintenance from './pages/staff/StaffMaintenance';
 import StaffGuestServices from './pages/staff/StaffGuestServices';
+import StaffInventoryRequests from './pages/staff/StaffInventoryRequests';
+import StaffServiceRequests from './pages/staff/StaffServiceRequests';
+import StaffSupplyRequests from './pages/staff/StaffSupplyRequests';
 import StaffRooms from './pages/staff/StaffRooms';
 import StaffInventory from './pages/staff/StaffInventory';
 import StaffReports from './pages/staff/StaffReports';
+import StaffAlertCenter from './pages/staff/StaffAlertCenter';
+import StaffMeetUpSupervision from './pages/staff/StaffMeetUpSupervision';
 import CheckoutInventory from './pages/staff/CheckoutInventory';
 import DailyRoutineCheck from './pages/staff/DailyRoutineCheck';
 import { DailyInventoryCheckForm } from './components/staff/DailyInventoryCheckForm';
@@ -141,7 +165,15 @@ function App() {
                             <Route path="bookings/:id" element={<GuestBookingDetail />} />
             <Route path="billing" element={<GuestBillingHistory />} />
             <Route path="loyalty" element={<LoyaltyDashboard />} />
+            <Route path="loyalty/offers" element={<AllOffers />} />
+            <Route path="loyalty/favorites" element={<FavoritesPage />} />
+            <Route path="loyalty/recommendations" element={<RecommendationsPage />} />
+            <Route path="loyalty/transactions" element={<LoyaltyTransactions />} />
             <Route path="services" element={<HotelServicesDashboard />} />
+            <Route path="services/:serviceId" element={<ServiceDetailsPage />} />
+            <Route path="services/:serviceId/book" element={<ServiceBookingPage />} />
+            <Route path="services/bookings" element={<MyServiceBookings />} />
+            <Route path="services/bookings/confirmation/:bookingId" element={<ServiceBookingConfirmation />} />
             <Route path="notifications" element={<NotificationsDashboard />} />
             <Route path="keys" element={<DigitalKeysDashboard />} />
             <Route path="meet-ups" element={<MeetUpRequestsDashboard />} />
@@ -173,8 +205,11 @@ function App() {
                 <Route path="daily-check-management" element={<AdminDailyCheckManagement />} />
                 <Route path="maintenance" element={<AdminMaintenance />} />
                 <Route path="guest-services" element={<AdminGuestServices />} />
+                <Route path="inventory-requests" element={<AdminInventoryRequests />} />
+                <Route path="service-requests" element={<AdminServiceRequests />} />
                 <Route path="supply-requests" element={<AdminSupplyRequests />} />
                 <Route path="inventory" element={<AdminInventory />} />
+                <Route path="checkout-inventory" element={<AdminCheckoutInventoryManagement />} />
                 <Route path="inventory/templates" element={<InventoryTemplateManagement />} />
                 <Route path="inventory-management" element={<AdminInventoryManagement />} />
                 <Route path="laundry" element={<AdminLaundryManagement />} />
@@ -183,6 +218,9 @@ function App() {
                 <Route path="room-allotments" element={<AdminRoomTypeAllotments />} />
                 <Route path="reports" element={<AdminReports />} />
                 <Route path="bypass-checkout" element={<AdminBypassCheckoutPage />} />
+                <Route path="bypass-approvals" element={<AdminBypassApprovalsPage />} />
+                <Route path="security-dashboard" element={<AdminSecurityDashboardPage />} />
+                <Route path="financial-analytics" element={<AdminFinancialAnalyticsPage />} />
                 <Route path="ota" element={<AdminOTA />} />
                 <Route path="billing" element={<BillingHistory />} />
                 <Route path="tape-chart" element={<AdminTapeChart />} />
@@ -202,6 +240,10 @@ function App() {
                 <Route path="api-management" element={<AdminAPIManagement />} />
                 <Route path="ai-dashboard" element={<AIDashboard />} />
                 <Route path="automation" element={<AdminAutomation />} />
+                <Route path="offers" element={<AdminOfferManagement />} />
+                <Route path="services" element={<AdminServiceManagement />} />
+                <Route path="digital-keys" element={<AdminDigitalKeyManagement />} />
+                <Route path="meet-up-management" element={<AdminMeetUpManagement />} />
               </Route>
 
               {/* Staff Routes */}
@@ -211,12 +253,16 @@ function App() {
                 </ProtectedRoute>
               }>
                 <Route index element={<StaffDashboard />} />
-
+                <Route path="alerts" element={<StaffAlertCenter />} />
+                <Route path="meetup-supervision" element={<StaffMeetUpSupervision />} />
                 <Route path="inventory-check/:roomId" element={<DailyInventoryCheckForm />} />
                 <Route path="inventory-check" element={<DailyInventoryCheckForm />} />
                 <Route path="housekeeping" element={<StaffHousekeeping />} />
                 <Route path="maintenance" element={<StaffMaintenance />} />
                 <Route path="guest-services" element={<StaffGuestServices />} />
+                <Route path="inventory-requests" element={<StaffInventoryRequests />} />
+                <Route path="service-requests" element={<StaffServiceRequests />} />
+                <Route path="supply-requests" element={<StaffSupplyRequests />} />
                 <Route path="rooms" element={<StaffRooms />} />
                                                   <Route path="inventory" element={<StaffInventory />} />
                 <Route path="daily-routine-check" element={<DailyRoutineCheck />} />

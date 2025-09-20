@@ -10,6 +10,7 @@ import { AdminBooking, BookingFilters, BookingStats } from '../../types/admin';
 import { formatCurrency, formatNumber, getStatusColor } from '../../utils/dashboardUtils';
 import { format, parseISO } from 'date-fns';
 import WalkInBooking from './WalkInBooking';
+import PaymentCollectionModal from '../../components/admin/PaymentCollectionModal';
 import toast from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
@@ -54,6 +55,10 @@ export default function AdminBookings() {
   const [showFilters, setShowFilters] = useState(false);
   const [updating, setUpdating] = useState(false);
   
+  // Payment collection modal state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [selectedBookingForPayment, setSelectedBookingForPayment] = useState<AdminBooking | null>(null);
+  
   // Room assignment state
   const [showRoomAssignmentModal, setShowRoomAssignmentModal] = useState(false);
   const [selectedBookingForRoomAssignment, setSelectedBookingForRoomAssignment] = useState<AdminBooking | null>(null);
@@ -68,7 +73,7 @@ export default function AdminBookings() {
   const [userSearch, setUserSearch] = useState('');
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState({
-    hotelId: '68afe8080c02fcbe30092b8e',
+    hotelId: '68cd01414419c17b5f6b4c12', // Updated to match seeded hotel ID
     userId: '',
     roomIds: [] as string[],
     checkIn: '',
@@ -88,25 +93,71 @@ export default function AdminBookings() {
   const fetchBookings = async () => {
     try {
       setLoading(true);
-      console.log('🔍 FETCH DEBUG - Calling admin service with filters:', filters);
-      const response = await adminService.getBookings(filters);
-      console.log('🔍 FETCH DEBUG - Admin service response:', response);
-      
-      // Handle both possible response structures
-      const bookingsData = response.data?.bookings || response.data || [];
-      console.log('🔍 FETCH DEBUG - Extracted bookings data:', bookingsData);
-      console.log('🔍 FETCH DEBUG - First booking hotelId:', bookingsData[0]?.hotelId);
-      
+      console.log('🔍 [AdminBookings] FETCH DEBUG - Calling admin service with filters:', filters);
+
+      // Add hotelId to filters to ensure we only get bookings for the correct hotel
+      const bookingFilters = {
+        ...filters,
+        hotelId: user?.hotelId || '68cd01414419c17b5f6b4c12' // Use the correct seeded hotel ID
+      };
+      console.log('🔍 [AdminBookings] FETCH DEBUG - Enhanced filters with hotelId:', bookingFilters);
+
+      const response = await adminService.getBookings(bookingFilters);
+      console.log('🔍 [AdminBookings] FETCH DEBUG - Admin service response:', response);
+      console.log('🔍 [AdminBookings] FETCH DEBUG - Response structure:', {
+        status: response.status,
+        dataKeys: Object.keys(response.data || {}),
+        pagination: response.pagination
+      });
+
+      // Handle both possible response structures with better error checking
+      let bookingsData = [];
+      if (response.data) {
+        if (response.data.bookings) {
+          bookingsData = response.data.bookings;
+        } else if (Array.isArray(response.data)) {
+          bookingsData = response.data;
+        } else if (response.data.data && Array.isArray(response.data.data)) {
+          bookingsData = response.data.data;
+        }
+      }
+
+      console.log('🔍 [AdminBookings] FETCH DEBUG - Extracted bookings data:', {
+        length: bookingsData.length,
+        firstBooking: bookingsData[0] ? {
+          id: bookingsData[0]._id,
+          hotelId: bookingsData[0].hotelId,
+          status: bookingsData[0].status
+        } : null
+      });
+
       setBookings(Array.isArray(bookingsData) ? bookingsData : []);
+
+      // Set pagination with fallback values
       if (response.pagination) {
         setPagination(response.pagination);
+      } else {
+        // Calculate pagination if not provided
+        setPagination({
+          current: bookingFilters.page || 1,
+          pages: Math.ceil(bookingsData.length / (bookingFilters.limit || 50)),
+          total: bookingsData.length
+        });
       }
+
     } catch (error: any) {
-      console.error('Error fetching bookings:', error);
+      console.error('❌ [AdminBookings] Error fetching bookings:', error);
+      console.error('❌ [AdminBookings] Error details:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+
       if (error.response?.status === 429) {
-        console.log('Rate limit exceeded, will retry automatically');
+        console.log('⏳ [AdminBookings] Rate limit exceeded, will retry automatically');
       }
       setBookings([]);
+      setPagination({ current: 1, pages: 0, total: 0 });
     } finally {
       setLoading(false);
     }
@@ -115,10 +166,20 @@ export default function AdminBookings() {
   // Fetch stats
   const fetchStats = async () => {
     try {
-      const response = await adminService.getBookingStats();
+      console.log('📊 [AdminBookings] Fetching booking stats...');
+
+      // Pass hotelId filter to stats to match booking list
+      const statsFilters = {
+        hotelId: user?.hotelId || '68cd01414419c17b5f6b4c12' // Use the correct seeded hotel ID
+      };
+
+      console.log('📊 [AdminBookings] Stats filters:', statsFilters);
+      const response = await adminService.getBookingStats(statsFilters);
+      console.log('📊 [AdminBookings] Stats response:', response);
+
       setStats(response.data?.stats || response.data || null);
     } catch (error) {
-      console.error('Error fetching stats:', error);
+      console.error('❌ [AdminBookings] Error fetching stats:', error);
       setStats(null);
     }
   };
@@ -204,7 +265,7 @@ export default function AdminBookings() {
         console.log('🔍 BOOKING DEBUG - No hotel ID found in booking, trying fallback');
         
         // Try to get hotelId from user context (if user is logged in and has hotelId)
-        const userHotelId = user?.hotelId || '68afe8080c02fcbe30092b8e';
+        const userHotelId = user?.hotelId || '68cd01414419c17b5f6b4c12'; // Updated to match seeded hotel ID
         
         if (userHotelId) {
           hotelId = userHotelId;
@@ -282,9 +343,14 @@ export default function AdminBookings() {
         status: 'confirmed'
       };
 
-      await adminService.updateBooking(selectedBookingForRoomAssignment._id, roomAssignmentUpdate);
+      const updatedBooking = await adminService.updateBooking(selectedBookingForRoomAssignment._id, roomAssignmentUpdate);
 
       toast.success('Room assigned and booking confirmed successfully!');
+
+      // Update the selected booking in the modal if it's the same booking
+      if (selectedBooking && selectedBooking._id === selectedBookingForRoomAssignment._id) {
+        setSelectedBooking(updatedBooking.data.booking);
+      }
 
       // Close modal and refresh data
       setShowRoomAssignmentModal(false);
@@ -303,6 +369,76 @@ export default function AdminBookings() {
     } catch (error) {
       console.error('Error assigning room:', error);
       toast.error('Failed to assign room');
+    }
+  };
+
+  // Handle check-in with payment collection
+  const handleCheckIn = (booking: AdminBooking) => {
+    setSelectedBookingForPayment(booking);
+    setShowPaymentModal(true);
+  };
+
+  // Handle payment collection and check-in
+  const handlePaymentCollection = async (paymentDetails: { paymentMethods: any[] }) => {
+    if (!selectedBookingForPayment) return;
+
+    try {
+      setUpdating(true);
+      const response = await adminService.checkInBooking(selectedBookingForPayment._id, paymentDetails);
+      
+      toast.success('Guest checked in successfully!');
+      
+      // Update the selected booking in the modal if it's the same booking
+      if (selectedBooking && selectedBooking._id === selectedBookingForPayment._id) {
+        setSelectedBooking(response.data.booking);
+      }
+
+      // Close payment modal and refresh data
+      setShowPaymentModal(false);
+      setSelectedBookingForPayment(null);
+      
+      // Refresh all data
+      queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-bookings-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      
+      await fetchBookings();
+      await fetchStats();
+    } catch (error) {
+      console.error('Error checking in guest:', error);
+      toast.error('Failed to check in guest');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // Handle check-out
+  const handleCheckOut = async (booking: AdminBooking) => {
+    try {
+      setUpdating(true);
+      const response = await adminService.checkOutBooking(booking._id);
+      
+      toast.success('Guest checked out successfully!');
+      
+      // Update the selected booking in the modal if it's the same booking
+      if (selectedBooking && selectedBooking._id === booking._id) {
+        setSelectedBooking(response.data.booking);
+      }
+
+      // Refresh all data
+      queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-bookings-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['bookings'] });
+      
+      await fetchBookings();
+      await fetchStats();
+    } catch (error) {
+      console.error('Error checking out guest:', error);
+      toast.error('Failed to check out guest');
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -336,7 +472,7 @@ export default function AdminBookings() {
       
       // Reset form and close modal
       setCreateForm({
-        hotelId: '68afe8080c02fcbe30092b8e',
+        hotelId: '68cd01414419c17b5f6b4c12', // Updated to match seeded hotel ID
         userId: '',
         roomIds: [],
         checkIn: '',
@@ -988,6 +1124,42 @@ export default function AdminBookings() {
               </div>
             </div>
 
+            {/* Payment Details */}
+            {selectedBooking.paymentDetails && selectedBooking.paymentDetails.paymentMethods && selectedBooking.paymentDetails.paymentMethods.length > 0 && (
+              <div className="border-t pt-4">
+                <h3 className="text-sm font-medium text-gray-500 mb-3">Payment Details</h3>
+                <div className="space-y-2">
+                  {selectedBooking.paymentDetails.paymentMethods.map((payment: any, index: number) => (
+                    <div key={index} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                      <div>
+                        <span className="text-sm font-medium capitalize">{payment.method}</span>
+                        {payment.reference && (
+                          <span className="text-xs text-gray-500 ml-2">({payment.reference})</span>
+                        )}
+                      </div>
+                      <span className="text-sm font-medium">
+                        {formatCurrency(payment.amount, selectedBooking.currency)}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between items-center pt-2 border-t">
+                    <span className="text-sm font-medium">Total Paid</span>
+                    <span className="text-sm font-bold text-green-600">
+                      {formatCurrency(selectedBooking.paymentDetails.totalPaid, selectedBooking.currency)}
+                    </span>
+                  </div>
+                  {selectedBooking.paymentDetails.remainingAmount > 0 && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium">Remaining</span>
+                      <span className="text-sm font-bold text-red-600">
+                        {formatCurrency(selectedBooking.paymentDetails.remainingAmount, selectedBooking.currency)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Actions */}
             <div className="border-t pt-4">
               <div className="flex items-center justify-between">
@@ -1023,11 +1195,9 @@ export default function AdminBookings() {
                   {selectedBooking.status === 'confirmed' && (
                     <Button
                       size="sm"
-                      onClick={() => {
-                        handleStatusUpdate(selectedBooking._id, 'checked_in');
-                        setShowDetailsModal(false);
-                      }}
+                      onClick={() => handleCheckIn(selectedBooking)}
                       disabled={updating}
+                      className="bg-blue-600 hover:bg-blue-700"
                     >
                       Check In
                     </Button>
@@ -1035,11 +1205,9 @@ export default function AdminBookings() {
                   {selectedBooking.status === 'checked_in' && (
                     <Button
                       size="sm"
-                      onClick={() => {
-                        handleStatusUpdate(selectedBooking._id, 'checked_out');
-                        setShowDetailsModal(false);
-                      }}
+                      onClick={() => handleCheckOut(selectedBooking)}
                       disabled={updating}
+                      className="bg-green-600 hover:bg-green-700"
                     >
                       Check Out
                     </Button>
@@ -1057,7 +1225,7 @@ export default function AdminBookings() {
                  onClose={() => {
            setShowCreateModal(false);
            setCreateForm({
-             hotelId: '68afe8080c02fcbe30092b8e',
+             hotelId: '68cd01414419c17b5f6b4c12', // Updated to match seeded hotel ID
              userId: '',
              roomIds: [],
              checkIn: '',
@@ -1571,6 +1739,21 @@ export default function AdminBookings() {
           fetchStats();
         }}
       />
+
+      {/* Payment Collection Modal */}
+      {selectedBookingForPayment && (
+        <PaymentCollectionModal
+          isOpen={showPaymentModal}
+          onClose={() => {
+            setShowPaymentModal(false);
+            setSelectedBookingForPayment(null);
+          }}
+          onConfirm={handlePaymentCollection}
+          totalAmount={selectedBookingForPayment.totalAmount}
+          currency={selectedBookingForPayment.currency}
+          bookingNumber={selectedBookingForPayment.bookingNumber}
+        />
+      )}
     </div>
   );
 }

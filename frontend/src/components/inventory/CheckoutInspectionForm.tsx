@@ -4,7 +4,7 @@ import {
   XCircle, 
   Camera, 
   AlertTriangle,
-  DollarSign,
+  IndianRupee,
   Clock,
   FileText
 } from 'lucide-react';

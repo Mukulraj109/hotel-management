@@ -1,6 +1,6 @@
 import blacklistService from '../services/blacklistService.js';
 import GuestBlacklist from '../models/GuestBlacklist.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 // Get all blacklist entries
@@ -49,12 +49,12 @@ export const getBlacklistEntry = catchAsync(async (req, res) => {
     .populate('reviewedBy', 'name email');
 
   if (!blacklistEntry) {
-    throw new AppError('Blacklist entry not found', 404);
+    throw new ApplicationError('Blacklist entry not found', 404);
   }
 
   // Check if user has access to this blacklist entry
   if (blacklistEntry.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('Access denied', 403);
+    throw new ApplicationError('Access denied', 403);
   }
 
   res.json({
@@ -159,7 +159,7 @@ export const reviewAppeal = catchAsync(async (req, res) => {
   const { status, notes } = req.body;
 
   if (!['approved', 'rejected'].includes(status)) {
-    throw new AppError('Invalid appeal status', 400);
+    throw new ApplicationError('Invalid appeal status', 400);
   }
 
   const blacklistEntry = await blacklistService.reviewAppeal(
@@ -240,7 +240,7 @@ export const bulkUpdateBlacklist = catchAsync(async (req, res) => {
   const { blacklistIds, updateData } = req.body;
 
   if (!Array.isArray(blacklistIds) || blacklistIds.length === 0) {
-    throw new AppError('Blacklist IDs array is required', 400);
+    throw new ApplicationError('Blacklist IDs array is required', 400);
   }
 
   const result = await blacklistService.bulkUpdateBlacklist(
@@ -283,7 +283,7 @@ export const validateBooking = catchAsync(async (req, res) => {
   const { hotelId } = req.query;
 
   if (!guestId) {
-    throw new AppError('Guest ID is required', 400);
+    throw new ApplicationError('Guest ID is required', 400);
   }
 
   const targetHotelId = hotelId || req.user.hotelId;

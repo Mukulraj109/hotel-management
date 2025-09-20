@@ -20,6 +20,7 @@ export default function StaffGuestServices() {
     fetchRequests();
   }, []);
 
+
   const fetchRequests = async () => {
     try {
       setLoading(true);

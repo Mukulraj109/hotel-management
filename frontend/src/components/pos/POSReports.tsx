@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { 
   TrendingUp, 
-  DollarSign, 
+  IndianRupee, 
   ShoppingCart, 
   Users, 
   Clock, 
@@ -341,7 +341,7 @@ const POSReports: React.FC = () => {
             <MetricCard
               title="Total Sales"
               value={salesData?.data.summary.totalSales}
-              icon={<DollarSign className="w-6 h-6" />}
+              icon={<IndianRupee className="w-6 h-6" />}
               color="green"
               loading={loading}
               formatter={formatCurrency}

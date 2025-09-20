@@ -9,7 +9,7 @@ class APIMetricsService extends EventEmitter {
   constructor() {
     super();
     this.metricsBuffer = new Map(); // Buffer for real-time metrics
-    this.flushInterval = 60000; // Flush every minute
+    this.flushInterval = 300000; // Flush every 5 minutes (reduced frequency)
     this.maxBufferSize = 10000;
     
     this.startMetricsCollection();

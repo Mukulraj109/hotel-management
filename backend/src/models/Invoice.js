@@ -516,7 +516,7 @@ const invoiceSchema = new mongoose.Schema({
 invoiceSchema.index({ hotelId: 1, status: 1 });
 invoiceSchema.index({ bookingId: 1 });
 invoiceSchema.index({ guestId: 1, status: 1 });
-invoiceSchema.index({ invoiceNumber: 1 });
+// Note: invoiceNumber already has unique: true, no need for separate index
 invoiceSchema.index({ dueDate: 1, status: 1 });
 invoiceSchema.index({ 'splitBilling.splits.guestId': 1 });
 

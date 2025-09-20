@@ -82,7 +82,7 @@ const POSOrderEntry: React.FC = () => {
 
   useEffect(() => {
     calculateTotals();
-  }, [orderItems]);
+  }, [orderItems, selectedOutlet]);
 
   const fetchOutlets = async () => {
     try {
@@ -177,14 +177,38 @@ const POSOrderEntry: React.FC = () => {
     setOrderItems(updatedItems);
   };
 
-  const calculateTotals = () => {
-    const newSubtotal = orderItems.reduce((sum, item) => sum + item.total, 0);
-    const newTax = newSubtotal * 0.18; // 18% GST
-    const newTotal = newSubtotal + newTax;
-    
-    setSubtotal(newSubtotal);
-    setTax(newTax);
-    setTotal(newTotal);
+  const calculateTotals = async () => {
+    if (orderItems.length === 0) {
+      setSubtotal(0);
+      setTax(0);
+      setTotal(0);
+      return;
+    }
+
+    try {
+      // Use backend API to calculate totals with proper tax rates
+      const response = await api.post('/pos/calculate/order-totals', {
+        items: orderItems,
+        outletId: selectedOutlet,
+        discounts: []
+      });
+
+      if (response.data.success) {
+        const { subtotal, taxes, grandTotal } = response.data.data;
+        setSubtotal(subtotal);
+        setTax(taxes.totalTax);
+        setTotal(grandTotal);
+      }
+    } catch (error) {
+      console.error('Error calculating totals:', error);
+      // Fallback to simple calculation if API fails
+      const newSubtotal = orderItems.reduce((sum, item) => sum + item.total, 0);
+      const newTax = newSubtotal * 0.18;
+      const newTotal = newSubtotal + newTax;
+      setSubtotal(newSubtotal);
+      setTax(newTax);
+      setTotal(newTotal);
+    }
   };
 
   const getSelectedOutletName = () => {

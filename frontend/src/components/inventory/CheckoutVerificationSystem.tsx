@@ -4,7 +4,7 @@ import {
   XCircle,
   AlertTriangle,
   Camera,
-  DollarSign,
+  IndianRupee,
   Clock,
   User,
   MapPin,

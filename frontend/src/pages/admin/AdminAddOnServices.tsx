@@ -4,7 +4,7 @@ import {
   Search, 
   Filter, 
   Star, 
-  DollarSign, 
+  IndianRupee, 
   Users, 
   TrendingUp,
   Edit,
@@ -240,7 +240,7 @@ const AdminAddOnServices: React.FC = () => {
         
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center">
-            <DollarSign className="h-8 w-8 text-green-600" />
+            <IndianRupee className="h-8 w-8 text-green-600" />
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Total Revenue</p>
               <p className="text-2xl font-bold text-gray-900">
@@ -405,7 +405,7 @@ const AdminAddOnServices: React.FC = () => {
                     
                     <div className="grid grid-cols-2 gap-4 mb-4 text-sm">
                       <div className="flex items-center space-x-2">
-                        <DollarSign className="h-4 w-4 text-green-600" />
+                        <IndianRupee className="h-4 w-4 text-green-600" />
                         <span>${service.pricing.basePrice}</span>
                       </div>
                       

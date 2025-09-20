@@ -4,7 +4,7 @@ import CorporateCredit from '../models/CorporateCredit.js';
 import Booking from '../models/Booking.js';
 import KPI from '../models/KPI.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 
 /**
  * @swagger
@@ -40,26 +40,26 @@ export const getCorporateDashboardOverview = catchAsync(async (req, res, next) =
     createdAt: { $gte: startOfMonth, $lte: endOfMonth }
   });
 
-  // Corporate bookings metrics
+  // Corporate bookings metrics - using checkIn dates for actual stays
   const totalCorporateBookings = await Booking.countDocuments({
     hotelId: req.user.hotelId,
     'corporateBooking.corporateCompanyId': { $exists: true },
-    createdAt: { $gte: startOfYear }
+    checkIn: { $gte: startOfYear }
   });
 
   const monthlyBookings = await Booking.countDocuments({
     hotelId: req.user.hotelId,
     'corporateBooking.corporateCompanyId': { $exists: true },
-    createdAt: { $gte: startOfMonth, $lte: endOfMonth }
+    checkIn: { $gte: startOfMonth, $lte: endOfMonth }
   });
 
-  // Revenue metrics
+  // Revenue metrics - using checkIn dates for actual revenue realization
   const monthlyRevenue = await Booking.aggregate([
     {
       $match: {
         hotelId: req.user.hotelId,
         'corporateBooking.corporateCompanyId': { $exists: true },
-        createdAt: { $gte: startOfMonth, $lte: endOfMonth },
+        checkIn: { $gte: startOfMonth, $lte: endOfMonth },
         status: { $nin: ['cancelled', 'no_show'] }
       }
     },
@@ -77,7 +77,7 @@ export const getCorporateDashboardOverview = catchAsync(async (req, res, next) =
       $match: {
         hotelId: req.user.hotelId,
         'corporateBooking.corporateCompanyId': { $exists: true },
-        createdAt: { $gte: startOfYear },
+        checkIn: { $gte: startOfYear },
         status: { $nin: ['cancelled', 'no_show'] }
       }
     },
@@ -135,13 +135,13 @@ export const getCorporateDashboardOverview = catchAsync(async (req, res, next) =
     }
   ]);
 
-  // Top performing companies
+  // Top performing companies - using checkIn dates for actual performance
   const topCompanies = await Booking.aggregate([
     {
       $match: {
         hotelId: req.user.hotelId,
         'corporateBooking.corporateCompanyId': { $exists: true },
-        createdAt: { $gte: startOfYear },
+        checkIn: { $gte: startOfYear },
         status: { $nin: ['cancelled', 'no_show'] }
       }
     },
@@ -240,15 +240,15 @@ export const getMonthlyTrends = catchAsync(async (req, res, next) => {
     {
       $match: {
         'corporateBooking.corporateCompanyId': { $exists: true },
-        createdAt: { $gte: startDate },
+        checkIn: { $gte: startDate },
         status: { $nin: ['cancelled', 'no_show'] }
       }
     },
     {
       $group: {
         _id: {
-          year: { $year: '$createdAt' },
-          month: { $month: '$createdAt' }
+          year: { $year: '$checkIn' },
+          month: { $month: '$checkIn' }
         },
         totalBookings: { $sum: 1 },
         totalRevenue: { $sum: '$totalAmount' },

@@ -14,7 +14,7 @@ import {
   User,
   Building2,
   Calendar,
-  DollarSign
+  IndianRupee
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
@@ -288,7 +288,7 @@ export const SplitFolioManager: React.FC = () => {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
-                  <DollarSign className="mr-2 h-5 w-5" />
+                  <IndianRupee className="mr-2 h-5 w-5" />
                   Unassigned Charges
                   <Badge variant="destructive" className="ml-2">
                     {unassignedCharges.length}

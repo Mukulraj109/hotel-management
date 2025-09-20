@@ -47,6 +47,7 @@ class AdvancedReservationsController {
 
       // Create advanced reservation
       const advancedReservation = new AdvancedReservation({
+        reservationId: `ADV-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         bookingId,
         reservationType: reservationType || 'standard',
         priority: priority || 'medium',
@@ -93,6 +94,7 @@ class AdvancedReservationsController {
         priority,
         status,
         hasWaitlist,
+        search,
         page = 1,
         limit = 20,
         sortBy = 'createdAt',
@@ -100,7 +102,7 @@ class AdvancedReservationsController {
       } = req.query;
 
       const query = {};
-      
+
       if (reservationType) query.reservationType = reservationType;
       if (priority) query.priority = priority;
       if (hasWaitlist === 'true') query.waitlistInfo = { $ne: null };
@@ -110,16 +112,52 @@ class AdvancedReservationsController {
 
       const skip = (parseInt(page) - 1) * parseInt(limit);
 
-      const [advancedReservations, total] = await Promise.all([
-        AdvancedReservation.find(query)
-          .populate('bookingId', 'bookingNumber guestName checkIn checkOut status totalAmount')
-          .populate('roomAssignments.roomId', 'roomNumber type floor')
-          .populate('roomAssignments.assignedBy', 'name email')
-          .sort(sortOptions)
-          .skip(skip)
-          .limit(parseInt(limit)),
-        AdvancedReservation.countDocuments(query)
-      ]);
+      let advancedReservations, total;
+
+      // Handle search functionality
+      if (search) {
+        // First, find bookings that match the search term
+        const matchingBookings = await Booking.find({
+          $or: [
+            { bookingNumber: { $regex: search, $options: 'i' } },
+            { guestName: { $regex: search, $options: 'i' } }
+          ]
+        }).select('_id');
+
+        const bookingIds = matchingBookings.map(b => b._id);
+
+        // Combine reservation search with booking search
+        const searchQuery = {
+          ...query,
+          $or: [
+            { reservationId: { $regex: search, $options: 'i' } },
+            { 'guestProfile.loyaltyNumber': { $regex: search, $options: 'i' } },
+            { bookingId: { $in: bookingIds } }
+          ]
+        };
+
+        [advancedReservations, total] = await Promise.all([
+          AdvancedReservation.find(searchQuery)
+            .populate('bookingId', 'bookingNumber guestName checkIn checkOut status totalAmount')
+            .populate('roomAssignments.roomId', 'roomNumber type floor')
+            .populate('roomAssignments.assignedBy', 'name email')
+            .sort(sortOptions)
+            .skip(skip)
+            .limit(parseInt(limit)),
+          AdvancedReservation.countDocuments(searchQuery)
+        ]);
+      } else {
+        [advancedReservations, total] = await Promise.all([
+          AdvancedReservation.find(query)
+            .populate('bookingId', 'bookingNumber guestName checkIn checkOut status totalAmount')
+            .populate('roomAssignments.roomId', 'roomNumber type floor')
+            .populate('roomAssignments.assignedBy', 'name email')
+            .sort(sortOptions)
+            .skip(skip)
+            .limit(parseInt(limit)),
+          AdvancedReservation.countDocuments(query)
+        ]);
+      }
 
       res.json({
         success: true,

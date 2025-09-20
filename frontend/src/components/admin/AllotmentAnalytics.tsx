@@ -5,22 +5,22 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+} from '../ui/card';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
+} from '../ui/Select';
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from '@/components/ui/tabs';
+} from '../ui/tabs';
 import {
   BarChart,
   Bar,
@@ -41,16 +41,17 @@ import {
 import {
   TrendingUp,
   TrendingDown,
-  DollarSign,
+  IndianRupee,
   Users,
   Calendar,
   AlertTriangle,
   Download,
-  RefreshCwCw,
+  RefreshCw,
   Target,
   Activity,
 } from 'lucide-react';
 import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
+import allotmentService from '../../services/allotmentService';
 
 interface AllotmentAnalyticsProps {
   allotment: any;
@@ -77,17 +78,13 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
       const endDate = new Date();
       const startDate = subDays(endDate, parseInt(timeRange));
       
-      const response = await fetch(
-        `/api/v1/allotments/${allotment._id}/analytics?` +
-        new URLSearchParams({
-          startDate: format(startDate, 'yyyy-MM-dd'),
-          endDate: format(endDate, 'yyyy-MM-dd'),
-        })
-      );
+      const response = await allotmentService.getAnalytics(allotment._id, {
+        startDate: format(startDate, 'yyyy-MM-dd'),
+        endDate: format(endDate, 'yyyy-MM-dd'),
+      });
       
-      if (response.ok) {
-        const data = await response.json();
-        setAnalyticsData(data);
+      if (response?.success) {
+        setAnalyticsData(response.data);
       } else {
         throw new Error('Failed to load analytics data');
       }
@@ -99,9 +96,9 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
   };
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'USD',
+      currency: 'INR',
     }).format(value);
   };
 
@@ -150,24 +147,24 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-4">
-          <Button variant="outline" onClick={onBack}>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+          <Button variant="outline" onClick={onBack} className="w-fit">
             ← Back
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
               {allotment.name} - Analytics
             </h1>
-            <p className="text-gray-600">Performance insights and channel analytics</p>
+            <p className="text-sm sm:text-base text-gray-600">Performance insights and channel analytics</p>
           </div>
         </div>
         
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
           <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger className="w-32">
+            <SelectTrigger className="w-full sm:w-32">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -177,19 +174,23 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
             </SelectContent>
           </Select>
           
-          <Button variant="outline" size="sm" onClick={loadAnalytics}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-          
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={loadAnalytics} className="flex-1 sm:flex-none">
+              <RefreshCw className="h-4 w-4 sm:mr-2" />
+              <span className="sm:hidden">Refresh</span>
+            </Button>
+            
+            <Button variant="outline" size="sm" className="flex-1 sm:flex-none">
+              <Download className="h-4 w-4 sm:mr-2" />
+              <span className="sm:hidden">Export</span>
+              <span className="hidden sm:inline">Export</span>
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Key Metrics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Average Occupancy</CardTitle>
@@ -212,7 +213,7 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <span className="text-lg font-bold text-muted-foreground">₹</span>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
@@ -266,34 +267,35 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
       </div>
 
       {/* Analytics Tabs */}
-      <Tabs defaultValue="performance" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="performance">Performance</TabsTrigger>
-          <TabsTrigger value="channels">Channels</TabsTrigger>
-          <TabsTrigger value="trends">Trends</TabsTrigger>
-          <TabsTrigger value="optimization">Optimization</TabsTrigger>
+      <Tabs defaultValue="performance" className="space-y-4 sm:space-y-6">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+          <TabsTrigger value="performance" className="text-xs sm:text-sm">Performance</TabsTrigger>
+          <TabsTrigger value="channels" className="text-xs sm:text-sm">Channels</TabsTrigger>
+          <TabsTrigger value="trends" className="text-xs sm:text-sm">Trends</TabsTrigger>
+          <TabsTrigger value="optimization" className="text-xs sm:text-sm">Optimization</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="performance" className="space-y-6">
+        <TabsContent value="performance" className="space-y-4 sm:space-y-6">
           {/* Daily Performance Chart */}
           <Card>
             <CardHeader>
-              <CardTitle>Daily Performance</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-lg sm:text-xl">Daily Performance</CardTitle>
+              <CardDescription className="text-sm">
                 Occupancy rates and revenue across the selected time period
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-80">
+              <div className="h-64 sm:h-80">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={analyticsData.dailyPerformance}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="date" 
                       tickFormatter={(value) => format(new Date(value), 'MMM d')}
+                      fontSize={12}
                     />
-                    <YAxis yAxisId="left" />
-                    <YAxis yAxisId="right" orientation="right" />
+                    <YAxis yAxisId="left" fontSize={12} />
+                    <YAxis yAxisId="right" orientation="right" fontSize={12} />
                     <Tooltip 
                       labelFormatter={(value) => format(new Date(value), 'MMM d, yyyy')}
                       formatter={(value: number, name: string) => [
@@ -320,7 +322,7 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
                       stroke="#10b981"
                       fill="#10b981"
                       fillOpacity={0.3}
-                      name="Revenue ($)"
+                      name="Revenue (₹)"
                     />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -329,7 +331,7 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
           </Card>
 
           {/* Room Utilization */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             <Card>
               <CardHeader>
                 <CardTitle>Room Utilization</CardTitle>
@@ -407,7 +409,7 @@ export default function AllotmentAnalytics({ allotment, onBack }: AllotmentAnaly
                     />
                     <Legend />
                     <Bar yAxisId="left" dataKey="occupancy" fill="#3b82f6" name="Occupancy (%)" />
-                    <Bar yAxisId="right" dataKey="revenue" fill="#10b981" name="Revenue ($)" />
+                    <Bar yAxisId="right" dataKey="revenue" fill="#10b981" name="Revenue (₹)" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

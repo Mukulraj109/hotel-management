@@ -5,7 +5,7 @@ import localizedPricingService from '../services/localizedPricingService.js';
 import RevenueReport from '../models/RevenueReport.js';
 import logger from '../utils/logger.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 
 class RevenueOptimizationController {
   // Generate comprehensive optimization strategy
@@ -162,7 +162,7 @@ class RevenueOptimizationController {
     } = req.body;
 
     if (!startDate || !endDate) {
-      throw new AppError('Start date and end date are required', 400);
+      throw new ApplicationError('Start date and end date are required', 400);
     }
 
     const report = await RevenueReport.generateReport(hotelId, {
@@ -248,7 +248,7 @@ class RevenueOptimizationController {
     });
 
     if (!report) {
-      throw new AppError('Revenue report not found', 404);
+      throw new ApplicationError('Revenue report not found', 404);
     }
 
     res.status(200).json({

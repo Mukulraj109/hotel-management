@@ -2,7 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import SupplyRequest from '../models/SupplyRequest.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
@@ -81,7 +81,7 @@ router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
 
   // Validate hotel access for admin users
   if (req.user.role === 'admin' && !req.body.hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   // Set department from user if not provided and user is staff
@@ -255,7 +255,7 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   try {
@@ -342,17 +342,17 @@ router.get('/:id', catchAsync(async (req, res) => {
     .populate('attachments.uploadedBy', 'name');
 
   if (!supplyRequest) {
-    throw new AppError('Supply request not found', 404);
+    throw new ApplicationError('Supply request not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff') {
     if (supplyRequest.hotelId._id.toString() !== req.user.hotelId.toString()) {
-      throw new AppError('You can only view requests for your hotel', 403);
+      throw new ApplicationError('You can only view requests for your hotel', 403);
     }
     // Staff can only view their own requests unless they're managers
     if (req.user.role !== 'manager' && supplyRequest.requestedBy._id.toString() !== req.user._id.toString()) {
-      throw new AppError('You can only view your own requests', 403);
+      throw new ApplicationError('You can only view your own requests', 403);
     }
   }
 
@@ -404,23 +404,23 @@ router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =>
   const supplyRequest = await SupplyRequest.findById(req.params.id);
   
   if (!supplyRequest) {
-    throw new AppError('Supply request not found', 404);
+    throw new ApplicationError('Supply request not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff') {
     if (supplyRequest.hotelId.toString() !== req.user.hotelId.toString()) {
-      throw new AppError('You can only update requests for your hotel', 403);
+      throw new ApplicationError('You can only update requests for your hotel', 403);
     }
     // Staff can only update their own pending requests
     if (supplyRequest.requestedBy.toString() !== req.user._id.toString() && req.user.role !== 'manager') {
-      throw new AppError('You can only update your own requests', 403);
+      throw new ApplicationError('You can only update your own requests', 403);
     }
   }
 
   // Don't allow updates to approved/ordered requests by regular staff
   if (['approved', 'ordered', 'received'].includes(supplyRequest.status) && req.user.role === 'staff' && req.user.role !== 'manager') {
-    throw new AppError('Cannot update approved or processed requests', 400);
+    throw new ApplicationError('Cannot update approved or processed requests', 400);
   }
 
   const allowedUpdates = [
@@ -482,16 +482,16 @@ router.post('/:id/approve', authorize('admin', 'manager'), catchAsync(async (req
   const supplyRequest = await SupplyRequest.findById(req.params.id);
   
   if (!supplyRequest) {
-    throw new AppError('Supply request not found', 404);
+    throw new ApplicationError('Supply request not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'manager' && supplyRequest.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only approve requests for your hotel', 403);
+    throw new ApplicationError('You can only approve requests for your hotel', 403);
   }
 
   if (supplyRequest.status !== 'pending') {
-    throw new AppError('Only pending requests can be approved', 400);
+    throw new ApplicationError('Only pending requests can be approved', 400);
   }
 
   await supplyRequest.approve(req.user._id, notes);
@@ -551,16 +551,16 @@ router.post('/:id/reject', authorize('admin', 'manager'), catchAsync(async (req,
   const supplyRequest = await SupplyRequest.findById(req.params.id);
   
   if (!supplyRequest) {
-    throw new AppError('Supply request not found', 404);
+    throw new ApplicationError('Supply request not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'manager' && supplyRequest.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only reject requests for your hotel', 403);
+    throw new ApplicationError('You can only reject requests for your hotel', 403);
   }
 
   if (supplyRequest.status !== 'pending') {
-    throw new AppError('Only pending requests can be rejected', 400);
+    throw new ApplicationError('Only pending requests can be rejected', 400);
   }
 
   await supplyRequest.reject(req.user._id, reason);
@@ -617,16 +617,16 @@ router.post('/:id/order', authorize('admin', 'manager', 'purchasing'), catchAsyn
   const supplyRequest = await SupplyRequest.findById(req.params.id);
   
   if (!supplyRequest) {
-    throw new AppError('Supply request not found', 404);
+    throw new ApplicationError('Supply request not found', 404);
   }
 
   // Check access permissions
   if (['manager', 'purchasing'].includes(req.user.role) && supplyRequest.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only process orders for your hotel', 403);
+    throw new ApplicationError('You can only process orders for your hotel', 403);
   }
 
   if (supplyRequest.status !== 'approved') {
-    throw new AppError('Only approved requests can be ordered', 400);
+    throw new ApplicationError('Only approved requests can be ordered', 400);
   }
 
   const purchaseOrderData = purchaseOrder ? {
@@ -698,21 +698,21 @@ router.post('/:id/items/:itemIndex/receive', authorize('staff', 'admin'), catchA
   const supplyRequest = await SupplyRequest.findById(req.params.id);
   
   if (!supplyRequest) {
-    throw new AppError('Supply request not found', 404);
+    throw new ApplicationError('Supply request not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && supplyRequest.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only receive items for your hotel', 403);
+    throw new ApplicationError('You can only receive items for your hotel', 403);
   }
 
   if (!['ordered', 'partial_received'].includes(supplyRequest.status)) {
-    throw new AppError('Can only receive items from ordered requests', 400);
+    throw new ApplicationError('Can only receive items from ordered requests', 400);
   }
 
   const itemIdx = parseInt(itemIndex);
   if (itemIdx < 0 || itemIdx >= supplyRequest.items.length) {
-    throw new AppError('Invalid item index', 400);
+    throw new ApplicationError('Invalid item index', 400);
   }
 
   // Update item with actual cost and invoice if provided
@@ -756,7 +756,7 @@ router.get('/pending-approvals', authorize('admin', 'manager'), catchAsync(async
   const hotelId = req.user.role === 'manager' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   const pendingRequests = await SupplyRequest.getPendingApprovals(hotelId);
@@ -791,7 +791,7 @@ router.get('/overdue', authorize('staff', 'admin'), catchAsync(async (req, res) 
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   const overdueRequests = await SupplyRequest.getOverdueRequests(hotelId);

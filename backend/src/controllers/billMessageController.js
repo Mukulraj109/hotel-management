@@ -1,6 +1,6 @@
 import BillMessage from '../models/BillMessage.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -39,7 +39,7 @@ class BillMessageController {
 
     // Validate required fields
     if (!name || !title || !messageType || !content) {
-      return next(new AppError('Name, title, message type, and content are required', 400));
+      return next(new ApplicationError('Name, title, message type, and content are required', 400));
     }
 
     // Check for duplicate message name in the same hotel
@@ -49,7 +49,7 @@ class BillMessageController {
     });
 
     if (existingMessage) {
-      return next(new AppError('Message with this name already exists', 409));
+      return next(new ApplicationError('Message with this name already exists', 409));
     }
 
     const messageData = {
@@ -177,7 +177,7 @@ class BillMessageController {
       .populate('createdBy updatedBy', 'firstName lastName email');
 
     if (!message) {
-      return next(new AppError('Bill message not found', 404));
+      return next(new ApplicationError('Bill message not found', 404));
     }
 
     res.status(200).json({
@@ -198,7 +198,7 @@ class BillMessageController {
     });
 
     if (!message) {
-      return next(new AppError('Bill message not found', 404));
+      return next(new ApplicationError('Bill message not found', 404));
     }
 
     // Check for duplicate name if name is being updated
@@ -210,7 +210,7 @@ class BillMessageController {
       });
 
       if (existingMessage) {
-        return next(new AppError('Message with this name already exists', 409));
+        return next(new ApplicationError('Message with this name already exists', 409));
       }
     }
 
@@ -248,7 +248,7 @@ class BillMessageController {
     });
 
     if (!message) {
-      return next(new AppError('Bill message not found', 404));
+      return next(new ApplicationError('Bill message not found', 404));
     }
 
     // Check if message is being used
@@ -308,7 +308,7 @@ class BillMessageController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to get messages by type: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to get messages by type: ${error.message}`, 400));
     }
   });
 
@@ -363,7 +363,7 @@ class BillMessageController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to get active messages: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to get active messages: ${error.message}`, 400));
     }
   });
 
@@ -380,7 +380,7 @@ class BillMessageController {
     });
 
     if (!message) {
-      return next(new AppError('Bill message not found', 404));
+      return next(new ApplicationError('Bill message not found', 404));
     }
 
     try {
@@ -403,7 +403,7 @@ class BillMessageController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to process message: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to process message: ${error.message}`, 400));
     }
   });
 
@@ -420,7 +420,7 @@ class BillMessageController {
     });
 
     if (!message) {
-      return next(new AppError('Bill message not found', 404));
+      return next(new ApplicationError('Bill message not found', 404));
     }
 
     try {
@@ -433,7 +433,7 @@ class BillMessageController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to get translation: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to get translation: ${error.message}`, 400));
     }
   });
 
@@ -445,7 +445,7 @@ class BillMessageController {
     const { language, content, htmlContent, title } = req.body;
 
     if (!language || !content) {
-      return next(new AppError('Language and content are required', 400));
+      return next(new ApplicationError('Language and content are required', 400));
     }
 
     const message = await BillMessage.findOne({
@@ -454,7 +454,7 @@ class BillMessageController {
     });
 
     if (!message) {
-      return next(new AppError('Bill message not found', 404));
+      return next(new ApplicationError('Bill message not found', 404));
     }
 
     try {
@@ -484,7 +484,7 @@ class BillMessageController {
         message: 'Translation added successfully'
       });
     } catch (error) {
-      return next(new AppError(`Failed to add translation: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to add translation: ${error.message}`, 400));
     }
   });
 
@@ -544,7 +544,7 @@ class BillMessageController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to get message analytics: ${error.message}`, 500));
+      return next(new ApplicationError(`Failed to get message analytics: ${error.message}`, 500));
     }
   });
 
@@ -560,7 +560,7 @@ class BillMessageController {
     });
 
     if (!message) {
-      return next(new AppError('Bill message not found', 404));
+      return next(new ApplicationError('Bill message not found', 404));
     }
 
     try {
@@ -571,7 +571,7 @@ class BillMessageController {
         message: 'Message usage updated successfully'
       });
     } catch (error) {
-      return next(new AppError(`Failed to update message usage: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to update message usage: ${error.message}`, 400));
     }
   });
 
@@ -588,7 +588,7 @@ class BillMessageController {
     });
 
     if (!message) {
-      return next(new AppError('Bill message not found', 404));
+      return next(new ApplicationError('Bill message not found', 404));
     }
 
     try {
@@ -609,7 +609,7 @@ class BillMessageController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to preview message: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to preview message: ${error.message}`, 400));
     }
   });
 }

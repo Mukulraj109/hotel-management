@@ -66,13 +66,33 @@ class TapeChartController {
     try {
       const { roomId } = req.params;
       const { startDate, endDate } = req.query;
-      
+
       const dateRange = {};
       if (startDate) dateRange.startDate = startDate;
       if (endDate) dateRange.endDate = endDate;
 
       const history = await tapeChartService.getRoomStatusHistory(roomId, dateRange);
       res.json({ success: true, data: history });
+    } catch (error) {
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  async getAvailableRooms(req, res) {
+    try {
+      const hotelId = req.user.hotelId;
+      const { checkIn, checkOut, roomType, floor, guestCount } = req.query;
+
+      const filters = {
+        checkIn,
+        checkOut,
+        roomType,
+        floor: floor ? parseInt(floor) : undefined,
+        guestCount: guestCount ? parseInt(guestCount) : undefined
+      };
+
+      const availableRooms = await tapeChartService.getAvailableRooms(hotelId, filters);
+      res.json({ success: true, data: availableRooms });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
     }
@@ -393,7 +413,8 @@ class TapeChartController {
   // Dashboard Data
   async getTapeChartDashboard(req, res) {
     try {
-      const dashboard = await tapeChartService.generateTapeChartDashboard();
+      const hotelId = req.user.hotelId;
+      const dashboard = await tapeChartService.generateTapeChartDashboard(hotelId);
       res.json({ success: true, data: dashboard });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });

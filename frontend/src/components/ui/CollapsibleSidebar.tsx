@@ -13,7 +13,7 @@ import {
   Settings,
   BarChart3,
   FileText,
-  DollarSign,
+  IndianRupee,
   UserCheck,
   AlertTriangle,
   Clock,
@@ -172,7 +172,7 @@ const CollapsibleSidebar: React.FC<CollapsibleSidebarProps> = ({
         {
           id: 'revenue',
           label: 'Revenue',
-          icon: <DollarSign className="w-3 h-3" />,
+          icon: <IndianRupee className="w-3 h-3" />,
           onClick: () => console.log('Revenue report clicked')
         },
         {

@@ -1,6 +1,6 @@
 import User from '../models/User.js';
 import AuditLog from '../models/AuditLog.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import mongoose from 'mongoose';
 
 class UserAnalyticsService {
@@ -81,7 +81,7 @@ class UserAnalyticsService {
         loyaltyRate: result.totalUsers > 0 ? (result.loyaltyMembers / result.totalUsers) * 100 : 0
       };
     } catch (error) {
-      throw new AppError('Failed to fetch user analytics', 500);
+      throw new ApplicationError('Failed to fetch user analytics', 500);
     }
   }
 
@@ -164,7 +164,7 @@ class UserAnalyticsService {
         averageActivitiesPerUser: result.uniqueUsers.length > 0 ? result.totalActivities / result.uniqueUsers.length : 0
       };
     } catch (error) {
-      throw new AppError('Failed to fetch user activity metrics', 500);
+      throw new ApplicationError('Failed to fetch user activity metrics', 500);
     }
   }
 
@@ -264,7 +264,7 @@ class UserAnalyticsService {
         recentActivityRate: result.totalUsers > 0 ? (result.usersWithRecentActivity / result.totalUsers) * 100 : 0
       };
     } catch (error) {
-      throw new AppError('Failed to fetch user performance metrics', 500);
+      throw new ApplicationError('Failed to fetch user performance metrics', 500);
     }
   }
 
@@ -326,7 +326,7 @@ class UserAnalyticsService {
         segmentBy
       };
     } catch (error) {
-      throw new AppError('Failed to fetch user segmentation', 500);
+      throw new ApplicationError('Failed to fetch user segmentation', 500);
     }
   }
 
@@ -400,7 +400,7 @@ class UserAnalyticsService {
         averageEngagement: 0
       };
     } catch (error) {
-      throw new AppError('Failed to fetch user engagement metrics', 500);
+      throw new ApplicationError('Failed to fetch user engagement metrics', 500);
     }
   }
 
@@ -421,7 +421,7 @@ class UserAnalyticsService {
 
       return users;
     } catch (error) {
-      throw new AppError('Failed to fetch recent users', 500);
+      throw new ApplicationError('Failed to fetch recent users', 500);
     }
   }
 
@@ -473,7 +473,7 @@ class UserAnalyticsService {
 
       return await User.aggregate(pipeline);
     } catch (error) {
-      throw new AppError('Failed to fetch top users', 500);
+      throw new ApplicationError('Failed to fetch top users', 500);
     }
   }
 
@@ -546,7 +546,7 @@ class UserAnalyticsService {
 
       return await User.aggregate(pipeline);
     } catch (error) {
-      throw new AppError('Failed to fetch top performing users', 500);
+      throw new ApplicationError('Failed to fetch top performing users', 500);
     }
   }
 
@@ -679,7 +679,7 @@ class UserAnalyticsService {
       
       return analytics;
     } catch (error) {
-      throw new AppError('Failed to export user analytics', 500);
+      throw new ApplicationError('Failed to export user analytics', 500);
     }
   }
 

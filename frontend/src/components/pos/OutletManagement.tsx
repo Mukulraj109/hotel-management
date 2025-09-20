@@ -84,18 +84,36 @@ const OutletManagement: React.FC = () => {
 
   const fetchOutlets = async () => {
     try {
+      console.log('Fetching outlets...');
       const response = await api.get('/pos/outlets');
+      console.log('Fetch outlets response:', response.data);
+      
       if (response.data.success) {
-        setOutlets(response.data.data);
+        setOutlets(response.data.data || []);
+      } else {
+        console.error('Failed to fetch outlets:', response.data.message);
+        setOutlets([]);
       }
     } catch (error) {
       console.error('Error fetching outlets:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to fetch outlets';
+      console.error('Detailed error:', errorMessage);
+      setOutlets([]);
     }
   };
 
   const handleCreateOutlet = async () => {
+    // Validate required fields
+    if (!formData.name || !formData.type || !formData.location) {
+      alert('Please fill in all required fields: Name, Type, and Location');
+      return;
+    }
+
     try {
+      console.log('Creating outlet with data:', formData);
       const response = await api.post('/pos/outlets', formData);
+      
+      console.log('Create outlet response:', response.data);
       
       if (response.data.success) {
         fetchOutlets();
@@ -107,15 +125,25 @@ const OutletManagement: React.FC = () => {
       }
     } catch (error) {
       console.error('Error creating outlet:', error);
-      alert('Error creating outlet');
+      const errorMessage = error.response?.data?.message || error.message || 'Unknown error occurred';
+      alert('Error creating outlet: ' + errorMessage);
     }
   };
 
   const handleUpdateOutlet = async () => {
     if (!selectedOutlet) return;
 
+    // Validate required fields
+    if (!formData.name || !formData.type || !formData.location) {
+      alert('Please fill in all required fields: Name, Type, and Location');
+      return;
+    }
+
     try {
+      console.log('Updating outlet with data:', formData);
       const response = await api.put(`/pos/outlets/${selectedOutlet._id}`, formData);
+      
+      console.log('Update outlet response:', response.data);
       
       if (response.data.success) {
         fetchOutlets();
@@ -128,7 +156,8 @@ const OutletManagement: React.FC = () => {
       }
     } catch (error) {
       console.error('Error updating outlet:', error);
-      alert('Error updating outlet');
+      const errorMessage = error.response?.data?.message || error.message || 'Unknown error occurred';
+      alert('Error updating outlet: ' + errorMessage);
     }
   };
 

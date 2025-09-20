@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  DollarSign,
+  IndianRupee,
   FileText,
   CreditCard,
   AlertTriangle,
@@ -276,7 +276,7 @@ export function InventoryBillingIntegration({
       case 'inventory_charge': return <Package className="w-4 h-4" />;
       case 'room_damage': return <AlertTriangle className="w-4 h-4" />;
       case 'item_replacement': return <RefreshCw className="w-4 h-4" />;
-      case 'complimentary_overage': return <DollarSign className="w-4 h-4" />;
+      case 'complimentary_overage': return <IndianRupee className="w-4 h-4" />;
       default: return <Receipt className="w-4 h-4" />;
     }
   };

@@ -15,41 +15,44 @@ interface AssignmentRuleFormProps {
   onSuccess: (rule: AssignmentRule) => void;
   onCancel: () => void;
   assignmentRule?: AssignmentRule;
+  editRule?: AssignmentRule;
 }
 
 const AssignmentRuleForm: React.FC<AssignmentRuleFormProps> = ({
   onSuccess,
   onCancel,
-  assignmentRule
+  assignmentRule,
+  editRule
 }) => {
+  const currentRule = editRule || assignmentRule;
   const [formData, setFormData] = useState<CreateAssignmentRuleData>({
-    ruleName: assignmentRule?.ruleName || '',
-    priority: assignmentRule?.priority || 1,
+    ruleName: currentRule?.ruleName || '',
+    priority: currentRule?.priority || 1,
     conditions: {
-      guestType: assignmentRule?.conditions.guestType || [],
-      reservationType: assignmentRule?.conditions.reservationType || [],
-      roomTypes: assignmentRule?.conditions.roomTypes || [],
-      lengthOfStay: assignmentRule?.conditions.lengthOfStay || {},
-      advanceBooking: assignmentRule?.conditions.advanceBooking || {},
-      seasonality: assignmentRule?.conditions.seasonality || [],
-      occupancyLevel: assignmentRule?.conditions.occupancyLevel || {}
+      guestType: currentRule?.conditions.guestType || [],
+      reservationType: currentRule?.conditions.reservationType || [],
+      roomTypes: currentRule?.conditions.roomTypes || [],
+      lengthOfStay: currentRule?.conditions.lengthOfStay || {},
+      advanceBooking: currentRule?.conditions.advanceBooking || {},
+      seasonality: currentRule?.conditions.seasonality || [],
+      occupancyLevel: currentRule?.conditions.occupancyLevel || {}
     },
     actions: {
-      preferredFloors: assignmentRule?.actions.preferredFloors || [],
-      preferredRoomNumbers: assignmentRule?.actions.preferredRoomNumbers || [],
-      avoidRoomNumbers: assignmentRule?.actions.avoidRoomNumbers || [],
-      upgradeEligible: assignmentRule?.actions.upgradeEligible || false,
-      upgradeFromTypes: assignmentRule?.actions.upgradeFromTypes || [],
-      upgradeToTypes: assignmentRule?.actions.upgradeToTypes || [],
-      amenityPackages: assignmentRule?.actions.amenityPackages || [],
-      specialServices: assignmentRule?.actions.specialServices || [],
-      rateOverrides: assignmentRule?.actions.rateOverrides || {}
+      preferredFloors: currentRule?.actions.preferredFloors || [],
+      preferredRoomNumbers: currentRule?.actions.preferredRoomNumbers || [],
+      avoidRoomNumbers: currentRule?.actions.avoidRoomNumbers || [],
+      upgradeEligible: currentRule?.actions.upgradeEligible || false,
+      upgradeFromTypes: currentRule?.actions.upgradeFromTypes || [],
+      upgradeToTypes: currentRule?.actions.upgradeToTypes || [],
+      amenityPackages: currentRule?.actions.amenityPackages || [],
+      specialServices: currentRule?.actions.specialServices || [],
+      rateOverrides: currentRule?.actions.rateOverrides || {}
     },
     restrictions: {
-      maxUpgrades: assignmentRule?.restrictions.maxUpgrades || 0,
-      blockoutDates: assignmentRule?.restrictions.blockoutDates || [],
-      minimumRevenue: assignmentRule?.restrictions.minimumRevenue || 0,
-      requiredApproval: assignmentRule?.restrictions.requiredApproval || 'none'
+      maxUpgrades: currentRule?.restrictions.maxUpgrades || 0,
+      blockoutDates: currentRule?.restrictions.blockoutDates || [],
+      minimumRevenue: currentRule?.restrictions.minimumRevenue || 0,
+      requiredApproval: currentRule?.restrictions.requiredApproval || 'none'
     }
   });
 
@@ -178,8 +181,8 @@ const AssignmentRuleForm: React.FC<AssignmentRuleFormProps> = ({
       };
 
       let result: AssignmentRule;
-      if (assignmentRule) {
-        result = await assignmentRulesService.updateAssignmentRule(assignmentRule._id, ruleData);
+      if (currentRule) {
+        result = await assignmentRulesService.updateAssignmentRule(currentRule._id, ruleData);
       } else {
         result = await assignmentRulesService.createAssignmentRule(ruleData);
       }

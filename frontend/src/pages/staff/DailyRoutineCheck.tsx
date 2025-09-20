@@ -83,20 +83,31 @@ export default function DailyRoutineCheck() {
     }
   };
 
-  const addToCart = (item: RoomInventoryItem, action: 'replace' | 'add' | 'laundry' | 'reuse', quantity: number = 1) => {
-    console.log('Adding to cart:', { item, action, quantity });
-    
-    const existingItem = cart.find(cartItem => 
+  const addToCart = (item: RoomInventoryItem, action: 'replace' | 'add' | 'laundry' | 'reuse', quantity: number = 1, isFixedInventory: boolean = false) => {
+    console.log('Adding to cart:', { item, action, quantity, isFixedInventory });
+
+    const existingItem = cart.find(cartItem =>
       cartItem.itemId === item._id && cartItem.action === action
     );
 
     if (existingItem) {
-      console.log('Updating existing cart item');
-      setCart(cart.map(cartItem => 
-        cartItem.itemId === item._id && cartItem.action === action
-          ? { ...cartItem, quantity: cartItem.quantity + quantity }
-          : cartItem
-      ));
+      if (isFixedInventory) {
+        // For Fixed Inventory: Toggle behavior - remove item if already exists
+        console.log('Removing existing fixed inventory item (toggle off)');
+        setCart(cart.filter(cartItem =>
+          !(cartItem.itemId === item._id && cartItem.action === action)
+        ));
+        toast.success(`${action} action removed from cart for ${item.name}`);
+      } else {
+        // For Daily Inventory: Increment behavior (existing functionality)
+        console.log('Updating existing cart item');
+        setCart(cart.map(cartItem =>
+          cartItem.itemId === item._id && cartItem.action === action
+            ? { ...cartItem, quantity: cartItem.quantity + quantity }
+            : cartItem
+        ));
+        toast.success(`${action} action updated in cart for ${item.name}`);
+      }
     } else {
       console.log('Adding new cart item');
       const newCartItem: CartItem = {
@@ -107,16 +118,17 @@ export default function DailyRoutineCheck() {
         unitPrice: item.unitPrice || 0,
         totalPrice: (item.unitPrice || 0) * quantity,
         action,
-        notes: action === 'laundry' ? 'Sent for laundry' : 
+        notes: action === 'laundry' ? 'Sent for laundry' :
                action === 'reuse' ? 'Marked for reuse' : ''
       };
       setCart([...cart, newCartItem]);
+      toast.success(`${action} action added to cart for ${item.name}`);
     }
-    
+
     // Add visual feedback
     const itemKey = `${item._id}-${action}`;
     setAddedItems(prev => new Set([...prev, itemKey]));
-    
+
     // Remove visual feedback after 2 seconds
     setTimeout(() => {
       setAddedItems(prev => {
@@ -125,9 +137,8 @@ export default function DailyRoutineCheck() {
         return newSet;
       });
     }, 2000);
-    
+
     console.log('Cart after update:', cart);
-    toast.success(`${action} action added to cart for ${item.name}`);
   };
 
   const removeFromCart = (itemId: string, action: string) => {
@@ -150,9 +161,27 @@ export default function DailyRoutineCheck() {
   };
 
   const isItemInCart = (itemId: string, action: string) => {
-    return cart.some(cartItem => 
+    return cart.some(cartItem =>
       cartItem.itemId === itemId && cartItem.action === action
     );
+  };
+
+  // Helper function to determine which actions are appropriate for each category
+  const getAvailableActions = (category: string) => {
+    const actions = {
+      add: true, // All items can be added
+      laundry: false,
+      reuse: true // All items can be reused
+    };
+
+    // Categories that can go to laundry (textiles, linens, etc.)
+    const laundryCategories = ['bedroom', 'bathroom'];
+
+    if (laundryCategories.includes(category.toLowerCase())) {
+      actions.laundry = true;
+    }
+
+    return actions;
   };
 
   const getStatusColor = (status: string) => {
@@ -186,68 +215,77 @@ export default function DailyRoutineCheck() {
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Daily Routine Check</h1>
-        <p className="text-gray-600">Perform daily inventory checks for all rooms</p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Mobile-First Header */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10 px-4 py-4 sm:px-6">
+        <div className="max-w-7xl mx-auto">
+          <h1 className="text-xl sm:text-3xl font-bold text-gray-900 mb-1 sm:mb-2">Daily Routine Check</h1>
+          <p className="text-sm sm:text-base text-gray-600">Perform daily inventory checks for all rooms</p>
+        </div>
       </div>
 
-      {/* Search and Filter */}
-      <div className="mb-6 flex flex-col sm:flex-row gap-4">
-        <div className="flex-1">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-            <Input
-              placeholder="Search rooms..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-20 sm:pb-6">
+        {/* Mobile-Optimized Search and Filter */}
+        <div className="mb-4 sm:mb-6 mt-4 sm:mt-8">
+          <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Search rooms..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 h-12 sm:h-10 text-base sm:text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <select
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                className="px-3 py-3 sm:py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-base sm:text-sm min-w-[120px] touch-manipulation"
+              >
+                <option value="all">All Rooms</option>
+                <option value="pending">Pending</option>
+                <option value="completed">Completed</option>
+                <option value="overdue">Overdue</option>
+              </select>
+              <Button
+                onClick={fetchRooms}
+                className="flex items-center gap-2 px-4 py-3 sm:py-2 h-12 sm:h-10 touch-manipulation"
+              >
+                <RefreshCw className="h-4 w-4" />
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+            </div>
           </div>
         </div>
-        <div className="flex gap-2">
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Rooms</option>
-            <option value="pending">Pending</option>
-            <option value="completed">Completed</option>
-            <option value="overdue">Overdue</option>
-          </select>
-          <Button onClick={fetchRooms} className="flex items-center gap-2">
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </Button>
-        </div>
-      </div>
 
-      {/* Cart Summary */}
-      {cart.length > 0 && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <ShoppingCart className="h-5 w-5 text-blue-600" />
-                Cart ({cart.length} items)
-              </span>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setShowCart(!showCart)}
-                >
-                  {showCart ? 'Hide Details' : 'Show Details'}
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setCart([])}
-                  className="text-red-600 hover:text-red-700"
-                >
-                  Clear Cart
-                </Button>
-              </div>
+        {/* Mobile-Optimized Cart Summary */}
+        {cart.length > 0 && (
+          <Card className="mb-4 sm:mb-6">
+            <CardHeader>
+              <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <span className="flex items-center gap-2">
+                  <ShoppingCart className="h-5 w-5 text-blue-600" />
+                  Cart ({cart.length} items)
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowCart(!showCart)}
+                    className="flex-1 sm:flex-none h-10 sm:h-9 touch-manipulation"
+                  >
+                    {showCart ? 'Hide Details' : 'Show Details'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setCart([])}
+                    className="flex-1 sm:flex-none h-10 sm:h-9 text-red-600 hover:text-red-700 touch-manipulation"
+                  >
+                    Clear Cart
+                  </Button>
+                </div>
             </CardTitle>
           </CardHeader>
           {showCart && (
@@ -425,17 +463,16 @@ export default function DailyRoutineCheck() {
                           <Button
                             size="sm"
                             variant={isItemInCart(item._id, 'replace') ? "default" : "outline"}
-                            onClick={() => addToCart(item, 'replace')}
+                            onClick={() => addToCart(item, 'replace', 1, true)}
                             className={`transition-all duration-200 ${
-                              isItemInCart(item._id, 'replace') 
-                                ? 'bg-red-600 hover:bg-red-700 text-white' 
+                              isItemInCart(item._id, 'replace')
+                                ? 'bg-red-600 hover:bg-red-700 text-white'
                                 : 'text-red-600 hover:text-red-700'
                             }`}
                           >
                             {isItemInCart(item._id, 'replace') ? (
                               <span className="flex items-center gap-1">
                                 <CheckCircle className="h-4 w-4" />
-                                {getCartItemQuantity(item._id, 'replace')}
                               </span>
                             ) : (
                               'Replace'
@@ -444,17 +481,16 @@ export default function DailyRoutineCheck() {
                           <Button
                             size="sm"
                             variant={isItemInCart(item._id, 'reuse') ? "default" : "outline"}
-                            onClick={() => addToCart(item, 'reuse')}
+                            onClick={() => addToCart(item, 'reuse', 1, true)}
                             className={`transition-all duration-200 ${
-                              isItemInCart(item._id, 'reuse') 
-                                ? 'bg-green-600 hover:bg-green-700 text-white' 
+                              isItemInCart(item._id, 'reuse')
+                                ? 'bg-green-600 hover:bg-green-700 text-white'
                                 : 'text-green-600 hover:text-green-700'
                             }`}
                           >
                             {isItemInCart(item._id, 'reuse') ? (
                               <span className="flex items-center gap-1">
                                 <CheckCircle className="h-4 w-4" />
-                                {getCartItemQuantity(item._id, 'reuse')}
                               </span>
                             ) : (
                               'Reuse'
@@ -503,63 +539,76 @@ export default function DailyRoutineCheck() {
                          </div>
                          <p className="text-sm text-gray-600 mb-3">{item.description}</p>
                          <div className="flex gap-2">
-                           <Button
-                             size="sm"
-                             variant={isItemInCart(item._id, 'add') ? "default" : "outline"}
-                             onClick={() => addToCart(item, 'add')}
-                             className={`transition-all duration-200 ${
-                               isItemInCart(item._id, 'add') 
-                                 ? 'bg-blue-600 hover:bg-blue-700 text-white' 
-                                 : 'text-blue-600 hover:text-blue-700'
-                             }`}
-                           >
-                             {isItemInCart(item._id, 'add') ? (
-                               <span className="flex items-center gap-1">
-                                 <CheckCircle className="h-4 w-4" />
-                                 {getCartItemQuantity(item._id, 'add')}
-                               </span>
-                             ) : (
-                               'Add'
-                             )}
-                           </Button>
-                           <Button
-                             size="sm"
-                             variant={isItemInCart(item._id, 'laundry') ? "default" : "outline"}
-                             onClick={() => addToCart(item, 'laundry')}
-                             className={`transition-all duration-200 ${
-                               isItemInCart(item._id, 'laundry') 
-                                 ? 'bg-yellow-600 hover:bg-yellow-700 text-white' 
-                                 : 'text-yellow-600 hover:text-yellow-700'
-                             }`}
-                           >
-                             {isItemInCart(item._id, 'laundry') ? (
-                               <span className="flex items-center gap-1">
-                                 <RotateCcw className="h-4 w-4" />
-                                 {getCartItemQuantity(item._id, 'laundry')}
-                               </span>
-                             ) : (
-                               'Laundry'
-                             )}
-                           </Button>
-                           <Button
-                             size="sm"
-                             variant={isItemInCart(item._id, 'reuse') ? "default" : "outline"}
-                             onClick={() => addToCart(item, 'reuse')}
-                             className={`transition-all duration-200 ${
-                               isItemInCart(item._id, 'reuse') 
-                                 ? 'bg-green-600 hover:bg-green-700 text-white' 
-                                 : 'text-green-600 hover:text-green-700'
-                             }`}
-                           >
-                             {isItemInCart(item._id, 'reuse') ? (
-                               <span className="flex items-center gap-1">
-                                 <CheckCircle className="h-4 w-4" />
-                                 {getCartItemQuantity(item._id, 'reuse')}
-                               </span>
-                             ) : (
-                               'Reuse'
-                             )}
-                           </Button>
+                           {(() => {
+                             const availableActions = getAvailableActions(item.category);
+                             return (
+                               <>
+                                 {availableActions.add && (
+                                   <Button
+                                     size="sm"
+                                     variant={isItemInCart(item._id, 'add') ? "default" : "outline"}
+                                     onClick={() => addToCart(item, 'add')}
+                                     className={`transition-all duration-200 ${
+                                       isItemInCart(item._id, 'add')
+                                         ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                                         : 'text-blue-600 hover:text-blue-700'
+                                     }`}
+                                   >
+                                     {isItemInCart(item._id, 'add') ? (
+                                       <span className="flex items-center gap-1">
+                                         <CheckCircle className="h-4 w-4" />
+                                         {getCartItemQuantity(item._id, 'add')}
+                                       </span>
+                                     ) : (
+                                       'Add'
+                                     )}
+                                   </Button>
+                                 )}
+                                 {availableActions.laundry && (
+                                   <Button
+                                     size="sm"
+                                     variant={isItemInCart(item._id, 'laundry') ? "default" : "outline"}
+                                     onClick={() => addToCart(item, 'laundry')}
+                                     className={`transition-all duration-200 ${
+                                       isItemInCart(item._id, 'laundry')
+                                         ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
+                                         : 'text-yellow-600 hover:text-yellow-700'
+                                     }`}
+                                   >
+                                     {isItemInCart(item._id, 'laundry') ? (
+                                       <span className="flex items-center gap-1">
+                                         <RotateCcw className="h-4 w-4" />
+                                         {getCartItemQuantity(item._id, 'laundry')}
+                                       </span>
+                                     ) : (
+                                       'Laundry'
+                                     )}
+                                   </Button>
+                                 )}
+                                 {availableActions.reuse && (
+                                   <Button
+                                     size="sm"
+                                     variant={isItemInCart(item._id, 'reuse') ? "default" : "outline"}
+                                     onClick={() => addToCart(item, 'reuse')}
+                                     className={`transition-all duration-200 ${
+                                       isItemInCart(item._id, 'reuse')
+                                         ? 'bg-green-600 hover:bg-green-700 text-white'
+                                         : 'text-green-600 hover:text-green-700'
+                                     }`}
+                                   >
+                                     {isItemInCart(item._id, 'reuse') ? (
+                                       <span className="flex items-center gap-1">
+                                         <CheckCircle className="h-4 w-4" />
+                                         {getCartItemQuantity(item._id, 'reuse')}
+                                       </span>
+                                     ) : (
+                                       'Reuse'
+                                     )}
+                                   </Button>
+                                 )}
+                               </>
+                             );
+                           })()}
                          </div>
                        </div>
                      ))}
@@ -586,6 +635,7 @@ export default function DailyRoutineCheck() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

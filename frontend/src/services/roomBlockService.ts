@@ -80,6 +80,7 @@ export interface RoomBlock {
 }
 
 export interface CreateRoomBlockData {
+  blockId?: string;
   blockName: string;
   groupName: string;
   hotelId: string;
@@ -88,6 +89,7 @@ export interface CreateRoomBlockData {
   startDate: string;
   endDate: string;
   roomIds: string[];
+  totalRooms?: number;
   blockRate?: number;
   contactPerson: {
     name?: string;
@@ -95,7 +97,7 @@ export interface CreateRoomBlockData {
     phone?: string;
     title?: string;
   };
-  billingInstructions: string;
+  billingInstructions: 'master_account' | 'individual_folios' | 'split_billing';
   specialInstructions?: string;
   amenities?: string[];
   cateringRequirements?: string;

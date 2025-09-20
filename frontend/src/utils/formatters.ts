@@ -73,3 +73,56 @@ export function formatPercent(value: number, minimumFractionDigits = 1): string 
     maximumFractionDigits: 2,
   }).format(value);
 }
+
+// ✅ Time formatter (for timestamps)
+export function formatTime(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date;
+
+  return new Intl.DateTimeFormat('en-IN', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(dateObj);
+}
+
+// ✅ DateTime formatter (full date and time)
+export function formatDateTime(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date;
+
+  return new Intl.DateTimeFormat('en-IN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(dateObj);
+}
+
+// ✅ Relative time formatter (e.g., "2 hours ago", "in 3 days")
+export function formatRelativeTime(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  const now = new Date();
+  const diffInMs = dateObj.getTime() - now.getTime();
+  const diffInSec = Math.floor(diffInMs / 1000);
+  const diffInMin = Math.floor(diffInSec / 60);
+  const diffInHour = Math.floor(diffInMin / 60);
+  const diffInDay = Math.floor(diffInHour / 24);
+
+  if (Math.abs(diffInMin) < 1) {
+    return 'just now';
+  } else if (Math.abs(diffInMin) < 60) {
+    const minutes = Math.abs(diffInMin);
+    return diffInMin < 0
+      ? `${minutes} minute${minutes !== 1 ? 's' : ''} ago`
+      : `in ${minutes} minute${minutes !== 1 ? 's' : ''}`;
+  } else if (Math.abs(diffInHour) < 24) {
+    const hours = Math.abs(diffInHour);
+    return diffInHour < 0
+      ? `${hours} hour${hours !== 1 ? 's' : ''} ago`
+      : `in ${hours} hour${hours !== 1 ? 's' : ''}`;
+  } else if (Math.abs(diffInDay) < 30) {
+    const days = Math.abs(diffInDay);
+    return diffInDay < 0
+      ? `${days} day${days !== 1 ? 's' : ''} ago`
+      : `in ${days} day${days !== 1 ? 's' : ''}`;
+  } else {
+    return formatDate(dateObj, 'short');
+  }
+}

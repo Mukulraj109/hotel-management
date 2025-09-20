@@ -18,8 +18,8 @@ const apiMetricsSchema = new mongoose.Schema({
   },
   timestamp: {
     type: Date,
-    required: true,
-    index: true
+    required: true
+    // Note: index defined separately below for compound indexes
   },
   
   // Endpoint Information
@@ -270,17 +270,24 @@ const apiMetricsSchema = new mongoose.Schema({
     }]
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  suppressReservedKeysWarning: true // Suppresses warning for 'errors' field
 });
 
 // Compound indexes for efficient querying
 apiMetricsSchema.index({ hotelId: 1, period: 1, timestamp: -1 });
 apiMetricsSchema.index({ hotelId: 1, 'endpoint.category': 1, timestamp: -1 });
 apiMetricsSchema.index({ hotelId: 1, 'endpoint.path': 1, timestamp: -1 });
+apiMetricsSchema.index({ hotelId: 1, 'endpoint.method': 1, 'endpoint.path': 1 }); // For endpoint lookups
 apiMetricsSchema.index({ timestamp: 1 }); // For cleanup
 
+// Performance optimization indexes
+apiMetricsSchema.index({ hotelId: 1, timestamp: -1, period: 1 }); // Dashboard queries
+apiMetricsSchema.index({ hotelId: 1, 'requests.total': -1 }); // Top endpoints
+apiMetricsSchema.index({ 'endpoint.method': 1, 'endpoint.path': 1, hotelId: 1 }); // Endpoint stats
+
 // TTL index for data retention
-apiMetricsSchema.index({ timestamp: 1 }, { 
+apiMetricsSchema.index({ timestamp: 1 }, {
   expireAfterSeconds: 60 * 60 * 24 * 365 // 1 year retention
 });
 
@@ -385,12 +392,12 @@ apiMetricsSchema.methods.calculatePercentiles = function() {
   this.performance.averageResponseTime = sum / length;
 };
 
-// Aggregate metrics for dashboard
+// Aggregate metrics for dashboard (optimized)
 apiMetricsSchema.statics.getDashboardMetrics = async function(hotelId, timeRange = '24h') {
   const now = new Date();
   let startTime;
   let period = 'hour';
-  
+
   switch (timeRange) {
     case '1h':
       startTime = new Date(now.getTime() - 60 * 60 * 1000);
@@ -411,13 +418,14 @@ apiMetricsSchema.statics.getDashboardMetrics = async function(hotelId, timeRange
     default:
       startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   }
-  
+
+  // Optimized pipeline with proper index usage
   const pipeline = [
     {
       $match: {
         hotelId: new mongoose.Types.ObjectId(hotelId),
-        period: period,
-        timestamp: { $gte: startTime }
+        timestamp: { $gte: startTime },
+        period: period
       }
     },
     {
@@ -429,18 +437,28 @@ apiMetricsSchema.statics.getDashboardMetrics = async function(hotelId, timeRange
         totalErrors: { $sum: '$errors.total' },
         avgResponseTime: { $avg: '$performance.averageResponseTime' },
         totalBandwidth: { $sum: '$bandwidth.totalBytes' },
-        rateLimited: { $sum: '$rateLimiting.totalLimited' }
+        rateLimited: { $sum: '$rateLimiting.totalLimited' },
+        requestsToday: {
+          $sum: {
+            $cond: {
+              if: { $gte: ['$timestamp', new Date(now.setHours(0, 0, 0, 0))] },
+              then: '$requests.total',
+              else: 0
+            }
+          }
+        }
       }
     }
   ];
-  
-  const [summary] = await this.aggregate(pipeline);
-  
+
+  const [summary] = await this.aggregate(pipeline).allowDiskUse(true);
+
   return {
     totalRequests: summary?.totalRequests || 0,
+    requestsToday: summary?.requestsToday || 0,
     successfulRequests: summary?.successfulRequests || 0,
     failedRequests: summary?.failedRequests || 0,
-    errorRate: summary?.totalRequests > 0 
+    errorRate: summary?.totalRequests > 0
       ? ((summary.totalErrors || 0) / summary.totalRequests * 100).toFixed(2)
       : 0,
     averageResponseTime: Math.round(summary?.avgResponseTime || 0),
@@ -449,11 +467,11 @@ apiMetricsSchema.statics.getDashboardMetrics = async function(hotelId, timeRange
   };
 };
 
-// Get top endpoints
+// Get top endpoints (optimized)
 apiMetricsSchema.statics.getTopEndpoints = async function(hotelId, timeRange = '24h', limit = 10) {
   const now = new Date();
   let startTime;
-  
+
   switch (timeRange) {
     case '24h':
       startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -464,12 +482,13 @@ apiMetricsSchema.statics.getTopEndpoints = async function(hotelId, timeRange = '
     default:
       startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   }
-  
+
   return await this.aggregate([
     {
       $match: {
         hotelId: new mongoose.Types.ObjectId(hotelId),
-        timestamp: { $gte: startTime }
+        timestamp: { $gte: startTime },
+        'requests.total': { $gt: 0 } // Only include endpoints with requests
       }
     },
     {
@@ -485,6 +504,11 @@ apiMetricsSchema.statics.getTopEndpoints = async function(hotelId, timeRange = '
       }
     },
     {
+      $match: {
+        totalRequests: { $gt: 0 } // Ensure we have actual data
+      }
+    },
+    {
       $sort: { totalRequests: -1 }
     },
     {
@@ -492,17 +516,83 @@ apiMetricsSchema.statics.getTopEndpoints = async function(hotelId, timeRange = '
     },
     {
       $project: {
+        _id: 0,
         endpoint: {
           $concat: ['$_id.method', ' ', '$_id.path']
         },
+        method: '$_id.method',
+        path: '$_id.path',
         category: '$_id.category',
         requests: '$totalRequests',
         errors: '$totalErrors',
-        avgResponseTime: { $round: '$avgResponseTime' }
+        avgResponseTime: { $round: ['$avgResponseTime', 0] },
+        errorRate: {
+          $cond: {
+            if: { $gt: ['$totalRequests', 0] },
+            then: { $round: [{ $multiply: [{ $divide: ['$totalErrors', '$totalRequests'] }, 100] }, 2] },
+            else: 0
+          }
+        }
+      }
+    }
+  ]).allowDiskUse(true);
+};
+
+// Fast endpoint usage lookup
+apiMetricsSchema.statics.getEndpointUsage = async function(hotelId, method, path, timeRange = '24h') {
+  const now = new Date();
+  let startTime;
+
+  switch (timeRange) {
+    case '1h':
+      startTime = new Date(now.getTime() - 60 * 60 * 1000);
+      break;
+    case '24h':
+      startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      break;
+    case '7d':
+      startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      break;
+    default:
+      startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  }
+
+  const [result] = await this.aggregate([
+    {
+      $match: {
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        'endpoint.method': method,
+        'endpoint.path': path,
+        timestamp: { $gte: startTime }
+      }
+    },
+    {
+      $group: {
+        _id: null,
+        totalRequests: { $sum: '$requests.total' },
+        totalErrors: { $sum: '$errors.total' },
+        avgResponseTime: { $avg: '$performance.averageResponseTime' }
       }
     }
   ]);
+
+  return {
+    requests: result?.totalRequests || 0,
+    errors: result?.totalErrors || 0,
+    avgResponseTime: Math.round(result?.avgResponseTime || 0),
+    errorRate: result?.totalRequests > 0
+      ? ((result.totalErrors || 0) / result.totalRequests * 100).toFixed(2)
+      : 0
+  };
 };
+
+// Pre-hook to ensure indexes
+apiMetricsSchema.pre('save', function() {
+  // Ensure timestamp is indexed properly for queries
+  if (this.isNew && !this.timestamp) {
+    this.timestamp = new Date();
+  }
+});
 
 const APIMetrics = mongoose.model('APIMetrics', apiMetricsSchema);
 export default APIMetrics;

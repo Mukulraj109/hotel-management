@@ -2,7 +2,7 @@ import RoomMapping from '../models/RoomMapping.js';
 import RateMapping from '../models/RateMapping.js';
 import RoomType from '../models/RoomType.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -54,7 +54,7 @@ export const getRoomMapping = catchAsync(async (req, res, next) => {
     .populate('createdBy updatedBy', 'name email');
   
   if (!mapping) {
-    return next(new AppError('Room mapping not found', 404));
+    return next(new ApplicationError('Room mapping not found', 404));
   }
   
   res.status(200).json({
@@ -79,7 +79,7 @@ export const createRoomMapping = catchAsync(async (req, res, next) => {
   // Validate room type exists
   const roomType = await RoomType.findById(pmsRoomTypeId);
   if (!roomType) {
-    return next(new AppError('Room type not found', 404));
+    return next(new ApplicationError('Room type not found', 404));
   }
   
   // Check for duplicate mapping
@@ -89,7 +89,7 @@ export const createRoomMapping = catchAsync(async (req, res, next) => {
   });
   
   if (existingMapping) {
-    return next(new AppError('Channel room ID already mapped', 409));
+    return next(new ApplicationError('Channel room ID already mapped', 409));
   }
   
   const mapping = await RoomMapping.create({
@@ -137,7 +137,7 @@ export const updateRoomMapping = catchAsync(async (req, res, next) => {
     });
     
     if (existingMapping) {
-      return next(new AppError('Channel room ID already mapped', 409));
+      return next(new ApplicationError('Channel room ID already mapped', 409));
     }
   }
   
@@ -148,7 +148,7 @@ export const updateRoomMapping = catchAsync(async (req, res, next) => {
   ).populate('roomTypeDetails', 'name category capacity');
   
   if (!mapping) {
-    return next(new AppError('Room mapping not found', 404));
+    return next(new ApplicationError('Room mapping not found', 404));
   }
   
   logger.info('Room mapping updated', {
@@ -170,7 +170,7 @@ export const deleteRoomMapping = catchAsync(async (req, res, next) => {
   const mapping = await RoomMapping.findById(req.params.id);
   
   if (!mapping) {
-    return next(new AppError('Room mapping not found', 404));
+    return next(new ApplicationError('Room mapping not found', 404));
   }
   
   // Check for associated rate mappings
@@ -179,7 +179,7 @@ export const deleteRoomMapping = catchAsync(async (req, res, next) => {
   });
   
   if (rateMappings > 0) {
-    return next(new AppError(
+    return next(new ApplicationError(
       `Cannot delete room mapping. ${rateMappings} rate mappings depend on it.`, 
       400
     ));
@@ -281,7 +281,7 @@ export const getRateMapping = catchAsync(async (req, res, next) => {
     .populate('createdBy updatedBy', 'name email');
   
   if (!mapping) {
-    return next(new AppError('Rate mapping not found', 404));
+    return next(new ApplicationError('Rate mapping not found', 404));
   }
   
   res.status(200).json({
@@ -306,7 +306,7 @@ export const createRateMapping = catchAsync(async (req, res, next) => {
   // Validate room mapping exists
   const roomMapping = await RoomMapping.findById(roomMappingId);
   if (!roomMapping) {
-    return next(new AppError('Room mapping not found', 404));
+    return next(new ApplicationError('Room mapping not found', 404));
   }
   
   // Check for duplicate rate mapping
@@ -316,7 +316,7 @@ export const createRateMapping = catchAsync(async (req, res, next) => {
   });
   
   if (existingMapping) {
-    return next(new AppError('Channel rate plan ID already mapped for this room mapping', 409));
+    return next(new ApplicationError('Channel rate plan ID already mapped for this room mapping', 409));
   }
   
   const mapping = await RateMapping.create({
@@ -364,7 +364,7 @@ export const updateRateMapping = catchAsync(async (req, res, next) => {
     });
     
     if (existingMapping) {
-      return next(new AppError('Channel rate plan ID already mapped for this room mapping', 409));
+      return next(new ApplicationError('Channel rate plan ID already mapped for this room mapping', 409));
     }
   }
   
@@ -375,7 +375,7 @@ export const updateRateMapping = catchAsync(async (req, res, next) => {
   ).populate('roomMappingDetails channelInfo');
   
   if (!mapping) {
-    return next(new AppError('Rate mapping not found', 404));
+    return next(new ApplicationError('Rate mapping not found', 404));
   }
   
   logger.info('Rate mapping updated', {
@@ -397,7 +397,7 @@ export const deleteRateMapping = catchAsync(async (req, res, next) => {
   const mapping = await RateMapping.findByIdAndDelete(req.params.id);
   
   if (!mapping) {
-    return next(new AppError('Rate mapping not found', 404));
+    return next(new ApplicationError('Rate mapping not found', 404));
   }
   
   logger.info('Rate mapping deleted', {
@@ -450,7 +450,7 @@ export const testRateCalculation = catchAsync(async (req, res, next) => {
   
   const mapping = await RateMapping.findById(id);
   if (!mapping) {
-    return next(new AppError('Rate mapping not found', 404));
+    return next(new ApplicationError('Rate mapping not found', 404));
   }
   
   const calculatedRate = mapping.calculateChannelRate(baseRate, checkIn, dayOfWeek);
@@ -475,7 +475,7 @@ export const bulkCreateRoomMappings = catchAsync(async (req, res, next) => {
   const { mappings } = req.body;
   
   if (!Array.isArray(mappings) || mappings.length === 0) {
-    return next(new AppError('Mappings array is required', 400));
+    return next(new ApplicationError('Mappings array is required', 400));
   }
   
   // Add createdBy to all mappings

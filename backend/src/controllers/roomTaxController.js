@@ -2,7 +2,7 @@ import RoomTax from '../models/RoomTax.js';
 import RoomType from '../models/RoomType.js';
 import taxCalculationService from '../services/taxCalculationService.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -83,7 +83,7 @@ export const getRoomTax = catchAsync(async (req, res, next) => {
     .populate('updatedBy', 'name email');
 
   if (!tax) {
-    return next(new AppError('Room tax not found', 404));
+    return next(new ApplicationError('Room tax not found', 404));
   }
 
   res.status(200).json({
@@ -105,17 +105,17 @@ export const createRoomTax = catchAsync(async (req, res, next) => {
   const requiredFields = ['taxName', 'taxType', 'taxCategory'];
   for (const field of requiredFields) {
     if (!req.body[field]) {
-      return next(new AppError(`${field} is required`, 400));
+      return next(new ApplicationError(`${field} is required`, 400));
     }
   }
 
   // Validate tax rate or fixed amount
   if (req.body.isPercentage && (!req.body.taxRate || req.body.taxRate <= 0)) {
-    return next(new AppError('Tax rate must be greater than 0 for percentage taxes', 400));
+    return next(new ApplicationError('Tax rate must be greater than 0 for percentage taxes', 400));
   }
 
   if (!req.body.isPercentage && (!req.body.fixedAmount || req.body.fixedAmount <= 0)) {
-    return next(new AppError('Fixed amount must be greater than 0 for fixed amount taxes', 400));
+    return next(new ApplicationError('Fixed amount must be greater than 0 for fixed amount taxes', 400));
   }
 
   // Check for duplicate tax name
@@ -126,7 +126,7 @@ export const createRoomTax = catchAsync(async (req, res, next) => {
   });
 
   if (existingTax) {
-    return next(new AppError('A tax with this name already exists', 400));
+    return next(new ApplicationError('A tax with this name already exists', 400));
   }
 
   // Validate room types if specified
@@ -137,7 +137,7 @@ export const createRoomTax = catchAsync(async (req, res, next) => {
     });
 
     if (roomTypes.length !== req.body.applicableRoomTypes.length) {
-      return next(new AppError('One or more room types are invalid', 400));
+      return next(new ApplicationError('One or more room types are invalid', 400));
     }
   }
 
@@ -180,12 +180,12 @@ export const updateRoomTax = catchAsync(async (req, res, next) => {
   const tax = await RoomTax.findById(id);
 
   if (!tax) {
-    return next(new AppError('Room tax not found', 404));
+    return next(new ApplicationError('Room tax not found', 404));
   }
 
   // Check if tax is editable
   if (!tax.isEditable) {
-    return next(new AppError('This tax cannot be modified', 400));
+    return next(new ApplicationError('This tax cannot be modified', 400));
   }
 
   // Validate room types if being updated
@@ -196,7 +196,7 @@ export const updateRoomTax = catchAsync(async (req, res, next) => {
     });
 
     if (roomTypes.length !== req.body.applicableRoomTypes.length) {
-      return next(new AppError('One or more room types are invalid', 400));
+      return next(new ApplicationError('One or more room types are invalid', 400));
     }
   }
 
@@ -210,7 +210,7 @@ export const updateRoomTax = catchAsync(async (req, res, next) => {
     });
 
     if (existingTax) {
-      return next(new AppError('A tax with this name already exists', 400));
+      return next(new ApplicationError('A tax with this name already exists', 400));
     }
   }
 
@@ -250,12 +250,12 @@ export const deleteRoomTax = catchAsync(async (req, res, next) => {
   const tax = await RoomTax.findById(id);
 
   if (!tax) {
-    return next(new AppError('Room tax not found', 404));
+    return next(new ApplicationError('Room tax not found', 404));
   }
 
   // Check if tax is editable
   if (!tax.isEditable) {
-    return next(new AppError('This tax cannot be deleted', 400));
+    return next(new ApplicationError('This tax cannot be deleted', 400));
   }
 
   // Soft delete by setting isActive to false
@@ -296,7 +296,7 @@ export const calculateTaxes = catchAsync(async (req, res, next) => {
   } = req.body;
 
   if (!baseAmount || baseAmount <= 0) {
-    return next(new AppError('Base amount is required and must be greater than 0', 400));
+    return next(new ApplicationError('Base amount is required and must be greater than 0', 400));
   }
 
   try {
@@ -334,7 +334,7 @@ export const calculateTaxes = catchAsync(async (req, res, next) => {
       stack: error.stack
     });
     
-    return next(new AppError('Tax calculation failed', 500));
+    return next(new ApplicationError('Tax calculation failed', 500));
   }
 });
 
@@ -411,11 +411,11 @@ export const bulkUpdateTaxStatus = catchAsync(async (req, res, next) => {
   const userId = req.user._id;
 
   if (!Array.isArray(taxIds) || taxIds.length === 0) {
-    return next(new AppError('Tax IDs array is required', 400));
+    return next(new ApplicationError('Tax IDs array is required', 400));
   }
 
   if (typeof isActive !== 'boolean') {
-    return next(new AppError('isActive must be a boolean value', 400));
+    return next(new ApplicationError('isActive must be a boolean value', 400));
   }
 
   const result = await RoomTax.updateMany(

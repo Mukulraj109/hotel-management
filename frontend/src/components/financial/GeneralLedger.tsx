@@ -74,20 +74,11 @@ const GeneralLedger: React.FC = () => {
       
       const response = await financialService.getJournalEntries(filters);
       console.log('📝 Journal Entries response:', response);
-      
-      // Handle different response structures
-      let entriesData = [];
-      if (Array.isArray(response)) {
-        entriesData = response;
-      } else if (response.data && response.data.entries && Array.isArray(response.data.entries)) {
-        entriesData = response.data.entries;
-      } else if (response.data && Array.isArray(response.data)) {
-        entriesData = response.data;
-      } else if (response.entries && Array.isArray(response.entries)) {
-        entriesData = response.entries;
-      }
-      
-      console.log('💰 Setting journal entries data:', entriesData);
+
+      // Use standardized backend response structure: response.data.entries
+      const entriesData = response.data?.entries || [];
+
+      console.log('✅ Using standardized backend response structure:', entriesData.length, 'entries');
       setJournalEntries(entriesData);
     } catch (error: any) {
       toast.error('Failed to fetch journal entries: ' + error.message);
@@ -100,20 +91,11 @@ const GeneralLedger: React.FC = () => {
     try {
       const response = await financialService.getAccounts({ active: true });
       console.log('📊 Accounts response:', response);
-      
-      // Handle different response structures
-      let accountsData = [];
-      if (Array.isArray(response)) {
-        accountsData = response;
-      } else if (response.data && Array.isArray(response.data)) {
-        accountsData = response.data;
-      } else if (response.data && response.data.accounts && Array.isArray(response.data.accounts)) {
-        accountsData = response.data.accounts;
-      } else if (response.accounts && Array.isArray(response.accounts)) {
-        accountsData = response.accounts;
-      }
-      
-      console.log('💰 Setting accounts data:', accountsData);
+
+      // Use standardized backend response structure: response.data.accounts
+      const accountsData = response.data?.accounts || [];
+
+      console.log('✅ Using standardized backend response structure:', accountsData.length, 'accounts');
       setAccounts(accountsData);
     } catch (error: any) {
       toast.error('Failed to fetch accounts: ' + error.message);
@@ -222,7 +204,7 @@ const GeneralLedger: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
         <Skeleton className="h-8 w-64" />
         <div className="space-y-4">
           {Array.from({ length: 10 }).map((_, i) => (
@@ -234,7 +216,7 @@ const GeneralLedger: React.FC = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>

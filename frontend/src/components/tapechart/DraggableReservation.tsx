@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { cn } from '@/utils/cn';
-import { Star, Crown, Coffee, Bell, User, Calendar } from 'lucide-react';
+import { Star, Crown, Coffee, Bell, User, Calendar, Check } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
+import { dragDropManager } from '@/utils/DragDropManager';
 
 interface DraggableReservationProps {
   reservation: {
@@ -21,13 +22,25 @@ interface DraggableReservationProps {
   };
   onDragStart: (e: React.DragEvent, reservation: any) => void;
   isCompact?: boolean;
+  selectionMode?: boolean;
+  onSelectionChange?: (selected: boolean) => void;
 }
 
 const DraggableReservation: React.FC<DraggableReservationProps> = ({
   reservation,
   onDragStart,
-  isCompact = false
+  isCompact = false,
+  selectionMode = false,
+  onSelectionChange
 }) => {
+  const [isSelected, setIsSelected] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+
+  // Sync with dragDropManager selection state
+  useEffect(() => {
+    const selected = dragDropManager.isSelected(reservation.id);
+    setIsSelected(selected);
+  }, [reservation.id]);
   const getAssignmentColor = (assignedRoom?: string): string => {
     if (assignedRoom) {
       // Assigned bookings - green theme
@@ -59,29 +72,106 @@ const DraggableReservation: React.FC<DraggableReservationProps> = ({
     }
   };
 
+  const handleClick = (e: React.MouseEvent) => {
+    if (selectionMode && e.ctrlKey) {
+      e.preventDefault();
+      const newSelected = !isSelected;
+      setIsSelected(newSelected);
+
+      if (newSelected) {
+        dragDropManager.addToSelection(reservation.id);
+      } else {
+        dragDropManager.removeFromSelection(reservation.id);
+      }
+
+      onSelectionChange?.(newSelected);
+    }
+  };
+
+  const handleDragStart = (e: React.DragEvent) => {
+    if (isSelected || dragDropManager.getSelectionCount() > 0) {
+      // If this reservation is part of a selection, include all selected items
+      if (!isSelected) {
+        dragDropManager.addToSelection(reservation.id);
+        setIsSelected(true);
+      }
+    }
+    onDragStart(e, reservation);
+  };
+
   return (
     <div
       draggable
-      onDragStart={(e) => onDragStart(e, reservation)}
+      onDragStart={handleDragStart}
+      onClick={handleClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       className={cn(
-        'relative rounded-md border-2 border-dashed border-gray-300 p-3 cursor-move group',
-        'hover:border-blue-400 hover:bg-blue-50 hover:shadow-md transition-all duration-200',
-        'bg-white shadow-sm transform hover:scale-[1.02]',
-        getAssignmentColor(reservation.assignedRoom),
-        isCompact && 'p-2'
+        'relative rounded-md border-2 border-dashed p-3 cursor-move group',
+        'hover:shadow-md transition-all duration-200 bg-white shadow-sm',
+        // Selection states
+        isSelected
+          ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+          : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50',
+        // Assignment colors
+        !isSelected && getAssignmentColor(reservation.assignedRoom),
+        // Hover effects
+        isHovered && !isSelected && 'transform scale-[1.02]',
+        isSelected && 'transform scale-[1.01]',
+        isCompact && 'p-2',
+        // Multi-selection mode styling
+        selectionMode && 'hover:ring-1 hover:ring-blue-300'
       )}
-      title={`Drag to assign ${reservation.guestName} to a room`}
+      title={
+        selectionMode
+          ? `Ctrl+click to select • ${isSelected ? 'Selected' : 'Click to select'} • Drag to assign ${reservation.guestName}`
+          : `Drag to assign ${reservation.guestName} to a room`
+      }
     >
-      {/* Drag handle indicator */}
-      <div className="absolute top-1 left-1">
-        <div className="flex flex-col gap-0.5">
-          <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-          <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-          <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+      {/* Selection checkbox and drag handle */}
+      <div className="absolute top-1 left-1 flex items-center gap-1">
+        {/* Selection checkbox for multi-select mode */}
+        {selectionMode && (
+          <div
+            className={cn(
+              'w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer',
+              isSelected
+                ? 'bg-blue-500 border-blue-500 text-white'
+                : 'border-gray-300 hover:border-blue-400'
+            )}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleClick(e as any);
+            }}
+          >
+            {isSelected && <Check className="w-3 h-3" />}
+          </div>
+        )}
+
+        {/* Drag handle indicator */}
+        <div className={cn(
+          'flex flex-col gap-0.5',
+          selectionMode ? 'ml-1' : ''
+        )}>
+          <div className={cn(
+            'w-1 h-1 rounded-full',
+            isSelected ? 'bg-blue-500' : 'bg-gray-400'
+          )}></div>
+          <div className={cn(
+            'w-1 h-1 rounded-full',
+            isSelected ? 'bg-blue-500' : 'bg-gray-400'
+          )}></div>
+          <div className={cn(
+            'w-1 h-1 rounded-full',
+            isSelected ? 'bg-blue-500' : 'bg-gray-400'
+          )}></div>
         </div>
       </div>
 
-      <div className="ml-4">
+      <div className={cn(
+        selectionMode ? 'ml-8' : 'ml-4'
+      )}>
         {/* Guest name with VIP status */}
         <div className="flex items-center gap-2 mb-1">
           {getVipIcon(reservation.vipStatus)}
@@ -134,13 +224,29 @@ const DraggableReservation: React.FC<DraggableReservationProps> = ({
         )}
       </div>
 
-      {/* Status badge */}
-      <div className="absolute top-2 right-2">
+      {/* Status badge and selection counter */}
+      <div className="absolute top-2 right-2 flex items-center gap-2">
+        {/* Multi-selection indicator */}
+        {isSelected && dragDropManager.getSelectionCount() > 1 && (
+          <div className="bg-blue-500 text-white rounded-full px-2 py-0.5 text-xs font-bold">
+            {dragDropManager.getSelectionCount()}
+          </div>
+        )}
+
+        {/* Status badge */}
         <span className={cn(
           'px-1.5 py-0.5 rounded-full text-xs font-medium uppercase',
-          reservation.assignedRoom ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+          isSelected
+            ? 'bg-blue-600 text-white'
+            : reservation.assignedRoom
+            ? 'bg-green-600 text-white'
+            : 'bg-red-600 text-white'
         )}>
-          {reservation.assignedRoom ? 'ASSIGNED' : 'UNASSIGNED'}
+          {isSelected
+            ? 'SELECTED'
+            : reservation.assignedRoom
+            ? 'ASSIGNED'
+            : 'UNASSIGNED'}
         </span>
       </div>
     </div>

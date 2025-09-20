@@ -27,6 +27,10 @@ router.put('/orders/:id/payment', authenticate, posController.processPayment);
 // Dashboard routes
 router.get('/dashboard/stats', authenticate, posController.getDashboardStats);
 
+// Calculation routes
+router.post('/calculate/order-totals', authenticate, posController.calculateOrderTotals);
+router.post('/calculate/billing-totals', authenticate, posController.calculateBillingTotals);
+
 // Reporting routes
 router.get('/reports/sales', authenticate, authorize(['admin', 'manager']), posController.getSalesReport);
 

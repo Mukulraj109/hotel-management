@@ -41,4 +41,11 @@ router.get('/optimization/recommendations', authenticate, authorize(['admin', 'r
 // Dashboard Metrics Route
 router.get('/dashboard/metrics', authenticate, authorize(['admin', 'revenue_manager', 'manager']), revenueController.getDashboardMetrics);
 
+// Room Type Rate Management Routes
+router.put('/room-type-rates/:id', authenticate, authorize(['admin', 'revenue_manager']), revenueController.updateRoomTypeRate);
+router.post('/room-type-rates/bulk-update', authenticate, authorize(['admin', 'revenue_manager']), revenueController.bulkUpdateRoomTypeRates);
+
+// Room Types for Dynamic Pricing
+router.get('/room-types', authenticate, authorize(['admin', 'revenue_manager', 'manager']), revenueController.getRoomTypesForPricing);
+
 export default router;

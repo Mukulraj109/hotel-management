@@ -8,7 +8,7 @@ import { Badge } from '../../components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/Select';
 import FormBuilder from '../../components/web/FormBuilder';
 import FormPreview from '../../components/web/FormPreview';
 import { bookingFormService, BookingFormTemplate } from '../../services/bookingFormService';
@@ -64,7 +64,7 @@ const AdminBookingFormBuilder: React.FC = () => {
       const response = await bookingFormService.getTemplates(params);
       console.log('📋 Frontend: Templates response:', response);
       
-      if (response.success) {
+      if (response.success && response.data) {
         setTemplates(response.data.templates);
         setPagination(response.data.pagination);
         console.log('✅ Frontend: Templates loaded successfully:', response.data.templates.length);
@@ -205,75 +205,80 @@ const AdminBookingFormBuilder: React.FC = () => {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+    <div className="p-4 sm:p-6">
+      <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Booking Form Builder</h1>
-          <p className="text-gray-600">Create and manage custom booking forms</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Booking Form Builder</h1>
+          <p className="text-sm sm:text-base text-gray-600">Create and manage custom booking forms</p>
         </div>
-        <Button onClick={handleCreateTemplate} className="bg-blue-600 hover:bg-blue-700">
-          <Plus className="w-4 h-4 mr-2" />
-          Create Form
+        <Button onClick={handleCreateTemplate} className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto">
+          <Plus className="w-4 h-4 sm:mr-2" />
+          <span className="sm:hidden">Create</span>
+          <span className="hidden sm:inline">Create Form</span>
         </Button>
       </div>
 
       {/* Filters and Search */}
-      <Card className="mb-6">
-        <CardContent className="p-4">
-          <div className="flex flex-wrap gap-4 items-center">
-            <div className="flex-1 min-w-[200px]">
+      <Card className="mb-4 sm:mb-6">
+        <CardContent className="p-3 sm:p-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center">
+            <div className="flex-1 min-w-0">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <Input
                   placeholder="Search templates..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 text-sm"
                 />
               </div>
             </div>
             
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="archived">Archived</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full sm:w-40 text-sm">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="archived">Archived</SelectItem>
+                </SelectContent>
+              </Select>
 
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="booking">Booking</SelectItem>
-                <SelectItem value="inquiry">Inquiry</SelectItem>
-                <SelectItem value="registration">Registration</SelectItem>
-                <SelectItem value="survey">Survey</SelectItem>
-                <SelectItem value="custom">Custom</SelectItem>
-              </SelectContent>
-            </Select>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger className="w-full sm:w-40 text-sm">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="booking">Booking</SelectItem>
+                  <SelectItem value="inquiry">Inquiry</SelectItem>
+                  <SelectItem value="registration">Registration</SelectItem>
+                  <SelectItem value="survey">Survey</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
 
-            <div className="flex rounded-lg border">
-              <Button
-                variant={viewMode === 'grid' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('grid')}
-              >
-                <Grid className="w-4 h-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'list' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setViewMode('list')}
-              >
-                <List className="w-4 h-4" />
-              </Button>
+              <div className="flex rounded-lg border">
+                <Button
+                  variant={viewMode === 'grid' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setViewMode('grid')}
+                  className="text-xs"
+                >
+                  <Grid className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant={viewMode === 'list' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setViewMode('list')}
+                  className="text-xs"
+                >
+                  <List className="w-4 h-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>
@@ -287,16 +292,16 @@ const AdminBookingFormBuilder: React.FC = () => {
       ) : (
         <>
           {viewMode === 'grid' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               {filteredTemplates.map((template) => (
                 <Card key={template._id} className="hover:shadow-lg transition-all duration-200 border-2 hover:border-blue-200">
-                  <CardHeader className="pb-4">
+                  <CardHeader className="pb-3 sm:pb-4">
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
-                        <CardTitle className="text-lg font-semibold text-gray-900 mb-2 break-words">
+                        <CardTitle className="text-base sm:text-lg font-semibold text-gray-900 mb-2 break-words">
                           {template.name || 'Untitled Form'}
                         </CardTitle>
-                        <p className="text-sm text-gray-600 line-clamp-2 min-h-[2.5rem]">
+                        <p className="text-xs sm:text-sm text-gray-600 line-clamp-2 min-h-[2rem] sm:min-h-[2.5rem]">
                           {template.description || 'No description provided'}
                         </p>
                       </div>
@@ -312,13 +317,13 @@ const AdminBookingFormBuilder: React.FC = () => {
                   </CardHeader>
                   
                   <CardContent className="pt-0">
-                    <div className="grid grid-cols-2 gap-4 text-sm text-gray-500 mb-4 py-3 bg-gray-50 rounded-lg">
+                    <div className="grid grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm text-gray-500 mb-3 sm:mb-4 py-2 sm:py-3 bg-gray-50 rounded-lg">
                       <div className="text-center">
-                        <div className="font-semibold text-gray-700">{template.fieldCount || 0}</div>
+                        <div className="font-semibold text-gray-700 text-sm sm:text-base">{template.fieldCount || 0}</div>
                         <div className="text-xs">Fields</div>
                       </div>
                       <div className="text-center">
-                        <div className="font-semibold text-gray-700">{template.usage?.views || 0}</div>
+                        <div className="font-semibold text-gray-700 text-sm sm:text-base">{template.usage?.views || 0}</div>
                         <div className="text-xs">Views</div>
                       </div>
                     </div>
@@ -328,10 +333,11 @@ const AdminBookingFormBuilder: React.FC = () => {
                         size="sm"
                         variant="outline"
                         onClick={() => handlePreviewTemplate(template)}
-                        className="w-full justify-start hover:bg-blue-50 hover:border-blue-300"
+                        className="w-full justify-start hover:bg-blue-50 hover:border-blue-300 text-xs sm:text-sm"
                       >
-                        <Eye className="w-4 h-4 mr-2" />
-                        Preview Form
+                        <Eye className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                        <span className="sm:hidden">Preview</span>
+                        <span className="hidden sm:inline">Preview Form</span>
                       </Button>
                       
                       <div className="grid grid-cols-2 gap-2">
@@ -339,7 +345,7 @@ const AdminBookingFormBuilder: React.FC = () => {
                           size="sm"
                           variant="outline"
                           onClick={() => handleEditTemplate(template)}
-                          className="justify-start hover:bg-green-50 hover:border-green-300"
+                          className="justify-start hover:bg-green-50 hover:border-green-300 text-xs"
                           title="Edit Template"
                         >
                           <Edit className="w-3 h-3 mr-1" />
@@ -349,7 +355,7 @@ const AdminBookingFormBuilder: React.FC = () => {
                           size="sm"
                           variant="outline"
                           onClick={() => handleDuplicateTemplate(template)}
-                          className="justify-start hover:bg-purple-50 hover:border-purple-300"
+                          className="justify-start hover:bg-purple-50 hover:border-purple-300 text-xs"
                           title="Duplicate Template"
                         >
                           <Copy className="w-3 h-3 mr-1" />
@@ -362,7 +368,7 @@ const AdminBookingFormBuilder: React.FC = () => {
                           size="sm"
                           variant="outline"
                           onClick={() => handleViewAnalytics(template)}
-                          className="justify-start hover:bg-orange-50 hover:border-orange-300"
+                          className="justify-start hover:bg-orange-50 hover:border-orange-300 text-xs"
                           title="View Analytics"
                         >
                           <BarChart className="w-3 h-3 mr-1" />
@@ -372,7 +378,7 @@ const AdminBookingFormBuilder: React.FC = () => {
                           size="sm"
                           variant="outline"
                           onClick={() => handleDeleteTemplate(template)}
-                          className="justify-start text-red-600 hover:text-red-700 hover:bg-red-50 hover:border-red-300"
+                          className="justify-start text-red-600 hover:text-red-700 hover:bg-red-50 hover:border-red-300 text-xs"
                           title="Delete Template"
                         >
                           <Trash2 className="w-3 h-3 mr-1" />
@@ -391,47 +397,53 @@ const AdminBookingFormBuilder: React.FC = () => {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-gray-200">
-                        <th className="text-left py-3 px-4">Name</th>
-                        <th className="text-left py-3 px-4">Category</th>
-                        <th className="text-left py-3 px-4">Status</th>
-                        <th className="text-left py-3 px-4">Fields</th>
-                        <th className="text-left py-3 px-4">Views</th>
-                        <th className="text-left py-3 px-4">Updated</th>
-                        <th className="text-left py-3 px-4">Actions</th>
+                        <th className="text-left py-3 px-2 sm:px-4 text-xs sm:text-sm">Name</th>
+                        <th className="text-left py-3 px-2 sm:px-4 text-xs sm:text-sm hidden sm:table-cell">Category</th>
+                        <th className="text-left py-3 px-2 sm:px-4 text-xs sm:text-sm">Status</th>
+                        <th className="text-left py-3 px-2 sm:px-4 text-xs sm:text-sm hidden md:table-cell">Fields</th>
+                        <th className="text-left py-3 px-2 sm:px-4 text-xs sm:text-sm hidden lg:table-cell">Views</th>
+                        <th className="text-left py-3 px-2 sm:px-4 text-xs sm:text-sm hidden lg:table-cell">Updated</th>
+                        <th className="text-left py-3 px-2 sm:px-4 text-xs sm:text-sm">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredTemplates.map((template) => (
                         <tr key={template._id} className="border-b border-gray-100">
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-2 sm:px-4">
                             <div>
-                              <div className="font-medium">{template.name}</div>
-                              <div className="text-sm text-gray-500 truncate max-w-xs">
+                              <div className="font-medium text-sm sm:text-base">{template.name}</div>
+                              <div className="text-xs sm:text-sm text-gray-500 truncate max-w-xs">
                                 {template.description}
+                              </div>
+                              <div className="sm:hidden mt-1">
+                                <Badge className={`${getCategoryColor(template.category)} text-xs`}>
+                                  {template.category}
+                                </Badge>
                               </div>
                             </div>
                           </td>
-                          <td className="py-3 px-4">
-                            <Badge className={getCategoryColor(template.category)}>
+                          <td className="py-3 px-2 sm:px-4 hidden sm:table-cell">
+                            <Badge className={`${getCategoryColor(template.category)} text-xs`}>
                               {template.category}
                             </Badge>
                           </td>
-                          <td className="py-3 px-4">
-                            <Badge className={getStatusColor(template.status)}>
+                          <td className="py-3 px-2 sm:px-4">
+                            <Badge className={`${getStatusColor(template.status)} text-xs`}>
                               {template.status}
                             </Badge>
                           </td>
-                          <td className="py-3 px-4">{template.fieldCount || 0}</td>
-                          <td className="py-3 px-4">{template.usage?.views || 0}</td>
-                          <td className="py-3 px-4 text-sm text-gray-500">
+                          <td className="py-3 px-2 sm:px-4 hidden md:table-cell text-xs sm:text-sm">{template.fieldCount || 0}</td>
+                          <td className="py-3 px-2 sm:px-4 hidden lg:table-cell text-xs sm:text-sm">{template.usage?.views || 0}</td>
+                          <td className="py-3 px-2 sm:px-4 hidden lg:table-cell text-xs sm:text-sm text-gray-500">
                             {new Date(template.updatedAt).toLocaleDateString()}
                           </td>
-                          <td className="py-3 px-4">
-                            <div className="flex gap-2">
+                          <td className="py-3 px-2 sm:px-4">
+                            <div className="flex gap-1 sm:gap-2">
                               <Button
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handlePreviewTemplate(template)}
+                                className="text-xs"
                               >
                                 <Eye className="w-3 h-3" />
                               </Button>
@@ -439,6 +451,7 @@ const AdminBookingFormBuilder: React.FC = () => {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleEditTemplate(template)}
+                                className="text-xs"
                               >
                                 <Edit className="w-3 h-3" />
                               </Button>
@@ -446,6 +459,7 @@ const AdminBookingFormBuilder: React.FC = () => {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => handleViewAnalytics(template)}
+                                className="text-xs"
                               >
                                 <BarChart className="w-3 h-3" />
                               </Button>
@@ -462,18 +476,19 @@ const AdminBookingFormBuilder: React.FC = () => {
 
           {filteredTemplates.length === 0 && (
             <Card className="border-2 border-dashed border-gray-200">
-              <CardContent className="text-center py-12">
-                <FileText className="mx-auto h-16 w-16 text-gray-400 mb-4" />
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">No templates found</h3>
-                <p className="text-gray-600 mb-6 max-w-md mx-auto">
+              <CardContent className="text-center py-8 sm:py-12">
+                <FileText className="mx-auto h-12 w-12 sm:h-16 sm:w-16 text-gray-400 mb-4" />
+                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2">No templates found</h3>
+                <p className="text-sm sm:text-base text-gray-600 mb-4 sm:mb-6 max-w-md mx-auto px-4">
                   {searchTerm || statusFilter !== 'all' || categoryFilter !== 'all'
                     ? 'No templates match your current filters. Try adjusting your search criteria or clearing filters.'
                     : 'Create your first booking form template to start collecting guest information and bookings.'}
                 </p>
                 {(!searchTerm && statusFilter === 'all' && categoryFilter === 'all') ? (
-                  <Button onClick={handleCreateTemplate} className="bg-blue-600 hover:bg-blue-700 text-lg px-6 py-3">
-                    <Plus className="w-5 h-5 mr-2" />
-                    Create Your First Form Template
+                  <Button onClick={handleCreateTemplate} className="bg-blue-600 hover:bg-blue-700 text-sm sm:text-lg px-4 sm:px-6 py-2 sm:py-3">
+                    <Plus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+                    <span className="sm:hidden">Create First Template</span>
+                    <span className="hidden sm:inline">Create Your First Form Template</span>
                   </Button>
                 ) : (
                   <Button 
@@ -483,7 +498,7 @@ const AdminBookingFormBuilder: React.FC = () => {
                       setCategoryFilter('all');
                     }}
                     variant="outline"
-                    className="mr-3"
+                    className="text-sm sm:text-base px-4 sm:px-6 py-2 sm:py-3"
                   >
                     Clear Filters
                   </Button>
@@ -498,8 +513,8 @@ const AdminBookingFormBuilder: React.FC = () => {
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
         <DialogContent className="max-w-4xl h-[80vh] overflow-hidden">
           <DialogHeader>
-            <DialogTitle>Preview: {selectedTemplate?.name}</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-base sm:text-lg">Preview: {selectedTemplate?.name}</DialogTitle>
+            <DialogDescription className="text-sm">
               Preview how this form will appear to users
             </DialogDescription>
           </DialogHeader>

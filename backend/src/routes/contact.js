@@ -2,7 +2,7 @@ import express from 'express';
 import Communication from '../models/Communication.js';
 import Hotel from '../models/Hotel.js';
 import User from '../models/User.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { body, validationResult } from 'express-validator';
 import emailService from '../services/emailService.js';
@@ -89,7 +89,7 @@ router.post('/',
     // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      throw new AppError('Validation failed', 400, errors.array());
+      throw new ApplicationError('Validation failed', 400, errors.array());
     }
 
     const { name, email, phone, subject, message, hotelId } = req.body;
@@ -99,14 +99,14 @@ router.post('/',
     if (!targetHotelId) {
       const defaultHotel = await Hotel.findOne().sort({ createdAt: 1 });
       if (!defaultHotel) {
-        throw new AppError('No hotel found to send message to', 500);
+        throw new ApplicationError('No hotel found to send message to', 500);
       }
       targetHotelId = defaultHotel._id;
     } else {
       // Verify hotel exists
       const hotel = await Hotel.findById(targetHotelId);
       if (!hotel) {
-        throw new AppError('Hotel not found', 404);
+        throw new ApplicationError('Hotel not found', 404);
       }
     }
 
@@ -117,7 +117,7 @@ router.post('/',
     }).select('name email');
 
     if (hotelStaff.length === 0) {
-      throw new AppError('No hotel staff found to receive the message', 500);
+      throw new ApplicationError('No hotel staff found to receive the message', 500);
     }
 
     // Create recipients array

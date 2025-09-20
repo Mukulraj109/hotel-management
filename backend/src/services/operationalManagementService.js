@@ -3,7 +3,7 @@ import ArrivalDepartureMode from '../models/ArrivalDepartureMode.js';
 import LostFound from '../models/LostFound.js';
 import User from '../models/User.js';
 import AuditLog from '../models/AuditLog.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import mongoose from 'mongoose';
 
 class OperationalManagementService {
@@ -36,7 +36,7 @@ class OperationalManagementService {
     try {
       const counter = await Counter.findById(counterId);
       if (!counter) {
-        throw new AppError('Counter not found', 404);
+        throw new ApplicationError('Counter not found', 404);
       }
 
       Object.assign(counter, updateData);
@@ -78,7 +78,7 @@ class OperationalManagementService {
     try {
       const counter = await Counter.findById(counterId);
       if (!counter) {
-        throw new AppError('Counter not found', 404);
+        throw new ApplicationError('Counter not found', 404);
       }
 
       const oldStatus = counter.status;
@@ -106,7 +106,7 @@ class OperationalManagementService {
     try {
       const counter = await Counter.findById(counterId);
       if (!counter) {
-        throw new AppError('Counter not found', 404);
+        throw new ApplicationError('Counter not found', 404);
       }
 
       counter.isActive = false;
@@ -156,7 +156,7 @@ class OperationalManagementService {
     try {
       const mode = await ArrivalDepartureMode.findById(modeId);
       if (!mode) {
-        throw new AppError('Arrival/Departure mode not found', 404);
+        throw new ApplicationError('Arrival/Departure mode not found', 404);
       }
 
       Object.assign(mode, updateData);
@@ -201,7 +201,7 @@ class OperationalManagementService {
     try {
       const mode = await ArrivalDepartureMode.findById(modeId);
       if (!mode) {
-        throw new AppError('Arrival/Departure mode not found', 404);
+        throw new ApplicationError('Arrival/Departure mode not found', 404);
       }
 
       mode.isActive = false;
@@ -252,7 +252,7 @@ class OperationalManagementService {
     try {
       const item = await LostFound.findById(itemId);
       if (!item) {
-        throw new AppError('Lost & Found item not found', 404);
+        throw new ApplicationError('Lost & Found item not found', 404);
       }
 
       Object.assign(item, updateData);
@@ -305,11 +305,11 @@ class OperationalManagementService {
     try {
       const item = await LostFound.findById(itemId);
       if (!item) {
-        throw new AppError('Lost & Found item not found', 404);
+        throw new ApplicationError('Lost & Found item not found', 404);
       }
 
       if (item.status !== 'found') {
-        throw new AppError('Item cannot be claimed in current status', 400);
+        throw new ApplicationError('Item cannot be claimed in current status', 400);
       }
 
       await item.claimItem(claimedBy, notes);
@@ -333,7 +333,7 @@ class OperationalManagementService {
     try {
       const item = await LostFound.findById(itemId);
       if (!item) {
-        throw new AppError('Lost & Found item not found', 404);
+        throw new ApplicationError('Lost & Found item not found', 404);
       }
 
       await item.disposeItem(userId, notes);
@@ -356,7 +356,7 @@ class OperationalManagementService {
     try {
       const item = await LostFound.findById(itemId);
       if (!item) {
-        throw new AppError('Lost & Found item not found', 404);
+        throw new ApplicationError('Lost & Found item not found', 404);
       }
 
       await item.updateLocation(newLocation, userId, notes);

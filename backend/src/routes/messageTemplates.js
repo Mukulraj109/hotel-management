@@ -1,7 +1,7 @@
 import express from 'express';
 import MessageTemplate from '../models/MessageTemplate.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
@@ -75,7 +75,7 @@ router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   };
 
   if (req.user.role === 'admin' && !req.body.hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   const template = await MessageTemplate.create(templateData);
@@ -221,12 +221,12 @@ router.get('/:id', catchAsync(async (req, res) => {
     .populate('approvedBy', 'name');
 
   if (!template) {
-    throw new AppError('Template not found', 404);
+    throw new ApplicationError('Template not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && template.hotelId._id.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only view templates for your hotel', 403);
+    throw new ApplicationError('You can only view templates for your hotel', 403);
   }
 
   res.json({
@@ -278,12 +278,12 @@ router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =>
   const template = await MessageTemplate.findById(req.params.id);
   
   if (!template) {
-    throw new AppError('Template not found', 404);
+    throw new ApplicationError('Template not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && template.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only update templates for your hotel', 403);
+    throw new ApplicationError('You can only update templates for your hotel', 403);
   }
 
   const allowedUpdates = [
@@ -337,17 +337,17 @@ router.delete('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =
   const template = await MessageTemplate.findById(req.params.id);
   
   if (!template) {
-    throw new AppError('Template not found', 404);
+    throw new ApplicationError('Template not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && template.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only delete templates for your hotel', 403);
+    throw new ApplicationError('You can only delete templates for your hotel', 403);
   }
 
   // Don't allow deletion if template is actively used
   if (template.usageCount > 0 && template.isActive) {
-    throw new AppError('Cannot delete actively used template. Deactivate it first.', 400);
+    throw new ApplicationError('Cannot delete actively used template. Deactivate it first.', 400);
   }
 
   await MessageTemplate.findByIdAndDelete(req.params.id);
@@ -394,12 +394,12 @@ router.post('/:id/render', catchAsync(async (req, res) => {
   const template = await MessageTemplate.findById(req.params.id);
   
   if (!template) {
-    throw new AppError('Template not found', 404);
+    throw new ApplicationError('Template not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && template.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only render templates for your hotel', 403);
+    throw new ApplicationError('You can only render templates for your hotel', 403);
   }
 
   try {
@@ -414,7 +414,7 @@ router.post('/:id/render', catchAsync(async (req, res) => {
       }
     });
   } catch (error) {
-    throw new AppError(error.message, 400);
+    throw new ApplicationError(error.message, 400);
   }
 }));
 
@@ -453,12 +453,12 @@ router.post('/:id/clone', authorize('staff', 'admin'), catchAsync(async (req, re
   const template = await MessageTemplate.findById(req.params.id);
   
   if (!template) {
-    throw new AppError('Template not found', 404);
+    throw new ApplicationError('Template not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && template.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only clone templates for your hotel', 403);
+    throw new ApplicationError('You can only clone templates for your hotel', 403);
   }
 
   const clonedTemplate = await template.clone(name, req.user._id);
@@ -521,12 +521,12 @@ router.post('/:id/ab-test', authorize('staff', 'admin'), catchAsync(async (req, 
   const template = await MessageTemplate.findById(req.params.id);
   
   if (!template) {
-    throw new AppError('Template not found', 404);
+    throw new ApplicationError('Template not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && template.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only create A/B tests for templates in your hotel', 403);
+    throw new ApplicationError('You can only create A/B tests for templates in your hotel', 403);
   }
 
   await template.createABVariant({
@@ -575,7 +575,7 @@ router.get('/popular', authorize('staff', 'admin'), catchAsync(async (req, res) 
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   const popularTemplates = await MessageTemplate.getPopularTemplates(hotelId, type, parseInt(limit));
@@ -613,7 +613,7 @@ router.get('/by-trigger/:event', authorize('staff', 'admin'), catchAsync(async (
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   const templates = await MessageTemplate.getByTrigger(hotelId, event);
@@ -656,7 +656,7 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   const [performanceStats, popularTemplates] = await Promise.all([

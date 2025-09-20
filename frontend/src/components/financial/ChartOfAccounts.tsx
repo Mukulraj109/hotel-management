@@ -73,29 +73,41 @@ const ChartOfAccounts: React.FC = () => {
   const fetchAccounts = async () => {
     try {
       setLoading(true);
-      
-      console.log('🔍 Fetching chart of accounts tree...');
-      const response = await financialService.getAccountTree();
-      console.log('📊 Chart of Accounts Tree response:', response);
-      
-      // Flatten the tree structure to get all accounts
-      let accountsData = [];
-      if (response.data && response.data.accountTree) {
-        accountsData = flattenAccountTree(response.data.accountTree);
-      }
-      
-      console.log('💰 Setting flattened accounts data:', accountsData);
+
+      console.log('🔍 Fetching flattened chart of accounts from backend...');
+      const response = await financialService.getFlattenedAccounts();
+      console.log('📊 Backend-flattened accounts response:', response);
+
+      // Use the backend-calculated flattened accounts directly
+      const accountsData = response.data?.accounts || [];
+
+      console.log('✅ Using backend-flattened accounts:', accountsData.length, 'accounts');
       setAccounts(accountsData);
     } catch (error: any) {
-      console.error('❌ Failed to fetch accounts:', error);
-      toast.error('Failed to fetch accounts: ' + error.message);
-      setAccounts([]); // Ensure accounts is always an array
+      console.error('❌ Failed to fetch backend-flattened accounts:', error);
+      toast.error('Failed to fetch accounts from backend, trying fallback');
+
+      // Fallback to the old tree method if needed
+      try {
+        console.log('🔄 Trying fallback tree method...');
+        const treeResponse = await financialService.getAccountTree();
+        const accountsData = treeResponse.data?.accountTree
+          ? flattenAccountTree(treeResponse.data.accountTree)
+          : [];
+        console.log('📦 Using fallback flattened accounts:', accountsData.length, 'accounts');
+        setAccounts(accountsData);
+      } catch (fallbackError: any) {
+        console.error('❌ Fallback also failed:', fallbackError);
+        toast.error('Failed to fetch accounts: ' + fallbackError.message);
+        setAccounts([]);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   // Helper function to flatten the account tree into a flat array
+  // NOTE: This is kept as a fallback - primary flattening now done on backend
   const flattenAccountTree = (accounts: any[]): any[] => {
     let flattened: any[] = [];
     
@@ -205,9 +217,9 @@ const ChartOfAccounts: React.FC = () => {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row gap-4 sm:gap-0 sm:justify-between sm:items-center">
         <div>
           <h1 className="text-3xl font-bold">Chart of Accounts</h1>
           <p className="text-gray-600">Manage your accounting structure</p>

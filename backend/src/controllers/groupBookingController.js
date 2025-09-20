@@ -3,7 +3,7 @@ import CorporateCompany from '../models/CorporateCompany.js';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import APIFeatures from '../utils/apiFeatures.js';
 
 /**
@@ -42,7 +42,7 @@ export const createGroupBooking = catchAsync(async (req, res, next) => {
   });
   
   if (!company) {
-    return next(new AppError('Corporate company not found or inactive', 404));
+    return next(new ApplicationError('Corporate company not found or inactive', 404));
   }
   
   // Add hotel ID and creator info
@@ -67,7 +67,7 @@ export const createGroupBooking = catchAsync(async (req, res, next) => {
     const requestedCount = requestedRoomTypes.filter(type => type === roomType).length;
     
     if (availableRooms.length < requestedCount) {
-      return next(new AppError(`Not enough ${roomType} rooms available. Requested: ${requestedCount}, Available: ${availableRooms.length}`, 400));
+      return next(new ApplicationError(`Not enough ${roomType} rooms available. Requested: ${requestedCount}, Available: ${availableRooms.length}`, 400));
     }
   }
   
@@ -76,7 +76,7 @@ export const createGroupBooking = catchAsync(async (req, res, next) => {
   // Check if company has sufficient credit for estimated amount
   if (company.availableCredit < groupBooking.totalAmount && 
       groupBooking.paymentMethod === 'corporate_credit') {
-    return next(new AppError(`Insufficient corporate credit. Required: ₹${groupBooking.totalAmount}, Available: ₹${company.availableCredit}`, 400));
+    return next(new ApplicationError(`Insufficient corporate credit. Required: ₹${groupBooking.totalAmount}, Available: ₹${company.availableCredit}`, 400));
   }
   
   res.status(201).json({
@@ -163,7 +163,7 @@ export const getGroupBooking = catchAsync(async (req, res, next) => {
   .populate('rooms.bookingId');
   
   if (!groupBooking) {
-    return next(new AppError('Group booking not found', 404));
+    return next(new ApplicationError('Group booking not found', 404));
   }
   
   res.status(200).json({
@@ -217,7 +217,7 @@ export const updateGroupBooking = catchAsync(async (req, res, next) => {
   );
   
   if (!groupBooking) {
-    return next(new AppError('Group booking not found', 404));
+    return next(new ApplicationError('Group booking not found', 404));
   }
   
   res.status(200).json({
@@ -268,7 +268,7 @@ export const confirmGroupBooking = catchAsync(async (req, res, next) => {
   }).populate('corporateCompanyId');
   
   if (!groupBooking) {
-    return next(new AppError('Group booking not found', 404));
+    return next(new ApplicationError('Group booking not found', 404));
   }
   
   const { roomIndices } = req.body;
@@ -289,7 +289,7 @@ export const confirmGroupBooking = catchAsync(async (req, res, next) => {
     });
     
     if (!availableRoom) {
-      return next(new AppError(`No available ${roomData.roomType} rooms`, 400));
+      return next(new ApplicationError(`No available ${roomData.roomType} rooms`, 400));
     }
     
     // Create individual booking
@@ -389,7 +389,7 @@ export const cancelGroupBooking = catchAsync(async (req, res, next) => {
   });
   
   if (!groupBooking) {
-    return next(new AppError('Group booking not found', 404));
+    return next(new ApplicationError('Group booking not found', 404));
   }
   
   const indicesToCancel = roomIndices || groupBooking.rooms.map((_, index) => index);
@@ -494,35 +494,157 @@ export const getUpcomingGroupBookings = catchAsync(async (req, res, next) => {
 export const updateGroupBookingRoom = catchAsync(async (req, res, next) => {
   const { id, roomIndex } = req.params;
   const roomIndex_num = parseInt(roomIndex);
-  
+
   const groupBooking = await GroupBooking.findOne({
     _id: id,
     hotelId: req.user.hotelId
   });
-  
+
   if (!groupBooking) {
-    return next(new AppError('Group booking not found', 404));
+    return next(new ApplicationError('Group booking not found', 404));
   }
-  
+
   if (!groupBooking.rooms[roomIndex_num]) {
-    return next(new AppError('Room not found in group booking', 404));
+    return next(new ApplicationError('Room not found in group booking', 404));
   }
-  
+
   // Update room details
   Object.keys(req.body).forEach(key => {
     if (req.body[key] !== undefined) {
       groupBooking.rooms[roomIndex_num][key] = req.body[key];
     }
   });
-  
+
   groupBooking.metadata.lastModifiedBy = req.user.id;
   await groupBooking.save();
-  
+
   res.status(200).json({
     status: 'success',
     data: {
       groupBooking,
       updatedRoom: groupBooking.rooms[roomIndex_num]
+    }
+  });
+});
+
+/**
+ * @swagger
+ * /api/v1/corporate/group-bookings/{id}/toggle-status:
+ *   patch:
+ *     summary: Toggle group booking status
+ *     tags: [Group Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Group booking ID
+ *     responses:
+ *       200:
+ *         description: Group booking status toggled successfully
+ *       400:
+ *         description: Invalid status transition
+ *       404:
+ *         description: Group booking not found
+ */
+export const toggleGroupBookingStatus = catchAsync(async (req, res, next) => {
+  const groupBooking = await GroupBooking.findOne({
+    _id: req.params.id,
+    hotelId: req.user.hotelId
+  }).populate('corporateCompanyId');
+
+  if (!groupBooking) {
+    return next(new ApplicationError('Group booking not found', 404));
+  }
+
+  let newStatus;
+  let statusMessage;
+
+  switch (groupBooking.status) {
+    case 'draft':
+      // Draft can be confirmed or cancelled
+      newStatus = 'confirmed';
+      statusMessage = 'Group booking confirmed successfully';
+
+      // Check corporate company is active
+      if (!groupBooking.corporateCompanyId.isActive) {
+        return next(new ApplicationError('Cannot confirm booking for inactive corporate company', 400));
+      }
+
+      // Check if company has sufficient credit for corporate credit bookings
+      if (groupBooking.paymentMethod === 'corporate_credit' &&
+          groupBooking.corporateCompanyId.availableCredit < groupBooking.totalAmount) {
+        return next(new ApplicationError(
+          `Insufficient corporate credit. Required: ₹${groupBooking.totalAmount}, Available: ₹${groupBooking.corporateCompanyId.availableCredit}`,
+          400
+        ));
+      }
+      break;
+
+    case 'confirmed':
+      // Confirmed can be cancelled (if not checked in) or checked in
+      if (groupBooking.rooms.some(room => room.status === 'checked_in')) {
+        return next(new ApplicationError('Cannot change status of group booking with checked-in rooms', 400));
+      }
+      newStatus = 'cancelled';
+      statusMessage = 'Group booking cancelled successfully';
+      break;
+
+    case 'partially_confirmed':
+      // Partially confirmed can be fully cancelled
+      if (groupBooking.rooms.some(room => room.status === 'checked_in')) {
+        return next(new ApplicationError('Cannot cancel group booking with checked-in rooms', 400));
+      }
+      newStatus = 'cancelled';
+      statusMessage = 'Group booking cancelled successfully';
+      break;
+
+    case 'cancelled':
+      // Cancelled can be reactivated to draft
+      newStatus = 'draft';
+      statusMessage = 'Group booking reactivated successfully';
+      break;
+
+    case 'checked_in':
+    case 'checked_out':
+      return next(new ApplicationError('Cannot change status of checked-in or checked-out group booking', 400));
+
+    default:
+      return next(new ApplicationError('Invalid group booking status', 400));
+  }
+
+  // Update the status
+  groupBooking.status = newStatus;
+  groupBooking.metadata.lastModifiedBy = req.user.id;
+
+  // If cancelling, update all room statuses
+  if (newStatus === 'cancelled') {
+    groupBooking.rooms.forEach(room => {
+      if (room.status !== 'checked_in' && room.status !== 'checked_out') {
+        room.status = 'cancelled';
+      }
+    });
+  }
+
+  // If reactivating, reset room statuses
+  if (newStatus === 'draft') {
+    groupBooking.rooms.forEach(room => {
+      if (room.status === 'cancelled') {
+        room.status = 'pending';
+      }
+    });
+  }
+
+  await groupBooking.save();
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      groupBooking,
+      message: statusMessage
     }
   });
 });

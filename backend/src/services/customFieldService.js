@@ -1,7 +1,7 @@
 import CustomField from '../models/CustomField.js';
 import GuestCustomData from '../models/GuestCustomData.js';
 import User from '../models/User.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import mongoose from 'mongoose';
 
 class CustomFieldService {
@@ -17,7 +17,7 @@ class CustomFieldService {
       });
 
       if (existingField) {
-        throw new AppError('Field name already exists', 400);
+        throw new ApplicationError('Field name already exists', 400);
       }
 
       // Create the custom field
@@ -34,7 +34,7 @@ class CustomFieldService {
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to create custom field', 500);
+      throw new ApplicationError('Failed to create custom field', 500);
     }
   }
 
@@ -50,7 +50,7 @@ class CustomFieldService {
       );
 
       if (!customField) {
-        throw new AppError('Custom field not found', 404);
+        throw new ApplicationError('Custom field not found', 404);
       }
 
       await customField.populate('updatedBy', 'name email');
@@ -60,7 +60,7 @@ class CustomFieldService {
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to update custom field', 500);
+      throw new ApplicationError('Failed to update custom field', 500);
     }
   }
 
@@ -75,7 +75,7 @@ class CustomFieldService {
       });
 
       if (!customField) {
-        throw new AppError('Custom field not found', 404);
+        throw new ApplicationError('Custom field not found', 404);
       }
 
       // Delete all associated guest data
@@ -89,7 +89,7 @@ class CustomFieldService {
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to delete custom field', 500);
+      throw new ApplicationError('Failed to delete custom field', 500);
     }
   }
 
@@ -147,7 +147,7 @@ class CustomFieldService {
         }
       };
     } catch (error) {
-      throw new AppError('Failed to fetch custom fields', 500);
+      throw new ApplicationError('Failed to fetch custom fields', 500);
     }
   }
 
@@ -163,7 +163,7 @@ class CustomFieldService {
         .populate('updatedBy', 'name email');
 
       if (!customField) {
-        throw new AppError('Custom field not found', 404);
+        throw new ApplicationError('Custom field not found', 404);
       }
 
       return customField;
@@ -171,7 +171,7 @@ class CustomFieldService {
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to fetch custom field', 500);
+      throw new ApplicationError('Failed to fetch custom field', 500);
     }
   }
 
@@ -183,7 +183,7 @@ class CustomFieldService {
       const fields = await CustomField.getActiveFields(hotelId, options);
       return fields;
     } catch (error) {
-      throw new AppError('Failed to fetch active fields', 500);
+      throw new ApplicationError('Failed to fetch active fields', 500);
     }
   }
 
@@ -195,7 +195,7 @@ class CustomFieldService {
       const fields = await CustomField.getFieldsByCategory(hotelId, category);
       return fields;
     } catch (error) {
-      throw new AppError('Failed to fetch fields by category', 500);
+      throw new ApplicationError('Failed to fetch fields by category', 500);
     }
   }
 
@@ -207,7 +207,7 @@ class CustomFieldService {
       const stats = await CustomField.getFieldStatistics(hotelId);
       return stats;
     } catch (error) {
-      throw new AppError('Failed to fetch field statistics', 500);
+      throw new ApplicationError('Failed to fetch field statistics', 500);
     }
   }
 
@@ -222,7 +222,7 @@ class CustomFieldService {
       });
 
       if (!field) {
-        throw new AppError('Custom field not found', 404);
+        throw new ApplicationError('Custom field not found', 404);
       }
 
       return field.validateValue(value);
@@ -230,7 +230,7 @@ class CustomFieldService {
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to validate field value', 500);
+      throw new ApplicationError('Failed to validate field value', 500);
     }
   }
 
@@ -255,7 +255,7 @@ class CustomFieldService {
 
       return data;
     } catch (error) {
-      throw new AppError('Failed to fetch guest custom data', 500);
+      throw new ApplicationError('Failed to fetch guest custom data', 500);
     }
   }
 
@@ -267,7 +267,7 @@ class CustomFieldService {
       // Validate guest exists
       const guest = await User.findById(guestId);
       if (!guest || guest.role !== 'guest') {
-        throw new AppError('Guest not found', 404);
+        throw new ApplicationError('Guest not found', 404);
       }
 
       // Get field for validation
@@ -277,13 +277,13 @@ class CustomFieldService {
       });
 
       if (!field) {
-        throw new AppError('Custom field not found', 404);
+        throw new ApplicationError('Custom field not found', 404);
       }
 
       // Validate value
       const validationErrors = field.validateValue(value);
       if (validationErrors.length > 0) {
-        throw new AppError(validationErrors.join(', '), 400);
+        throw new ApplicationError(validationErrors.join(', '), 400);
       }
 
       // Update or create guest custom data
@@ -316,7 +316,7 @@ class CustomFieldService {
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to update guest custom data', 500);
+      throw new ApplicationError('Failed to update guest custom data', 500);
     }
   }
 
@@ -328,7 +328,7 @@ class CustomFieldService {
       // Validate guest exists
       const guest = await User.findById(guestId);
       if (!guest || guest.role !== 'guest') {
-        throw new AppError('Guest not found', 404);
+        throw new ApplicationError('Guest not found', 404);
       }
 
       // Validate all fields and values
@@ -339,7 +339,7 @@ class CustomFieldService {
       });
 
       if (fields.length !== fieldIds.length) {
-        throw new AppError('One or more custom fields not found', 404);
+        throw new ApplicationError('One or more custom fields not found', 404);
       }
 
       // Validate all values
@@ -347,7 +347,7 @@ class CustomFieldService {
         const value = dataUpdates[field._id.toString()];
         const validationErrors = field.validateValue(value);
         if (validationErrors.length > 0) {
-          throw new AppError(`Field ${field.label}: ${validationErrors.join(', ')}`, 400);
+          throw new ApplicationError(`Field ${field.label}: ${validationErrors.join(', ')}`, 400);
         }
       }
 
@@ -364,7 +364,7 @@ class CustomFieldService {
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to bulk update guest custom data', 500);
+      throw new ApplicationError('Failed to bulk update guest custom data', 500);
     }
   }
 
@@ -376,7 +376,7 @@ class CustomFieldService {
       const stats = await GuestCustomData.getFieldUsageStats(fieldId, hotelId);
       return stats;
     } catch (error) {
-      throw new AppError('Failed to fetch field usage statistics', 500);
+      throw new ApplicationError('Failed to fetch field usage statistics', 500);
     }
   }
 
@@ -388,7 +388,7 @@ class CustomFieldService {
       const analytics = await GuestCustomData.getDataAnalytics(hotelId, options);
       return analytics;
     } catch (error) {
-      throw new AppError('Failed to fetch custom data analytics', 500);
+      throw new ApplicationError('Failed to fetch custom data analytics', 500);
     }
   }
 
@@ -427,7 +427,7 @@ class CustomFieldService {
 
       return fields;
     } catch (error) {
-      throw new AppError('Failed to export custom fields', 500);
+      throw new ApplicationError('Failed to export custom fields', 500);
     }
   }
 
@@ -477,7 +477,7 @@ class CustomFieldService {
 
       return results;
     } catch (error) {
-      throw new AppError('Failed to import custom fields', 500);
+      throw new ApplicationError('Failed to import custom fields', 500);
     }
   }
 
@@ -514,7 +514,7 @@ class CustomFieldService {
 
       return groupedFields;
     } catch (error) {
-      throw new AppError('Failed to get form configuration', 500);
+      throw new ApplicationError('Failed to get form configuration', 500);
     }
   }
 }

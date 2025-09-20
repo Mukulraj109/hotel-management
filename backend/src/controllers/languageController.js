@@ -4,7 +4,7 @@ import Content from '../models/Content.js';
 import translationService from '../services/translationService.js';
 import localizationUtils from '../utils/localizationUtils.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -74,7 +74,7 @@ class LanguageController {
 
     const language = await Language.getLanguageByCode(code);
     if (!language) {
-      return next(new AppError('Language not found', 404));
+      return next(new ApplicationError('Language not found', 404));
     }
 
     if (includeStats === 'true') {
@@ -111,13 +111,13 @@ class LanguageController {
 
     // Validate required fields
     if (!code || !name || !nativeName || !locale) {
-      return next(new AppError('Code, name, nativeName, and locale are required', 400));
+      return next(new ApplicationError('Code, name, nativeName, and locale are required', 400));
     }
 
     // Check if language already exists
     const existingLanguage = await Language.findOne({ code: code.toUpperCase() });
     if (existingLanguage) {
-      return next(new AppError('Language already exists', 409));
+      return next(new ApplicationError('Language already exists', 409));
     }
 
     // If this is set as default, ensure no other default exists
@@ -197,7 +197,7 @@ class LanguageController {
     );
 
     if (!language) {
-      return next(new AppError('Language not found', 404));
+      return next(new ApplicationError('Language not found', 404));
     }
 
     logger.info('Language updated', {
@@ -222,11 +222,11 @@ class LanguageController {
 
     const language = await Language.findOne({ code: code.toUpperCase() });
     if (!language) {
-      return next(new AppError('Language not found', 404));
+      return next(new ApplicationError('Language not found', 404));
     }
 
     if (language.isDefault) {
-      return next(new AppError('Cannot delete default language', 400));
+      return next(new ApplicationError('Cannot delete default language', 400));
     }
 
     language.isActive = false;
@@ -308,7 +308,7 @@ class LanguageController {
     } = req.body;
 
     if (!fieldName || !originalText || !targetLanguages || !Array.isArray(targetLanguages)) {
-      return next(new AppError('fieldName, originalText, and targetLanguages array are required', 400));
+      return next(new ApplicationError('fieldName, originalText, and targetLanguages array are required', 400));
     }
 
     const options = {
@@ -354,7 +354,7 @@ class LanguageController {
 
     const translation = await Translation.findById(translationId);
     if (!translation) {
-      return next(new AppError('Translation not found', 404));
+      return next(new ApplicationError('Translation not found', 404));
     }
 
     await translation.approve(req.user._id, notes);
@@ -383,7 +383,7 @@ class LanguageController {
 
     const translation = await Translation.findById(translationId);
     if (!translation) {
-      return next(new AppError('Translation not found', 404));
+      return next(new ApplicationError('Translation not found', 404));
     }
 
     await translation.reject(req.user._id, notes);
@@ -439,7 +439,7 @@ class LanguageController {
     const { updates } = req.body;
 
     if (!updates || !Array.isArray(updates)) {
-      return next(new AppError('Updates array is required', 400));
+      return next(new ApplicationError('Updates array is required', 400));
     }
 
     const processedUpdates = updates.map(update => ({
@@ -519,12 +519,12 @@ class LanguageController {
     } = req.body;
 
     if (!channel) {
-      return next(new AppError('Channel is required', 400));
+      return next(new ApplicationError('Channel is required', 400));
     }
 
     const language = await Language.findOne({ code: code.toUpperCase() });
     if (!language) {
-      return next(new AppError('Language not found', 404));
+      return next(new ApplicationError('Language not found', 404));
     }
 
     await language.addChannelSupport(channel, {
@@ -555,7 +555,7 @@ class LanguageController {
     const { text } = req.body;
 
     if (!text || typeof text !== 'string') {
-      return next(new AppError('Text is required', 400));
+      return next(new ApplicationError('Text is required', 400));
     }
 
     const detection = await translationService.detectLanguage(text);
@@ -615,7 +615,7 @@ class LanguageController {
     const { text, languageCode, options = {} } = req.body;
 
     if (!text || !languageCode) {
-      return next(new AppError('Text and languageCode are required', 400));
+      return next(new ApplicationError('Text and languageCode are required', 400));
     }
 
     const formattedText = await localizationUtils.formatByLanguage(

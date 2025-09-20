@@ -3,7 +3,7 @@ import POSAttributeValue from '../models/POSAttributeValue.js';
 import POSItemVariant from '../models/POSItemVariant.js';
 import posVariantService from '../services/posVariantService.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -39,7 +39,7 @@ class POSAttributeController {
 
     // Validate required fields
     if (!name || !displayName || !attributeType || !attributeGroup || !dataType) {
-      return next(new AppError('Name, display name, attribute type, attribute group, and data type are required', 400));
+      return next(new ApplicationError('Name, display name, attribute type, attribute group, and data type are required', 400));
     }
 
     // Check for duplicate attribute name in the same hotel
@@ -49,7 +49,7 @@ class POSAttributeController {
     });
 
     if (existingAttribute) {
-      return next(new AppError('Attribute with this name already exists', 409));
+      return next(new ApplicationError('Attribute with this name already exists', 409));
     }
 
     const attributeData = {
@@ -165,7 +165,7 @@ class POSAttributeController {
       .populate('values.attributeValueId', 'name displayName value priceModifier');
 
     if (!attribute) {
-      return next(new AppError('POS attribute not found', 404));
+      return next(new ApplicationError('POS attribute not found', 404));
     }
 
     res.status(200).json({
@@ -186,7 +186,7 @@ class POSAttributeController {
     });
 
     if (!attribute) {
-      return next(new AppError('POS attribute not found', 404));
+      return next(new ApplicationError('POS attribute not found', 404));
     }
 
     // Check for duplicate name if name is being updated
@@ -198,7 +198,7 @@ class POSAttributeController {
       });
 
       if (existingAttribute) {
-        return next(new AppError('Attribute with this name already exists', 409));
+        return next(new ApplicationError('Attribute with this name already exists', 409));
       }
     }
 
@@ -236,7 +236,7 @@ class POSAttributeController {
     });
 
     if (!attribute) {
-      return next(new AppError('POS attribute not found', 404));
+      return next(new ApplicationError('POS attribute not found', 404));
     }
 
     // Check if attribute is being used
@@ -296,7 +296,7 @@ class POSAttributeController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to get attributes by type: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to get attributes by type: ${error.message}`, 400));
     }
   });
 
@@ -319,7 +319,7 @@ class POSAttributeController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to get attributes by group: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to get attributes by group: ${error.message}`, 400));
     }
   });
 
@@ -342,7 +342,7 @@ class POSAttributeController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to get attributes for category: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to get attributes for category: ${error.message}`, 400));
     }
   });
 
@@ -354,7 +354,7 @@ class POSAttributeController {
     const valueData = req.body;
 
     if (!valueData.name || !valueData.displayName || valueData.value === undefined) {
-      return next(new AppError('Name, display name, and value are required', 400));
+      return next(new ApplicationError('Name, display name, and value are required', 400));
     }
 
     const attribute = await POSAttribute.findOne({
@@ -363,7 +363,7 @@ class POSAttributeController {
     });
 
     if (!attribute) {
-      return next(new AppError('POS attribute not found', 404));
+      return next(new ApplicationError('POS attribute not found', 404));
     }
 
     try {
@@ -380,7 +380,7 @@ class POSAttributeController {
         message: 'Attribute value added successfully'
       });
     } catch (error) {
-      return next(new AppError(`Failed to add attribute value: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to add attribute value: ${error.message}`, 400));
     }
   });
 
@@ -397,7 +397,7 @@ class POSAttributeController {
     });
 
     if (!attribute) {
-      return next(new AppError('POS attribute not found', 404));
+      return next(new ApplicationError('POS attribute not found', 404));
     }
 
     try {
@@ -414,7 +414,7 @@ class POSAttributeController {
         message: 'Attribute value updated successfully'
       });
     } catch (error) {
-      return next(new AppError(`Failed to update attribute value: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to update attribute value: ${error.message}`, 400));
     }
   });
 
@@ -430,7 +430,7 @@ class POSAttributeController {
     });
 
     if (!attribute) {
-      return next(new AppError('POS attribute not found', 404));
+      return next(new ApplicationError('POS attribute not found', 404));
     }
 
     try {
@@ -447,7 +447,7 @@ class POSAttributeController {
         message: 'Attribute value removed successfully'
       });
     } catch (error) {
-      return next(new AppError(`Failed to remove attribute value: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to remove attribute value: ${error.message}`, 400));
     }
   });
 
@@ -472,7 +472,7 @@ class POSAttributeController {
         data: result
       });
     } catch (error) {
-      return next(new AppError(`Variant generation failed: ${error.message}`, 400));
+      return next(new ApplicationError(`Variant generation failed: ${error.message}`, 400));
     }
   });
 
@@ -493,7 +493,7 @@ class POSAttributeController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to get variants: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to get variants: ${error.message}`, 400));
     }
   });
 
@@ -505,7 +505,7 @@ class POSAttributeController {
     const { attributes } = req.body;
 
     if (!attributes || !Array.isArray(attributes)) {
-      return next(new AppError('Attributes array is required', 400));
+      return next(new ApplicationError('Attributes array is required', 400));
     }
 
     try {
@@ -518,7 +518,7 @@ class POSAttributeController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to find variant: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to find variant: ${error.message}`, 400));
     }
   });
 
@@ -544,7 +544,7 @@ class POSAttributeController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to update variant pricing: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to update variant pricing: ${error.message}`, 400));
     }
   });
 
@@ -570,7 +570,7 @@ class POSAttributeController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to update variant availability: ${error.message}`, 400));
+      return next(new ApplicationError(`Failed to update variant availability: ${error.message}`, 400));
     }
   });
 
@@ -630,7 +630,7 @@ class POSAttributeController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Failed to get attribute analytics: ${error.message}`, 500));
+      return next(new ApplicationError(`Failed to get attribute analytics: ${error.message}`, 500));
     }
   });
 
@@ -651,7 +651,7 @@ class POSAttributeController {
         data: analytics
       });
     } catch (error) {
-      return next(new AppError(`Failed to get variant analytics: ${error.message}`, 500));
+      return next(new ApplicationError(`Failed to get variant analytics: ${error.message}`, 500));
     }
   });
 

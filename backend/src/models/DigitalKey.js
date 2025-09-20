@@ -292,7 +292,13 @@ digitalKeySchema.methods.useKey = function(userId = null, deviceInfo = {}) {
     this.status = 'used';
   }
   
-  this.addAccessLog('accessed', userId, deviceInfo);
+  // Add access log without saving to avoid parallel save issue
+  this.accessLogs.push({
+    action: 'accessed',
+    userId,
+    deviceInfo,
+    metadata: {}
+  });
   return this.save();
 };
 
@@ -315,7 +321,13 @@ digitalKeySchema.methods.shareWithUser = function(shareData) {
     this.sharedWith.push(shareData);
   }
   
-  this.addAccessLog('shared', shareData.userId, {}, { sharedWith: shareData });
+  // Add access log without saving to avoid parallel save issue
+  this.accessLogs.push({
+    action: 'shared',
+    userId: shareData.userId,
+    deviceInfo: {},
+    metadata: { sharedWith: shareData }
+  });
   return this.save();
 };
 
@@ -327,7 +339,13 @@ digitalKeySchema.methods.revokeShare = function(userIdOrEmail) {
   
   if (shareIndex !== -1) {
     this.sharedWith[shareIndex].isActive = false;
-    this.addAccessLog('revoked', null, {}, { revokedShare: this.sharedWith[shareIndex] });
+    // Add access log without saving to avoid parallel save issue
+    this.accessLogs.push({
+      action: 'revoked',
+      userId: null,
+      deviceInfo: {},
+      metadata: { revokedShare: this.sharedWith[shareIndex] }
+    });
     return this.save();
   }
   
@@ -336,7 +354,13 @@ digitalKeySchema.methods.revokeShare = function(userIdOrEmail) {
 
 digitalKeySchema.methods.revokeKey = function() {
   this.status = 'revoked';
-  this.addAccessLog('revoked');
+  // Add access log without saving
+  this.accessLogs.push({
+    action: 'revoked',
+    userId: null,
+    deviceInfo: {},
+    metadata: {}
+  });
   return this.save();
 };
 
@@ -345,7 +369,13 @@ digitalKeySchema.pre('save', function(next) {
   // Auto-expire keys
   if (this.isExpired && this.status === 'active') {
     this.status = 'expired';
-    this.addAccessLog('expired');
+    // Add access log without saving to avoid parallel save issue
+    this.accessLogs.push({
+      action: 'expired',
+      userId: null,
+      deviceInfo: {},
+      metadata: {}
+    });
   }
   
   // Validate PIN if required
@@ -364,8 +394,13 @@ digitalKeySchema.pre('save', function(next) {
       this.keyCode = this.constructor.generateKeyCode();
     }
     
-    // Add initial access log
-    this.addAccessLog('generated', this.metadata.generatedBy, this.metadata.deviceInfo);
+    // Add initial access log without saving to avoid parallel save issue
+    this.accessLogs.push({
+      action: 'generated',
+      userId: this.metadata?.generatedBy || null,
+      deviceInfo: this.metadata?.deviceInfo || {},
+      metadata: {}
+    });
   }
   next();
 });

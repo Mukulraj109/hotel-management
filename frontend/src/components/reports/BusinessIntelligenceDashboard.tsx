@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { TrendingUp, TrendingDown, DollarSign, Users, Home, Star, AlertTriangle, Activity, BarChart3, Calculator, Clock } from 'lucide-react';
+import { TrendingUp, TrendingDown, IndianRupee, Users, Home, Star, AlertTriangle, Activity, BarChart3, Calculator, Clock } from 'lucide-react';
 
 interface BusinessIntelligenceProps {
   hotelId: string;
@@ -237,11 +237,11 @@ export default function BusinessIntelligenceDashboard({ hotelId, month, year }: 
                       <p className="text-sm font-medium text-gray-600">Total Revenue</p>
                       <p className="text-2xl font-bold text-gray-900">{formatCurrency(data.revenue.totalRevenue)}</p>
                       <div className="flex items-center mt-2 text-sm">
-                        <DollarSign className="w-4 h-4 text-gray-500 mr-1" />
+                        <IndianRupee className="w-4 h-4 text-gray-500 mr-1" />
                         <span className="text-gray-600">ADR: {formatCurrency(data.revenue.adr)}</span>
                       </div>
                     </div>
-                    <DollarSign className="w-8 h-8 text-blue-500" />
+                    <IndianRupee className="w-8 h-8 text-blue-500" />
                   </div>
                 </CardContent>
               </Card>
@@ -421,7 +421,7 @@ export default function BusinessIntelligenceDashboard({ hotelId, month, year }: 
                   ) : (
                     <div className="flex items-center justify-center h-60 text-gray-500">
                       <div className="text-center">
-                        <DollarSign className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                        <IndianRupee className="w-12 h-12 mx-auto mb-4 text-gray-300" />
                         <p className="text-lg font-medium mb-2">No Revenue Trend Data</p>
                         <p className="text-sm">Historical revenue data will be displayed here.</p>
                       </div>

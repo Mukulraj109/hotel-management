@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 export const authenticate = catchAsync(async (req, res, next) => {
@@ -11,7 +11,7 @@ export const authenticate = catchAsync(async (req, res, next) => {
   }
 
   if (!token) {
-    return next(new AppError('You are not logged in! Please log in to get access.', 401));
+    return next(new ApplicationError('You are not logged in! Please log in to get access.', 401));
   }
 
   // Verify token
@@ -20,12 +20,12 @@ export const authenticate = catchAsync(async (req, res, next) => {
   // Check if user still exists
   const currentUser = await User.findById(decoded.id).select('+role');
   if (!currentUser) {
-    return next(new AppError('The user belonging to this token does no longer exist.', 401));
+    return next(new ApplicationError('The user belonging to this token does no longer exist.', 401));
   }
 
   if (!currentUser.isActive) {
     
-    return next(new AppError('Your account has been deactivated. Please contact support.', 401));
+    return next(new ApplicationError('Your account has been deactivated. Please contact support.', 401));
   }
 
   // Grant access to protected route
@@ -39,7 +39,7 @@ export const authorize = (...roles) => {
     const flatRoles = Array.isArray(roles[0]) ? roles[0] : roles;
     console.log('Auth debug - flatRoles:', flatRoles, 'user.role:', req.user.role);
     if (!flatRoles.includes(req.user.role)) {
-      return next(new AppError('You do not have permission to perform this action', 403));
+      return next(new ApplicationError('You do not have permission to perform this action', 403));
     }
     next();
   };

@@ -56,11 +56,17 @@ const PricingRulesManagement: React.FC = () => {
   const fetchPricingRules = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/v1/revenue-management/pricing-rules');
+      const response = await fetch('/api/v1/revenue-management/pricing-rules', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
       const data = await response.json();
-      
+
       if (data.success) {
         setRules(data.data);
+      } else {
+        console.error('Failed to fetch pricing rules:', data.message);
       }
     } catch (error) {
       console.error('Error fetching pricing rules:', error);
@@ -75,6 +81,7 @@ const PricingRulesManagement: React.FC = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({
           ...formData,
@@ -106,6 +113,7 @@ const PricingRulesManagement: React.FC = () => {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify(formData)
       });
@@ -132,7 +140,10 @@ const PricingRulesManagement: React.FC = () => {
 
     try {
       const response = await fetch(`/api/v1/revenue-management/pricing-rules/${ruleId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
       });
 
       const data = await response.json();
@@ -155,6 +166,7 @@ const PricingRulesManagement: React.FC = () => {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({ isActive: !currentStatus })
       });

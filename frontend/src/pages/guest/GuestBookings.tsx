@@ -3,20 +3,26 @@ import { useAuth } from '../../context/AuthContext';
 import { bookingService } from '../../services/bookingService';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Booking } from '../../types/booking';
-import { 
-  Calendar, 
-  MapPin, 
-  Users, 
-  Clock, 
-  CreditCard, 
-  CheckCircle, 
-  XCircle, 
+import {
+  Calendar,
+  MapPin,
+  Users,
+  Clock,
+  CreditCard,
+  CheckCircle,
+  XCircle,
   AlertCircle,
   Eye,
   Download,
   Phone,
-  Mail
+  Mail,
+  Key,
+  Edit,
+  MessageSquare
 } from 'lucide-react';
+import BookingKeyGenerator from '../../components/ui/BookingKeyGenerator';
+import BookingModificationModal from '../../components/ui/BookingModificationModal';
+import BookingConversationModal from '../../components/ui/BookingConversationModal';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
@@ -78,6 +84,12 @@ export default function GuestBookings() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<string>('all');
+  const [showKeyGenerator, setShowKeyGenerator] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<BookingWithHotel | null>(null);
+  const [showModificationModal, setShowModificationModal] = useState(false);
+  const [selectedModificationBooking, setSelectedModificationBooking] = useState<BookingWithHotel | null>(null);
+  const [showConversationModal, setShowConversationModal] = useState(false);
+  const [selectedConversationBooking, setSelectedConversationBooking] = useState<BookingWithHotel | null>(null);
 
   // Use React Query for data fetching
   const { data: bookings = [], isLoading: loading, error } = useQuery({
@@ -133,6 +145,47 @@ export default function GuestBookings() {
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to cancel booking');
     }
+  };
+
+  const handleGenerateKey = (booking: BookingWithHotel) => {
+    setSelectedBooking(booking);
+    setShowKeyGenerator(true);
+  };
+
+  const handleKeyGeneratorClose = () => {
+    setShowKeyGenerator(false);
+    setSelectedBooking(null);
+  };
+
+  const handleKeyGeneratorSuccess = () => {
+    // Refresh data after successful key generation
+    queryClient.invalidateQueries({ queryKey: ['bookings'] });
+    queryClient.invalidateQueries({ queryKey: ['digital-keys'] });
+  };
+
+  const handleRequestModification = (booking: BookingWithHotel) => {
+    setSelectedModificationBooking(booking);
+    setShowModificationModal(true);
+  };
+
+  const handleModificationModalClose = () => {
+    setShowModificationModal(false);
+    setSelectedModificationBooking(null);
+  };
+
+  const handleModificationSuccess = () => {
+    // Refresh data after successful modification request
+    queryClient.invalidateQueries({ queryKey: ['bookings'] });
+  };
+
+  const handleStartConversation = (booking: BookingWithHotel) => {
+    setSelectedConversationBooking(booking);
+    setShowConversationModal(true);
+  };
+
+  const handleConversationModalClose = () => {
+    setShowConversationModal(false);
+    setSelectedConversationBooking(null);
   };
 
   if (loading) {
@@ -324,7 +377,46 @@ export default function GuestBookings() {
                         )}
                       </>
                     )}
-                    
+
+                    {/* Request Changes button for eligible bookings */}
+                    {['pending', 'confirmed'].includes(booking.status) &&
+                     new Date(booking.checkIn) > new Date() && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRequestModification(booking)}
+                        className="text-yellow-600 border-yellow-600 hover:bg-yellow-50"
+                      >
+                        <Edit className="w-4 h-4 mr-1" />
+                        Request Changes
+                      </Button>
+                    )}
+
+                    {/* Contact Hotel button - available for all bookings */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleStartConversation(booking)}
+                      className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                    >
+                      <MessageSquare className="w-4 h-4 mr-1" />
+                      Contact Hotel
+                    </Button>
+
+                    {/* Generate Digital Key button for confirmed bookings */}
+                    {['confirmed', 'checked_in'].includes(booking.status) &&
+                     new Date(booking.checkOut) > new Date() && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleGenerateKey(booking)}
+                        className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                      >
+                        <Key className="w-4 h-4 mr-1" />
+                        Digital Key
+                      </Button>
+                    )}
+
                     {/* Cancel button for eligible bookings */}
                     {['pending', 'confirmed'].includes(booking.status) && 
                      new Date(booking.checkIn) > new Date(Date.now() + 24 * 60 * 60 * 1000) && (
@@ -344,6 +436,71 @@ export default function GuestBookings() {
             </Card>
           ))}
         </div>
+      )}
+
+      {/* Digital Key Generator Modal */}
+      {showKeyGenerator && selectedBooking && (
+        <BookingKeyGenerator
+          booking={{
+            _id: selectedBooking._id,
+            bookingNumber: selectedBooking.bookingNumber,
+            roomId: {
+              number: selectedBooking.rooms[0]?.roomId?.roomNumber || '101',
+              type: selectedBooking.rooms[0]?.roomId?.type || 'Standard',
+              floor: '1'
+            },
+            hotelId: {
+              name: selectedBooking.hotelId.name,
+              address: selectedBooking.hotelId.address ? 
+                `${selectedBooking.hotelId.address.street}, ${selectedBooking.hotelId.address.city}, ${selectedBooking.hotelId.address.state}` : 
+                'Hotel Address'
+            },
+            checkIn: selectedBooking.checkIn,
+            checkOut: selectedBooking.checkOut,
+            status: selectedBooking.status,
+            guest: {
+              name: selectedBooking.guestDetails.firstName + ' ' + selectedBooking.guestDetails.lastName,
+              email: selectedBooking.guestDetails.email
+            }
+          }}
+          onClose={handleKeyGeneratorClose}
+          onSuccess={handleKeyGeneratorSuccess}
+        />
+      )}
+
+      {/* Booking Modification Modal */}
+      {showModificationModal && selectedModificationBooking && (
+        <BookingModificationModal
+          booking={{
+            _id: selectedModificationBooking._id,
+            bookingNumber: selectedModificationBooking.bookingNumber,
+            checkIn: selectedModificationBooking.checkIn,
+            checkOut: selectedModificationBooking.checkOut,
+            totalAmount: selectedModificationBooking.totalAmount,
+            currency: selectedModificationBooking.currency,
+            guestDetails: selectedModificationBooking.guestDetails,
+            nights: selectedModificationBooking.nights,
+            status: selectedModificationBooking.status
+          }}
+          isOpen={showModificationModal}
+          onClose={handleModificationModalClose}
+          onSuccess={handleModificationSuccess}
+        />
+      )}
+
+      {/* Booking Conversation Modal */}
+      {showConversationModal && selectedConversationBooking && (
+        <BookingConversationModal
+          booking={{
+            _id: selectedConversationBooking._id,
+            bookingNumber: selectedConversationBooking.bookingNumber,
+            checkIn: selectedConversationBooking.checkIn,
+            checkOut: selectedConversationBooking.checkOut,
+            status: selectedConversationBooking.status
+          }}
+          isOpen={showConversationModal}
+          onClose={handleConversationModalClose}
+        />
       )}
     </div>
   );

@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { TrendingUp, TrendingDown, DollarSign, Receipt, CreditCard, PieChart, BarChart3, LineChart } from 'lucide-react';
+import { TrendingUp, TrendingDown, IndianRupee, Receipt, CreditCard, PieChart, BarChart3, LineChart } from 'lucide-react';
 import financialService from '@/services/financialService';
 import { formatCurrency } from '@/utils/currencyUtils';
 
@@ -154,7 +154,7 @@ const FinancialDashboard: React.FC = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <IndianRupee className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(dashboardData.summary.totalRevenue)}</div>

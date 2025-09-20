@@ -52,6 +52,38 @@ export interface InventoryItem {
     room?: string;
     shelf?: string;
   };
+  // Automated Reorder System
+  reorderSettings?: {
+    autoReorderEnabled: boolean;
+    reorderPoint?: number;
+    reorderQuantity?: number;
+    preferredSupplier?: {
+      name?: string;
+      contact?: string;
+      email?: string;
+      leadTime?: number;
+    };
+    lastReorderDate?: string;
+    reorderHistory?: {
+      date: string;
+      quantity: number;
+      supplier: string;
+      estimatedCost?: number;
+      actualCost?: number;
+      status: 'pending' | 'approved' | 'ordered' | 'received' | 'cancelled' | 'rejected';
+      approvedBy?: string;
+      orderDate?: string;
+      expectedDeliveryDate?: string;
+      actualDeliveryDate?: string;
+      notes?: string;
+      alertId?: string;
+    }[];
+  };
+  // Virtual fields
+  needsReorder?: boolean;
+  reorderUrgency?: number;
+  estimatedReorderCost?: number;
+  isUrgentReorder?: boolean;
   requests: {
     _id: string;
     userId: string;
@@ -64,6 +96,60 @@ export interface InventoryItem {
   expiryDate?: string;
   isActive: boolean;
   isLowStock?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReorderAlert {
+  _id: string;
+  hotelId: string;
+  inventoryItemId: {
+    _id: string;
+    name: string;
+    category: string;
+    currentStock: number;
+  };
+  alertType: 'low_stock' | 'critical_stock' | 'reorder_needed';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  status: 'active' | 'acknowledged' | 'resolved' | 'dismissed';
+  currentStock: number;
+  reorderPoint: number;
+  suggestedQuantity: number;
+  estimatedCost?: number;
+  supplierInfo?: {
+    name?: string;
+    contact?: string;
+    email?: string;
+    leadTime?: number;
+  };
+  urgencyScore: number;
+  expectedDeliveryDate?: string;
+  acknowledgedBy?: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  acknowledgedAt?: string;
+  resolvedBy?: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  resolvedAt?: string;
+  dismissedBy?: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  dismissedAt?: string;
+  notes?: string;
+  emailsSent?: {
+    recipient: string;
+    sentAt: string;
+    type: 'alert' | 'reminder' | 'escalation';
+  }[];
+  lastEmailSent?: string;
+  reorderRequestId?: string;
   createdAt: string;
   updatedAt: string;
 }

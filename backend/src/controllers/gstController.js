@@ -3,7 +3,7 @@ import CorporateCompany from '../models/CorporateCompany.js';
 import Booking from '../models/Booking.js';
 import Invoice from '../models/Invoice.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 
 /**
  * @swagger
@@ -50,7 +50,7 @@ export const calculateGST = catchAsync(async (req, res, next) => {
   const { amount, gstRate = 18, placeOfSupply = 'Maharashtra', companyState = 'Maharashtra' } = req.body;
   
   if (!amount || amount < 0) {
-    return next(new AppError('Valid amount is required', 400));
+    return next(new ApplicationError('Valid amount is required', 400));
   }
   
   try {
@@ -68,7 +68,7 @@ export const calculateGST = catchAsync(async (req, res, next) => {
       }
     });
   } catch (error) {
-    return next(new AppError(error.message, 400));
+    return next(new ApplicationError(error.message, 400));
   }
 });
 
@@ -99,7 +99,7 @@ export const validateGSTNumber = catchAsync(async (req, res, next) => {
   const { gstNumber } = req.body;
   
   if (!gstNumber) {
-    return next(new AppError('GST number is required', 400));
+    return next(new ApplicationError('GST number is required', 400));
   }
   
   const isValid = GSTCalculationService.validateGSTNumber(gstNumber);
@@ -173,16 +173,16 @@ export const calculateBookingGST = catchAsync(async (req, res, next) => {
   const { items, gstDetails = {} } = req.body;
   
   if (!items || !Array.isArray(items) || items.length === 0) {
-    return next(new AppError('Valid items array is required', 400));
+    return next(new ApplicationError('Valid items array is required', 400));
   }
   
   // Validate items
   for (const item of items) {
     if (!item.quantity || item.quantity < 0) {
-      return next(new AppError('Valid quantity is required for all items', 400));
+      return next(new ApplicationError('Valid quantity is required for all items', 400));
     }
     if (!item.unitPrice || item.unitPrice < 0) {
-      return next(new AppError('Valid unit price is required for all items', 400));
+      return next(new ApplicationError('Valid unit price is required for all items', 400));
     }
   }
   
@@ -196,7 +196,7 @@ export const calculateBookingGST = catchAsync(async (req, res, next) => {
       }
     });
   } catch (error) {
-    return next(new AppError(error.message, 400));
+    return next(new ApplicationError(error.message, 400));
   }
 });
 
@@ -230,7 +230,7 @@ export const reverseCalculateGST = catchAsync(async (req, res, next) => {
   const { totalAmount, gstRate = 18 } = req.body;
   
   if (!totalAmount || totalAmount < 0) {
-    return next(new AppError('Valid total amount is required', 400));
+    return next(new ApplicationError('Valid total amount is required', 400));
   }
   
   const reverseCalculation = GSTCalculationService.calculateReverseGST(totalAmount, gstRate);
@@ -273,11 +273,11 @@ export const generateGSTInvoiceData = catchAsync(async (req, res, next) => {
   .populate('hotelId');
   
   if (!booking) {
-    return next(new AppError('Booking not found', 404));
+    return next(new ApplicationError('Booking not found', 404));
   }
   
   if (!booking.corporateBooking?.corporateCompanyId) {
-    return next(new AppError('This is not a corporate booking', 400));
+    return next(new ApplicationError('This is not a corporate booking', 400));
   }
   
   const company = booking.corporateBooking.corporateCompanyId;
@@ -409,7 +409,7 @@ export const updateBookingGSTDetails = catchAsync(async (req, res, next) => {
   
   // Validate GST number if provided
   if (gstNumber && !GSTCalculationService.validateGSTNumber(gstNumber)) {
-    return next(new AppError('Invalid GST number format', 400));
+    return next(new ApplicationError('Invalid GST number format', 400));
   }
   
   const booking = await Booking.findOne({
@@ -418,7 +418,7 @@ export const updateBookingGSTDetails = catchAsync(async (req, res, next) => {
   });
   
   if (!booking) {
-    return next(new AppError('Booking not found', 404));
+    return next(new ApplicationError('Booking not found', 404));
   }
   
   const updateData = {};

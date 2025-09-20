@@ -7,6 +7,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { adminService } from '../../services/adminService';
 import { formatCurrency } from '../../utils/dashboardUtils';
+import { useAuth } from '../../context/AuthContext';
 import { 
   User, 
   Home, 
@@ -60,10 +61,12 @@ interface BookingForm {
 
 export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBookingProps) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [availableRooms, setAvailableRooms] = useState<any[]>([]);
   const [hotels, setHotels] = useState<any[]>([]);
+  const [selectedHotelId, setSelectedHotelId] = useState<string>('');
   
   // Form states
   const [guestForm, setGuestForm] = useState<GuestForm>({
@@ -79,7 +82,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
   });
 
   const [bookingForm, setBookingForm] = useState<BookingForm>({
-    hotelId: '68afe8080c02fcbe30092b8e', // Default hotel ID
+    hotelId: '', // Will be set dynamically based on user context or available hotels
     roomIds: [],
     checkIn: new Date().toISOString().split('T')[0],
     checkOut: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Set to 2 days later
@@ -114,48 +117,126 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
 
   const fetchHotels = async () => {
     try {
+      console.log('🏨 [WalkInBooking] Fetching hotels...');
       const response = await adminService.getHotels();
-      setHotels(response.data.hotels || []);
+      const hotelsList = response.data.hotels || [];
+      console.log('🏨 [WalkInBooking] Hotels fetched:', hotelsList);
+
+      setHotels(hotelsList);
+
+      // Dynamic hotel selection logic
+      let selectedHotel = '';
+
+      // 1. First try to use user's hotel if available
+      if (user?.hotelId) {
+        const userHotel = hotelsList.find(hotel => hotel._id === user.hotelId);
+        if (userHotel) {
+          selectedHotel = user.hotelId;
+          console.log('🏨 [WalkInBooking] Using user hotel:', userHotel.name);
+        }
+      }
+
+      // 2. If no user hotel, try to use the seeded hotel ID
+      if (!selectedHotel) {
+        const seededHotel = hotelsList.find(hotel => hotel._id === '68c7e6ebca8aed0ec8036a9c');
+        if (seededHotel) {
+          selectedHotel = '68c7e6ebca8aed0ec8036a9c';
+          console.log('🏨 [WalkInBooking] Using seeded hotel:', seededHotel.name);
+        }
+      }
+
+      // 3. Fallback to first available hotel
+      if (!selectedHotel && hotelsList.length > 0) {
+        selectedHotel = hotelsList[0]._id;
+        console.log('🏨 [WalkInBooking] Fallback to first hotel:', hotelsList[0].name);
+      }
+
+      // Set the selected hotel
+      if (selectedHotel) {
+        setSelectedHotelId(selectedHotel);
+        setBookingForm(prev => ({
+          ...prev,
+          hotelId: selectedHotel
+        }));
+        console.log('🏨 [WalkInBooking] Hotel selected:', selectedHotel);
+      } else {
+        console.warn('⚠️ [WalkInBooking] No hotels available');
+        toast.error('No hotels available. Please contact administrator.');
+      }
+
     } catch (error) {
-      console.error('Error fetching hotels:', error);
+      console.error('❌ [WalkInBooking] Error fetching hotels:', error);
+      toast.error('Failed to load hotel information. Please try again.');
     }
   };
 
   const fetchAvailableRooms = async () => {
     try {
-      console.log('Fetching available rooms with params:', {
+      console.log('🏨 [WalkInBooking] Fetching available rooms with params:', {
         hotelId: bookingForm.hotelId,
         checkIn: bookingForm.checkIn,
         checkOut: bookingForm.checkOut
       });
-      
-      console.log('Making API call to getAvailableRooms...');
+
+      console.log('🔍 [WalkInBooking] Making API call to getAvailableRooms...');
       const response = await adminService.getAvailableRooms(
         bookingForm.hotelId,
         bookingForm.checkIn,
         bookingForm.checkOut
       );
-      console.log('Available rooms response:', response);
-      console.log('Response data:', response.data);
-      console.log('Rooms array:', response.data.rooms);
-      console.log('Number of rooms:', response.data.rooms?.length || 0);
-      
+      console.log('✅ [WalkInBooking] Available rooms response:', response);
+      console.log('📊 [WalkInBooking] Response data structure:', response.data);
+      console.log('🏠 [WalkInBooking] Rooms array:', response.data.rooms);
+      console.log('📈 [WalkInBooking] Total rooms returned:', response.data.rooms?.length || 0);
+
       const rooms = response.data.rooms || [];
-      console.log('Setting available rooms:', rooms);
-      setAvailableRooms(rooms);
+      const availableRooms = rooms.filter(room => room.isAvailable);
+      const unavailableRooms = rooms.filter(room => !room.isAvailable);
+
+      console.log(`🏠 [WalkInBooking] Rooms breakdown: ${rooms.length} total, ${availableRooms.length} available, ${unavailableRooms.length} unavailable`);
+
+      if (availableRooms.length === 0 && rooms.length > 0) {
+        console.log('⚠️ [WalkInBooking] No available rooms found, reasons:');
+        unavailableRooms.forEach((room, index) => {
+          console.log(`  Room ${index + 1}: ${room.roomNumber} - Status: ${room.currentStatus}, Occupied by booking: ${room.isOccupiedByBooking}`);
+        });
+      }
+
+      console.log('💾 [WalkInBooking] Setting available rooms state with all rooms (frontend will filter by availability)');
+      setAvailableRooms(rooms); // Store all rooms, let frontend filter them
     } catch (error: any) {
-      console.error('Error fetching available rooms:', error);
-      console.error('Error details:', {
+      console.error('❌ [WalkInBooking] Error fetching available rooms:', error);
+      console.error('❌ [WalkInBooking] Error details:', {
         message: error.message,
         status: error.response?.status,
+        statusText: error.response?.statusText,
         data: error.response?.data,
-        config: error.config
+        url: error.config?.url,
+        method: error.config?.method,
+        headers: error.config?.headers
       });
+
+      // Handle different types of errors with user-friendly messages
       if (error.response?.status === 429) {
-        console.log('Rate limit exceeded, will retry automatically');
-      } else if (error.response) {
-        console.error('Error response:', error.response.data);
+        console.log('⏳ [WalkInBooking] Rate limit exceeded, will retry automatically');
+        toast.error('Too many requests. Please wait a moment and try again.');
+      } else if (error.response?.status === 404) {
+        console.log('🔍 [WalkInBooking] No hotel or rooms found');
+        toast.error('No rooms found for the selected hotel. Please check hotel configuration.');
+      } else if (error.response?.status === 401) {
+        console.log('🔐 [WalkInBooking] Authentication required');
+        toast.error('Please log in again to access room information.');
+      } else if (error.response?.status >= 500) {
+        console.log('🚨 [WalkInBooking] Server error');
+        toast.error('Server error occurred. Please try again later.');
+      } else if (error.code === 'NETWORK_ERROR' || !error.response) {
+        console.log('🌐 [WalkInBooking] Network error');
+        toast.error('Network error. Please check your connection and try again.');
+      } else {
+        console.log('⚠️ [WalkInBooking] Unknown error');
+        toast.error('Failed to fetch room availability. Please try again.');
       }
+
       setAvailableRooms([]);
     }
   };
@@ -364,7 +445,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
       idNumber: ''
     });
     setBookingForm({
-      hotelId: '68afe8080c02fcbe30092b8e', // Default hotel ID
+      hotelId: selectedHotelId || '', // Use the dynamically selected hotel ID
       roomIds: [],
       checkIn: new Date().toISOString().split('T')[0],
       checkOut: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Set to 2 days later
@@ -670,14 +751,16 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
                          {/* Available Rooms */}
              <div>
                <label className="block text-sm font-medium text-gray-700 mb-3">
-                 Available Rooms * ({availableRooms.filter(room => room.isAvailable).length} rooms found)
+                 Available Rooms * ({availableRooms.filter(room => room.isAvailable).length} available of {availableRooms.length} total)
                </label>
+
+               {/* Show available rooms */}
                {availableRooms.filter(room => room.isAvailable).length > 0 ? (
                  <div className="space-y-2 max-h-80 overflow-y-auto border border-gray-200 rounded-lg p-2">
                    {availableRooms.filter(room => room.isAvailable).map((room) => (
                      <div
                        key={room._id}
-                       className={`p-3 border rounded-lg cursor-pointer ${
+                       className={`p-3 border rounded-lg cursor-pointer transition-colors ${
                          bookingForm.roomIds.includes(room._id)
                            ? 'border-blue-500 bg-blue-50'
                            : 'border-gray-300 hover:border-gray-400'
@@ -696,9 +779,10 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
                            <div className="flex items-center">
                              <Home className="h-4 w-4 text-gray-400 mr-2" />
                              <span className="font-medium">Room {room.roomNumber}</span>
+                             <span className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded">Available</span>
                            </div>
                            <div className="text-sm text-gray-600">
-                             {room.type} • Floor {room.floor}
+                             {room.type} • Floor {room.floor} • Status: {room.currentStatus}
                            </div>
                          </div>
                          <div className="text-right">
@@ -710,39 +794,60 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess }: WalkInBook
                      </div>
                    ))}
                  </div>
-                             ) : (
+               ) : availableRooms.length > 0 ? (
+                 // Show unavailable rooms with reasons
+                 <div className="space-y-3">
+                   <div className="p-4 border border-orange-300 rounded-lg bg-orange-50">
+                     <div className="flex items-center mb-2">
+                       <AlertCircle className="h-4 w-4 text-orange-600 mr-2" />
+                       <p className="text-orange-800 font-medium">No available rooms for selected dates</p>
+                     </div>
+                     <p className="text-orange-700 text-sm">
+                       {availableRooms.length} rooms found, but all are currently unavailable. See details below:
+                     </p>
+                   </div>
+
+                   <div className="space-y-2 max-h-60 overflow-y-auto border border-gray-200 rounded-lg p-2 bg-gray-50">
+                     <div className="text-sm text-gray-600 font-medium mb-2">Unavailable Rooms:</div>
+                     {availableRooms.filter(room => !room.isAvailable).map((room) => (
+                       <div key={room._id} className="p-2 border border-gray-200 rounded bg-white">
+                         <div className="flex justify-between items-center">
+                           <div>
+                             <div className="flex items-center">
+                               <Home className="h-4 w-4 text-gray-400 mr-2" />
+                               <span className="font-medium text-gray-700">Room {room.roomNumber}</span>
+                               <span className="ml-2 px-2 py-1 text-xs bg-red-100 text-red-800 rounded">
+                                 {room.isOccupiedByBooking ? 'Booked' : room.currentStatus}
+                               </span>
+                             </div>
+                             <div className="text-xs text-gray-500">
+                               {room.type} • Floor {room.floor}
+                               {room.isOccupiedByBooking && ' • Has existing booking for these dates'}
+                             </div>
+                           </div>
+                           <div className="text-right">
+                             <div className="text-sm text-gray-600">
+                               {formatCurrency(room.currentRate || 0, 'INR')}/night
+                             </div>
+                           </div>
+                         </div>
+                       </div>
+                     ))}
+                   </div>
+                 </div>
+               ) : (
                  <div className="p-4 border border-gray-300 rounded-lg bg-gray-50">
                    <p className="text-gray-600 text-center">
-                     {bookingForm.checkIn && bookingForm.checkOut 
-                       ? `No rooms available for the selected dates (${availableRooms.length} total rooms found, ${availableRooms.filter(room => room.isAvailable).length} available). Please try different dates.`
+                     {bookingForm.checkIn && bookingForm.checkOut
+                       ? 'No rooms found for this hotel. Please check hotel configuration.'
                        : 'Please select check-in and check-out dates to see available rooms.'
                      }
                    </p>
                  </div>
                )}
+
               {errors.rooms && (
                 <p className="text-red-500 text-sm mt-1">{errors.rooms}</p>
-              )}
-              
-              {/* Temporary debug button for testing */}
-              {availableRooms.length === 0 && (
-                <div className="mt-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      // Add a test room for debugging
-                      setBookingForm(prev => ({
-                        ...prev,
-                        roomIds: [...prev.roomIds, 'test-room-id']
-                      }));
-                    }}
-                    className="text-blue-600 hover:text-blue-700"
-                  >
-                    Add Test Room (Debug)
-                  </Button>
-                </div>
               )}
             </div>
 

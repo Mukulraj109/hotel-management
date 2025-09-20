@@ -16,7 +16,7 @@ import {
   User,
   Bed,
   Settings,
-  DollarSign,
+  IndianRupee,
   UserCheck,
   UserX,
   Calendar,
@@ -232,7 +232,7 @@ const NotificationSystem: React.FC<NotificationSystemProps> = ({
       housekeeping: <Bed className="w-4 h-4" />,
       maintenance: <Settings className="w-4 h-4" />,
       guest_request: <MessageSquare className="w-4 h-4" />,
-      payment: <DollarSign className="w-4 h-4" />,
+      payment: <IndianRupee className="w-4 h-4" />,
       system: <Info className="w-4 h-4" />
     };
     return icons[category as keyof typeof icons] || <Bell className="w-4 h-4" />;

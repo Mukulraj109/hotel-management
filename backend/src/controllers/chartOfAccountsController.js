@@ -3,6 +3,24 @@ import GeneralLedger from '../models/GeneralLedger.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import logger from '../utils/logger.js';
 
+// Helper function to flatten account tree into a flat array
+function flattenAccountTree(accounts) {
+  let flattened = [];
+
+  const flatten = (account) => {
+    flattened.push(account);
+    if (account.children && Array.isArray(account.children)) {
+      account.children.forEach(flatten);
+    }
+  };
+
+  if (Array.isArray(accounts)) {
+    accounts.forEach(flatten);
+  }
+
+  return flattened;
+}
+
 // Get all accounts with optional filtering
 export const getAccounts = catchAsync(async (req, res) => {
   // Temporarily bypass hotel filtering for testing
@@ -58,6 +76,31 @@ export const getAccountTree = catchAsync(async (req, res) => {
     status: 'success',
     data: { accountTree: tree }
   });
+});
+
+// Get flattened accounts (tree flattening done on backend)
+export const getFlattenedAccounts = catchAsync(async (req, res) => {
+  try {
+    // Get the tree structure first
+    const tree = await ChartOfAccounts.getAccountTree();
+
+    // Flatten the tree on backend
+    const flattenedAccounts = flattenAccountTree(tree);
+
+    console.log('📊 Backend-flattened accounts:', flattenedAccounts.length, 'accounts');
+
+    res.status(200).json({
+      status: 'success',
+      results: flattenedAccounts.length,
+      data: { accounts: flattenedAccounts }
+    });
+  } catch (error) {
+    logger.error('Error getting flattened accounts:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to get flattened accounts'
+    });
+  }
 });
 
 // Get single account with details
@@ -423,6 +466,7 @@ export const bulkImportAccounts = catchAsync(async (req, res) => {
 export default {
   getAccounts,
   getAccountTree,
+  getFlattenedAccounts,
   getAccount,
   createAccount,
   updateAccount,

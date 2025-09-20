@@ -20,6 +20,7 @@ class RoomBlockController {
       }
 
       const {
+        blockId,
         blockName,
         groupName,
         corporateId,
@@ -27,6 +28,7 @@ class RoomBlockController {
         startDate,
         endDate,
         roomIds,
+        totalRooms,
         blockRate,
         contactPerson,
         billingInstructions,
@@ -82,6 +84,7 @@ class RoomBlockController {
 
       // Create room block
       const roomBlock = new RoomBlock({
+        blockId,
         blockName,
         groupName,
         corporateId,
@@ -89,7 +92,7 @@ class RoomBlockController {
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         rooms: roomData,
-        totalRooms: rooms.length,
+        totalRooms: totalRooms || rooms.length,
         blockRate,
         contactPerson,
         billingInstructions,

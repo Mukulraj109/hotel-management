@@ -295,88 +295,95 @@ export default function OverbookingConfiguration() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Overbooking Configuration</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Overbooking Configuration</h1>
+          <p className="text-sm sm:text-base text-gray-600 mt-1">
             Manage overbooking rules and monitor occupancy optimization
           </p>
         </div>
-        <Button onClick={() => { console.log('🔄 Manually refreshing data...'); loadData(); }} disabled={loading}>
-          <Settings className="w-4 h-4 mr-2" />
-          {loading ? 'Loading...' : 'Refresh Data'}
-        </Button>
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Button 
+            onClick={() => { console.log('🔄 Manually refreshing data...'); loadData(); }} 
+            disabled={loading}
+            className="w-full sm:w-auto"
+          >
+            <Settings className="w-4 h-4 sm:mr-2" />
+            <span className="sm:hidden">Refresh</span>
+            <span className="hidden sm:inline">{loading ? 'Loading...' : 'Refresh Data'}</span>
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Settings className="w-6 h-6 text-blue-600" />
+              <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0">
+                <Settings className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Room Types</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalRoomTypes}</p>
+              <div className="ml-3 sm:ml-4 min-w-0 flex-1">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Total Room Types</p>
+                <p className="text-lg sm:text-2xl font-bold text-gray-900 truncate">{stats.totalRoomTypes}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <CheckCircle className="w-6 h-6 text-green-600" />
+              <div className="p-2 bg-green-100 rounded-lg flex-shrink-0">
+                <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-green-600" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Overbooking Enabled</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.overbookingEnabled}</p>
+              <div className="ml-3 sm:ml-4 min-w-0 flex-1">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Overbooking Enabled</p>
+                <p className="text-lg sm:text-2xl font-bold text-gray-900 truncate">{stats.overbookingEnabled}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-orange-100 rounded-lg">
-                <AlertTriangle className="w-6 h-6 text-orange-600" />
+              <div className="p-2 bg-orange-100 rounded-lg flex-shrink-0">
+                <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Active Alerts</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.activeAlerts}</p>
+              <div className="ml-3 sm:ml-4 min-w-0 flex-1">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Active Alerts</p>
+                <p className="text-lg sm:text-2xl font-bold text-gray-900 truncate">{stats.activeAlerts}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <TrendingUp className="w-6 h-6 text-purple-600" />
+              <div className="p-2 bg-purple-100 rounded-lg flex-shrink-0">
+                <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Additional Revenue</p>
-                <p className="text-2xl font-bold text-gray-900">${stats.revenueFromOverbooking}</p>
+              <div className="ml-3 sm:ml-4 min-w-0 flex-1">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Additional Revenue</p>
+                <p className="text-lg sm:text-2xl font-bold text-gray-900 truncate">₹{stats.revenueFromOverbooking.toLocaleString()}</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="p-3 sm:p-6">
             <div className="flex items-center">
-              <div className="p-2 bg-indigo-100 rounded-lg">
-                <TrendingUp className="w-6 h-6 text-indigo-600" />
+              <div className="p-2 bg-indigo-100 rounded-lg flex-shrink-0">
+                <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
               </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Occupancy Boost</p>
-                <p className="text-2xl font-bold text-gray-900">+{stats.occupancyImprovement}%</p>
+              <div className="ml-3 sm:ml-4 min-w-0 flex-1">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Occupancy Boost</p>
+                <p className="text-lg sm:text-2xl font-bold text-gray-900 truncate">+{stats.occupancyImprovement}%</p>
               </div>
             </div>
           </CardContent>
@@ -384,30 +391,30 @@ export default function OverbookingConfiguration() {
       </div>
 
       {/* Main Content */}
-      <Tabs defaultValue="configuration" className="space-y-6">
-        <TabsList>
-          <TabsTrigger value="configuration">Configuration</TabsTrigger>
-          <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+      <Tabs defaultValue="configuration" className="space-y-4 sm:space-y-6">
+        <TabsList className="grid w-full grid-cols-3 gap-1">
+          <TabsTrigger value="configuration" className="text-xs sm:text-sm">Configuration</TabsTrigger>
+          <TabsTrigger value="monitoring" className="text-xs sm:text-sm">Monitoring</TabsTrigger>
+          <TabsTrigger value="analytics" className="text-xs sm:text-sm">Analytics</TabsTrigger>
         </TabsList>
 
         {/* Configuration Tab */}
-        <TabsContent value="configuration" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <TabsContent value="configuration" className="space-y-4 sm:space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             {/* Room Type Configuration */}
             <Card>
               <CardHeader>
-                <CardTitle>Configure Overbooking Rules</CardTitle>
+                <CardTitle className="text-base sm:text-lg">Configure Overbooking Rules</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                     Select Room Type
                   </label>
                   <Select value={selectedRoomType} onValueChange={handleRoomTypeSelect}>
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger className="w-full text-sm">
                       <div className="flex items-center justify-between w-full">
-                        <span>
+                        <span className="truncate">
                           {selectedRoomType 
                             ? (() => {
                                 const selected = roomTypes.find(rt => rt._id === selectedRoomType);
@@ -420,7 +427,7 @@ export default function OverbookingConfiguration() {
                     </SelectTrigger>
                     <SelectContent>
                       {roomTypes.map(rt => (
-                        <SelectItem key={rt._id} value={rt._id}>
+                        <SelectItem key={rt._id} value={rt._id} className="text-sm">
                           {rt.name} ({rt.code})
                         </SelectItem>
                       ))}
@@ -432,12 +439,12 @@ export default function OverbookingConfiguration() {
                   <div className="space-y-4">
                     {/* Current Status Indicator */}
                     <div className="p-3 bg-gray-50 rounded-lg border">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h5 className="font-medium text-gray-900">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <h5 className="font-medium text-sm sm:text-base text-gray-900 truncate">
                             {roomTypes.find(rt => rt._id === selectedRoomType)?.name || 'Room Type Not Found'}
                           </h5>
-                          <p className="text-sm text-gray-600">
+                          <p className="text-xs sm:text-sm text-gray-600">
                             Current: {allowOverbooking 
                               ? `${overbookingLimit} rooms allowed for overbooking`
                               : 'Overbooking disabled'
@@ -450,7 +457,7 @@ export default function OverbookingConfiguration() {
                           )}
                         </div>
                         <div className="flex items-center space-x-2">
-                          <Badge variant={allowOverbooking ? "default" : "secondary"}>
+                          <Badge variant={allowOverbooking ? "default" : "secondary"} className="text-xs">
                             {allowOverbooking ? 'Enabled' : 'Disabled'}
                           </Badge>
                           <Button 
@@ -465,6 +472,7 @@ export default function OverbookingConfiguration() {
                               }
                               console.log('🔄 New state will be:', newState);
                             }}
+                            className="text-xs"
                           >
                             {allowOverbooking ? 'Disable' : 'Enable'}
                           </Button>
@@ -473,7 +481,7 @@ export default function OverbookingConfiguration() {
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium text-gray-700">
+                      <label className="text-xs sm:text-sm font-medium text-gray-700">
                         Allow Overbooking
                       </label>
                       <Switch 
@@ -485,7 +493,7 @@ export default function OverbookingConfiguration() {
                     {allowOverbooking && (
                       <>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-2">
                             Overbooking Limit (rooms)
                           </label>
                           <Input
@@ -495,6 +503,7 @@ export default function OverbookingConfiguration() {
                             value={overbookingLimit}
                             onChange={(e) => setOverbookingLimit(parseInt(e.target.value) || 0)}
                             placeholder="Maximum rooms to overbook"
+                            className="text-sm"
                           />
                         </div>
 
@@ -504,7 +513,7 @@ export default function OverbookingConfiguration() {
                     <Button 
                       onClick={handleSaveConfiguration}
                       disabled={saving}
-                      className="w-full"
+                      className="w-full text-sm"
                     >
                       {saving ? 'Saving...' : 'Save Configuration'}
                     </Button>
@@ -516,7 +525,7 @@ export default function OverbookingConfiguration() {
             {/* Current Rules Overview */}
             <Card>
               <CardHeader>
-                <CardTitle>Current Overbooking Rules</CardTitle>
+                <CardTitle className="text-base sm:text-lg">Current Overbooking Rules</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -530,10 +539,10 @@ export default function OverbookingConfiguration() {
                       }`}
                       onClick={() => handleRoomTypeSelect(rule.roomTypeId)}
                     >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="font-medium text-gray-900">{rule.roomTypeName}</h4>
-                          <p className="text-sm text-gray-600">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-medium text-sm sm:text-base text-gray-900 truncate">{rule.roomTypeName}</h4>
+                          <p className="text-xs sm:text-sm text-gray-600">
                             {rule.allowOverbooking 
                               ? `Limit: ${rule.overbookingLimit} rooms`
                               : 'Overbooking disabled'
@@ -543,6 +552,7 @@ export default function OverbookingConfiguration() {
                         <div className="flex items-center space-x-2">
                           <Badge 
                             variant={rule.allowOverbooking ? "default" : "secondary"}
+                            className="text-xs"
                           >
                             {rule.allowOverbooking ? 'Enabled' : 'Disabled'}
                           </Badge>
@@ -557,55 +567,58 @@ export default function OverbookingConfiguration() {
         </TabsContent>
 
         {/* Monitoring Tab */}
-        <TabsContent value="monitoring" className="space-y-6">
+        <TabsContent value="monitoring" className="space-y-4 sm:space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Overbooking Alerts</CardTitle>
+              <CardTitle className="text-base sm:text-lg">Overbooking Alerts</CardTitle>
             </CardHeader>
             <CardContent>
               {alerts.length > 0 ? (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Room Type</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Bookings</TableHead>
-                      <TableHead>Available</TableHead>
-                      <TableHead>Overbooking</TableHead>
-                      <TableHead>Severity</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {alerts.map(alert => (
-                      <TableRow key={alert.id}>
-                        <TableCell className="font-medium">{alert.roomTypeName}</TableCell>
-                        <TableCell>{new Date(alert.date).toLocaleDateString()}</TableCell>
-                        <TableCell>{alert.currentBookings}</TableCell>
-                        <TableCell>{alert.availableRooms}</TableCell>
-                        <TableCell>{alert.overbookingLevel}</TableCell>
-                        <TableCell>
-                          <Badge className={getSeverityColor(alert.severity)}>
-                            {alert.severity.toUpperCase()}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => checkOverbookingStatus(alert.date, alert.roomTypeId)}
-                          >
-                            Check Status
-                          </Button>
-                        </TableCell>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs sm:text-sm">Room Type</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Date</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Bookings</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Available</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Overbooking</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Severity</TableHead>
+                        <TableHead className="text-xs sm:text-sm">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {alerts.map(alert => (
+                        <TableRow key={alert.id}>
+                          <TableCell className="font-medium text-xs sm:text-sm">{alert.roomTypeName}</TableCell>
+                          <TableCell className="text-xs sm:text-sm">{new Date(alert.date).toLocaleDateString()}</TableCell>
+                          <TableCell className="text-xs sm:text-sm">{alert.currentBookings}</TableCell>
+                          <TableCell className="text-xs sm:text-sm">{alert.availableRooms}</TableCell>
+                          <TableCell className="text-xs sm:text-sm">{alert.overbookingLevel}</TableCell>
+                          <TableCell>
+                            <Badge className={`text-xs ${getSeverityColor(alert.severity)}`}>
+                              {alert.severity.toUpperCase()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Button 
+                              size="sm" 
+                              variant="outline"
+                              onClick={() => checkOverbookingStatus(alert.date, alert.roomTypeId)}
+                              className="text-xs"
+                            >
+                              Check Status
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               ) : (
                 <div className="text-center py-8">
-                  <AlertTriangle className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600">No overbooking alerts at the moment</p>
+                  <AlertTriangle className="w-8 h-8 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-sm sm:text-base text-gray-600">No overbooking alerts at the moment</p>
                 </div>
               )}
             </CardContent>
@@ -613,28 +626,28 @@ export default function OverbookingConfiguration() {
         </TabsContent>
 
         {/* Analytics Tab */}
-        <TabsContent value="analytics" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <TabsContent value="analytics" className="space-y-4 sm:space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             <Card>
               <CardHeader>
-                <CardTitle>Occupancy Improvement</CardTitle>
+                <CardTitle className="text-base sm:text-lg">Occupancy Improvement</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-600">Base Occupancy</span>
-                    <span className="text-sm font-bold">78.5%</span>
+                    <span className="text-xs sm:text-sm font-medium text-gray-600">Base Occupancy</span>
+                    <span className="text-xs sm:text-sm font-bold">78.5%</span>
                   </div>
                   <Progress value={78.5} className="h-2" />
                   
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-600">With Overbooking</span>
-                    <span className="text-sm font-bold">87%</span>
+                    <span className="text-xs sm:text-sm font-medium text-gray-600">With Overbooking</span>
+                    <span className="text-xs sm:text-sm font-bold">87%</span>
                   </div>
                   <Progress value={87} className="h-2" />
                   
                   <div className="bg-green-50 p-3 rounded-lg">
-                    <p className="text-sm text-green-800">
+                    <p className="text-xs sm:text-sm text-green-800">
                       <strong>+{stats.occupancyImprovement}%</strong> improvement in occupancy rate
                     </p>
                   </div>
@@ -644,24 +657,24 @@ export default function OverbookingConfiguration() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Revenue Impact</CardTitle>
+                <CardTitle className="text-base sm:text-lg">Revenue Impact</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   <div className="text-center">
-                    <p className="text-3xl font-bold text-green-600">
-                      ${stats.revenueFromOverbooking.toLocaleString()}
+                    <p className="text-2xl sm:text-3xl font-bold text-green-600">
+                      ₹{stats.revenueFromOverbooking.toLocaleString()}
                     </p>
-                    <p className="text-sm text-gray-600">Additional revenue this month</p>
+                    <p className="text-xs sm:text-sm text-gray-600">Additional revenue this month</p>
                   </div>
                   
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-3 sm:gap-4">
                     <div className="text-center p-3 bg-blue-50 rounded-lg">
-                      <p className="text-lg font-semibold text-blue-600">42</p>
+                      <p className="text-base sm:text-lg font-semibold text-blue-600">42</p>
                       <p className="text-xs text-blue-800">Successful Overbooks</p>
                     </div>
                     <div className="text-center p-3 bg-purple-50 rounded-lg">
-                      <p className="text-lg font-semibold text-purple-600">$367</p>
+                      <p className="text-base sm:text-lg font-semibold text-purple-600">₹367</p>
                       <p className="text-xs text-purple-800">Avg. Revenue/Overbook</p>
                     </div>
                   </div>

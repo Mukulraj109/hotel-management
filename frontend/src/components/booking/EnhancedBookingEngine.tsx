@@ -49,7 +49,7 @@ import {
   CheckCircle,
   AlertTriangle,
   Info,
-  DollarSign,
+  IndianRupee,
   Loader2
 } from 'lucide-react';
 import { format, addDays, differenceInDays } from 'date-fns';
@@ -632,7 +632,7 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-gray-500" />
+                <IndianRupee className="w-4 h-4 text-gray-500" />
                 <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
                   <SelectTrigger className="w-20 h-8 text-sm">
                     <SelectValue />

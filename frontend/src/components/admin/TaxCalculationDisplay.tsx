@@ -6,7 +6,7 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
-import { Calculator, DollarSign, Percent, Info, Download } from 'lucide-react';
+import { Calculator, IndianRupee, Percent, Info, Download } from 'lucide-react';
 import { toast } from '../../hooks/use-toast';
 
 interface RoomType {
@@ -223,7 +223,7 @@ const TaxCalculationDisplay: React.FC<TaxCalculationDisplayProps> = ({
             <div>
               <Label htmlFor="baseAmount">Base Amount *</Label>
               <div className="relative">
-                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                 <Input
                   id="baseAmount"
                   type="number"
@@ -492,7 +492,7 @@ const TaxCalculationDisplay: React.FC<TaxCalculationDisplayProps> = ({
                               </span>
                             ) : (
                               <span className="flex items-center gap-1">
-                                <DollarSign className="h-3 w-3" />
+                                <IndianRupee className="h-3 w-3" />
                                 {tax.fixedAmount} {tax.calculationMethod.replace('_', ' ')}
                               </span>
                             )}

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
+import { Card, CardContent } from '../ui/Card';
+import { Badge } from '../ui/Badge';
 import { 
   X, 
   Package,
@@ -13,7 +13,8 @@ import {
   Receipt,
   User,
   Calendar,
-  Home
+  Home,
+  ClipboardList
 } from 'lucide-react';
 import { checkoutInventoryService, CheckoutInventory } from '../../services/checkoutInventoryService';
 import { formatDate, formatCurrency } from '../../utils/formatters';
@@ -42,6 +43,20 @@ export function CheckoutInventoryDetails({ inventory, onSuccess, onClose }: Chec
     } catch (error) {
       console.error('Failed to process payment:', error);
       toast.error('Failed to process payment');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleCompleteInventoryCheck = async () => {
+    try {
+      setProcessing(true);
+      await checkoutInventoryService.completeInventoryCheck(inventory._id);
+      toast.success('Inventory check completed successfully!');
+      onSuccess();
+    } catch (error) {
+      console.error('Failed to complete inventory check:', error);
+      toast.error('Failed to complete inventory check');
     } finally {
       setProcessing(false);
     }
@@ -77,283 +92,453 @@ export function CheckoutInventoryDetails({ inventory, onSuccess, onClose }: Chec
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-gray-200">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold text-gray-900">Checkout Inventory Details</h2>
-            <Button variant="ghost" size="sm" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-gradient-to-br from-white via-blue-50/30 to-indigo-50/30 backdrop-blur-xl border border-white/20 rounded-3xl w-full max-w-5xl max-h-[95vh] overflow-hidden shadow-2xl">
+        {/* Modern Header with Gradient */}
+        <div className="relative bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 p-6 sm:p-8">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 backdrop-blur-sm"></div>
+          <div className="relative flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+            <div className="flex items-center space-x-3">
+              <div className="p-3 bg-white/20 backdrop-blur-sm rounded-2xl">
+                <ClipboardList className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl sm:text-3xl font-bold text-white">Checkout Inventory</h2>
+                <p className="text-blue-100 text-sm sm:text-base">Room {inventory.roomId.roomNumber} • {inventory.roomId.type}</p>
+              </div>
+            </div>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={onClose}
+              className="self-end sm:self-auto bg-white/10 hover:bg-white/20 text-white border-white/20 rounded-xl transition-all duration-200 transform hover:scale-105"
+            >
               <X className="h-5 w-5" />
             </Button>
           </div>
         </div>
 
-        <div className="p-6 space-y-6">
+        {/* Scrollable Content Area */}
+        <div className="overflow-y-auto max-h-[calc(95vh-200px)] p-4 sm:p-6 space-y-6">
           {/* Customer & Booking Information */}
-          <Card>
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Customer & Booking Details</h3>
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-indigo-500/20 rounded-3xl blur opacity-75 group-hover:opacity-100 transition duration-300"></div>
+            <Card className="relative bg-white/90 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-[1.02] rounded-3xl">
+              <div className="p-6 sm:p-8">
+                <div className="flex items-center mb-6">
+                  <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-2xl mr-4">
+                    <User className="h-6 w-6 text-white" />
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Customer & Booking Details</h3>
+                </div>
               
               {/* Customer Information - Prominent Display */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                <div className="flex items-center mb-2">
-                  <User className="h-6 w-6 text-blue-600 mr-3" />
-                  <h4 className="text-lg font-semibold text-blue-900">
-                    {inventory.bookingId.userId?.name || 'Walk-in Guest'}
-                  </h4>
-                </div>
-                {inventory.bookingId.userId?.email && (
-                  <p className="text-blue-700 ml-9">{inventory.bookingId.userId.email}</p>
-                )}
-                <div className="flex items-center mt-2 ml-9">
-                  <Receipt className="h-4 w-4 text-blue-600 mr-2" />
-                  <span className="text-blue-800 font-medium">Booking #{inventory.bookingId.bookingNumber}</span>
+              <div className="relative bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 border border-blue-200/50 rounded-2xl p-6 mb-6 overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-blue-400/10 to-transparent rounded-full -mr-16 -mt-16"></div>
+                <div className="relative">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-4">
+                    <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-2xl w-fit">
+                      <User className="h-6 w-6 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-700 to-indigo-700 bg-clip-text text-transparent">
+                        {inventory.bookingId.userId?.name || 'Walk-in Guest'}
+                      </h4>
+                      {inventory.bookingId.userId?.email && (
+                        <p className="text-blue-600 font-medium mt-1">{inventory.bookingId.userId.email}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center bg-white/60 backdrop-blur-sm rounded-xl p-3 w-fit">
+                    <Receipt className="h-5 w-5 text-indigo-500 mr-3" />
+                    <span className="text-indigo-700 font-semibold">Booking #{inventory.bookingId.bookingNumber}</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="flex items-center">
-                  <Home className="h-5 w-5 text-gray-400 mr-2" />
-                  <div>
-                    <p className="text-sm text-gray-600">Room</p>
-                    <p className="font-medium">{inventory.roomId.roomNumber} ({inventory.roomId.type})</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Room Info */}
+                <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-4 border border-emerald-200/50 hover:shadow-lg transition-all duration-200 transform hover:scale-105">
+                  <div className="flex items-center mb-2">
+                    <div className="p-2 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl mr-3">
+                      <Home className="h-4 w-4 text-white" />
+                    </div>
+                    <p className="text-sm font-semibold text-emerald-700">Room</p>
                   </div>
+                  <p className="font-bold text-emerald-900 text-lg">{inventory.roomId.roomNumber}</p>
+                  <p className="text-emerald-600 text-sm">({inventory.roomId.type})</p>
                 </div>
-                <div className="flex items-center">
-                  <User className="h-5 w-5 text-gray-400 mr-2" />
-                  <div>
-                    <p className="text-sm text-gray-600">Checked By Staff</p>
-                    <p className="font-medium">{inventory.checkedBy.name}</p>
+
+                {/* Staff Info */}
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-4 border border-purple-200/50 hover:shadow-lg transition-all duration-200 transform hover:scale-105">
+                  <div className="flex items-center mb-2">
+                    <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl mr-3">
+                      <User className="h-4 w-4 text-white" />
+                    </div>
+                    <p className="text-sm font-semibold text-purple-700">Checked By</p>
                   </div>
+                  <p className="font-bold text-purple-900">{inventory.checkedBy.name}</p>
                 </div>
-                <div className="flex items-center">
-                  <Calendar className="h-5 w-5 text-gray-400 mr-2" />
-                  <div>
-                    <p className="text-sm text-gray-600">Stay Period</p>
-                    <p className="font-medium">
-                      {formatDate(inventory.bookingId.checkIn)} - {formatDate(inventory.bookingId.checkOut)}
+
+                {/* Stay Period */}
+                <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-4 border border-amber-200/50 hover:shadow-lg transition-all duration-200 transform hover:scale-105 sm:col-span-2 lg:col-span-1">
+                  <div className="flex items-center mb-2">
+                    <div className="p-2 bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl mr-3">
+                      <Calendar className="h-4 w-4 text-white" />
+                    </div>
+                    <p className="text-sm font-semibold text-amber-700">Stay Period</p>
+                  </div>
+                  <p className="font-bold text-amber-900 text-sm">
+                    {formatDate(inventory.bookingId.checkIn)} - {formatDate(inventory.bookingId.checkOut)}
+                  </p>
+                </div>
+
+                {/* Checked At */}
+                <div className="bg-gradient-to-br from-cyan-50 to-blue-50 rounded-2xl p-4 border border-cyan-200/50 hover:shadow-lg transition-all duration-200 transform hover:scale-105">
+                  <div className="flex items-center mb-2">
+                    <div className="p-2 bg-gradient-to-br from-cyan-500 to-blue-500 rounded-xl mr-3">
+                      <Clock className="h-4 w-4 text-white" />
+                    </div>
+                    <p className="text-sm font-semibold text-cyan-700">Checked At</p>
+                  </div>
+                  <p className="font-bold text-cyan-900 text-sm">{formatDate(inventory.checkedAt)}</p>
+                </div>
+
+                {/* Items Status */}
+                <div className="bg-gradient-to-br from-rose-50 to-red-50 rounded-2xl p-4 border border-rose-200/50 hover:shadow-lg transition-all duration-200 transform hover:scale-105">
+                  <div className="flex items-center mb-2">
+                    <div className="p-2 bg-gradient-to-br from-rose-500 to-red-500 rounded-xl mr-3">
+                      <Package className="h-4 w-4 text-white" />
+                    </div>
+                    <p className="text-sm font-semibold text-rose-700">Items Status</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="font-bold text-rose-900 text-sm">
+                      {inventory.items.filter(item => item.status !== 'intact').length} used
+                    </p>
+                    <p className="text-rose-600 text-xs">
+                      {inventory.items.filter(item => item.status === 'damaged').length} damaged • {inventory.items.filter(item => item.status === 'missing').length} missing
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center">
-                  <Calendar className="h-5 w-5 text-gray-400 mr-2" />
-                  <div>
-                    <p className="text-sm text-gray-600">Inventory Checked At</p>
-                    <p className="font-medium">{formatDate(inventory.checkedAt)}</p>
+
+                {/* Charges Due */}
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-4 border border-green-200/50 hover:shadow-lg transition-all duration-200 transform hover:scale-105 sm:col-span-2 lg:col-span-1">
+                  <div className="flex items-center mb-2">
+                    <div className="p-2 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl mr-3">
+                      <CreditCard className="h-4 w-4 text-white" />
+                    </div>
+                    <p className="text-sm font-semibold text-green-700">Charges Due</p>
                   </div>
-                </div>
-                <div className="flex items-center">
-                  <Package className="h-5 w-5 text-gray-400 mr-2" />
-                  <div>
-                    <p className="text-sm text-gray-600">Items Status</p>
-                    <p className="font-medium">
-                      {inventory.items.filter(item => item.status !== 'intact').length} used / 
-                      {inventory.items.filter(item => item.status === 'damaged').length} damaged / 
-                      {inventory.items.filter(item => item.status === 'missing').length} missing
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center">
-                  <CreditCard className="h-5 w-5 text-gray-400 mr-2" />
-                  <div>
-                    <p className="text-sm text-gray-600">Charges Due</p>
-                    <p className="font-medium text-green-600">{formatCurrency(inventory.totalAmount)}</p>
-                  </div>
+                  <p className="font-bold text-green-900 text-xl">{formatCurrency(inventory.totalAmount)}</p>
                 </div>
               </div>
             </div>
-          </Card>
+            </Card>
+          </div>
 
           {/* Status and Payment */}
-          <Card>
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Status & Payment</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Status</p>
-                  <Badge className={getStatusColor(inventory.status)}>
-                    {inventory.status}
-                  </Badge>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Payment Status</p>
-                  <Badge className={getPaymentStatusColor(inventory.paymentStatus)}>
-                    {inventory.paymentStatus}
-                  </Badge>
-                </div>
-                {inventory.paymentMethod && (
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Payment Method</p>
-                    <p className="font-medium capitalize">{inventory.paymentMethod.replace('_', ' ')}</p>
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 to-pink-500/20 rounded-3xl blur opacity-75 group-hover:opacity-100 transition duration-300"></div>
+            <Card className="relative bg-white/90 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-[1.02] rounded-3xl">
+              <div className="p-6 sm:p-8">
+                <div className="flex items-center mb-6">
+                  <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl mr-4">
+                    <Receipt className="h-6 w-6 text-white" />
                   </div>
-                )}
-                {inventory.paidAt && (
-                  <div>
-                    <p className="text-sm text-gray-600 mb-1">Paid At</p>
-                    <p className="font-medium">{formatDate(inventory.paidAt)}</p>
+                  <h3 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">Status & Payment</h3>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  {/* Status */}
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-200/50">
+                    <div className="flex items-center mb-3">
+                      <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-xl mr-3">
+                        <Clock className="h-4 w-4 text-white" />
+                      </div>
+                      <p className="text-sm font-semibold text-blue-700">Status</p>
+                    </div>
+                    <Badge className={`${getStatusColor(inventory.status)} text-sm px-4 py-2 rounded-xl font-semibold`}>
+                      {inventory.status}
+                    </Badge>
                   </div>
-                )}
+
+                  {/* Payment Status */}
+                  <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-4 border border-emerald-200/50">
+                    <div className="flex items-center mb-3">
+                      <div className="p-2 bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl mr-3">
+                        <CreditCard className="h-4 w-4 text-white" />
+                      </div>
+                      <p className="text-sm font-semibold text-emerald-700">Payment Status</p>
+                    </div>
+                    <Badge className={`${getPaymentStatusColor(inventory.paymentStatus)} text-sm px-4 py-2 rounded-xl font-semibold`}>
+                      {inventory.paymentStatus}
+                    </Badge>
+                  </div>
+
+                  {/* Payment Method */}
+                  {inventory.paymentMethod && (
+                    <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-4 border border-amber-200/50">
+                      <div className="flex items-center mb-3">
+                        <div className="p-2 bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl mr-3">
+                          <CreditCard className="h-4 w-4 text-white" />
+                        </div>
+                        <p className="text-sm font-semibold text-amber-700">Payment Method</p>
+                      </div>
+                      <p className="font-bold text-amber-900 capitalize">{inventory.paymentMethod.replace('_', ' ')}</p>
+                    </div>
+                  )}
+
+                  {/* Paid At */}
+                  {inventory.paidAt && (
+                    <div className="bg-gradient-to-br from-cyan-50 to-blue-50 rounded-2xl p-4 border border-cyan-200/50">
+                      <div className="flex items-center mb-3">
+                        <div className="p-2 bg-gradient-to-br from-cyan-500 to-blue-500 rounded-xl mr-3">
+                          <Calendar className="h-4 w-4 text-white" />
+                        </div>
+                        <p className="text-sm font-semibold text-cyan-700">Paid At</p>
+                      </div>
+                      <p className="font-bold text-cyan-900">{formatDate(inventory.paidAt)}</p>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          </Card>
+            </Card>
+          </div>
 
           {/* Items List */}
-          <Card>
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Inventory Items</h3>
-              <div className="space-y-3">
-                {inventory.items.map((item, index) => (
-                  <div key={index} className="border border-gray-200 rounded-lg p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <h4 className="font-medium text-gray-900">{item.itemName}</h4>
-                        <p className="text-sm text-gray-600 capitalize">{item.category}</p>
-                      </div>
-                      <Badge className={getStatusColor(item.status)}>
-                        {getStatusIcon(item.status)}
-                        <span className="ml-1 capitalize">{item.status}</span>
-                      </Badge>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-600">Quantity:</span>
-                        <span className="ml-2 font-medium">{item.quantity}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Unit Price:</span>
-                        <span className="ml-2 font-medium">{formatCurrency(item.unitPrice)}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Total:</span>
-                        <span className="ml-2 font-medium">{formatCurrency(item.totalPrice)}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-600">Status:</span>
-                        <span className="ml-2 font-medium capitalize">{item.status}</span>
-                      </div>
-                    </div>
-                    
-                    {item.notes && (
-                      <div className="mt-2">
-                        <p className="text-sm text-gray-600">Notes: {item.notes}</p>
-                      </div>
-                    )}
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-r from-orange-500/20 to-red-500/20 rounded-3xl blur opacity-75 group-hover:opacity-100 transition duration-300"></div>
+            <Card className="relative bg-white/90 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-[1.02] rounded-3xl">
+              <div className="p-6 sm:p-8">
+                <div className="flex items-center mb-6">
+                  <div className="p-3 bg-gradient-to-br from-orange-500 to-red-500 rounded-2xl mr-4">
+                    <Package className="h-6 w-6 text-white" />
                   </div>
-                ))}
+                  <h3 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">Inventory Items</h3>
+                </div>
+                
+                <div className="space-y-4">
+                  {inventory.items.map((item, index) => (
+                    <div key={index} className="bg-gradient-to-br from-gray-50 to-slate-50 border border-gray-200/50 rounded-2xl p-4 sm:p-6 hover:shadow-lg transition-all duration-200 transform hover:scale-[1.01]">
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <div className="p-2 bg-gradient-to-br from-slate-500 to-gray-500 rounded-xl">
+                              <Package className="h-4 w-4 text-white" />
+                            </div>
+                            <div>
+                              <h4 className="font-bold text-gray-900 text-lg">{item.itemName}</h4>
+                              <p className="text-sm font-medium text-gray-600 capitalize bg-gray-100 px-2 py-1 rounded-lg w-fit">{item.category}</p>
+                            </div>
+                          </div>
+                        </div>
+                        <Badge className={`${getStatusColor(item.status)} text-sm px-4 py-2 rounded-xl font-semibold flex items-center gap-2 w-fit`}>
+                          {getStatusIcon(item.status)}
+                          <span className="capitalize">{item.status}</span>
+                        </Badge>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="bg-white/70 backdrop-blur-sm rounded-xl p-3 border border-gray-200/50">
+                          <p className="text-xs font-semibold text-gray-500 mb-1">Quantity</p>
+                          <p className="font-bold text-gray-900">{item.quantity}</p>
+                        </div>
+                        <div className="bg-white/70 backdrop-blur-sm rounded-xl p-3 border border-gray-200/50">
+                          <p className="text-xs font-semibold text-gray-500 mb-1">Unit Price</p>
+                          <p className="font-bold text-gray-900">{formatCurrency(item.unitPrice)}</p>
+                        </div>
+                        <div className="bg-white/70 backdrop-blur-sm rounded-xl p-3 border border-gray-200/50">
+                          <p className="text-xs font-semibold text-gray-500 mb-1">Total</p>
+                          <p className="font-bold text-green-600">{formatCurrency(item.totalPrice)}</p>
+                        </div>
+                        <div className="bg-white/70 backdrop-blur-sm rounded-xl p-3 border border-gray-200/50">
+                          <p className="text-xs font-semibold text-gray-500 mb-1">Status</p>
+                          <p className="font-bold text-gray-900 capitalize">{item.status}</p>
+                        </div>
+                      </div>
+                      
+                      {item.notes && (
+                        <div className="mt-4 bg-blue-50/70 backdrop-blur-sm border border-blue-200/50 rounded-xl p-3">
+                          <p className="text-xs font-semibold text-blue-700 mb-1">Notes</p>
+                          <p className="text-sm text-blue-800">{item.notes}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          </Card>
+            </Card>
+          </div>
 
           {/* Billing Summary */}
-          <Card>
-            <div className="p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Billing Summary</h3>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Subtotal:</span>
-                  <span className="font-medium">{formatCurrency(inventory.subtotal)}</span>
+          <div className="relative group">
+            <div className="absolute inset-0 bg-gradient-to-r from-green-500/20 to-emerald-500/20 rounded-3xl blur opacity-75 group-hover:opacity-100 transition duration-300"></div>
+            <Card className="relative bg-white/90 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-[1.02] rounded-3xl">
+              <div className="p-6 sm:p-8">
+                <div className="flex items-center mb-6">
+                  <div className="p-3 bg-gradient-to-br from-green-500 to-emerald-500 rounded-2xl mr-4">
+                    <Receipt className="h-6 w-6 text-white" />
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">Billing Summary</h3>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Tax (18%):</span>
-                  <span className="font-medium">{formatCurrency(inventory.tax)}</span>
-                </div>
-                <div className="flex justify-between text-lg font-semibold text-green-600 border-t pt-2">
-                  <span>Total Amount:</span>
-                  <span>{formatCurrency(inventory.totalAmount)}</span>
+                
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center py-3 px-4 bg-gradient-to-r from-gray-50 to-slate-50 rounded-xl">
+                    <span className="text-gray-700 font-medium">Subtotal:</span>
+                    <span className="font-bold text-gray-900 text-lg">{formatCurrency(inventory.subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-3 px-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl">
+                    <span className="text-amber-700 font-medium">Tax (18%):</span>
+                    <span className="font-bold text-amber-900 text-lg">{formatCurrency(inventory.tax)}</span>
+                  </div>
+                  <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-2xl p-4 text-white">
+                    <div className="flex justify-between items-center">
+                      <span className="text-green-100 font-medium">Total Amount:</span>
+                      <span className="font-bold text-2xl">{formatCurrency(inventory.totalAmount)}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </Card>
+            </Card>
+          </div>
 
           {/* Notes */}
           {inventory.notes && (
-            <Card>
-              <div className="p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Notes</h3>
-                <p className="text-gray-700">{inventory.notes}</p>
-              </div>
-            </Card>
-          )}
-
-          {/* Payment Form */}
-          {inventory.status === 'completed' && inventory.paymentStatus === 'pending' && !showPaymentForm && (
-            <div className="flex justify-center">
-              <Button onClick={() => setShowPaymentForm(true)}>
-                <CreditCard className="h-4 w-4 mr-2" />
-                Process Payment
-              </Button>
+            <div className="relative group">
+              <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 rounded-3xl blur opacity-75 group-hover:opacity-100 transition duration-300"></div>
+              <Card className="relative bg-white/90 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:scale-[1.02] rounded-3xl">
+                <div className="p-6 sm:p-8">
+                  <div className="flex items-center mb-6">
+                    <div className="p-3 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-2xl mr-4">
+                      <AlertTriangle className="h-6 w-6 text-white" />
+                    </div>
+                    <h3 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">Notes</h3>
+                  </div>
+                  <div className="bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-200/50 rounded-2xl p-4">
+                    <p className="text-indigo-800 leading-relaxed">{inventory.notes}</p>
+                  </div>
+                </div>
+              </Card>
             </div>
           )}
 
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center pt-4">
+            {inventory.status === 'pending' && (
+              <Button 
+                onClick={handleCompleteInventoryCheck} 
+                loading={processing}
+                className="bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 shadow-xl hover:shadow-2xl transition-all duration-200 transform hover:scale-105 rounded-2xl px-8 py-4 font-bold text-lg w-full sm:w-auto"
+              >
+                <CheckCircle className="h-5 w-5 mr-3" />
+                Complete Inventory Check
+              </Button>
+            )}
+            
+            {inventory.status === 'completed' && inventory.paymentStatus === 'pending' && !showPaymentForm && (
+              <Button 
+                onClick={() => setShowPaymentForm(true)}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-xl hover:shadow-2xl transition-all duration-200 transform hover:scale-105 rounded-2xl px-8 py-4 font-bold text-lg w-full sm:w-auto"
+              >
+                <CreditCard className="h-5 w-5 mr-3" />
+                Process Payment
+              </Button>
+            )}
+          </div>
+
           {showPaymentForm && (
-            <Card>
-              <div className="p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Process Payment</h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Payment Method *
-                    </label>
-                    <select
-                      value={paymentMethod}
-                      onChange={(e) => setPaymentMethod(e.target.value as any)}
-                      className="w-full p-2 border border-gray-300 rounded-md"
-                    >
-                      <option value="cash">Cash</option>
-                      <option value="card">Card</option>
-                      <option value="upi">UPI</option>
-                      <option value="bank_transfer">Bank Transfer</option>
-                    </select>
+            <div className="relative group">
+              <div className="absolute inset-0 bg-gradient-to-r from-green-500/20 to-blue-500/20 rounded-3xl blur opacity-75 group-hover:opacity-100 transition duration-300"></div>
+              <Card className="relative bg-white/90 backdrop-blur-sm border-0 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-3xl">
+                <div className="p-6 sm:p-8">
+                  <div className="flex items-center mb-6">
+                    <div className="p-3 bg-gradient-to-br from-green-500 to-blue-500 rounded-2xl mr-4">
+                      <CreditCard className="h-6 w-6 text-white" />
+                    </div>
+                    <h3 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">Process Payment</h3>
                   </div>
+                  
+                  <div className="space-y-6">
+                    <div>
+                      <label className="flex items-center text-sm font-semibold text-gray-700 mb-3">
+                        <CreditCard className="w-4 h-4 mr-2 text-blue-500" />
+                        Payment Method *
+                      </label>
+                      <select
+                        value={paymentMethod}
+                        onChange={(e) => setPaymentMethod(e.target.value as any)}
+                        className="w-full p-4 border-2 border-gray-200 rounded-2xl bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium text-gray-900"
+                      >
+                        <option value="cash">💵 Cash</option>
+                        <option value="card">💳 Card</option>
+                        <option value="upi">📱 UPI</option>
+                        <option value="bank_transfer">🏦 Bank Transfer</option>
+                      </select>
+                    </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Payment Notes
-                    </label>
-                    <textarea
-                      value={paymentNotes}
-                      onChange={(e) => setPaymentNotes(e.target.value)}
-                      placeholder="Any notes about the payment..."
-                      className="w-full p-2 border border-gray-300 rounded-md h-20"
-                    />
-                  </div>
+                    <div>
+                      <label className="flex items-center text-sm font-semibold text-gray-700 mb-3">
+                        <Receipt className="w-4 h-4 mr-2 text-purple-500" />
+                        Payment Notes
+                      </label>
+                      <textarea
+                        value={paymentNotes}
+                        onChange={(e) => setPaymentNotes(e.target.value)}
+                        placeholder="Any notes about the payment..."
+                        className="w-full p-4 border-2 border-gray-200 rounded-2xl bg-white/80 backdrop-blur-sm focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all duration-200 font-medium text-gray-900 h-24 resize-none"
+                      />
+                    </div>
 
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <div className="flex">
-                      <AlertTriangle className="h-5 w-5 text-yellow-400 mr-2 mt-0.5" />
-                      <div>
-                        <h4 className="font-medium text-yellow-800">Payment Confirmation</h4>
-                        <p className="text-sm text-yellow-700 mt-1">
-                          Total amount to be collected: <strong>{formatCurrency(inventory.totalAmount)}</strong>
-                        </p>
+                    <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200/50 rounded-2xl p-6">
+                      <div className="flex items-start">
+                        <div className="p-2 bg-gradient-to-br from-amber-500 to-orange-500 rounded-xl mr-4">
+                          <AlertTriangle className="h-5 w-5 text-white" />
+                        </div>
+                        <div className="flex-1">
+                          <h4 className="font-bold text-amber-800 text-lg mb-2">Payment Confirmation</h4>
+                          <p className="text-amber-700 font-medium">
+                            Total amount to be collected: 
+                            <span className="ml-2 text-2xl font-bold bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">
+                              {formatCurrency(inventory.totalAmount)}
+                            </span>
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="flex gap-3">
-                    <Button 
-                      onClick={handleProcessPayment} 
-                      loading={processing}
-                      className="flex-1"
-                    >
-                      Confirm Payment & Checkout
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => setShowPaymentForm(false)}
-                    >
-                      Cancel
-                    </Button>
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      <Button 
+                        onClick={handleProcessPayment} 
+                        loading={processing}
+                        className="flex-1 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 shadow-xl hover:shadow-2xl transition-all duration-200 transform hover:scale-105 rounded-2xl px-6 py-4 font-bold text-lg"
+                      >
+                        <CheckCircle className="h-5 w-5 mr-2" />
+                        Confirm Payment & Checkout
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        onClick={() => setShowPaymentForm(false)}
+                        className="bg-white/80 backdrop-blur-sm border-2 border-gray-200 hover:border-gray-300 rounded-2xl px-6 py-4 font-semibold transition-all duration-200 transform hover:scale-105"
+                      >
+                        <X className="h-4 w-4 mr-2" />
+                        Cancel
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </Card>
+              </Card>
+            </div>
           )}
 
-          {/* Actions */}
-          <div className="flex justify-end">
-            <Button variant="outline" onClick={onClose}>
+          {/* Close Button */}
+          <div className="flex justify-center pt-6">
+            <Button 
+              variant="outline" 
+              onClick={onClose}
+              className="bg-white/80 backdrop-blur-sm border-2 border-gray-200 hover:border-gray-300 rounded-2xl px-8 py-3 font-semibold transition-all duration-200 transform hover:scale-105 text-gray-700 hover:text-gray-900"
+            >
+              <X className="h-4 w-4 mr-2" />
               Close
             </Button>
           </div>

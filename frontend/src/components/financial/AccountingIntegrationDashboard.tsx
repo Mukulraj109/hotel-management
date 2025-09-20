@@ -12,7 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/utils/toast';
 import {
-  DollarSign,
+  IndianRupee,
   TrendingUp,
   TrendingDown,
   Calculator,
@@ -45,13 +45,6 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
 import financialService from '@/services/financialService';
-import ChartOfAccounts from './ChartOfAccounts';
-import GeneralLedger from './GeneralLedger';
-import InvoiceManagement from './InvoiceManagement';
-import PaymentManagement from './PaymentManagement';
-import BankAccountManagement from './BankAccountManagement';
-import BudgetManagement from './BudgetManagement';
-import FinancialReports from './FinancialReports';
 
 interface AccountingIntegration {
   id: string;
@@ -143,36 +136,61 @@ const AccountingIntegrationDashboard: React.FC = () => {
     try {
       console.log('🔍 Fetching financial data...');
       
-      // Fetch real financial data from backend APIs
+      // Fetch real financial data from backend APIs with improved error handling
       const [dashboardData, journalEntries, invoicesData, paymentsData, bankAccountsData] = await Promise.all([
         financialService.getFinancialDashboard(fiscalPeriod).catch((error) => {
           console.error('❌ Dashboard API failed:', error);
-          return null;
+          toast.error('Failed to load financial dashboard data');
+          return {
+            success: false,
+            data: {
+              summary: {
+                totalRevenue: 0,
+                totalExpenses: 0,
+                netProfit: 0,
+                profitMargin: 0,
+                totalAssets: 0,
+                totalLiabilities: 0,
+                cashFlow: 0,
+                accountsReceivable: 0,
+                accountsPayable: 0
+              },
+              revenueBreakdown: { roomRevenue: 0, foodBeverage: 0, otherRevenue: 0 },
+              expenseBreakdown: { operatingExpenses: 0, payroll: 0, utilities: 0, marketing: 0, other: 0 },
+              trends: { labels: [], revenue: [], expenses: [], profit: [] },
+              topAccounts: [],
+              cashFlowData: { operating: 0, investing: 0, financing: 0, netCashFlow: 0 }
+            }
+          };
         }),
-        financialService.getJournalEntries({ 
+        financialService.getJournalEntries({
           startDate: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
           endDate: new Date().toISOString().split('T')[0]
         }).catch((error) => {
           console.error('❌ Journal Entries API failed:', error);
-          return [];
+          toast.error('Failed to load journal entries');
+          return { data: { entries: [] } };
         }),
-        financialService.getInvoices({ 
+        financialService.getInvoices({
           startDate: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
           endDate: new Date().toISOString().split('T')[0]
         }).catch((error) => {
           console.error('❌ Invoices API failed:', error);
-          return [];
+          toast.error('Failed to load invoices');
+          return { data: [] };
         }),
         financialService.getPayments({
           startDate: new Date(new Date().setMonth(new Date().getMonth() - 1)).toISOString().split('T')[0],
           endDate: new Date().toISOString().split('T')[0]
         }).catch((error) => {
           console.error('❌ Payments API failed:', error);
-          return [];
+          toast.error('Failed to load payments');
+          return { data: [] };
         }),
         financialService.getBankAccounts().catch((error) => {
           console.error('❌ Bank Accounts API failed:', error);
-          return [];
+          toast.error('Failed to load bank accounts');
+          return { data: [] };
         })
       ]);
 
@@ -250,20 +268,22 @@ const AccountingIntegrationDashboard: React.FC = () => {
 
       // Transform journal entries to transactions
       const transformedTransactions: FinancialTransaction[] = [];
-      if (Array.isArray(journalEntries)) {
-        journalEntries.slice(0, 10).forEach((entry: any) => {
-          if (entry.entries && Array.isArray(entry.entries)) {
-            entry.entries.forEach((line: any, index: number) => {
+      const entriesArray = journalEntries?.data?.entries || journalEntries?.entries || [];
+
+      if (Array.isArray(entriesArray) && entriesArray.length > 0) {
+        entriesArray.slice(0, 10).forEach((entry: any) => {
+          if (entry?.lines && Array.isArray(entry.lines)) {
+            entry.lines.forEach((line: any, index: number) => {
               transformedTransactions.push({
                 id: `${entry._id}-${index}`,
-                type: line.debit > 0 ? 'expense' : 'revenue',
-                date: new Date(entry.date || entry.entryDate),
-                amount: line.debit || line.credit || 0,
-                currency: 'INR',
-                description: line.description || entry.description || 'General Entry',
-                account: line.account || entry.accountId || '1000',
-                reference: entry.entryId || entry.referenceNumber || 'N/A',
-                status: entry.status === 'posted' ? 'posted' : 'pending'
+                type: line.debitAmount > 0 ? 'expense' : 'revenue',
+                date: new Date(entry.entryDate || entry.createdAt || new Date()),
+                amount: line.debitAmount || line.creditAmount || 0,
+                currency: line.currency || 'INR',
+                description: line.description || entry.description || 'Financial Entry',
+                account: line.accountId?._id || line.accountId || '1000',
+                reference: entry.referenceNumber || entry.entryNumber || 'N/A',
+                status: entry.status?.toLowerCase() === 'posted' ? 'posted' : 'pending'
               });
             });
           }
@@ -271,20 +291,22 @@ const AccountingIntegrationDashboard: React.FC = () => {
       }
 
       // Transform invoices to receivables
-      if (Array.isArray(invoicesData)) {
-        invoicesData.slice(0, 5).forEach((invoice: any) => {
-          if (invoice.status !== 'paid') {
+      const invoicesArray = invoicesData?.data || invoicesData || [];
+
+      if (Array.isArray(invoicesArray) && invoicesArray.length > 0) {
+        invoicesArray.slice(0, 5).forEach((invoice: any) => {
+          if (invoice?.status !== 'paid' && invoice?.balanceAmount > 0) {
             transformedTransactions.push({
               id: `inv-${invoice._id}`,
               type: 'receivable',
-              date: new Date(invoice.issueDate || invoice.createdAt),
+              date: new Date(invoice.issueDate || invoice.createdAt || new Date()),
               amount: invoice.balanceAmount || invoice.totalAmount || 0,
               currency: invoice.currency || 'INR',
-              description: `Invoice - ${invoice.invoiceNumber || invoice.invoiceId}`,
+              description: `Invoice - ${invoice.invoiceNumber || invoice.invoiceId || 'Unknown'}`,
               account: '1200',
-              reference: invoice.invoiceNumber || invoice.invoiceId,
+              reference: invoice.invoiceNumber || invoice.invoiceId || 'N/A',
               status: invoice.status === 'sent' ? 'pending' : 'posted',
-              guestName: invoice.customer?.details?.name
+              guestName: invoice.customer?.details?.name || invoice.customer?.name
             });
           }
         });
@@ -312,13 +334,16 @@ const AccountingIntegrationDashboard: React.FC = () => {
         }
       ];
 
-      if (Array.isArray(invoicesData)) {
-        invoicesData.forEach((invoice: any) => {
-          if (invoice.status !== 'paid' && invoice.balanceAmount > 0) {
-            const daysDiff = Math.floor((new Date().getTime() - new Date(invoice.issueDate || invoice.createdAt).getTime()) / (1000 * 3600 * 24));
+      if (Array.isArray(invoicesArray) && invoicesArray.length > 0) {
+        invoicesArray.forEach((invoice: any) => {
+          if (invoice?.status !== 'paid' && (invoice?.balanceAmount || 0) > 0) {
+            const daysDiff = Math.floor(
+              (new Date().getTime() - new Date(invoice.issueDate || invoice.createdAt || new Date()).getTime()) /
+              (1000 * 3600 * 24)
+            );
             const amount = invoice.balanceAmount || 0;
             const categoryIndex = invoice.customer?.type === 'corporate' ? 1 : 0;
-            
+
             if (daysDiff <= 30) {
               agingReport[categoryIndex].current += amount;
             } else if (daysDiff <= 60) {
@@ -627,19 +652,11 @@ const AccountingIntegrationDashboard: React.FC = () => {
         </div>
       )}
 
-      <Tabs defaultValue="dashboard" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-          <TabsTrigger value="chart-of-accounts">Chart of Accounts</TabsTrigger>
-          <TabsTrigger value="general-ledger">General Ledger</TabsTrigger>
-          <TabsTrigger value="invoices">Invoices</TabsTrigger>
-          <TabsTrigger value="payments">Payments</TabsTrigger>
-          <TabsTrigger value="bank-accounts">Bank Accounts</TabsTrigger>
-          <TabsTrigger value="budgets">Budgets</TabsTrigger>
-          <TabsTrigger value="reports">Reports</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="dashboard">
+      {/* Integration Dashboard - No Tabs, Just Dashboard Content */}
+      <div className="space-y-6">
+        {/* Integration Cards */}
+        <div>
+          <h3 className="text-lg font-medium mb-4">System Integrations</h3>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {integrations.map(integration => (
               <Card key={integration.id}>
@@ -652,7 +669,7 @@ const AccountingIntegrationDashboard: React.FC = () => {
                         <p className="text-sm text-gray-500 capitalize">{integration.type}</p>
                       </div>
                     </div>
-                    
+
                     <Badge className={getStatusColor(integration.status)}>
                       <div className="flex items-center gap-1">
                         {getStatusIcon(integration.status)}
@@ -661,7 +678,7 @@ const AccountingIntegrationDashboard: React.FC = () => {
                     </Badge>
                   </div>
                 </CardHeader>
-                
+
                 <CardContent className="space-y-4">
                   <div className="text-sm">
                     <p className="text-gray-600">Last Sync: {integration.lastSync.toLocaleString()}</p>
@@ -694,7 +711,7 @@ const AccountingIntegrationDashboard: React.FC = () => {
                           <RefreshCw className={`w-3 h-3 ${integration.status === 'syncing' ? 'animate-spin' : ''}`} />
                         </Button>
                       )}
-                      
+
                       <Button
                         size="sm"
                         variant="outline"
@@ -711,237 +728,214 @@ const AccountingIntegrationDashboard: React.FC = () => {
               </Card>
             ))}
           </div>
-        </TabsContent>
+        </div>
 
-        <TabsContent value="chart-of-accounts">
-          <ChartOfAccounts />
-        </TabsContent>
+        {/* Recent Transactions Overview */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>Recent Transactions</CardTitle>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => exportFinancialData('excel')}>
+                  <Download className="w-3 h-3 mr-1" />
+                  Export
+                </Button>
+                <Button size="sm" variant="outline">
+                  <Upload className="w-3 h-3 mr-1" />
+                  Import
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Reference</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {transactions.slice(0, 5).map(transaction => (
+                  <TableRow key={transaction.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {getTransactionIcon(transaction.type)}
+                        <span className="capitalize">{transaction.type}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>{transaction.date.toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{transaction.description}</p>
+                        {transaction.guestName && (
+                          <p className="text-xs text-gray-500">{transaction.guestName}</p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>{transaction.reference}</TableCell>
+                    <TableCell>
+                      <div className="text-right">
+                        <p className={`font-medium ${
+                          transaction.type === 'revenue' ? 'text-green-600' :
+                          transaction.type === 'expense' ? 'text-red-600' :
+                          'text-gray-600'
+                        }`}>
+                          {formatCurrency(transaction.amount)}
+                        </p>
+                        {transaction.taxAmount && (
+                          <p className="text-xs text-gray-500">
+                            Tax: {formatCurrency(transaction.taxAmount)}
+                          </p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={
+                        transaction.status === 'posted' ? 'bg-green-100 text-green-700' :
+                        transaction.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
+                        transaction.status === 'reconciled' ? 'bg-blue-100 text-blue-700' :
+                        'bg-red-100 text-red-700'
+                      }>
+                        {transaction.status}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            {transactions.length > 5 && (
+              <div className="mt-4 text-center">
+                <Button variant="outline" size="sm">
+                  <Eye className="w-3 h-3 mr-1" />
+                  View All Transactions
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-        <TabsContent value="general-ledger">
-          <GeneralLedger />
-        </TabsContent>
+        {/* Accounts Receivable Aging Report */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Accounts Receivable Aging Report</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Current</TableHead>
+                  <TableHead>31-60 Days</TableHead>
+                  <TableHead>61-90 Days</TableHead>
+                  <TableHead>91-120 Days</TableHead>
+                  <TableHead>Over 120 Days</TableHead>
+                  <TableHead>Total</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {agingReport.map(report => (
+                  <TableRow key={report.category}>
+                    <TableCell className="font-medium">{report.category}</TableCell>
+                    <TableCell>{formatCurrency(report.current)}</TableCell>
+                    <TableCell>{formatCurrency(report.days30)}</TableCell>
+                    <TableCell>{formatCurrency(report.days60)}</TableCell>
+                    <TableCell>{formatCurrency(report.days90)}</TableCell>
+                    <TableCell className="text-red-600">
+                      {formatCurrency(report.over90)}
+                    </TableCell>
+                    <TableCell className="font-bold">
+                      {formatCurrency(report.total)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
 
-        <TabsContent value="invoices">
-          <InvoiceManagement />
-        </TabsContent>
-
-        <TabsContent value="payments">
-          <PaymentManagement />
-        </TabsContent>
-
-        <TabsContent value="bank-accounts">
-          <BankAccountManagement />
-        </TabsContent>
-
-        <TabsContent value="budgets">
-          <BudgetManagement />
-        </TabsContent>
-
-        <TabsContent value="transactions">
+        {/* Exchange Rates */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Recent Transactions</CardTitle>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => exportFinancialData('excel')}>
-                    <Download className="w-3 h-3 mr-1" />
-                    Export
-                  </Button>
-                  <Button size="sm" variant="outline">
-                    <Upload className="w-3 h-3 mr-1" />
-                    Import
-                  </Button>
+              <CardTitle className="flex items-center gap-2">
+                <Globe className="w-5 h-5" />
+                Exchange Rates
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {currencyRates.map(rate => (
+                <div key={rate.currency} className="flex items-center justify-between p-3 border rounded">
+                  <div className="flex items-center gap-3">
+                    <span className="font-medium">{rate.currency}</span>
+                    <div className="flex items-center gap-1">
+                      {getCurrencyTrendIcon(rate.trend)}
+                      <span className="text-sm text-gray-500">{rate.trend}</span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-bold">₹{rate.rate.toFixed(2)}</div>
+                    <div className="text-xs text-gray-500">
+                      {rate.lastUpdated.toLocaleTimeString()}
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              <Button variant="outline" className="w-full mt-4">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Update Rates
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Currency Settings</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Base Currency</Label>
+                <Select value={baseCurrency} onValueChange={setBaseCurrency}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="INR">Indian Rupee (INR)</SelectItem>
+                    <SelectItem value="USD">US Dollar (USD)</SelectItem>
+                    <SelectItem value="EUR">Euro (EUR)</SelectItem>
+                    <SelectItem value="GBP">British Pound (GBP)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Active Currencies</Label>
+                <div className="space-y-2">
+                  {['USD', 'EUR', 'GBP', 'AED', 'SGD'].map(currency => (
+                    <div key={currency} className="flex items-center gap-2">
+                      <Switch size="sm" />
+                      <span className="text-sm">{currency}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Reference</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {transactions.map(transaction => (
-                    <TableRow key={transaction.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          {getTransactionIcon(transaction.type)}
-                          <span className="capitalize">{transaction.type}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>{transaction.date.toLocaleDateString()}</TableCell>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{transaction.description}</p>
-                          {transaction.guestName && (
-                            <p className="text-xs text-gray-500">{transaction.guestName}</p>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>{transaction.reference}</TableCell>
-                      <TableCell>
-                        <div className="text-right">
-                          <p className={`font-medium ${
-                            transaction.type === 'revenue' ? 'text-green-600' : 
-                            transaction.type === 'expense' ? 'text-red-600' : 
-                            'text-gray-600'
-                          }`}>
-                            {formatCurrency(transaction.amount)}
-                          </p>
-                          {transaction.taxAmount && (
-                            <p className="text-xs text-gray-500">
-                              Tax: {formatCurrency(transaction.taxAmount)}
-                            </p>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={
-                          transaction.status === 'posted' ? 'bg-green-100 text-green-700' :
-                          transaction.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                          transaction.status === 'reconciled' ? 'bg-blue-100 text-blue-700' :
-                          'bg-red-100 text-red-700'
-                        }>
-                          {transaction.status}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+
+              <div>
+                <Label>Auto-Update Rates</Label>
+                <div className="flex items-center gap-2 mt-2">
+                  <Switch />
+                  <span className="text-sm text-gray-600">Daily at 9:00 AM</span>
+                </div>
+              </div>
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="aging">
-          <Card>
-            <CardHeader>
-              <CardTitle>Accounts Receivable Aging Report</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Category</TableHead>
-                    <TableHead>Current</TableHead>
-                    <TableHead>31-60 Days</TableHead>
-                    <TableHead>61-90 Days</TableHead>
-                    <TableHead>91-120 Days</TableHead>
-                    <TableHead>Over 120 Days</TableHead>
-                    <TableHead>Total</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {agingReport.map(report => (
-                    <TableRow key={report.category}>
-                      <TableCell className="font-medium">{report.category}</TableCell>
-                      <TableCell>{formatCurrency(report.current)}</TableCell>
-                      <TableCell>{formatCurrency(report.days30)}</TableCell>
-                      <TableCell>{formatCurrency(report.days60)}</TableCell>
-                      <TableCell>{formatCurrency(report.days90)}</TableCell>
-                      <TableCell className="text-red-600">
-                        {formatCurrency(report.over90)}
-                      </TableCell>
-                      <TableCell className="font-bold">
-                        {formatCurrency(report.total)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="currencies">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Globe className="w-5 h-5" />
-                  Exchange Rates
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {currencyRates.map(rate => (
-                  <div key={rate.currency} className="flex items-center justify-between p-3 border rounded">
-                    <div className="flex items-center gap-3">
-                      <span className="font-medium">{rate.currency}</span>
-                      <div className="flex items-center gap-1">
-                        {getCurrencyTrendIcon(rate.trend)}
-                        <span className="text-sm text-gray-500">{rate.trend}</span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold">₹{rate.rate.toFixed(2)}</div>
-                      <div className="text-xs text-gray-500">
-                        {rate.lastUpdated.toLocaleTimeString()}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                
-                <Button variant="outline" className="w-full mt-4">
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Update Rates
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Currency Settings</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label>Base Currency</Label>
-                  <Select value={baseCurrency} onValueChange={setBaseCurrency}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="INR">Indian Rupee (INR)</SelectItem>
-                      <SelectItem value="USD">US Dollar (USD)</SelectItem>
-                      <SelectItem value="EUR">Euro (EUR)</SelectItem>
-                      <SelectItem value="GBP">British Pound (GBP)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Active Currencies</Label>
-                  <div className="space-y-2">
-                    {['USD', 'EUR', 'GBP', 'AED', 'SGD'].map(currency => (
-                      <div key={currency} className="flex items-center gap-2">
-                        <Switch size="sm" />
-                        <span className="text-sm">{currency}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <Label>Auto-Update Rates</Label>
-                  <div className="flex items-center gap-2 mt-2">
-                    <Switch />
-                    <span className="text-sm text-gray-600">Daily at 9:00 AM</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="reports">
-          <FinancialReports />
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
 
       {/* Integration Settings Dialog */}
       <Dialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen}>

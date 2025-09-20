@@ -34,7 +34,7 @@ import {
   Eye,
   CreditCard,
   Loader2,
-  DollarSign,
+  IndianRupee,
   Globe
 } from 'lucide-react';
 import { format, addDays, differenceInDays } from 'date-fns';
@@ -607,7 +607,7 @@ export const LocalizedBookingEngine: React.FC<LocalizedBookingEngineProps> = ({
                 />
               </div>
               <div className="flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-gray-500" />
+                <IndianRupee className="w-4 h-4 text-gray-500" />
                 <Select value={selectedCurrency} onValueChange={setSelectedCurrency}>
                   <SelectTrigger className="w-20 h-8 text-sm">
                     <SelectValue />

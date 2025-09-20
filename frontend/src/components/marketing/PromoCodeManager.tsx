@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Edit, Copy, Eye, BarChart3, Calendar, Target, Percent, DollarSign } from 'lucide-react';
+import { Plus, Edit, Copy, Eye, BarChart3, Calendar, Target, Percent, IndianRupee } from 'lucide-react';
 import { bookingEngineService, PromoCode, CreatePromoCodeData } from '@/services/bookingEngineService';
 
 interface CreatePromoFormData {
@@ -230,7 +230,7 @@ const PromoCodeManager: React.FC = () => {
   const getTypeIcon = (type: string) => {
     const icons = {
       percentage: Percent,
-      fixed_amount: DollarSign,
+      fixed_amount: IndianRupee,
       free_night: Calendar,
       upgrade: Target
     };

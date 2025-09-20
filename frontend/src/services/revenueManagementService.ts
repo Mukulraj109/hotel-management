@@ -41,8 +41,17 @@ export interface DemandForecast {
   potentialRevenue: number;
 }
 
+export interface PerformanceMetrics {
+  currentVsTarget: number;
+  targetRevenue: number;
+  marketShare: number;
+  rateOptimization: number;
+  revenueGrowth: number;
+}
+
 export interface DashboardMetricsResponse {
   metrics: RevenueMetrics;
+  performanceMetrics: PerformanceMetrics;
   rateShopping: RateShopping;
   demandForecast: DemandForecast[];
   periodInfo: {
@@ -104,6 +113,18 @@ class RevenueManagementService {
   // Delete pricing rule
   async deletePricingRule(id: string): Promise<void> {
     await api.delete(`${this.baseURL}/pricing-rules/${id}`);
+  }
+
+  // Update room type rate
+  async updateRoomTypeRate(id: string, rateData: Partial<RoomTypeRate>): Promise<any> {
+    const response = await api.put(`${this.baseURL}/room-type-rates/${id}`, rateData);
+    return response.data;
+  }
+
+  // Bulk update room type rates
+  async bulkUpdateRoomTypeRates(updates: Array<{id: string} & Partial<RoomTypeRate>>): Promise<any> {
+    const response = await api.post(`${this.baseURL}/room-type-rates/bulk-update`, { updates });
+    return response.data;
   }
 
   // Get demand forecast

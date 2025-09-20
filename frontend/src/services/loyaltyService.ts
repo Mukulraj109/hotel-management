@@ -118,12 +118,90 @@ class LoyaltyService {
   }
 
   /**
-   * Redeem points for an offer
+   * Get current user's loyalty information
+   */
+  async getUserLoyaltyInfo(): Promise<{
+    points: number;
+    tier: string;
+    nextTier: string | null;
+    pointsToNextTier: number;
+  }> {
+    const response = await api.get('/loyalty/dashboard');
+    const dashboardData = response.data.data;
+    return {
+      points: dashboardData.user.points,
+      tier: dashboardData.user.tier,
+      nextTier: dashboardData.user.nextTier,
+      pointsToNextTier: dashboardData.user.pointsToNextTier
+    };
+  }
+
+  /**
+   * Check if user can redeem a specific offer
+   */
+  async canRedeemOffer(offerId: string): Promise<{
+    canRedeem: boolean;
+    reason?: string;
+    details?: {
+      userPoints: number;
+      requiredPoints: number;
+      pointsNeeded?: number;
+      userTier: string;
+      requiredTier: string;
+      offerExpired?: boolean;
+      offerInactive?: boolean;
+      maxRedemptionsReached?: boolean;
+    };
+  }> {
+    try {
+      const response = await api.get(`/loyalty/offers/${offerId}/can-redeem`);
+      return response.data.data;
+    } catch (error: any) {
+      // If endpoint doesn't exist, do client-side validation
+      try {
+        const [offer, userInfo] = await Promise.all([
+          this.getOfferDetails(offerId),
+          this.getUserLoyaltyInfo()
+        ]);
+
+        const canRedeem = userInfo.points >= offer.pointsRequired && 
+                         this.getTierLevel(userInfo.tier) >= this.getTierLevel(offer.minTier) &&
+                         offer.isActive &&
+                         (!offer.validUntil || new Date() <= new Date(offer.validUntil));
+
+        return {
+          canRedeem,
+          reason: !canRedeem ? 'Requirements not met' : undefined,
+          details: {
+            userPoints: userInfo.points,
+            requiredPoints: offer.pointsRequired,
+            pointsNeeded: Math.max(0, offer.pointsRequired - userInfo.points),
+            userTier: userInfo.tier,
+            requiredTier: offer.minTier,
+            offerExpired: offer.validUntil ? new Date() > new Date(offer.validUntil) : false,
+            offerInactive: !offer.isActive
+          }
+        };
+      } catch (fallbackError) {
+        throw error;
+      }
+    }
+  }
+
+  /**
+   * Get tier level for comparison
+   */
+  getTierLevel(tier: string): number {
+    const levels = { bronze: 0, silver: 1, gold: 2, platinum: 3 };
+    return levels[tier.toLowerCase() as keyof typeof levels] || 0;
+  }
+
+  /**
+   * Redeem points for an offer with enhanced error handling
    */
   async redeemPoints(offerId: string): Promise<RedemptionResult> {
     console.log('🎯 FRONTEND: Starting loyalty redemption');
     console.log('🎯 Offer ID:', offerId);
-    console.log('🎯 Request payload:', { offerId });
     
     try {
       console.log('🎯 Making API call to /loyalty/redeem');
@@ -135,7 +213,62 @@ class LoyaltyService {
       console.error('🎯 ERROR in redeemPoints:', error);
       console.error('🎯 Error status:', error.response?.status);
       console.error('🎯 Error data:', error.response?.data);
-      console.error('🎯 Full error object:', error);
+      
+      // If backend error is generic, add client-side context
+      if (error.response?.status === 400 || error.response?.status === 500) {
+        try {
+          // Get current user info and offer details to provide specific error
+          const [userInfo, offer] = await Promise.all([
+            this.getUserLoyaltyInfo().catch(() => null),
+            this.getOfferDetails(offerId).catch(() => null)
+          ]);
+          
+          if (userInfo && offer) {
+            const pointsNeeded = Math.max(0, offer.pointsRequired - userInfo.points);
+            const hasInsufficientPoints = userInfo.points < offer.pointsRequired;
+            const hasInsufficientTier = this.getTierLevel(userInfo.tier) < this.getTierLevel(offer.minTier);
+            const isExpired = offer.validUntil && new Date() > new Date(offer.validUntil);
+            
+            // Enhance error with specific context
+            error.response.data = {
+              ...error.response.data,
+              userPoints: userInfo.points,
+              requiredPoints: offer.pointsRequired,
+              pointsNeeded: pointsNeeded,
+              userTier: userInfo.tier,
+              requiredTier: offer.minTier,
+              offerExpired: isExpired,
+              offerInactive: !offer.isActive,
+              errorType: hasInsufficientPoints ? 'insufficient_points' : 
+                         hasInsufficientTier ? 'tier_required' :
+                         isExpired ? 'offer_expired' :
+                         !offer.isActive ? 'offer_inactive' : 'generic'
+            };
+            
+            // Create more specific error message
+            if (hasInsufficientPoints) {
+              error.response.data.error = {
+                message: `You need ${pointsNeeded} more points to redeem this offer. You have ${userInfo.points} points, but need ${offer.pointsRequired} points.`
+              };
+            } else if (hasInsufficientTier) {
+              error.response.data.error = {
+                message: `This offer requires ${offer.minTier} tier or higher. You currently have ${userInfo.tier} tier.`
+              };
+            } else if (isExpired) {
+              error.response.data.error = {
+                message: `This offer expired on ${new Date(offer.validUntil!).toLocaleDateString()}.`
+              };
+            } else if (!offer.isActive) {
+              error.response.data.error = {
+                message: 'This offer is currently inactive.'
+              };
+            }
+          }
+        } catch (contextError) {
+          console.error('Failed to add error context:', contextError);
+        }
+      }
+      
       throw error;
     }
   }
@@ -166,17 +299,6 @@ class LoyaltyService {
     return this.getOffers(category);
   }
 
-  /**
-   * Check if user can redeem an offer
-   */
-  async canRedeemOffer(offerId: string): Promise<boolean> {
-    try {
-      const details = await this.getOfferDetails(offerId);
-      return details.canRedeem;
-    } catch (error) {
-      return false;
-    }
-  }
 
   /**
    * Get tier benefits description

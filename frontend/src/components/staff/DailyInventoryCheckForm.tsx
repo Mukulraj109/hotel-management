@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   ClipboardCheck, 
   AlertTriangle, 
-  DollarSign,
+  IndianRupee,
   Save,
   X,
   Plus,
@@ -279,7 +279,7 @@ export function DailyInventoryCheckForm({
           
           <Card className="p-4">
             <div className="flex items-center">
-              <DollarSign className="h-8 w-8 text-green-600" />
+              <IndianRupee className="h-8 w-8 text-green-600" />
               <div className="ml-3">
                 <p className="text-sm text-gray-600">Guest Charges</p>
                 <p className="text-xl font-semibold">{formatCurrency(getTotalCharges())}</p>

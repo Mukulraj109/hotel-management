@@ -24,7 +24,7 @@ import {
   RefreshCw,
   Building,
   CreditCard,
-  DollarSign,
+  IndianRupee,
   TrendingUp,
   TrendingDown,
   CheckCircle,
@@ -435,7 +435,7 @@ const BankAccountManagement: React.FC = () => {
       case 'Cash': return <Wallet className="w-4 h-4" />;
       case 'Loan': return <TrendingDown className="w-4 h-4" />;
       case 'Investment': return <TrendingUp className="w-4 h-4" />;
-      default: return <DollarSign className="w-4 h-4" />;
+      default: return <IndianRupee className="w-4 h-4" />;
     }
   };
 
@@ -507,7 +507,7 @@ const BankAccountManagement: React.FC = () => {
           <CardContent>
             <div className="flex items-center justify-between">
               <p className="text-2xl font-bold">{formatCurrency(totalBalance)}</p>
-              <DollarSign className="w-5 h-5 text-gray-400" />
+              <IndianRupee className="w-5 h-5 text-gray-400" />
             </div>
             {totalBalance > 0 ? (
               <div className="flex items-center text-green-600 text-sm mt-1">

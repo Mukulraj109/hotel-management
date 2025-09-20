@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { api } from '@/services/api';
 import {
   Card,
   CardContent,
@@ -157,27 +158,59 @@ export default function AllotmentCalendar({
   }, [selectedRoomType, dateRange]);
 
   const loadAllotmentData = async () => {
+    console.log('🔍 [AllotmentCalendar] loadAllotmentData called');
+    console.log('📅 Selected Room Type:', selectedRoomType);
+    console.log('📅 Date Range:', {
+      start: format(dateRange.start, 'yyyy-MM-dd'),
+      end: format(dateRange.end, 'yyyy-MM-dd')
+    });
+
     setLoading(true);
     try {
-      const response = await fetch(
-        `/api/v1/allotments/room-type/${selectedRoomType}?` +
-        new URLSearchParams({
-          startDate: format(dateRange.start, 'yyyy-MM-dd'),
-          endDate: format(dateRange.end, 'yyyy-MM-dd'),
-        })
-      );
-      
-      if (response.ok) {
-        const data = await response.json();
-        setAllotmentData(data);
+      const apiUrl = `/allotments/room-type/${selectedRoomType}`;
+      const params = {
+        startDate: format(dateRange.start, 'yyyy-MM-dd'),
+        endDate: format(dateRange.end, 'yyyy-MM-dd'),
+      };
+
+      console.log('🌐 Making API request to:', apiUrl);
+      console.log('🌐 With params:', params);
+
+      const response = await api.get(apiUrl, { params });
+
+      console.log('✅ API Response received:', response);
+      console.log('📊 Response status:', response.status);
+      console.log('📊 Response data:', response.data);
+
+      if (response.data && response.data.success) {
+        console.log('🎯 Setting allotment data:', response.data.data);
+        setAllotmentData(response.data.data);
+
+        if (response.data.data?.dailyAllotments) {
+          console.log('📅 Daily allotments count:', response.data.data.dailyAllotments.length);
+          console.log('📅 Daily allotments sample:', response.data.data.dailyAllotments.slice(0, 2));
+        }
+
+        if (response.data.data?.channels) {
+          console.log('🔗 Channels count:', response.data.data.channels.length);
+          console.log('🔗 Channels:', response.data.data.channels);
+        }
       } else {
-        throw new Error('Failed to load allotment data');
+        console.error('❌ Response data structure invalid:', response.data);
+        throw new Error('Failed to load allotment data - invalid response structure');
       }
     } catch (error) {
-      console.error('Error loading allotment data:', error);
-      toast.error('Failed to load allotment data');
+      console.error('❌ Error loading allotment data:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data
+      });
+      toast.error('Failed to load allotment data: ' + (error.response?.data?.error || error.message));
     } finally {
       setLoading(false);
+      console.log('🏁 loadAllotmentData finished, loading set to false');
     }
   };
 
@@ -215,21 +248,15 @@ export default function AllotmentCalendar({
 
         // Sync with backend
         try {
-          const response = await fetch(`/api/v1/allotments/${allotmentData._id}/allocate`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              date: destDate,
-              channelAllocations: updatedData.dailyAllotments[destDayIndex].channels.map(c => ({
-                channelName: c.channelName,
-                allocated: c.allocated,
-              })),
-            }),
+          const response = await api.post(`/allotments/${allotmentData._id}/allocate`, {
+            date: destDate,
+            channelAllocations: updatedData.dailyAllotments[destDayIndex].channels.map(c => ({
+              channelName: c.channelName,
+              allocated: c.allocated,
+            })),
           });
 
-          if (!response.ok) {
+          if (!response.data) {
             throw new Error('Failed to update allocation');
           }
 
@@ -246,10 +273,13 @@ export default function AllotmentCalendar({
 
   const handleQuickEdit = (date: string) => {
     setSelectedDate(date);
-    const dayData = allotmentData?.dailyAllotments.find(d => d.date === date);
+    const dayData = allotmentData?.dailyAllotments?.find(d => {
+      const dailyDateStr = typeof d.date === 'string' ? d.date.split('T')[0] : format(new Date(d.date), 'yyyy-MM-dd');
+      return dailyDateStr === date;
+    });
     if (dayData) {
       const allocations: Record<string, number> = {};
-      dayData.channels.forEach(c => {
+      dayData.channels?.forEach(c => {
         allocations[c.channelName] = c.allocated;
       });
       setTempAllocations(allocations);
@@ -261,21 +291,15 @@ export default function AllotmentCalendar({
     if (!selectedDate || !allotmentData) return;
 
     try {
-      const response = await fetch(`/api/v1/allotments/${allotmentData._id}/allocate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          date: selectedDate,
-          channelAllocations: Object.entries(tempAllocations).map(([channelName, allocated]) => ({
-            channelName,
-            allocated,
-          })),
-        }),
+      const response = await api.post(`/allotments/${allotmentData._id}/allocate`, {
+        date: selectedDate,
+        channelAllocations: Object.entries(tempAllocations).map(([channelName, allocated]) => ({
+          channelName,
+          allocated,
+        })),
       });
 
-      if (response.ok) {
+      if (response.data) {
         toast.success('Allocations updated successfully');
         setEditDialogOpen(false);
         loadAllotmentData();
@@ -295,21 +319,15 @@ export default function AllotmentCalendar({
     if (!sourceDay) return;
 
     try {
-      const response = await fetch(`/api/v1/allotments/${allotmentData._id}/allocate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          date: toDate,
-          channelAllocations: sourceDay.channels.map(c => ({
-            channelName: c.channelName,
-            allocated: c.allocated,
-          })),
-        }),
+      const response = await api.post(`/allotments/${allotmentData._id}/allocate`, {
+        date: toDate,
+        channelAllocations: sourceDay.channels.map(c => ({
+          channelName: c.channelName,
+          allocated: c.allocated,
+        })),
       });
 
-      if (response.ok) {
+      if (response.data) {
         toast.success('Allocations copied successfully');
         loadAllotmentData();
       } else {
@@ -330,7 +348,12 @@ export default function AllotmentCalendar({
 
   const getDayData = (date: Date): DailyAllotment | undefined => {
     const dateStr = format(date, 'yyyy-MM-dd');
-    return allotmentData?.dailyAllotments.find(d => d.date === dateStr);
+
+    return allotmentData?.dailyAllotments?.find(d => {
+      // Handle both date string formats: "2025-09-15" and "2025-09-15T10:14:21.868Z"
+      const dailyDateStr = typeof d.date === 'string' ? d.date.split('T')[0] : format(new Date(d.date), 'yyyy-MM-dd');
+      return dailyDateStr === dateStr;
+    });
   };
 
   const getOccupancyColor = (rate: number): string => {
@@ -448,7 +471,7 @@ export default function AllotmentCalendar({
                     
                     {dayData ? (
                       <div className="space-y-1">
-                        {dayData.channels.map(channel => (
+                        {dayData.channels?.map(channel => (
                           <Droppable key={channel.channelName} droppableId={`${dateStr}-${channel.channelName}`}>
                             {(provided, snapshot) => (
                               <div
@@ -502,7 +525,7 @@ export default function AllotmentCalendar({
                           </Droppable>
                         ))}
                         
-                        {dayData.warnings.length > 0 && (
+                        {dayData.warnings?.length > 0 && (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <div className="flex items-center justify-center">
@@ -511,7 +534,7 @@ export default function AllotmentCalendar({
                             </TooltipTrigger>
                             <TooltipContent>
                               <div className="space-y-1">
-                                {dayData.warnings.map((warning, idx) => (
+                                {dayData.warnings?.map((warning, idx) => (
                                   <p key={idx} className="text-xs">{warning}</p>
                                 ))}
                               </div>
@@ -542,7 +565,7 @@ export default function AllotmentCalendar({
             </DialogHeader>
             
             <div className="space-y-4">
-              {allotmentData?.channels.map(channel => (
+              {allotmentData?.channels?.map(channel => (
                 <div key={channel.name} className="space-y-2">
                   <Label>{channel.name}</Label>
                   <Input

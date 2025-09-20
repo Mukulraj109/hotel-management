@@ -1,7 +1,7 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { authenticate } from '../middleware/auth.js';
@@ -61,7 +61,7 @@ router.post('/register', validate(schemas.register), catchAsync(async (req, res)
   // Check if user exists
   const existingUser = await User.findOne({ email });
   if (existingUser) {
-    throw new AppError('User with this email already exists', 400);
+    throw new ApplicationError('User with this email already exists', 400);
   }
 
   // Create user
@@ -136,11 +136,11 @@ router.post('/login', validate(schemas.login), catchAsync(async (req, res) => {
   const user = await User.findOne({ email }).select('+password');
   
   if (!user || !(await user.comparePassword(password))) {
-    throw new AppError('Invalid email or password', 401);
+    throw new ApplicationError('Invalid email or password', 401);
   }
 
   if (!user.isActive) {
-    throw new AppError('Account has been deactivated', 401);
+    throw new ApplicationError('Account has been deactivated', 401);
   }
 
   // Update last login
@@ -281,7 +281,7 @@ router.patch('/change-password', authenticate, validate(schemas.changePassword),
   const user = await User.findById(req.user._id).select('+password');
   
   if (!(await user.comparePassword(currentPassword))) {
-    throw new AppError('Current password is incorrect', 401);
+    throw new ApplicationError('Current password is incorrect', 401);
   }
 
   user.password = newPassword;

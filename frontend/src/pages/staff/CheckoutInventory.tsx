@@ -17,7 +17,7 @@ import {
   Filter,
   Eye,
   CreditCard,
-  Receipt
+  Receipt,
 } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { checkoutInventoryService, CheckoutInventory as CheckoutInventoryType } from '../../services/checkoutInventoryService';
@@ -37,10 +37,13 @@ export default function CheckoutInventory() {
   const [selectedInventory, setSelectedInventory] = useState<CheckoutInventoryType | null>(null);
   const [showDetails, setShowDetails] = useState(false);
 
+
   useEffect(() => {
     console.log('CheckoutInventory useEffect triggered'); // Debug log
     fetchCheckoutInventories();
   }, [filter]);
+
+
 
   const fetchCheckoutInventories = async () => {
     try {
@@ -145,8 +148,18 @@ export default function CheckoutInventory() {
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-6 sm:mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Checkout Inventory Management</h1>
-        <p className="text-gray-600 text-sm sm:text-base">Manage guest checkout inventory checks and billing</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Checkout Inventory Management</h1>
+            <p className="text-gray-600 text-sm sm:text-base">Manage guest checkout inventory checks and billing</p>
+          </div>
+          <div className="flex items-center space-x-3">
+            <Button onClick={fetchCheckoutInventories} variant="outline" size="sm" disabled={loading}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
+        </div>
       </div>
 
       {/* Stats Cards */}

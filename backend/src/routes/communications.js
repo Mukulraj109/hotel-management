@@ -3,7 +3,7 @@ import Communication from '../models/Communication.js';
 import MessageTemplate from '../models/MessageTemplate.js';
 import User from '../models/User.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
@@ -92,7 +92,7 @@ router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.body.hotelId;
 
   if (req.user.role === 'admin' && !req.body.hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   let finalSubject = subject;
@@ -103,11 +103,11 @@ router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   if (templateId) {
     const template = await MessageTemplate.findById(templateId);
     if (!template) {
-      throw new AppError('Template not found', 404);
+      throw new ApplicationError('Template not found', 404);
     }
     
     if (template.hotelId.toString() !== hotelId.toString()) {
-      throw new AppError('Template not found for this hotel', 404);
+      throw new ApplicationError('Template not found for this hotel', 404);
     }
 
     const rendered = template.render(templateVariables || {});
@@ -342,7 +342,7 @@ router.get('/:id', catchAsync(async (req, res) => {
     .populate('recipients.userId', 'name email');
 
   if (!communication) {
-    throw new AppError('Communication not found', 404);
+    throw new ApplicationError('Communication not found', 404);
   }
 
   // Check access permissions
@@ -351,14 +351,14 @@ router.get('/:id', catchAsync(async (req, res) => {
       r.userId && r.userId._id.toString() === req.user._id.toString()
     );
     if (!isRecipient) {
-      throw new AppError('You can only view communications sent to you', 403);
+      throw new ApplicationError('You can only view communications sent to you', 403);
     }
   } else if (req.user.role === 'staff') {
     if (communication.hotelId._id.toString() !== req.user.hotelId.toString()) {
-      throw new AppError('You can only view communications for your hotel', 403);
+      throw new ApplicationError('You can only view communications for your hotel', 403);
     }
     if (req.user.role !== 'manager' && communication.sentBy._id.toString() !== req.user._id.toString()) {
-      throw new AppError('You can only view your own communications', 403);
+      throw new ApplicationError('You can only view your own communications', 403);
     }
   }
 
@@ -390,16 +390,16 @@ router.post('/:id/cancel', authorize('staff', 'admin'), catchAsync(async (req, r
   const communication = await Communication.findById(req.params.id);
   
   if (!communication) {
-    throw new AppError('Communication not found', 404);
+    throw new ApplicationError('Communication not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff') {
     if (communication.hotelId.toString() !== req.user.hotelId.toString()) {
-      throw new AppError('You can only cancel communications for your hotel', 403);
+      throw new ApplicationError('You can only cancel communications for your hotel', 403);
     }
     if (req.user.role !== 'manager' && communication.sentBy.toString() !== req.user._id.toString()) {
-      throw new AppError('You can only cancel your own communications', 403);
+      throw new ApplicationError('You can only cancel your own communications', 403);
     }
   }
 
@@ -540,7 +540,7 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   const [communicationStats, scheduledMessages] = await Promise.all([
@@ -678,7 +678,7 @@ router.post('/bulk', authorize('staff', 'admin'), catchAsync(async (req, res) =>
     .limit(1000); // Limit to prevent abuse
 
   if (recipients.length === 0) {
-    throw new AppError('No recipients found matching segmentation criteria', 400);
+    throw new ApplicationError('No recipients found matching segmentation criteria', 400);
   }
 
   // Convert to recipient format

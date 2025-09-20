@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Users, Home, Clock, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Users, Home, Clock, CheckCircle, AlertTriangle, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { staffDashboardService, RoomStatusData, StaffActivityData } from '../../services/staffDashboardService';
+import { useRealTime } from '../../services/realTimeService';
+import { toast } from 'react-hot-toast';
 
 export default function StaffRooms() {
   const [roomData, setRoomData] = useState<RoomStatusData | null>(null);
@@ -12,9 +14,70 @@ export default function StaffRooms() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Real-time connection
+  const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
+
   useEffect(() => {
     fetchRoomData();
   }, []);
+
+  // Real-time connection setup
+  useEffect(() => {
+    connect();
+    return () => {
+      disconnect();
+    };
+  }, [connect, disconnect]);
+
+  // Set up real-time event listeners
+  useEffect(() => {
+    if (!isConnected) return;
+    
+    const handleRoomStatusChanged = (data: any) => {
+      console.log('Real-time room status changed:', data);
+      fetchRoomData();
+      toast.success(`Room ${data.roomNumber} status updated to ${data.status}`);
+    };
+    
+    const handleBookingCheckedIn = (data: any) => {
+      console.log('Real-time guest checked in:', data);
+      fetchRoomData();
+      toast.success(`Guest checked in to Room ${data.roomNumber || 'N/A'}`);
+    };
+    
+    const handleBookingCheckedOut = (data: any) => {
+      console.log('Real-time guest checked out:', data);
+      fetchRoomData();
+      toast.success(`Guest checked out from Room ${data.roomNumber || 'N/A'}`);
+    };
+    
+    const handleRoomAttentionRequired = (data: any) => {
+      console.log('Real-time room needs attention:', data);
+      fetchRoomData();
+      toast.error(`Room ${data.roomNumber} needs attention: ${data.reason}`);
+    };
+    
+    const handleRoomUpdate = (data: any) => {
+      console.log('Real-time room update:', data);
+      fetchRoomData();
+    };
+    
+    on('room:status_changed', handleRoomStatusChanged);
+    on('booking:checked_in', handleBookingCheckedIn);
+    on('booking:checked_out', handleBookingCheckedOut);
+    on('room:attention_required', handleRoomAttentionRequired);
+    on('room:updated', handleRoomUpdate);
+    on('occupancy:changed', handleRoomUpdate);
+    
+    return () => {
+      off('room:status_changed', handleRoomStatusChanged);
+      off('booking:checked_in', handleBookingCheckedIn);
+      off('booking:checked_out', handleBookingCheckedOut);
+      off('room:attention_required', handleRoomAttentionRequired);
+      off('room:updated', handleRoomUpdate);
+      off('occupancy:changed', handleRoomUpdate);
+    };
+  }, [isConnected, on, off]);
 
   const fetchRoomData = async () => {
     try {
@@ -64,8 +127,29 @@ export default function StaffRooms() {
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
       <div className="mb-6 sm:mb-8">
-        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Room Status Overview</h1>
-        <p className="text-gray-600 text-sm sm:text-base">Monitor and manage room statuses</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Room Status Overview</h1>
+            <p className="text-gray-600 text-sm sm:text-base">Monitor and manage room statuses</p>
+          </div>
+          <div className="flex items-center space-x-3">
+            <div className={`flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+              isConnected 
+                ? 'bg-green-100 text-green-800' 
+                : 'bg-red-100 text-red-800'
+            }`}>
+              {isConnected ? (
+                <><Wifi className="w-3 h-3 mr-1" /> Live Updates</>
+              ) : (
+                <><WifiOff className="w-3 h-3 mr-1" /> Offline</>
+              )}
+            </div>
+            <Button onClick={fetchRoomData} variant="outline" size="sm" disabled={loading}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">

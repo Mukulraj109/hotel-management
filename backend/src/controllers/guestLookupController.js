@@ -1,7 +1,7 @@
 import User from '../models/User.js';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import mongoose from 'mongoose';
 
@@ -11,12 +11,12 @@ export const getGuestByRoom = catchAsync(async (req, res) => {
   const { hotelId } = req.query;
 
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   // Check if user has access to this hotel
   if (req.user.role === 'staff' && req.user.hotelId.toString() !== hotelId) {
-    throw new AppError('You can only lookup guests for your hotel', 403);
+    throw new ApplicationError('You can only lookup guests for your hotel', 403);
   }
 
   // Find the room
@@ -27,7 +27,7 @@ export const getGuestByRoom = catchAsync(async (req, res) => {
   });
 
   if (!room) {
-    throw new AppError('Room not found or not active', 404);
+    throw new ApplicationError('Room not found or not active', 404);
   }
 
   // Find active booking for this room
@@ -40,7 +40,7 @@ export const getGuestByRoom = catchAsync(async (req, res) => {
   }).populate('userId', 'name email phone');
 
   if (!activeBooking) {
-    throw new AppError('No active booking found for this room', 404);
+    throw new ApplicationError('No active booking found for this room', 404);
   }
 
   // Get guest details
@@ -82,16 +82,16 @@ export const getGuestByBooking = catchAsync(async (req, res) => {
     .populate('hotelId', 'name');
 
   if (!booking) {
-    throw new AppError('Booking not found', 404);
+    throw new ApplicationError('Booking not found', 404);
   }
 
   // Check if user has access to this booking
   if (req.user.role === 'staff' && req.user.hotelId.toString() !== booking.hotelId.toString()) {
-    throw new AppError('You can only lookup guests for your hotel', 403);
+    throw new ApplicationError('You can only lookup guests for your hotel', 403);
   }
 
   if (req.user.role === 'guest' && req.user._id.toString() !== booking.userId._id.toString()) {
-    throw new AppError('You can only lookup your own bookings', 403);
+    throw new ApplicationError('You can only lookup your own bookings', 403);
   }
 
   // Get guest details
@@ -134,12 +134,12 @@ export const searchGuests = catchAsync(async (req, res) => {
   const { query, hotelId, page = 1, limit = 20 } = req.query;
 
   if (!query || !hotelId) {
-    throw new AppError('Search query and hotel ID are required', 400);
+    throw new ApplicationError('Search query and hotel ID are required', 400);
   }
 
   // Check if user has access to this hotel
   if (req.user.role === 'staff' && req.user.hotelId.toString() !== hotelId) {
-    throw new AppError('You can only search guests for your hotel', 403);
+    throw new ApplicationError('You can only search guests for your hotel', 403);
   }
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -180,16 +180,16 @@ export const getGuestActiveBookings = catchAsync(async (req, res) => {
   const { hotelId } = req.query;
 
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   // Check if user has access to this hotel
   if (req.user.role === 'staff' && req.user.hotelId.toString() !== hotelId) {
-    throw new AppError('You can only access guest data for your hotel', 403);
+    throw new ApplicationError('You can only access guest data for your hotel', 403);
   }
 
   if (req.user.role === 'guest' && req.user._id.toString() !== guestId) {
-    throw new AppError('You can only access your own data', 403);
+    throw new ApplicationError('You can only access your own data', 403);
   }
 
   // Find active bookings for the guest
@@ -214,16 +214,16 @@ export const getGuestBillingHistory = catchAsync(async (req, res) => {
   const { hotelId, page = 1, limit = 20 } = req.query;
 
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   // Check if user has access to this hotel
   if (req.user.role === 'staff' && req.user.hotelId.toString() !== hotelId) {
-    throw new AppError('You can only access guest data for your hotel', 403);
+    throw new ApplicationError('You can only access guest data for your hotel', 403);
   }
 
   if (req.user.role === 'guest' && req.user._id.toString() !== guestId) {
-    throw new AppError('You can only access your own data', 403);
+    throw new ApplicationError('You can only access your own data', 403);
   }
 
   const skip = (parseInt(page) - 1) * parseInt(limit);

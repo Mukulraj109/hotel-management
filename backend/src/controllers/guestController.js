@@ -1,7 +1,7 @@
 import User from '../models/User.js';
 import Booking from '../models/Booking.js';
 import Review from '../models/Review.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import mongoose from 'mongoose';
 
@@ -146,7 +146,7 @@ export const getGuest = catchAsync(async (req, res) => {
     .select('-password -passwordResetToken -passwordResetExpires');
 
   if (!guest || guest.role !== 'guest') {
-    throw new AppError('Guest not found', 404);
+    throw new ApplicationError('Guest not found', 404);
   }
 
   // Get detailed statistics
@@ -227,7 +227,7 @@ export const updateGuest = catchAsync(async (req, res) => {
     .select('-password -passwordResetToken -passwordResetExpires');
 
   if (!guest || guest.role !== 'guest') {
-    throw new AppError('Guest not found', 404);
+    throw new ApplicationError('Guest not found', 404);
   }
 
   res.json({
@@ -241,13 +241,13 @@ export const deleteGuest = catchAsync(async (req, res) => {
   const guest = await User.findById(req.params.id);
 
   if (!guest || guest.role !== 'guest') {
-    throw new AppError('Guest not found', 404);
+    throw new ApplicationError('Guest not found', 404);
   }
 
   // Check if guest has bookings
   const hasBookings = await Booking.exists({ userId: guest._id });
   if (hasBookings) {
-    throw new AppError('Cannot delete guest with existing bookings', 400);
+    throw new ApplicationError('Cannot delete guest with existing bookings', 400);
   }
 
   await User.findByIdAndDelete(req.params.id);
@@ -263,7 +263,7 @@ export const bulkUpdateGuests = catchAsync(async (req, res) => {
   const { guestIds, updateData } = req.body;
 
   if (!Array.isArray(guestIds) || guestIds.length === 0) {
-    throw new AppError('Guest IDs array is required', 400);
+    throw new ApplicationError('Guest IDs array is required', 400);
   }
 
   const result = await User.updateMany(

@@ -3,7 +3,7 @@ import Loyalty from '../models/Loyalty.js';
 import Offer from '../models/Offer.js';
 import User from '../models/User.js';
 import { authenticate } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 
@@ -234,7 +234,7 @@ catchAsync(async (req, res) => {
     console.log('🔥 Found offer:', offer ? 'YES' : 'NO');
     if (!offer) {
       console.log('🔥 ERROR: Offer not found');
-      throw new AppError('Offer not found', 404);
+      throw new ApplicationError('Offer not found', 404);
     }
     console.log('🔥 Offer details:', { title: offer.title, pointsRequired: offer.pointsRequired });
 
@@ -251,12 +251,31 @@ catchAsync(async (req, res) => {
     console.log('🔥 Points required:', offer.pointsRequired);
     console.log('🔥 Min tier required:', offer.minTier);
     
+    // Detailed validation checks
+    console.log('🔥 Offer validation details:');
+    console.log('🔥 - isActive:', offer.isActive);
+    console.log('🔥 - validFrom:', offer.validFrom);
+    console.log('🔥 - validUntil:', offer.validUntil);
+    console.log('🔥 - maxRedemptions:', offer.maxRedemptions);
+    console.log('🔥 - currentRedemptions:', offer.currentRedemptions);
+    console.log('🔥 - isValid virtual:', offer.isValid);
+    
+    const now = new Date();
+    console.log('🔥 Current time:', now);
+    
     try {
       const canRedeem = offer.canRedeem(user.loyalty.tier, user.loyalty.points);
       console.log('🔥 Can redeem result:', canRedeem);
+      
       if (!canRedeem) {
-        console.log('🔥 ERROR: Cannot redeem offer - insufficient points or tier');
-        throw new AppError('Cannot redeem this offer. Check tier requirements and available points.', 400);
+        console.log('🔥 ERROR: Cannot redeem offer - detailed analysis:');
+        console.log('🔥 - Points check:', user.loyalty.points >= offer.pointsRequired);
+        console.log('🔥 - Tier check:', user.loyalty.tier, 'vs', offer.minTier);
+        console.log('🔥 - Active check:', offer.isActive);
+        console.log('🔥 - Time valid:', (!offer.validUntil || now <= offer.validUntil));
+        console.log('🔥 - Redemptions available:', (!offer.maxRedemptions || offer.currentRedemptions < offer.maxRedemptions));
+        
+        throw new ApplicationError('Cannot redeem this offer. Check tier requirements and available points.', 400);
       }
     } catch (error) {
       console.log('🔥 ERROR in canRedeem check:', error.message);
@@ -283,7 +302,7 @@ catchAsync(async (req, res) => {
 
     // Update user points
     user.loyalty.points -= offer.pointsRequired;
-    user.loyalty.updateLoyaltyTier();
+    user.updateLoyaltyTier();
     await user.save();
 
     // Update offer redemption count
@@ -415,7 +434,7 @@ router.get('/offers/:offerId', authenticate, catchAsync(async (req, res) => {
     .populate('hotelId', 'name');
     
   if (!offer) {
-    throw new AppError('Offer not found', 404);
+    throw new ApplicationError('Offer not found', 404);
   }
 
   const user = await User.findById(req.user._id).select('+loyalty');

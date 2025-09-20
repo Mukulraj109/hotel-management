@@ -1,5 +1,5 @@
 import Salutation from '../models/Salutation.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 // Get all salutations
@@ -48,7 +48,7 @@ export const getSalutation = catchAsync(async (req, res) => {
     .populate('updatedBy', 'name email');
 
   if (!salutation) {
-    throw new AppError('Salutation not found', 404);
+    throw new ApplicationError('Salutation not found', 404);
   }
 
   res.json({
@@ -80,12 +80,12 @@ export const updateSalutation = catchAsync(async (req, res) => {
   const salutation = await Salutation.findById(req.params.id);
 
   if (!salutation) {
-    throw new AppError('Salutation not found', 404);
+    throw new ApplicationError('Salutation not found', 404);
   }
 
   // Check if user can update this salutation
   if (salutation.hotelId && salutation.hotelId.toString() !== req.user.hotelId?.toString()) {
-    throw new AppError('You can only update salutations for your hotel', 403);
+    throw new ApplicationError('You can only update salutations for your hotel', 403);
   }
 
   const updatedSalutation = await Salutation.findByIdAndUpdate(
@@ -106,17 +106,17 @@ export const deleteSalutation = catchAsync(async (req, res) => {
   const salutation = await Salutation.findById(req.params.id);
 
   if (!salutation) {
-    throw new AppError('Salutation not found', 404);
+    throw new ApplicationError('Salutation not found', 404);
   }
 
   // Check if user can delete this salutation
   if (salutation.hotelId && salutation.hotelId.toString() !== req.user.hotelId?.toString()) {
-    throw new AppError('You can only delete salutations for your hotel', 403);
+    throw new ApplicationError('You can only delete salutations for your hotel', 403);
   }
 
   // Don't allow deletion of global salutations
   if (!salutation.hotelId) {
-    throw new AppError('Cannot delete global salutations', 403);
+    throw new ApplicationError('Cannot delete global salutations', 403);
   }
 
   await Salutation.findByIdAndDelete(req.params.id);
@@ -132,7 +132,7 @@ export const bulkCreateSalutations = catchAsync(async (req, res) => {
   const { salutations } = req.body;
 
   if (!Array.isArray(salutations) || salutations.length === 0) {
-    throw new AppError('Salutations array is required', 400);
+    throw new ApplicationError('Salutations array is required', 400);
   }
 
   const salutationData = salutations.map(sal => ({
@@ -194,12 +194,12 @@ export const toggleSalutationStatus = catchAsync(async (req, res) => {
   const salutation = await Salutation.findById(req.params.id);
 
   if (!salutation) {
-    throw new AppError('Salutation not found', 404);
+    throw new ApplicationError('Salutation not found', 404);
   }
 
   // Check if user can update this salutation
   if (salutation.hotelId && salutation.hotelId.toString() !== req.user.hotelId?.toString()) {
-    throw new AppError('You can only update salutations for your hotel', 403);
+    throw new ApplicationError('You can only update salutations for your hotel', 403);
   }
 
   salutation.isActive = !salutation.isActive;

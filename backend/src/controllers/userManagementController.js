@@ -1,7 +1,7 @@
 import userAnalyticsService from '../services/userAnalyticsService.js';
 import User from '../models/User.js';
 import AuditLog from '../models/AuditLog.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import mongoose from 'mongoose';
 
@@ -14,7 +14,7 @@ export const getUserAnalytics = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
   if (groupBy) options.groupBy = groupBy;
@@ -36,7 +36,7 @@ export const getUserActivityMetrics = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
   if (userId) options.userId = userId;
@@ -58,7 +58,7 @@ export const getUserPerformanceMetrics = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
   if (userId) options.userId = userId;
@@ -93,7 +93,7 @@ export const getUserEngagementMetrics = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
 
@@ -153,7 +153,7 @@ export const getAdvancedUserList = catchAsync(async (req, res) => {
         $lte: new Date(range.end)
       };
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
 
@@ -232,7 +232,7 @@ export const bulkUserOperations = catchAsync(async (req, res) => {
   const { operation, userIds, data } = req.body;
 
   if (!operation || !userIds || !Array.isArray(userIds) || userIds.length === 0) {
-    throw new AppError('Operation, userIds array, and data are required', 400);
+    throw new ApplicationError('Operation, userIds array, and data are required', 400);
   }
 
   let result;
@@ -255,7 +255,7 @@ export const bulkUserOperations = catchAsync(async (req, res) => {
 
     case 'updateRole':
       if (!data.role) {
-        throw new AppError('Role is required for updateRole operation', 400);
+        throw new ApplicationError('Role is required for updateRole operation', 400);
       }
       result = await User.updateMany(
         { _id: { $in: validUserIds }, hotelId: req.user.hotelId },
@@ -265,7 +265,7 @@ export const bulkUserOperations = catchAsync(async (req, res) => {
 
     case 'updateHotel':
       if (!data.hotelId) {
-        throw new AppError('Hotel ID is required for updateHotel operation', 400);
+        throw new ApplicationError('Hotel ID is required for updateHotel operation', 400);
       }
       result = await User.updateMany(
         { _id: { $in: validUserIds } },
@@ -281,7 +281,7 @@ export const bulkUserOperations = catchAsync(async (req, res) => {
       break;
 
     default:
-      throw new AppError('Invalid operation', 400);
+      throw new ApplicationError('Invalid operation', 400);
   }
 
   res.json({
@@ -300,7 +300,7 @@ export const importUsers = catchAsync(async (req, res) => {
   const { usersData } = req.body;
 
   if (!Array.isArray(usersData) || usersData.length === 0) {
-    throw new AppError('Users data array is required', 400);
+    throw new ApplicationError('Users data array is required', 400);
   }
 
   const results = {
@@ -409,7 +409,7 @@ export const getUserActivityTimeline = catchAsync(async (req, res) => {
   const { userId, dateRange, limit = 50 } = req.query;
 
   if (!userId) {
-    throw new AppError('User ID is required', 400);
+    throw new ApplicationError('User ID is required', 400);
   }
 
   const matchStage = {
@@ -424,7 +424,7 @@ export const getUserActivityTimeline = catchAsync(async (req, res) => {
         $lte: new Date(range.end)
       };
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
 
@@ -445,7 +445,7 @@ export const getUserPerformanceReport = catchAsync(async (req, res) => {
   const { userId, dateRange } = req.query;
 
   if (!userId) {
-    throw new AppError('User ID is required', 400);
+    throw new ApplicationError('User ID is required', 400);
   }
 
   const options = {};
@@ -453,7 +453,7 @@ export const getUserPerformanceReport = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
 
@@ -464,7 +464,7 @@ export const getUserPerformanceReport = catchAsync(async (req, res) => {
   ]);
 
   if (!user) {
-    throw new AppError('User not found', 404);
+    throw new ApplicationError('User not found', 404);
   }
 
   res.json({
@@ -486,7 +486,7 @@ export const getUserHealthMonitoring = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
 

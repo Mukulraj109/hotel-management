@@ -210,6 +210,70 @@ export interface PotentialPartner {
   gender?: string;
 }
 
+export interface AdminAnalytics {
+  summary: {
+    totalRequests: number;
+    acceptanceRate: number;
+    declineRate: number;
+    completionRate: number;
+    avgResponseTime: number;
+  };
+  breakdown: {
+    status: Array<{ _id: string; count: number }>;
+    type: Array<{ _id: string; count: number }>;
+    hotels: Array<{ _id: string; hotelName: string; count: number }>;
+    locations: Array<{ _id: string; count: number }>;
+  };
+  trends: {
+    daily: Array<{
+      _id: string;
+      requests: number;
+      accepted: number;
+      completed: number;
+    }>;
+    peakTimes: Array<{
+      _id: { hour: number; dayOfWeek: number };
+      count: number;
+    }>;
+  };
+  users: {
+    topRequesters: Array<{
+      _id: string;
+      userName: string;
+      requestsSent: number;
+    }>;
+  };
+  period: string;
+  generatedAt: string;
+}
+
+export interface AdminInsights {
+  userEngagement: {
+    totalUsers: number;
+    activeUsers: number;
+    engagementRate: number;
+  };
+  riskAssessment: {
+    potentiallyRiskyMeetUps: number;
+    frequentRequesters: number;
+    riskyMeetUpDetails: MeetUpRequest[];
+  };
+  hotelPerformance: {
+    underperformingHotels: Array<{
+      _id: string;
+      hotelName: string;
+      acceptanceRate: number;
+      total: number;
+    }>;
+  };
+  safetyInsights: {
+    totalRequests: number;
+    verifiedOnly: number;
+    publicLocation: number;
+    hotelStaffPresent: number;
+  };
+}
+
 class MeetUpRequestService {
   async getMeetUpRequests(params?: {
     page?: number;
@@ -227,7 +291,11 @@ class MeetUpRequestService {
     limit?: number;
   }): Promise<MeetUpRequestsResponse> {
     const response = await api.get('/meet-up-requests/pending', { params });
-    return response.data.data;
+    const data = response.data.data;
+    return {
+      meetUps: data.pendingRequests || [],
+      pagination: data.pagination
+    };
   }
 
   async getUpcomingMeetUps(params?: {
@@ -235,7 +303,11 @@ class MeetUpRequestService {
     limit?: number;
   }): Promise<MeetUpRequestsResponse> {
     const response = await api.get('/meet-up-requests/upcoming', { params });
-    return response.data.data;
+    const data = response.data.data;
+    return {
+      meetUps: data.upcomingMeetUps || [],
+      pagination: data.pagination
+    };
   }
 
   async createMeetUpRequest(request: CreateMeetUpRequest): Promise<{
@@ -316,6 +388,44 @@ class MeetUpRequestService {
 
   async getStats(): Promise<MeetUpStats> {
     const response = await api.get('/meet-up-requests/stats/overview');
+    return response.data.data;
+  }
+
+  // Admin-specific methods
+  async getAdminAllMeetUps(params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    type?: string;
+    hotelId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    search?: string;
+  }): Promise<MeetUpRequestsResponse> {
+    const response = await api.get('/meet-up-requests/admin/all', { params });
+    return response.data.data;
+  }
+
+  async getAdminAnalytics(params?: {
+    period?: string;
+    hotelId?: string;
+  }): Promise<AdminAnalytics> {
+    const response = await api.get('/meet-up-requests/admin/analytics', { params });
+    return response.data.data;
+  }
+
+  async adminForceCancel(requestId: string, reason?: string): Promise<{
+    message: string;
+    data: MeetUpRequest;
+  }> {
+    const response = await api.post(`/meet-up-requests/admin/${requestId}/force-cancel`, { reason });
+    return response.data;
+  }
+
+  async getAdminInsights(params?: {
+    hotelId?: string;
+  }): Promise<AdminInsights> {
+    const response = await api.get('/meet-up-requests/admin/insights', { params });
     return response.data.data;
   }
 

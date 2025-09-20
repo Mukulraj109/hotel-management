@@ -25,7 +25,7 @@ import {
   CheckSquare,
   XCircle,
   Timer,
-  DollarSign,
+  IndianRupee,
   BarChart3,
   PieChart
 } from 'lucide-react';
@@ -258,7 +258,7 @@ const LaundryDashboard: React.FC<LaundryDashboardProps> = ({ className = '' }) =
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Cost</CardTitle>
-            <DollarSign className="w-4 h-4 text-gray-600" />
+            <IndianRupee className="w-4 h-4 text-gray-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-gray-900">

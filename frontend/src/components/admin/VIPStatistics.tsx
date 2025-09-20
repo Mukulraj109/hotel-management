@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { XMarkIcon, CrownIcon, ChartBarIcon, StarIcon, CurrencyDollarIcon } from '@heroicons/react/24/outline';
+import { XMarkIcon, CrownIcon, ChartBarIcon, StarIcon } from '@heroicons/react/24/outline';
+import { IndianRupee } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 interface VIPStatisticsProps {
@@ -193,7 +194,7 @@ const VIPStatistics: React.FC<VIPStatisticsProps> = ({ onClose }) => {
               <div className="bg-blue-50 p-6 rounded-lg">
                 <div className="flex items-center">
                   <div className="flex-shrink-0">
-                    <CurrencyDollarIcon className="w-8 h-8 text-blue-600" />
+                    <IndianRupee className="w-8 h-8 text-blue-600" />
                   </div>
                   <div className="ml-4">
                     <p className="text-sm font-medium text-blue-600">Total Revenue</p>

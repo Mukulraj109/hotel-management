@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { format, parseISO } from 'date-fns';
-import { 
-  Wrench, 
-  Clock, 
-  CheckCircle, 
-  AlertTriangle, 
+import {
+  Wrench,
+  Clock,
+  CheckCircle,
+  AlertTriangle,
   Filter,
   Plus,
   Eye,
@@ -17,7 +17,15 @@ import {
   Calendar,
   ChevronDown,
   Save,
-  RefreshCw
+  RefreshCw,
+  Activity,
+  TrendingUp,
+  BarChart3,
+  Users,
+  AlertCircle,
+  Settings,
+  Zap,
+  Target
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -59,7 +67,7 @@ export default function AdminMaintenance() {
   const [selectedTask, setSelectedTask] = useState<MaintenanceTask | null>(null);
   
   // Form data
-  const [formData, setFormData] = useState<CreateMaintenanceTaskData>({
+  const [formData, setFormData] = useState<CreateMaintenanceTaskData & { materialsText?: string; vendorRequired?: boolean }>({
     title: '',
     description: '',
     type: 'other',
@@ -69,7 +77,9 @@ export default function AdminMaintenance() {
     assignedToUserId: '',
     estimatedDuration: 60,
     estimatedCost: 0,
-    notes: ''
+    notes: '',
+    materialsText: '',
+    vendorRequired: false
   });
 
   const fetchTasks = useCallback(async () => {
@@ -174,14 +184,51 @@ export default function AdminMaintenance() {
     e.preventDefault();
     try {
       setUpdating(true);
+
+      // Comprehensive validation
+      if (!formData.title.trim()) {
+        toast.error('Task title is required');
+        return;
+      }
+
+      if (formData.estimatedDuration < 15) {
+        toast.error('Estimated duration must be at least 15 minutes');
+        return;
+      }
+
+      if (formData.estimatedDuration > 480) {
+        toast.error('Estimated duration cannot exceed 8 hours (480 minutes)');
+        return;
+      }
+
+      if (formData.estimatedCost < 0) {
+        toast.error('Estimated cost cannot be negative');
+        return;
+      }
+
+      // Parse materials from text input
+      let materials = undefined;
+      if (formData.materialsText && formData.materialsText.trim()) {
+        materials = formData.materialsText.split(',').map(item => ({
+          name: item.trim(),
+          quantity: 1,
+          unitCost: 0
+        })).filter(item => item.name);
+      }
+
       const cleanedFormData = {
         ...formData,
         roomId: formData.roomId || undefined,
         assignedToUserId: formData.assignedToUserId || undefined,
         estimatedDuration: formData.estimatedDuration || 60,
-        estimatedCost: formData.estimatedCost || 0
+        estimatedCost: formData.estimatedCost || 0,
+        materials,
+        vendorRequired: formData.vendorRequired || false
       };
-      console.log('Sending maintenance task data:', cleanedFormData);
+
+      // Remove the temporary fields before sending
+      delete cleanedFormData.materialsText;
+
       await adminMaintenanceService.createTask(cleanedFormData);
       
       toast.success('Maintenance task created successfully');
@@ -225,8 +272,28 @@ export default function AdminMaintenance() {
       assignedToUserId: '',
       estimatedDuration: 60,
       estimatedCost: 0,
-      notes: ''
+      notes: '',
+      materialsText: '',
+      vendorRequired: false
     });
+  };
+
+  // Helper function to format duration
+  const formatDuration = (durationInMinutes: number | null | undefined): string => {
+    if (!durationInMinutes || durationInMinutes === 0) return '0';
+
+    if (durationInMinutes < 60) {
+      return `${Math.round(durationInMinutes)}`;
+    }
+
+    const hours = Math.floor(durationInMinutes / 60);
+    const minutes = Math.round(durationInMinutes % 60);
+
+    if (minutes === 0) {
+      return `${hours}h`;
+    }
+
+    return `${hours}h ${minutes}m`;
   };
 
   const handleViewTask = (task: MaintenanceTask) => {
@@ -375,7 +442,7 @@ export default function AdminMaintenance() {
         }
         return (
           <div className="text-sm text-gray-600">
-            {task.estimatedDuration} min
+            {formatDuration(task.estimatedDuration)}
           </div>
         );
       }
@@ -388,7 +455,7 @@ export default function AdminMaintenance() {
           return <span className="text-gray-400">N/A</span>;
         }
         return (
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-1 sm:space-x-2">
             <Button
               size="sm"
               variant="secondary"
@@ -444,398 +511,616 @@ export default function AdminMaintenance() {
       console.error('AdminMaintenance Error:', error, errorInfo);
       toast.error('An error occurred in the maintenance management page');
     }}>
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Maintenance Management</h1>
-          <p className="text-gray-600">Create and manage maintenance tasks for hotel operations</p>
-        </div>
-        <div className="flex items-center space-x-3">
-          {/* Real-time connection status */}
-          <div className="flex items-center space-x-2">
-            <div className={`w-2 h-2 rounded-full ${
-              connectionState === 'connected' ? 'bg-green-500' : 
-              connectionState === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
-            }`}></div>
-            <span className="text-xs text-gray-500 capitalize">{connectionState}</span>
-          </div>
-          
-          <Button onClick={fetchTasks} variant="secondary" size="sm" disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button onClick={() => setShowCreateModal(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Create Task
-          </Button>
-        </div>
-      </div>
-
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-8">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
-              <div className="text-sm text-gray-600">Total Tasks</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
-              <div className="text-sm text-gray-600">Pending</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">{stats.assigned}</div>
-              <div className="text-sm text-gray-600">Assigned</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-orange-600">{stats.inProgress}</div>
-              <div className="text-sm text-gray-600">In Progress</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
-              <div className="text-sm text-gray-600">Completed</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-red-600">{stats.cancelled}</div>
-              <div className="text-sm text-gray-600">Cancelled</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">{stats.avgDuration}</div>
-              <div className="text-sm text-gray-600">Avg Duration (min)</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-red-600">{stats.overdueCount}</div>
-              <div className="text-sm text-gray-600">Overdue</div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Filters */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Filter className="h-5 w-5 mr-2" />
-            Filters
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-              <select
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
-                value={filters.status || ''}
-                onChange={(e) => setFilters({ ...filters, status: e.target.value || undefined, page: 1 })}
-              >
-                <option value="">All Statuses</option>
-                <option value="pending">Pending</option>
-                <option value="assigned">Assigned</option>
-                <option value="in_progress">In Progress</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-              <select
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
-                value={filters.taskType || ''}
-                onChange={(e) => setFilters({ ...filters, taskType: e.target.value || undefined, page: 1 })}
-              >
-                <option value="">All Types</option>
-                <option value="preventive">Preventive</option>
-                <option value="corrective">Corrective</option>
-                <option value="emergency">Emergency</option>
-                <option value="inspection">Inspection</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
-              <select
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
-                value={filters.priority || ''}
-                onChange={(e) => setFilters({ ...filters, priority: e.target.value || undefined, page: 1 })}
-              >
-                <option value="">All Priorities</option>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-              </select>
-            </div>
-            <div className="flex items-end">
-              <Button
-                variant="secondary"
-                onClick={() => setFilters({ page: 1, limit: 20 })}
-                className="w-full"
-              >
-                Reset Filters
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Tasks Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Maintenance Tasks ({pagination.total})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ErrorBoundary level="component" fallback={
-            <div className="p-4 text-center text-gray-500">
-              Failed to load maintenance tasks table
-            </div>
-          }>
-            <DataTable 
-              data={tasks}
-              columns={columns}
-              loading={loading}
-            />
-          </ErrorBoundary>
-        </CardContent>
-        
-        {/* Pagination */}
-        {pagination.pages > 1 && (
-          <div className="px-6 py-4 border-t border-gray-200">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-700">
-                Showing {((filters.page || 1) - 1) * (filters.limit || 20) + 1} to{' '}
-                {Math.min((filters.page || 1) * (filters.limit || 20), pagination.total)} of{' '}
-                {pagination.total} results
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="relative mb-8">
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-600 transform -skew-y-1 shadow-xl rounded-3xl"></div>
+          <div className="relative bg-white/90 backdrop-blur-sm p-6 sm:p-8 rounded-3xl shadow-2xl border border-white/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between space-y-4 sm:space-y-0">
+              <div className="flex items-center space-x-4">
+                <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl shadow-lg">
+                  <Wrench className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                    Maintenance Management
+                  </h1>
+                  <p className="text-gray-600 mt-1">Create and manage maintenance tasks for hotel operations</p>
+                </div>
               </div>
-              <div className="flex items-center space-x-2">
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center space-y-2 sm:space-y-0 sm:space-x-3">
+                {/* Real-time connection status */}
+                <div className="flex items-center space-x-2 px-3 py-2 bg-white/70 backdrop-blur-sm rounded-xl shadow-sm">
+                  <div className={`w-2 h-2 rounded-full ${
+                    connectionState === 'connected' ? 'bg-green-500 animate-pulse' :
+                    connectionState === 'connecting' ? 'bg-yellow-500 animate-bounce' : 'bg-red-500'
+                  }`}></div>
+                  <span className="text-xs text-gray-600 capitalize font-medium">{connectionState}</span>
+                </div>
+
                 <Button
+                  onClick={fetchTasks}
                   variant="secondary"
                   size="sm"
-                  disabled={(filters.page || 1) <= 1}
-                  onClick={() => setFilters({ ...filters, page: (filters.page || 1) - 1 })}
+                  disabled={loading}
+                  className="bg-white/80 hover:bg-white/90 backdrop-blur-sm border-white/20 shadow-lg transition-all duration-200 hover:shadow-xl"
                 >
-                  Previous
+                  <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                  Refresh
                 </Button>
-                <span className="text-sm text-gray-700">
-                  Page {filters.page || 1} of {pagination.pages}
-                </span>
                 <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={(filters.page || 1) >= pagination.pages}
-                  onClick={() => setFilters({ ...filters, page: (filters.page || 1) + 1 })}
+                  onClick={() => setShowCreateModal(true)}
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
                 >
-                  Next
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Task
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats Cards */}
+        {stats && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-8">
+            {/* Total Tasks */}
+            <div className="relative group">
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl blur opacity-75 group-hover:opacity-100 transition duration-200"></div>
+              <Card className="relative bg-white/90 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 rounded-xl h-24">
+                <CardContent className="p-3 text-center flex flex-col justify-center h-full">
+                  <div className="flex items-center justify-center mb-1">
+                    <div className="p-1.5 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg">
+                      <BarChart3 className="w-4 h-4 text-white" />
+                    </div>
+                  </div>
+                  <div className="text-xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">{stats.total}</div>
+                  <div className="text-xs font-medium text-gray-600">Total Tasks</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Pending */}
+            <div className="relative group">
+              <div className="absolute inset-0 bg-gradient-to-r from-yellow-400 to-orange-400 rounded-xl blur opacity-75 group-hover:opacity-100 transition duration-200"></div>
+              <Card className="relative bg-white/90 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 rounded-xl h-24">
+                <CardContent className="p-3 text-center flex flex-col justify-center h-full">
+                  <div className="flex items-center justify-center mb-1">
+                    <div className="p-1.5 bg-gradient-to-br from-yellow-400 to-orange-400 rounded-lg">
+                      <Clock className="w-4 h-4 text-white" />
+                    </div>
+                  </div>
+                  <div className="text-xl font-bold bg-gradient-to-r from-yellow-600 to-orange-600 bg-clip-text text-transparent">{stats.pending}</div>
+                  <div className="text-xs font-medium text-gray-600">Pending</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Assigned */}
+            <div className="relative group">
+              <div className="absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl blur opacity-75 group-hover:opacity-100 transition duration-200"></div>
+              <Card className="relative bg-white/90 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 rounded-xl h-24">
+                <CardContent className="p-3 text-center flex flex-col justify-center h-full">
+                  <div className="flex items-center justify-center mb-1">
+                    <div className="p-1.5 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-lg">
+                      <Users className="w-4 h-4 text-white" />
+                    </div>
+                  </div>
+                  <div className="text-xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">{stats.assigned}</div>
+                  <div className="text-xs font-medium text-gray-600">Assigned</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* In Progress */}
+            <div className="relative group">
+              <div className="absolute inset-0 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl blur opacity-75 group-hover:opacity-100 transition duration-200"></div>
+              <Card className="relative bg-white/90 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 rounded-xl h-24">
+                <CardContent className="p-3 text-center flex flex-col justify-center h-full">
+                  <div className="flex items-center justify-center mb-1">
+                    <div className="p-1.5 bg-gradient-to-br from-orange-500 to-red-500 rounded-lg">
+                      <Activity className="w-4 h-4 text-white" />
+                    </div>
+                  </div>
+                  <div className="text-xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">{stats.inProgress}</div>
+                  <div className="text-xs font-medium text-gray-600">In Progress</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Completed */}
+            <div className="relative group">
+              <div className="absolute inset-0 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl blur opacity-75 group-hover:opacity-100 transition duration-200"></div>
+              <Card className="relative bg-white/90 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 rounded-xl h-24">
+                <CardContent className="p-3 text-center flex flex-col justify-center h-full">
+                  <div className="flex items-center justify-center mb-1">
+                    <div className="p-1.5 bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg">
+                      <CheckCircle className="w-4 h-4 text-white" />
+                    </div>
+                  </div>
+                  <div className="text-xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">{stats.completed}</div>
+                  <div className="text-xs font-medium text-gray-600">Completed</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Cancelled */}
+            <div className="relative group">
+              <div className="absolute inset-0 bg-gradient-to-r from-red-500 to-pink-500 rounded-xl blur opacity-75 group-hover:opacity-100 transition duration-200"></div>
+              <Card className="relative bg-white/90 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 rounded-xl h-24">
+                <CardContent className="p-3 text-center flex flex-col justify-center h-full">
+                  <div className="flex items-center justify-center mb-1">
+                    <div className="p-1.5 bg-gradient-to-br from-red-500 to-pink-500 rounded-lg">
+                      <X className="w-4 h-4 text-white" />
+                    </div>
+                  </div>
+                  <div className="text-xl font-bold bg-gradient-to-r from-red-600 to-pink-600 bg-clip-text text-transparent">{stats.cancelled}</div>
+                  <div className="text-xs font-medium text-gray-600">Cancelled</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Average Duration */}
+            <div className="relative group">
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-violet-500 rounded-xl blur opacity-75 group-hover:opacity-100 transition duration-200"></div>
+              <Card className="relative bg-white/90 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 rounded-xl h-24">
+                <CardContent className="p-3 text-center flex flex-col justify-center h-full">
+                  <div className="flex items-center justify-center mb-1">
+                    <div className="p-1.5 bg-gradient-to-br from-purple-500 to-violet-500 rounded-lg">
+                      <TrendingUp className="w-4 h-4 text-white" />
+                    </div>
+                  </div>
+                  <div className="text-xl font-bold bg-gradient-to-r from-purple-600 to-violet-600 bg-clip-text text-transparent">{formatDuration(stats.avgDuration)}</div>
+                  <div className="text-xs font-medium text-gray-600">Avg Duration</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Overdue */}
+            <div className="relative group">
+              <div className="absolute inset-0 bg-gradient-to-r from-red-600 to-red-700 rounded-xl blur opacity-75 group-hover:opacity-100 transition duration-200"></div>
+              <Card className="relative bg-white/90 backdrop-blur-sm border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 rounded-xl h-24">
+                <CardContent className="p-3 text-center flex flex-col justify-center h-full">
+                  <div className="flex items-center justify-center mb-1">
+                    <div className="p-1.5 bg-gradient-to-br from-red-600 to-red-700 rounded-lg">
+                      <AlertCircle className="w-4 h-4 text-white animate-pulse" />
+                    </div>
+                  </div>
+                  <div className="text-xl font-bold bg-gradient-to-r from-red-600 to-red-700 bg-clip-text text-transparent">{stats.overdueCount}</div>
+                  <div className="text-xs font-medium text-gray-600">Overdue</div>
+                </CardContent>
+              </Card>
             </div>
           </div>
         )}
-      </Card>
 
-      {/* Create Task Modal */}
-      <Modal
-        isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        title="Create Maintenance Task"
-      >
-        <form onSubmit={handleCreateTask} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Task Title</label>
-            <Input
-              type="text"
-              required
-              value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              placeholder="Enter task title"
-            />
+        {/* Filters */}
+        <Card className="mb-8 bg-white/90 backdrop-blur-sm border-0 shadow-xl rounded-2xl overflow-hidden">
+          <div className="bg-gradient-to-r from-slate-100 to-gray-100 px-6 py-4 border-b border-gray-200/50">
+            <CardTitle className="flex items-center text-gray-800">
+              <div className="p-2 bg-gradient-to-br from-slate-500 to-gray-600 rounded-xl mr-3">
+                <Filter className="h-4 w-4 text-white" />
+              </div>
+              Filter Tasks
+            </CardTitle>
           </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-            <textarea
-              className="w-full border border-gray-300 rounded-md px-3 py-2 h-24 resize-none"
-              required
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Enter task description"
-            />
-          </div>
+          <CardContent className="p-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700">Status</label>
+                <select
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium text-gray-700"
+                  value={filters.status || ''}
+                  onChange={(e) => setFilters({ ...filters, status: e.target.value || undefined, page: 1 })}
+                >
+                  <option value="">All Statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="assigned">Assigned</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700">Type</label>
+                <select
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium text-gray-700"
+                  value={filters.type || ''}
+                  onChange={(e) => setFilters({ ...filters, type: e.target.value || undefined, page: 1 })}
+                >
+                  <option value="">All Types</option>
+                  <option value="plumbing">Plumbing</option>
+                  <option value="electrical">Electrical</option>
+                  <option value="hvac">HVAC</option>
+                  <option value="cleaning">Cleaning</option>
+                  <option value="carpentry">Carpentry</option>
+                  <option value="painting">Painting</option>
+                  <option value="appliance">Appliance</option>
+                  <option value="safety">Safety</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700">Priority</label>
+                <select
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium text-gray-700"
+                  value={filters.priority || ''}
+                  onChange={(e) => setFilters({ ...filters, priority: e.target.value || undefined, page: 1 })}
+                >
+                  <option value="">All Priorities</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="emergency">Emergency</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <Button
+                  onClick={() => setFilters({ page: 1, limit: 20 })}
+                  className="w-full bg-gradient-to-r from-slate-500 to-gray-600 hover:from-slate-600 hover:to-gray-700 shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl py-3 font-semibold"
+                >
+                  Reset Filters
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Maintenance Type</label>
-              <select
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
-                value={formData.type}
-                onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
-                required
-              >
-                <option value="plumbing">Plumbing</option>
-                <option value="electrical">Electrical</option>
-                <option value="hvac">HVAC</option>
-                <option value="cleaning">Cleaning</option>
-                <option value="carpentry">Carpentry</option>
-                <option value="painting">Painting</option>
-                <option value="appliance">Appliance</option>
-                <option value="safety">Safety</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-              <select
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
-                required
-              >
-                <option value="corrective">Corrective</option>
-                <option value="preventive">Preventive</option>
-                <option value="emergency">Emergency</option>
-                <option value="inspection">Inspection</option>
-              </select>
-            </div>
+        {/* Tasks Table */}
+        <Card className="bg-white/90 backdrop-blur-sm border-0 shadow-xl rounded-2xl overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-5 border-b border-gray-200/50">
+            <CardTitle className="flex items-center text-gray-800">
+              <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl mr-3">
+                <Wrench className="h-5 w-5 text-white" />
+              </div>
+              <div>
+                <div className="text-xl font-bold">Maintenance Tasks</div>
+                <div className="text-sm text-gray-600 mt-1">{pagination.total} total tasks</div>
+              </div>
+            </CardTitle>
           </div>
-          
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
-              <select
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
-                value={formData.priority}
-                onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })}
-                required
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
-                <option value="emergency">Emergency</option>
-              </select>
+          <CardContent className="p-0">
+            <ErrorBoundary level="component" fallback={
+              <div className="p-8 text-center">
+                <div className="p-4 bg-red-50 rounded-xl inline-block">
+                  <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-2" />
+                  <div className="text-red-700 font-medium">Failed to load maintenance tasks table</div>
+                </div>
+              </div>
+            }>
+              <div className="overflow-x-auto">
+                <div className="min-w-full">
+                  <DataTable
+                    data={tasks}
+                    columns={columns}
+                    loading={loading}
+                  />
+                </div>
+              </div>
+            </ErrorBoundary>
+          </CardContent>
+        
+          {/* Pagination */}
+          {pagination.pages > 1 && (
+            <div className="px-6 py-5 bg-gradient-to-r from-gray-50 to-slate-50 border-t border-gray-200/50">
+              <div className="flex flex-col sm:flex-row items-center justify-between space-y-3 sm:space-y-0">
+                <div className="text-sm font-medium text-gray-700 bg-white/80 px-4 py-2 rounded-xl shadow-sm">
+                  Showing {((filters.page || 1) - 1) * (filters.limit || 20) + 1} to{' '}
+                  {Math.min((filters.page || 1) * (filters.limit || 20), pagination.total)} of{' '}
+                  {pagination.total} results
+                </div>
+                <div className="flex items-center space-x-3">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={(filters.page || 1) <= 1}
+                    onClick={() => setFilters({ ...filters, page: (filters.page || 1) - 1 })}
+                    className="bg-white/80 hover:bg-white/90 border-gray-200 shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl font-semibold"
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-sm font-semibold text-gray-700 bg-white/80 px-4 py-2 rounded-xl shadow-sm">
+                    Page {filters.page || 1} of {pagination.pages}
+                  </span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={(filters.page || 1) >= pagination.pages}
+                    onClick={() => setFilters({ ...filters, page: (filters.page || 1) + 1 })}
+                    className="bg-white/80 hover:bg-white/90 border-gray-200 shadow-lg hover:shadow-xl transition-all duration-200 rounded-xl font-semibold"
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
             </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Cost ($)</label>
+          )}
+        </Card>
+
+        {/* Create Task Modal */}
+        <Modal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          title={
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">
+                <Plus className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                Create Maintenance Task
+              </span>
+            </div>
+          }
+        >
+          <form onSubmit={handleCreateTask} className="space-y-6 p-1">
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-gray-700 flex items-center">
+                <Target className="w-4 h-4 mr-2 text-blue-500" />
+                Task Title
+              </label>
               <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={formData.estimatedCost}
-                onChange={(e) => setFormData({ ...formData, estimatedCost: parseFloat(e.target.value) || 0 })}
-                placeholder="0.00"
+                type="text"
+                required
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                placeholder="Enter task title"
+                className="border-2 border-gray-200 rounded-xl px-4 py-3 bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium"
               />
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Room</label>
-              <select
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
-                value={formData.roomId}
-                onChange={(e) => setFormData({ ...formData, roomId: e.target.value })}
-              >
-                <option value="">Select Room</option>
-                {availableRooms.map((room) => (
-                  <option key={room._id} value={room._id}>
-                    Room {room.roomNumber} - {room.type}
-                  </option>
-                ))}
-              </select>
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-gray-700 flex items-center">
+                <Edit className="w-4 h-4 mr-2 text-blue-500" />
+                Description
+              </label>
+              <textarea
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 h-24 resize-none bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium"
+                required
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Enter task description"
+              />
             </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Assign To</label>
-              <select
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
-                value={formData.assignedToUserId}
-                onChange={(e) => setFormData({ ...formData, assignedToUserId: e.target.value })}
-              >
-                <option value="">Unassigned</option>
-                {availableStaff.map((staff) => (
-                  <option key={staff._id} value={staff._id}>
-                    {staff.name} - {staff.department || 'Staff'}
-                  </option>
-                ))}
-              </select>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700 flex items-center">
+                  <Wrench className="w-4 h-4 mr-2 text-blue-500" />
+                  Maintenance Type
+                </label>
+                <select
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium text-gray-700"
+                  value={formData.type}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value as any })}
+                  required
+                >
+                  <option value="plumbing">Plumbing</option>
+                  <option value="electrical">Electrical</option>
+                  <option value="hvac">HVAC</option>
+                  <option value="cleaning">Cleaning</option>
+                  <option value="carpentry">Carpentry</option>
+                  <option value="painting">Painting</option>
+                  <option value="appliance">Appliance</option>
+                  <option value="safety">Safety</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700 flex items-center">
+                  <Settings className="w-4 h-4 mr-2 text-blue-500" />
+                  Category
+                </label>
+                <select
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium text-gray-700"
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value as any })}
+                  required
+                >
+                  <option value="corrective">Corrective</option>
+                  <option value="preventive">Preventive</option>
+                  <option value="emergency">Emergency</option>
+                  <option value="inspection">Inspection</option>
+                </select>
+              </div>
             </div>
-          </div>
+          
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700 flex items-center">
+                  <AlertTriangle className="w-4 h-4 mr-2 text-orange-500" />
+                  Priority
+                </label>
+                <select
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium text-gray-700"
+                  value={formData.priority}
+                  onChange={(e) => setFormData({ ...formData, priority: e.target.value as any })}
+                  required
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="urgent">Urgent</option>
+                  <option value="emergency">Emergency</option>
+                </select>
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Estimated Duration (minutes)</label>
-            <Input
-              type="number"
-              min="1"
-              required
-              value={formData.estimatedDuration}
-              onChange={(e) => setFormData({ ...formData, estimatedDuration: parseInt(e.target.value) })}
-            />
-          </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700 flex items-center">
+                  <TrendingUp className="w-4 h-4 mr-2 text-green-500" />
+                  Estimated Cost ($)
+                </label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={formData.estimatedCost}
+                  onChange={(e) => setFormData({ ...formData, estimatedCost: parseFloat(e.target.value) || 0 })}
+                  placeholder="0.00"
+                  className="border-2 border-gray-200 rounded-xl px-4 py-3 bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium"
+                />
+              </div>
+            </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-            <textarea
-              className="w-full border border-gray-300 rounded-md px-3 py-2 h-20 resize-none"
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              placeholder="Additional notes (optional)"
-            />
-          </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700 flex items-center">
+                  <MapPin className="w-4 h-4 mr-2 text-purple-500" />
+                  Room
+                </label>
+                <select
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium text-gray-700"
+                  value={formData.roomId}
+                  onChange={(e) => setFormData({ ...formData, roomId: e.target.value })}
+                >
+                  <option value="">Select Room</option>
+                  {availableRooms.map((room) => (
+                    <option key={room._id} value={room._id}>
+                      Room {room.roomNumber} - {room.type}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setShowCreateModal(false)}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={updating}>
-              {updating ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Create Task
-                </>
-              )}
-            </Button>
-          </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-gray-700 flex items-center">
+                  <User className="w-4 h-4 mr-2 text-indigo-500" />
+                  Assign To
+                </label>
+                <select
+                  className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium text-gray-700"
+                  value={formData.assignedToUserId}
+                  onChange={(e) => setFormData({ ...formData, assignedToUserId: e.target.value })}
+                >
+                  <option value="">Unassigned</option>
+                  {availableStaff.map((staff) => (
+                    <option key={staff._id} value={staff._id}>
+                      {staff.name} - {staff.department || 'Staff'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-gray-700 flex items-center">
+                <Clock className="w-4 h-4 mr-2 text-blue-500" />
+                Estimated Duration (minutes)
+              </label>
+              <Input
+                type="number"
+                min="15"
+                max="480"
+                required
+                value={formData.estimatedDuration}
+                onChange={(e) => setFormData({ ...formData, estimatedDuration: parseInt(e.target.value) || 60 })}
+                placeholder="e.g., 60 (1 hour)"
+                className="border-2 border-gray-200 rounded-xl px-4 py-3 bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium"
+              />
+              <span className="text-xs font-medium text-gray-500 bg-blue-50 px-3 py-1 rounded-lg inline-block">
+                Between 15 minutes and 8 hours
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-gray-700 flex items-center">
+                <Settings className="w-4 h-4 mr-2 text-green-500" />
+                Materials Needed
+              </label>
+              <Input
+                type="text"
+                value={formData.materialsText || ''}
+                onChange={(e) => setFormData({ ...formData, materialsText: e.target.value })}
+                placeholder="Enter materials (comma-separated, e.g., Spare parts, Tools)"
+                className="border-2 border-gray-200 rounded-xl px-4 py-3 bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium"
+              />
+              <span className="text-xs font-medium text-gray-500 bg-green-50 px-3 py-1 rounded-lg inline-block">
+                Optional: List materials needed for this task
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-gray-700 flex items-center">
+                <Edit className="w-4 h-4 mr-2 text-purple-500" />
+                Notes
+              </label>
+              <textarea
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 h-20 resize-none bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium"
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="Additional notes (optional)"
+              />
+            </div>
+
+            <div className="flex items-center space-x-3 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl border-2 border-yellow-200">
+              <input
+                type="checkbox"
+                id="vendorRequired"
+                checked={formData.vendorRequired || false}
+                onChange={(e) => setFormData({ ...formData, vendorRequired: e.target.checked })}
+                className="h-5 w-5 text-blue-600 focus:ring-blue-500 border-gray-300 rounded-lg transition-all duration-200"
+              />
+              <label htmlFor="vendorRequired" className="text-sm font-semibold text-gray-700 flex items-center">
+                <Zap className="w-4 h-4 mr-2 text-orange-500" />
+                External vendor required
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end space-x-4 pt-6 border-t-2 border-gray-100">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setShowCreateModal(false)}
+                className="bg-gray-100 hover:bg-gray-200 text-gray-700 border-0 rounded-xl px-6 py-3 font-semibold transition-all duration-200 hover:shadow-lg"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={updating}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 rounded-xl px-6 py-3 font-semibold"
+              >
+                {updating ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-4 w-4 mr-2" />
+                    Create Task
+                  </>
+                )}
+              </Button>
+            </div>
         </form>
       </Modal>
 
-      {/* View Task Modal */}
-      {selectedTask && (
-        <Modal
-          isOpen={showViewModal}
-          onClose={() => setShowViewModal(false)}
-          title="Task Details"
-        >
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">{selectedTask.title}</h3>
-              <p className="text-gray-600 mt-1">{selectedTask.description}</p>
-            </div>
+        {/* View Task Modal */}
+        {selectedTask && (
+          <Modal
+            isOpen={showViewModal}
+            onClose={() => setShowViewModal(false)}
+            title={
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl">
+                  <Eye className="w-5 h-5 text-white" />
+                </div>
+                <span className="text-xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                  Task Details
+                </span>
+              </div>
+            }
+          >
+            <div className="space-y-6 p-1">
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border-2 border-blue-100">
+                <h3 className="text-xl font-bold text-gray-900 mb-2">{selectedTask.title}</h3>
+                <p className="text-gray-600 leading-relaxed">{selectedTask.description}</p>
+              </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Maintenance Type</label>
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-1 ${getTaskTypeColor(selectedTask.type)}`}>
@@ -850,7 +1135,7 @@ export default function AdminMaintenance() {
               </div>
             </div>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Priority</label>
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium mt-1 ${getPriorityColor(selectedTask.priority)}`}>
@@ -865,12 +1150,18 @@ export default function AdminMaintenance() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Room</label>
                 <div className="mt-1">
-                  <div className="font-medium">{selectedTask.roomId.roomNumber}</div>
-                  <div className="text-sm text-gray-500">{selectedTask.roomId.type}</div>
+                  {selectedTask.roomId ? (
+                    <>
+                      <div className="font-medium">{selectedTask.roomId.roomNumber || 'Unknown Room'}</div>
+                      <div className="text-sm text-gray-500">{selectedTask.roomId.type || 'Unknown Type'}</div>
+                    </>
+                  ) : (
+                    <div className="text-gray-400">No room assigned</div>
+                  )}
                 </div>
               </div>
               <div>
@@ -894,26 +1185,26 @@ export default function AdminMaintenance() {
               <div>
                 <label className="block text-sm font-medium text-gray-700">Assigned To</label>
                 <div className="mt-1">
-                  <div className="font-medium">{selectedTask.assignedToUserId.name}</div>
-                  <div className="text-sm text-gray-500">{selectedTask.assignedToUserId.email}</div>
+                  <div className="font-medium">{selectedTask.assignedToUserId.name || 'Unknown User'}</div>
+                  <div className="text-sm text-gray-500">{selectedTask.assignedToUserId.email || ''}</div>
                 </div>
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Estimated Duration</label>
-                <div className="mt-1 text-sm text-gray-900">{selectedTask.estimatedDuration} minutes</div>
+                <div className="mt-1 text-sm text-gray-900">{formatDuration(selectedTask.estimatedDuration)}</div>
               </div>
               {selectedTask.actualDuration && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Actual Duration</label>
-                  <div className="mt-1 text-sm text-gray-900">{selectedTask.actualDuration} minutes</div>
+                  <div className="mt-1 text-sm text-gray-900">{formatDuration(selectedTask.actualDuration)}</div>
                 </div>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Created</label>
                 <div className="mt-1 text-sm text-gray-900">
@@ -938,30 +1229,80 @@ export default function AdminMaintenance() {
                 </div>
               </div>
             )}
-          </div>
 
-          <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
-            <Button variant="secondary" onClick={() => setShowViewModal(false)}>
-              Close
-            </Button>
-            {selectedTask.status !== 'completed' && selectedTask.status !== 'cancelled' && (
-              <Button 
-                onClick={() => {
-                  const nextStatus = selectedTask.status === 'pending' ? 'assigned' : 
-                                   selectedTask.status === 'assigned' ? 'in_progress' : 'completed';
-                  handleStatusUpdate(selectedTask._id, nextStatus as any);
-                  setShowViewModal(false);
-                }}
-                disabled={updating}
-              >
-                {selectedTask.status === 'pending' && 'Assign Task'}
-                {selectedTask.status === 'assigned' && 'Start Task'}
-                {selectedTask.status === 'in_progress' && 'Complete Task'}
-              </Button>
+            {selectedTask.materials && selectedTask.materials.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Materials</label>
+                <div className="mt-1 bg-gray-50 p-3 rounded-md">
+                  {selectedTask.materials.map((material, index) => (
+                    <div key={index} className="text-sm text-gray-900 flex justify-between items-center py-1">
+                      <span>{material.name} (Qty: {material.quantity})</span>
+                      {material.unitCost && material.unitCost > 0 && (
+                        <span className="text-gray-600">${material.unitCost}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
-          </div>
-        </Modal>
-      )}
+
+            {selectedTask.vendorRequired && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Vendor Status</label>
+                <div className="mt-1">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                    External vendor required
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {selectedTask.vendor && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Vendor Information</label>
+                <div className="mt-1 bg-gray-50 p-3 rounded-md">
+                  <div className="text-sm text-gray-900">
+                    <div className="font-medium">{selectedTask.vendor.name}</div>
+                    {selectedTask.vendor.contact && (
+                      <div className="text-gray-600">{selectedTask.vendor.contact}</div>
+                    )}
+                    {selectedTask.vendor.cost && selectedTask.vendor.cost > 0 && (
+                      <div className="text-green-600 font-medium">${selectedTask.vendor.cost}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+              <div className="flex items-center justify-end space-x-4 pt-6 border-t-2 border-gray-100">
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowViewModal(false)}
+                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 border-0 rounded-xl px-6 py-3 font-semibold transition-all duration-200 hover:shadow-lg"
+                >
+                  Close
+                </Button>
+                {selectedTask.status !== 'completed' && selectedTask.status !== 'cancelled' && (
+                  <Button
+                    onClick={() => {
+                      const nextStatus = selectedTask.status === 'pending' ? 'assigned' :
+                                       selectedTask.status === 'assigned' ? 'in_progress' : 'completed';
+                      handleStatusUpdate(selectedTask._id, nextStatus as any);
+                      setShowViewModal(false);
+                    }}
+                    disabled={updating}
+                    className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 rounded-xl px-6 py-3 font-semibold"
+                  >
+                    {selectedTask.status === 'pending' && 'Assign Task'}
+                    {selectedTask.status === 'assigned' && 'Start Task'}
+                    {selectedTask.status === 'in_progress' && 'Complete Task'}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </Modal>
+        )}
+      </div>
     </div>
     </ErrorBoundary>
   );

@@ -339,9 +339,27 @@ class TapeChartService {
     const params = new URLSearchParams();
     if (dateRange?.startDate) params.append('startDate', dateRange.startDate);
     if (dateRange?.endDate) params.append('endDate', dateRange.endDate);
-    
+
     const response = await apiClient.get(`/tape-chart/rooms/${roomId}/status-history?${params}`);
     return response.data;
+  }
+
+  async getAvailableRooms(filters?: {
+    checkIn?: string;
+    checkOut?: string;
+    roomType?: string;
+    floor?: number;
+    guestCount?: number;
+  }) {
+    const params = new URLSearchParams();
+    if (filters?.checkIn) params.append('checkIn', filters.checkIn);
+    if (filters?.checkOut) params.append('checkOut', filters.checkOut);
+    if (filters?.roomType) params.append('roomType', filters.roomType);
+    if (filters?.floor) params.append('floor', filters.floor.toString());
+    if (filters?.guestCount) params.append('guestCount', filters.guestCount.toString());
+
+    const response = await apiClient.get(`/tape-chart/rooms/available?${params}`);
+    return response.data.data || response.data;
   }
 
   // Room Blocks

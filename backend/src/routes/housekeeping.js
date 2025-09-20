@@ -2,7 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import Housekeeping from '../models/Housekeeping.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
@@ -14,6 +14,14 @@ router.get('/', authenticate, authorize('admin', 'staff'), catchAsync(async (req
     roomId,
     assignedToUserId,
     taskType,
+    priority,
+    search,
+    createdDateFrom,
+    createdDateTo,
+    completedDateFrom,
+    completedDateTo,
+    estimatedDurationMin,
+    estimatedDurationMax,
     page = 1,
     limit = 10
   } = req.query;
@@ -26,14 +34,72 @@ router.get('/', authenticate, authorize('admin', 'staff'), catchAsync(async (req
   
   if (status) query.status = status;
   if (roomId) query.roomId = roomId;
-  if (assignedToUserId) {
-    // Check both field names for backward compatibility
-    query.$or = [
-      { assignedToUserId: assignedToUserId },
-      { assignedTo: assignedToUserId }
-    ];
-  }
   if (taskType) query.taskType = taskType;
+  if (priority) query.priority = priority;
+  
+  // Handle assignedToUserId and search with proper $or logic
+  const orConditions = [];
+  
+  if (assignedToUserId) {
+    if (assignedToUserId === 'unassigned') {
+      query.$or = [
+        { assignedToUserId: { $exists: false } },
+        { assignedToUserId: null },
+        { assignedTo: { $exists: false } },
+        { assignedTo: null }
+      ];
+    } else {
+      // Check both field names for backward compatibility
+      orConditions.push(
+        { assignedToUserId: assignedToUserId },
+        { assignedTo: assignedToUserId }
+      );
+    }
+  }
+  
+  if (search) {
+    orConditions.push(
+      { title: { $regex: search, $options: 'i' } },
+      { description: { $regex: search, $options: 'i' } },
+      { notes: { $regex: search, $options: 'i' } }
+    );
+  }
+  
+  if (orConditions.length > 0) {
+    query.$or = orConditions;
+  }
+  
+  // Date range filters
+  if (createdDateFrom || createdDateTo) {
+    query.createdAt = {};
+    if (createdDateFrom) {
+      query.createdAt.$gte = new Date(createdDateFrom);
+    }
+    if (createdDateTo) {
+      query.createdAt.$lte = new Date(createdDateTo + 'T23:59:59.999Z');
+    }
+  }
+  
+  if (completedDateFrom || completedDateTo) {
+    query.completedAt = {};
+    if (completedDateFrom) {
+      query.completedAt.$gte = new Date(completedDateFrom);
+    }
+    if (completedDateTo) {
+      query.completedAt.$lte = new Date(completedDateTo + 'T23:59:59.999Z');
+    }
+  }
+  
+  // Duration range filters
+  if (estimatedDurationMin || estimatedDurationMax) {
+    query.estimatedDuration = {};
+    if (estimatedDurationMin) {
+      query.estimatedDuration.$gte = parseInt(estimatedDurationMin);
+    }
+    if (estimatedDurationMax) {
+      query.estimatedDuration.$lte = parseInt(estimatedDurationMax);
+    }
+  }
 
   const skip = (parseInt(page) - 1) * parseInt(limit);
 
@@ -73,13 +139,13 @@ router.post('/', authenticate, authorize('admin', 'staff'), catchAsync(async (re
 
   // Validate required fields
   if (!taskData.title) {
-    throw new AppError('Task title is required', 400);
+    throw new ApplicationError('Task title is required', 400);
   }
   if (!taskData.roomId) {
-    throw new AppError('Room ID is required', 400);
+    throw new ApplicationError('Room ID is required', 400);
   }
   if (!taskData.taskType) {
-    throw new AppError('Task type is required', 400);
+    throw new ApplicationError('Task type is required', 400);
   }
 
   const task = await Housekeeping.create(taskData);
@@ -104,7 +170,7 @@ router.patch('/:id', authenticate, authorize('admin', 'staff'), catchAsync(async
   // Validate ObjectId format
   if (!mongoose.Types.ObjectId.isValid(id)) {
     console.log('Invalid ObjectId format:', id);
-    throw new AppError('Invalid task ID format', 400);
+    throw new ApplicationError('Invalid task ID format', 400);
   }
 
   // If task is being started, set startedAt
@@ -125,7 +191,7 @@ router.patch('/:id', authenticate, authorize('admin', 'staff'), catchAsync(async
 
   if (!task) {
     console.log('Task not found with ID:', id);
-    throw new AppError('Housekeeping task not found', 404);
+    throw new ApplicationError('Housekeeping task not found', 404);
   }
 
   console.log('Updated task:', task);

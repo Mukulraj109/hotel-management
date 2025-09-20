@@ -2,7 +2,7 @@ import express from 'express';
 import Invoice from '../models/Invoice.js';
 import Booking from '../models/Booking.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
@@ -87,13 +87,13 @@ router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
     .populate('hotelId', 'name');
   
   if (!booking) {
-    throw new AppError('Booking not found', 404);
+    throw new ApplicationError('Booking not found', 404);
   }
 
   // Check hotel access
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : booking.hotelId._id;
   if (req.user.role === 'staff' && booking.hotelId._id.toString() !== hotelId.toString()) {
-    throw new AppError('You can only create invoices for your hotel', 403);
+    throw new ApplicationError('You can only create invoices for your hotel', 403);
   }
 
   const invoiceData = {
@@ -282,16 +282,16 @@ router.get('/:id', catchAsync(async (req, res) => {
     .populate('splitBilling.splits.guestId', 'name email');
 
   if (!invoice) {
-    throw new AppError('Invoice not found', 404);
+    throw new ApplicationError('Invoice not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'guest' && invoice.guestId._id.toString() !== req.user._id.toString()) {
-    throw new AppError('You can only view your own invoices', 403);
+    throw new ApplicationError('You can only view your own invoices', 403);
   }
 
   if (req.user.role === 'staff' && invoice.hotelId._id.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only view invoices for your hotel', 403);
+    throw new ApplicationError('You can only view invoices for your hotel', 403);
   }
 
   res.json({
@@ -338,17 +338,17 @@ router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =>
   const invoice = await Invoice.findById(req.params.id);
   
   if (!invoice) {
-    throw new AppError('Invoice not found', 404);
+    throw new ApplicationError('Invoice not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && invoice.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only update invoices for your hotel', 403);
+    throw new ApplicationError('You can only update invoices for your hotel', 403);
   }
 
   // Don't allow updates to paid invoices
   if (invoice.status === 'paid') {
-    throw new AppError('Cannot update paid invoices', 400);
+    throw new ApplicationError('Cannot update paid invoices', 400);
   }
 
   const allowedUpdates = ['status', 'dueDate', 'items', 'notes', 'internalNotes'];
@@ -417,16 +417,16 @@ router.post('/:id/payments', authorize('staff', 'admin'), catchAsync(async (req,
   const invoice = await Invoice.findById(req.params.id);
   
   if (!invoice) {
-    throw new AppError('Invoice not found', 404);
+    throw new ApplicationError('Invoice not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && invoice.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only add payments to invoices for your hotel', 403);
+    throw new ApplicationError('You can only add payments to invoices for your hotel', 403);
   }
 
   if (amount <= 0 || amount > invoice.amountRemaining) {
-    throw new AppError('Invalid payment amount', 400);
+    throw new ApplicationError('Invalid payment amount', 400);
   }
 
   await invoice.addPayment(amount, method, req.user._id, transactionId, notes);
@@ -488,16 +488,16 @@ router.post('/:id/discounts', authorize('staff', 'admin'), catchAsync(async (req
   const invoice = await Invoice.findById(req.params.id);
   
   if (!invoice) {
-    throw new AppError('Invoice not found', 404);
+    throw new ApplicationError('Invoice not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && invoice.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only add discounts to invoices for your hotel', 403);
+    throw new ApplicationError('You can only add discounts to invoices for your hotel', 403);
   }
 
   if (invoice.status === 'paid') {
-    throw new AppError('Cannot add discounts to paid invoices', 400);
+    throw new ApplicationError('Cannot add discounts to paid invoices', 400);
   }
 
   await invoice.addDiscount(description, type, value, req.user._id);
@@ -561,16 +561,16 @@ router.post('/:id/split-billing', authorize('staff', 'admin'), catchAsync(async 
   const invoice = await Invoice.findById(req.params.id);
   
   if (!invoice) {
-    throw new AppError('Invoice not found', 404);
+    throw new ApplicationError('Invoice not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && invoice.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only setup split billing for invoices for your hotel', 403);
+    throw new ApplicationError('You can only setup split billing for invoices for your hotel', 403);
   }
 
   if (invoice.status === 'paid') {
-    throw new AppError('Cannot setup split billing for paid invoices', 400);
+    throw new ApplicationError('Cannot setup split billing for paid invoices', 400);
   }
 
   await invoice.setupSplitBilling(method, splits);
@@ -628,17 +628,17 @@ router.post('/:id/splits/:splitIndex/pay', authorize('staff', 'admin', 'guest'),
   const invoice = await Invoice.findById(req.params.id);
   
   if (!invoice) {
-    throw new AppError('Invoice not found', 404);
+    throw new ApplicationError('Invoice not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'guest') {
     const split = invoice.splitBilling.splits[parseInt(splitIndex)];
     if (!split || split.guestId.toString() !== req.user._id.toString()) {
-      throw new AppError('You can only pay your own split', 403);
+      throw new ApplicationError('You can only pay your own split', 403);
     }
   } else if (req.user.role === 'staff' && invoice.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only manage splits for invoices for your hotel', 403);
+    throw new ApplicationError('You can only manage splits for invoices for your hotel', 403);
   }
 
   await invoice.markSplitPaid(parseInt(splitIndex), amount, method, transactionId);
@@ -683,7 +683,7 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   const [revenueStats, overdueInvoices] = await Promise.all([
@@ -773,7 +773,7 @@ router.get('/overdue', authorize('staff', 'admin'), catchAsync(async (req, res) 
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   const overdueInvoices = await Invoice.getOverdueInvoices(hotelId);

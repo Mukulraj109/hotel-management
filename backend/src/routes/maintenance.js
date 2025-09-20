@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import MaintenanceTask from '../models/MaintenanceTask.js';
 import Room from '../models/Room.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
@@ -88,14 +88,14 @@ router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
 
   // Validate hotel access for admin users
   if (req.user.role === 'admin' && !req.body.hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   // If roomId provided, verify it belongs to the hotel
   if (taskData.roomId) {
     const room = await Room.findById(taskData.roomId);
     if (!room || room.hotelId.toString() !== taskData.hotelId.toString()) {
-      throw new AppError('Invalid room for this hotel', 400);
+      throw new ApplicationError('Invalid room for this hotel', 400);
     }
 
     // Update room status if out of order
@@ -259,7 +259,7 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   const [stats, overdueTasks, upcomingRecurring] = await Promise.all([
@@ -284,17 +284,34 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
     {
       $group: {
         _id: null,
-        totalTasks: { $sum: 1 },
-        averageDuration: { $avg: '$actualDuration' },
+        total: { $sum: 1 },
+        avgDuration: {
+          $avg: {
+            $cond: [
+              { $and: [
+                { $ne: ['$actualDuration', null] },
+                { $gt: ['$actualDuration', 0] }
+              ]},
+              '$actualDuration',
+              null
+            ]
+          }
+        },
         totalCost: { $sum: '$actualCost' },
-        pendingTasks: {
+        pending: {
           $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
         },
-        inProgressTasks: {
+        assigned: {
+          $sum: { $cond: [{ $eq: ['$status', 'assigned'] }, 1, 0] }
+        },
+        inProgress: {
           $sum: { $cond: [{ $eq: ['$status', 'in_progress'] }, 1, 0] }
         },
-        completedTasks: {
+        completed: {
           $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+        },
+        cancelled: {
+          $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] }
         },
         emergencyTasks: {
           $sum: { $cond: [{ $eq: ['$priority', 'emergency'] }, 1, 0] }
@@ -303,10 +320,24 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
     }
   ]);
 
+  const statsData = overallStats[0] || {
+    total: 0,
+    pending: 0,
+    assigned: 0,
+    inProgress: 0,
+    completed: 0,
+    cancelled: 0,
+    avgDuration: 0,
+    totalCost: 0
+  };
+
+  // Add overdue count to stats
+  statsData.overdueCount = overdueTasks.length;
+
   res.json({
     status: 'success',
     data: {
-      overall: overallStats[0] || {},
+      ...statsData,
       byType: stats,
       overdueTasks: overdueTasks.length,
       upcomingRecurring: upcomingRecurring.length,
@@ -337,7 +368,7 @@ router.get('/available-staff', authorize('staff', 'admin'), catchAsync(async (re
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   // Get staff members from the same hotel
@@ -375,7 +406,7 @@ router.get('/available-rooms', authorize('staff', 'admin'), catchAsync(async (re
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   // Get rooms from the same hotel
@@ -420,12 +451,12 @@ router.get('/:id', catchAsync(async (req, res) => {
     .populate('reportedBy', 'name email');
 
   if (!task) {
-    throw new AppError('Maintenance task not found', 404);
+    throw new ApplicationError('Maintenance task not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && task.hotelId._id.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only view tasks for your hotel', 403);
+    throw new ApplicationError('You can only view tasks for your hotel', 403);
   }
 
   res.json({
@@ -477,15 +508,38 @@ router.get('/:id', catchAsync(async (req, res) => {
  *         description: Task updated successfully
  */
 router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
-  const task = await MaintenanceTask.findById(req.params.id);
-  
+  const { id } = req.params;
+  console.log('🔧 PATCH /maintenance/:id - Updating task:', {
+    id,
+    updates: req.body,
+    user: req.user.email,
+    userRole: req.user.role,
+    userHotelId: req.user.hotelId
+  });
+
+  const task = await MaintenanceTask.findById(id);
+
   if (!task) {
-    throw new AppError('Maintenance task not found', 404);
+    console.log('❌ Task not found:', id);
+    throw new ApplicationError('Maintenance task not found', 404);
   }
+
+  console.log('✅ Task found:', {
+    taskId: task._id,
+    hotelId: task.hotelId,
+    userHotelId: req.user.hotelId,
+    currentStatus: task.status,
+    title: task.title
+  });
 
   // Check access permissions
   if (req.user.role === 'staff' && task.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only update tasks for your hotel', 403);
+    console.log('❌ Permission denied - hotel mismatch:', {
+      taskHotelId: task.hotelId.toString(),
+      userHotelId: req.user.hotelId.toString(),
+      userRole: req.user.role
+    });
+    throw new ApplicationError('You can only update tasks for your hotel', 403);
   }
 
   const allowedUpdates = [
@@ -501,8 +555,24 @@ router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =>
     }
   });
 
+  console.log('🔄 Applying updates:', updates);
+
   Object.assign(task, updates);
+
+  // Special handling for status updates
+  if (updates.status) {
+    task.updatedAt = new Date();
+    if (updates.status === 'in_progress' && !task.startedAt) {
+      task.startedAt = new Date();
+      task.assignedTo = task.assignedTo || req.user._id;
+    } else if (updates.status === 'completed' && !task.completedAt) {
+      task.completedAt = new Date();
+    }
+    console.log(`🔄 Status changed from "${task.status}" to "${updates.status}"`);
+  }
+
   await task.save();
+  console.log('✅ Task saved successfully');
 
   // Handle room status updates
   if (updates.status === 'completed' && task.roomId && task.roomOutOfOrder) {
@@ -510,6 +580,7 @@ router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =>
     if (room && room.status === 'maintenance') {
       room.status = 'vacant_dirty'; // Room needs cleaning after maintenance
       await room.save();
+      console.log('🏠 Room status updated after task completion');
     }
   }
 
@@ -518,6 +589,12 @@ router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =>
     { path: 'roomId', select: 'number type' },
     { path: 'assignedTo', select: 'name' }
   ]);
+
+  console.log('✅ Task update completed successfully:', {
+    taskId: task._id,
+    newStatus: task.status,
+    assignedTo: task.assignedTo?.name || 'Unassigned'
+  });
 
   res.json({
     status: 'success',
@@ -565,12 +642,12 @@ router.post('/:id/assign', authorize('staff', 'admin'), catchAsync(async (req, r
   const task = await MaintenanceTask.findById(req.params.id);
   
   if (!task) {
-    throw new AppError('Maintenance task not found', 404);
+    throw new ApplicationError('Maintenance task not found', 404);
   }
 
   // Check access permissions
   if (req.user.role === 'staff' && task.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new AppError('You can only assign tasks for your hotel', 403);
+    throw new ApplicationError('You can only assign tasks for your hotel', 403);
   }
 
   await task.assignTask(assignedTo, scheduledDate);
@@ -588,96 +665,6 @@ router.post('/:id/assign', authorize('staff', 'admin'), catchAsync(async (req, r
     status: 'success',
     message: 'Task assigned successfully',
     data: { task }
-  });
-}));
-
-/**
- * @swagger
- * /maintenance/stats:
- *   get:
- *     summary: Get maintenance statistics
- *     tags: [Maintenance]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: hotelId
- *         schema:
- *           type: string
- *       - in: query
- *         name: startDate
- *         schema:
- *           type: string
- *           format: date
- *       - in: query
- *         name: endDate
- *         schema:
- *           type: string
- *           format: date
- *     responses:
- *       200:
- *         description: Maintenance statistics
- */
-router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) => {
-  const { startDate, endDate } = req.query;
-  
-  const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
-  
-  if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
-  }
-
-  const [stats, overdueTasks, upcomingRecurring] = await Promise.all([
-    MaintenanceTask.getMaintenanceStats(hotelId, startDate, endDate),
-    MaintenanceTask.getOverdueTasks(hotelId),
-    MaintenanceTask.getUpcomingRecurringTasks(hotelId, 30)
-  ]);
-
-  // Get overall summary
-  const matchQuery = {
-    hotelId: new mongoose.Types.ObjectId(hotelId),
-    ...(startDate && endDate ? {
-      createdAt: {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
-      }
-    } : {})
-  };
-
-  const overallStats = await MaintenanceTask.aggregate([
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: null,
-        totalTasks: { $sum: 1 },
-        averageDuration: { $avg: '$actualDuration' },
-        totalCost: { $sum: '$actualCost' },
-        pendingTasks: {
-          $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
-        },
-        inProgressTasks: {
-          $sum: { $cond: [{ $eq: ['$status', 'in_progress'] }, 1, 0] }
-        },
-        completedTasks: {
-          $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
-        },
-        emergencyTasks: {
-          $sum: { $cond: [{ $eq: ['$priority', 'emergency'] }, 1, 0] }
-        }
-      }
-    }
-  ]);
-
-  res.json({
-    status: 'success',
-    data: {
-      overall: overallStats[0] || {},
-      byType: stats,
-      overdueTasks: overdueTasks.length,
-      upcomingRecurring: upcomingRecurring.length,
-      overdueDetails: overdueTasks.slice(0, 10), // First 10 overdue tasks
-      upcomingDetails: upcomingRecurring.slice(0, 10) // First 10 upcoming tasks
-    }
   });
 }));
 
@@ -702,7 +689,7 @@ router.get('/overdue', authorize('staff', 'admin'), catchAsync(async (req, res) 
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   // For staff users, only show overdue tasks assigned to them
@@ -745,7 +732,7 @@ router.get('/recurring/upcoming', authorize('staff', 'admin'), catchAsync(async 
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   // For staff users, only show upcoming tasks assigned to them

@@ -8,7 +8,7 @@ export interface MaintenanceTask {
   type: 'plumbing' | 'electrical' | 'hvac' | 'cleaning' | 'carpentry' | 'painting' | 'appliance' | 'safety' | 'other';
   priority: 'low' | 'medium' | 'high' | 'urgent' | 'emergency';
   status: 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled' | 'on_hold';
-  assignedTo?: {
+  assignedToUserId?: {
     _id: string;
     name: string;
   };
@@ -33,19 +33,19 @@ export interface MaintenanceTask {
 }
 
 export interface MaintenanceStats {
-  overall: {
-    totalTasks: number;
-    averageDuration: number;
-    totalCost: number;
-    pendingTasks: number;
-    inProgressTasks: number;
-    completedTasks: number;
-    emergencyTasks: number;
-  };
-  overdueTasks: number;
-  upcomingRecurring: number;
-  overdueDetails: MaintenanceTask[];
-  upcomingDetails: MaintenanceTask[];
+  total: number;
+  pending: number;
+  assigned: number;
+  inProgress: number;
+  completed: number;
+  cancelled: number;
+  avgDuration: number;
+  overdueCount: number;
+  byType?: any;
+  overdueTasks?: number;
+  upcomingRecurring?: number;
+  overdueDetails?: MaintenanceTask[];
+  upcomingDetails?: MaintenanceTask[];
 }
 
 class MaintenanceService {
@@ -118,8 +118,21 @@ class MaintenanceService {
     completionNotes?: string;
     priority?: string;
   }) {
-    const response = await api.patch(`${this.baseURL}/${id}`, updates);
-    return response.data;
+    console.log('🔧 Updating maintenance task:', { id, updates });
+    try {
+      const response = await api.patch(`${this.baseURL}/${id}`, updates);
+      console.log('✅ Task update successful:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Task update failed:', {
+        id,
+        updates,
+        error: error.response?.data || error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText
+      });
+      throw error;
+    }
   }
 
   // Assign task
@@ -134,27 +147,43 @@ class MaintenanceService {
 
   // Get tasks for staff dashboard (grouped by status)
   async getTasksGrouped() {
-    const [urgent, pending, inProgress, completed] = await Promise.all([
-      this.getTasks({ priority: 'emergency', limit: 10 }),
-      this.getTasks({ status: 'pending', limit: 10 }),
-      this.getTasks({ status: 'in_progress', limit: 10 }),
-      this.getTasks({ status: 'completed', limit: 10 }),
-    ]);
+    console.log('🔍 Fetching grouped maintenance tasks...');
+    try {
+      const [allUrgent, pending, inProgress, completed] = await Promise.all([
+        this.getTasks({ priority: 'emergency', limit: 50 }), // Get more to filter properly
+        this.getTasks({ status: 'pending', limit: 10 }),
+        this.getTasks({ status: 'in_progress', limit: 10 }),
+        this.getTasks({ status: 'completed', limit: 10 }),
+      ]);
 
-    // Debug logging
-    console.log('Maintenance tasks fetched:', {
-      urgent: urgent.data.tasks.length,
-      pending: pending.data.tasks.length,
-      inProgress: inProgress.data.tasks.length,
-      completed: completed.data.tasks.length,
-    });
+      // Filter urgent tasks to only show those that are still pending (not started)
+      const urgent = (allUrgent.data.tasks || []).filter(task =>
+        task.status === 'pending' && (task.priority === 'emergency' || task.priority === 'urgent')
+      );
 
-    return {
-      urgent: urgent.data.tasks,
-      pending: pending.data.tasks,
-      inProgress: inProgress.data.tasks,
-      completed: completed.data.tasks,
-    };
+      // Debug logging
+      console.log('✅ Maintenance tasks fetched and filtered:', {
+        urgent: urgent.length,
+        pending: pending.data.tasks?.length || 0,
+        inProgress: inProgress.data.tasks?.length || 0,
+        completed: completed.data.tasks?.length || 0,
+        urgentFiltered: `${urgent.length} out of ${allUrgent.data.tasks?.length || 0} emergency tasks`
+      });
+
+      return {
+        urgent: urgent.slice(0, 10), // Limit to 10 after filtering
+        pending: pending.data.tasks || [],
+        inProgress: inProgress.data.tasks || [],
+        completed: completed.data.tasks || [],
+      };
+    } catch (error) {
+      console.error('❌ Failed to fetch grouped maintenance tasks:', {
+        error: error.response?.data || error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText
+      });
+      throw error;
+    }
   }
 
   // Start task (change status to in_progress)

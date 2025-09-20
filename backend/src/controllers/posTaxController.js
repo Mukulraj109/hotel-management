@@ -1,7 +1,7 @@
 import POSTax from '../models/POSTax.js';
 import posTaxCalculationService from '../services/posTaxCalculationService.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -37,7 +37,7 @@ class POSTaxController {
 
     // Validate required fields
     if (!name || !displayName || !taxType || !taxGroup || !rules || rules.length === 0) {
-      return next(new AppError('Name, display name, tax type, tax group, and rules are required', 400));
+      return next(new ApplicationError('Name, display name, tax type, tax group, and rules are required', 400));
     }
 
     // Check for duplicate tax name in the same hotel
@@ -47,7 +47,7 @@ class POSTaxController {
     });
 
     if (existingTax) {
-      return next(new AppError('Tax with this name already exists', 409));
+      return next(new ApplicationError('Tax with this name already exists', 409));
     }
 
     const taxData = {
@@ -148,7 +148,7 @@ class POSTaxController {
       .populate('outletId', 'name type');
 
     if (!tax) {
-      return next(new AppError('Tax not found', 404));
+      return next(new ApplicationError('Tax not found', 404));
     }
 
     res.status(200).json({
@@ -169,7 +169,7 @@ class POSTaxController {
     });
 
     if (!tax) {
-      return next(new AppError('Tax not found', 404));
+      return next(new ApplicationError('Tax not found', 404));
     }
 
     // Check for duplicate name if name is being updated
@@ -181,7 +181,7 @@ class POSTaxController {
       });
 
       if (existingTax) {
-        return next(new AppError('Tax with this name already exists', 409));
+        return next(new ApplicationError('Tax with this name already exists', 409));
       }
     }
 
@@ -220,7 +220,7 @@ class POSTaxController {
     });
 
     if (!tax) {
-      return next(new AppError('Tax not found', 404));
+      return next(new ApplicationError('Tax not found', 404));
     }
 
     // Check if tax is being used in any orders
@@ -272,7 +272,7 @@ class POSTaxController {
     } = req.body;
 
     if (!amount || amount < 0) {
-      return next(new AppError('Valid amount is required', 400));
+      return next(new ApplicationError('Valid amount is required', 400));
     }
 
     try {
@@ -300,7 +300,7 @@ class POSTaxController {
         }
       });
     } catch (error) {
-      return next(new AppError(`Tax calculation failed: ${error.message}`, 500));
+      return next(new ApplicationError(`Tax calculation failed: ${error.message}`, 500));
     }
   });
 
@@ -318,11 +318,11 @@ class POSTaxController {
     } = req.body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
-      return next(new AppError('Order items are required', 400));
+      return next(new ApplicationError('Order items are required', 400));
     }
 
     if (!subtotal || subtotal < 0) {
-      return next(new AppError('Valid subtotal is required', 400));
+      return next(new ApplicationError('Valid subtotal is required', 400));
     }
 
     try {
@@ -342,7 +342,7 @@ class POSTaxController {
         data: result
       });
     } catch (error) {
-      return next(new AppError(`Order tax calculation failed: ${error.message}`, 500));
+      return next(new ApplicationError(`Order tax calculation failed: ${error.message}`, 500));
     }
   });
 
@@ -437,7 +437,7 @@ class POSTaxController {
         data: report
       });
     } catch (error) {
-      return next(new AppError(`Tax report generation failed: ${error.message}`, 500));
+      return next(new ApplicationError(`Tax report generation failed: ${error.message}`, 500));
     }
   });
 
@@ -455,7 +455,7 @@ class POSTaxController {
         data: validation
       });
     } catch (error) {
-      return next(new AppError(`Tax validation failed: ${error.message}`, 500));
+      return next(new ApplicationError(`Tax validation failed: ${error.message}`, 500));
     }
   });
 
@@ -487,7 +487,7 @@ class POSTaxController {
     });
 
     if (!tax) {
-      return next(new AppError('Tax not found', 404));
+      return next(new ApplicationError('Tax not found', 404));
     }
 
     res.status(200).json({
@@ -511,7 +511,7 @@ class POSTaxController {
     });
 
     if (!tax) {
-      return next(new AppError('Tax not found', 404));
+      return next(new ApplicationError('Tax not found', 404));
     }
 
     tax.exemptions.push(exemptionData);
@@ -545,12 +545,12 @@ class POSTaxController {
     });
 
     if (!tax) {
-      return next(new AppError('Tax not found', 404));
+      return next(new ApplicationError('Tax not found', 404));
     }
 
     const exemption = tax.exemptions.id(exemptionId);
     if (!exemption) {
-      return next(new AppError('Exemption not found', 404));
+      return next(new ApplicationError('Exemption not found', 404));
     }
 
     Object.assign(exemption, exemptionData);
@@ -583,12 +583,12 @@ class POSTaxController {
     });
 
     if (!tax) {
-      return next(new AppError('Tax not found', 404));
+      return next(new ApplicationError('Tax not found', 404));
     }
 
     const exemption = tax.exemptions.id(exemptionId);
     if (!exemption) {
-      return next(new AppError('Exemption not found', 404));
+      return next(new ApplicationError('Exemption not found', 404));
     }
 
     exemption.remove();

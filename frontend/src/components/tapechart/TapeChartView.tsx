@@ -12,7 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { toast } from '@/utils/toast';
 import {
   CalendarIcon, ChevronLeft, ChevronRight, Filter, Settings, Maximize2,
-  User, Clock, Bed, DollarSign, AlertTriangle, CheckCircle,
+  User, Clock, Bed, IndianRupee, AlertTriangle, CheckCircle,
   MoreHorizontal, Move, Copy, Trash2, Bell, Phone, Mail,
   Zap, Star, Crown, UserCheck, UserX, Coffee, Wifi, Users,
   UserPlus, Building2, Plane, Heart, Baby, RefreshCw
@@ -20,11 +20,18 @@ import {
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, formatISO } from 'date-fns';
 import tapeChartService, { TapeChartData, TapeChartView as TapeChartViewType } from '@/services/tapeChartService';
 import { formatCurrency } from '@/utils/currencyUtils';
+import { dragDropManager, DraggedReservation, DropTarget } from '@/utils/DragDropManager';
 import ReservationSidebar from './ReservationSidebar';
 import CollapsibleSidebar from '@/components/ui/CollapsibleSidebar';
 import GlobalSearch from '@/components/ui/GlobalSearch';
 import LiveChatWidget from '@/components/ui/LiveChatWidget';
 import NotificationSystem from '@/components/ui/NotificationSystem';
+import ReservationWorkflowPanel from './ReservationWorkflowPanel';
+import VIPGuestManager from './VIPGuestManager';
+import { UpgradeProcessor } from './UpgradeProcessor';
+import { SpecialRequestTracker } from './SpecialRequestTracker';
+import { WaitlistProcessor } from './WaitlistProcessor';
+import BlockManagementPanel from './BlockManagementPanel';
 
 interface RoomCell {
   id: string;
@@ -71,18 +78,21 @@ interface TimelineCell {
   isBlockedDate?: boolean;
 }
 
-interface DraggedReservation {
-  id: string;
-  _id: string; // MongoDB ObjectId
-  bookingNumber?: string;
-  guestName: string;
-  roomType: string;
-  checkIn: string;
-  checkOut: string;
-  status: string;
-  vipStatus?: string;
-  totalAmount?: number;
-  paymentStatus?: string;
+// DraggedReservation is now imported from DragDropManager
+
+interface DragState {
+  isDragging: boolean;
+  draggedItems: DraggedReservation[];
+  dragPreview: HTMLElement | null;
+  operationId: string | null;
+}
+
+interface ConflictIndicator {
+  roomId: string;
+  date: string;
+  conflictType: 'locked' | 'occupied' | 'maintenance' | 'unsuitable';
+  message: string;
+  suggestions: string[];
 }
 
 const TapeChartView: React.FC = () => {
@@ -101,6 +111,14 @@ const TapeChartView: React.FC = () => {
   const [selectedRooms, setSelectedRooms] = useState<Set<string>>(new Set());
   const [draggedItem, setDraggedItem] = useState<DraggedReservation | null>(null);
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
+  const [dragState, setDragState] = useState<DragState>({
+    isDragging: false,
+    draggedItems: [],
+    dragPreview: null,
+    operationId: null
+  });
+  const [conflictIndicators, setConflictIndicators] = useState<Map<string, ConflictIndicator>>(new Map());
+  const [roomSuggestions, setRoomSuggestions] = useState<Map<string, any[]>>(new Map());
   const [showFilters, setShowFilters] = useState(false);
   const [compactView, setCompactView] = useState(false);
   const [showGuestNames, setShowGuestNames] = useState(true);
@@ -127,7 +145,11 @@ const TapeChartView: React.FC = () => {
     roomId: string;
     visible: boolean;
   }>({ x: 0, y: 0, roomId: '', visible: false });
-  
+
+  // Block creation mode
+  const [blockCreationMode, setBlockCreationMode] = useState(false);
+  const [selectedRoomsForBlock, setSelectedRoomsForBlock] = useState<Set<string>>(new Set());
+
   const chartRef = useRef<HTMLDivElement>(null);
   const [chartHeight, setChartHeight] = useState(600);
 
@@ -414,85 +436,194 @@ const TapeChartView: React.FC = () => {
   const handleDragStart = (e: React.DragEvent, reservation: DraggedReservation) => {
     setDraggedItem(reservation);
     e.dataTransfer.effectAllowed = 'move';
-    
-    // Create drag image
-    const dragImage = document.createElement('div');
-    dragImage.className = 'bg-blue-500 text-white px-2 py-1 rounded shadow-lg text-sm font-medium';
-    dragImage.textContent = `${reservation.guestName} - ${reservation.roomType}`;
-    dragImage.style.position = 'absolute';
-    dragImage.style.top = '-1000px';
+
+    // Get selected reservations for batch operations
+    const selectedIds = dragDropManager.getSelectedReservations();
+    let draggedReservations: DraggedReservation[];
+
+    if (selectedIds.length > 0 && selectedIds.includes(reservation.id)) {
+      // If the dragged reservation is part of a selection, drag all selected
+      draggedReservations = [reservation]; // Start with the clicked one
+      // TODO: Add other selected reservations from the sidebar data
+    } else {
+      // Single reservation drag
+      draggedReservations = [reservation];
+    }
+
+    // Determine operation type based on selection
+    const operationType = selectedIds.length > 1 ? 'batch_assign' : 'assign';
+
+    // Start drag operation
+    const operationId = dragDropManager.startDragOperation(draggedReservations, operationType);
+
+    // Create enhanced drag image
+    const dragImage = dragDropManager.createDragImage(draggedReservations);
     document.body.appendChild(dragImage);
     e.dataTransfer.setDragImage(dragImage, 0, 0);
-    
-    setTimeout(() => document.body.removeChild(dragImage), 0);
+
+    // Update drag state
+    setDragState({
+      isDragging: true,
+      draggedItems: draggedReservations,
+      dragPreview: dragImage,
+      operationId
+    });
+
+    // Clean up drag image
+    setTimeout(() => {
+      if (document.body.contains(dragImage)) {
+        document.body.removeChild(dragImage);
+      }
+    }, 0);
+
+    // Clear any existing conflict indicators
+    setConflictIndicators(new Map());
+
+    // Generate room suggestions for the dragged reservation
+    generateRoomSuggestions(reservation);
+
+    console.log(`🚀 Drag started: ${operationType} with ${draggedReservations.length} reservation(s)`);
   };
 
-  const handleDragOver = (e: React.DragEvent, cellId: string) => {
+  const handleDragOver = async (e: React.DragEvent, cellId: string) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+
+    if (!dragState.isDragging || dragState.draggedItems.length === 0) return;
+
+    const [roomNumber, dateStr] = cellId.split('-');
+    const room = chartData?.rooms?.find(r => r.config.roomNumber === roomNumber);
+
+    if (!room) return;
+
+    // Create drop target
+    const dropTarget: DropTarget = {
+      roomId: room.room?._id || room.config.roomId,
+      roomNumber: room.config.roomNumber,
+      date: dateStr,
+      isAvailable: true
+    };
+
+    // Check for conflicts
+    const reservation = dragState.draggedItems[0];
+    const conflictCheck = await dragDropManager.checkRoomAvailability(
+      dropTarget.roomId,
+      dropTarget.date,
+      reservation
+    );
+
+    if (!conflictCheck.isAvailable) {
+      e.dataTransfer.dropEffect = 'none';
+      setConflictIndicators(prev => {
+        const newMap = new Map(prev);
+        newMap.set(cellId, {
+          roomId: dropTarget.roomId,
+          date: dropTarget.date,
+          conflictType: conflictCheck.conflictReason?.includes('locked') ? 'locked' : 'occupied',
+          message: conflictCheck.conflictReason || 'Conflict detected',
+          suggestions: conflictCheck.suggestions || []
+        });
+        return newMap;
+      });
+    } else {
+      e.dataTransfer.dropEffect = 'move';
+      // Clear any previous conflict for this cell
+      setConflictIndicators(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(cellId);
+        return newMap;
+      });
+    }
+
     setDragOverCell(cellId);
+    dragDropManager.registerDropZone(cellId, dropTarget);
   };
 
-  const handleDragLeave = (e: React.DragEvent) => {
-    // Only clear if we're actually leaving the cell
+  const handleDragLeave = (e: React.DragEvent, cellId?: string) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const x = e.clientX;
     const y = e.clientY;
-    
+
     if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
       setDragOverCell(null);
+
+      // Clear conflict indicators for this cell
+      if (cellId) {
+        setConflictIndicators(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(cellId);
+          return newMap;
+        });
+        dragDropManager.unregisterDropZone(cellId);
+      }
     }
   };
 
   const handleDrop = async (e: React.DragEvent, roomId: string, date: string, roomNumber?: string) => {
     e.preventDefault();
-    
-    if (!draggedItem) return;
-    
-    // Show confirmation for moves
-    const confirmed = window.confirm(
-      `Move ${draggedItem.guestName}'s reservation to room ${roomNumber || roomId} for ${date}?`
-    );
-    
-    if (!confirmed) {
-      setDraggedItem(null);
-      setDragOverCell(null);
+
+    if (!dragState.isDragging || dragState.draggedItems.length === 0) {
+      console.log('No drag operation in progress');
       return;
     }
-    
+
+    const cellId = `${roomNumber || roomId}-${date}`;
+    const dropTarget = dragDropManager.getDropZone(cellId);
+
+    if (!dropTarget) {
+      console.log('No drop target registered for cell:', cellId);
+      return;
+    }
+
+    // Check for conflicts one more time
+    const hasConflict = conflictIndicators.has(cellId);
+    if (hasConflict) {
+      const conflict = conflictIndicators.get(cellId)!;
+      const proceedAnyway = window.confirm(
+        `⚠️ Conflict detected: ${conflict.message}\n\nSuggestions:\n${conflict.suggestions.join('\n')}\n\nProceed anyway?`
+      );
+
+      if (!proceedAnyway) {
+        endDragOperation();
+        return;
+      }
+    }
+
+    // Show confirmation for moves
+    const reservationsText = dragState.draggedItems.length === 1
+      ? `${dragState.draggedItems[0].guestName}'s reservation`
+      : `${dragState.draggedItems.length} reservations`;
+
+    const confirmed = window.confirm(
+      `Move ${reservationsText} to room ${roomNumber || roomId} for ${date}?`
+    );
+
+    if (!confirmed) {
+      endDragOperation();
+      return;
+    }
+
     try {
-      console.log('🚀 FRONTEND DEBUG - Full dragged item structure:', draggedItem);
-      console.log('🚀 FRONTEND DEBUG - Available fields:', Object.keys(draggedItem));
-      console.log('🚀 FRONTEND DEBUG - Room assignment data:', {
-        roomId,
-        roomNumber: roomNumber || roomId,
-        assignmentType: 'drag_drop',
-        notes: `Moved via drag & drop to room ${roomNumber || roomId} for ${date}`,
-        newCheckInDate: date,
-        moveReason: 'Staff reassignment via tape chart'
-      });
-      
-      // Handle actual room assignment logic
-      await tapeChartService.assignRoom(draggedItem, {
-        roomId,
-        roomNumber: roomNumber || roomId,
-        assignmentType: 'drag_drop',
-        notes: `Moved via drag & drop to room ${roomNumber || roomId} for ${date}`,
-        newCheckInDate: date,
-        moveReason: 'Staff reassignment via tape chart'
-      });
-      
-      toast.success(`${draggedItem.guestName}'s reservation moved to room ${roomNumber || roomId}`);
-      fetchChartData(); // Refresh chart data
-      
-      // Trigger sidebar refresh
-      setRefreshTrigger(prev => prev + 1);
+      const result = await dragDropManager.executeAssignment(
+        dragState.draggedItems,
+        dropTarget,
+        {
+          notes: `Moved via enhanced drag & drop to room ${roomNumber || roomId} for ${date}`,
+          moveReason: 'Staff reassignment via enhanced tape chart',
+          sendNotification: true,
+          lockRoom: true
+        }
+      );
+
+      if (result.success) {
+        fetchChartData();
+        setRefreshTrigger(prev => prev + 1);
+      }
+
     } catch (err: any) {
-      console.error('Room assignment error:', err);
+      console.error('Enhanced room assignment error:', err);
       toast.error(err.response?.data?.message || err.message || 'Failed to move reservation');
     } finally {
-      setDraggedItem(null);
-      setDragOverCell(null);
+      endDragOperation();
     }
   };
 
@@ -536,6 +667,56 @@ const TapeChartView: React.FC = () => {
     setContextMenu(prev => ({ ...prev, visible: false }));
   };
 
+  // Enhanced drag & drop helper functions
+  const generateRoomSuggestions = async (reservation: DraggedReservation) => {
+    try {
+      const suggestions = await dragDropManager.getSuggestedRooms(reservation);
+      const suggestionMap = new Map();
+
+      suggestions.forEach(suggestion => {
+        const cellId = `${suggestion.roomNumber}-${format(startDate, 'yyyy-MM-dd')}`;
+        suggestionMap.set(cellId, suggestion);
+      });
+
+      setRoomSuggestions(suggestionMap);
+    } catch (error) {
+      console.error('Error generating room suggestions:', error);
+    }
+  };
+
+  const endDragOperation = () => {
+    dragDropManager.endDragOperation();
+    setDragState({
+      isDragging: false,
+      draggedItems: [],
+      dragPreview: null,
+      operationId: null
+    });
+    setDraggedItem(null);
+    setDragOverCell(null);
+    setConflictIndicators(new Map());
+    setRoomSuggestions(new Map());
+  };
+
+  // Cleanup drag state on component unmount or when drag ends unexpectedly
+  useEffect(() => {
+    const handleDragEnd = () => {
+      if (dragState.isDragging) {
+        console.log('Drag operation ended unexpectedly, cleaning up...');
+        endDragOperation();
+      }
+    };
+
+    document.addEventListener('dragend', handleDragEnd);
+    document.addEventListener('mouseup', handleDragEnd);
+
+    return () => {
+      document.removeEventListener('dragend', handleDragEnd);
+      document.removeEventListener('mouseup', handleDragEnd);
+      dragDropManager.cleanup();
+    };
+  }, [dragState.isDragging]);
+
   const handleStatusChange = async (roomId: string, newStatus: string) => {
     try {
       await tapeChartService.updateRoomStatus(roomId, {
@@ -551,11 +732,42 @@ const TapeChartView: React.FC = () => {
     }
   };
 
+  const handleCreateBlockFromSelection = async () => {
+    try {
+      if (selectedRoomsForBlock.size === 0) {
+        toast.error('Please select rooms to create a block');
+        return;
+      }
+
+      const roomIds = Array.from(selectedRoomsForBlock);
+      // This would typically open a modal or form for block creation
+      // For now, we'll just show a placeholder
+      toast.info(`Creating block with ${roomIds.length} rooms`);
+
+      // Reset selection and exit block mode
+      setSelectedRoomsForBlock(new Set());
+      setBlockCreationMode(false);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create block');
+    }
+  };
+
+  const toggleBlockCreationMode = () => {
+    setBlockCreationMode(!blockCreationMode);
+    if (blockCreationMode) {
+      // Exiting block mode, clear selections
+      setSelectedRoomsForBlock(new Set());
+    }
+  };
+
   const renderRoomCell = (room: any, date: Date) => {
     const cellId = `${room.config.roomNumber}-${format(date, 'yyyy-MM-dd')}`;
     const isWeekend = date.getDay() === 0 || date.getDay() === 6;
     const isToday = isSameDay(date, new Date());
     const isDragOver = dragOverCell === cellId;
+    const hasConflict = conflictIndicators.has(cellId);
+    const conflict = conflictIndicators.get(cellId);
+    const isRecommended = roomSuggestions.has(cellId);
     
     // Find timeline data for this date
     const timelineData = room.timeline.find((t: any) => 
@@ -570,15 +782,18 @@ const TapeChartView: React.FC = () => {
       <div
         key={cellId}
         className={`
-          relative min-h-[${compactView ? '32px' : '48px'}] border border-gray-200 
-          ${getProfitabilityRoomColor(timelineData, status)} 
-          ${isDragOver ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-400' : ''}
+          relative min-h-[${compactView ? '32px' : '48px'}] border border-gray-200
+          ${getProfitabilityRoomColor(timelineData, status)}
+          ${isDragOver && !hasConflict ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-400' : ''}
+          ${isDragOver && hasConflict ? 'ring-2 ring-red-500 bg-red-50 border-red-400' : ''}
+          ${isRecommended ? 'ring-1 ring-green-400 bg-green-50' : ''}
           ${isToday ? 'ring-1 ring-blue-300' : ''}
           ${isWeekend ? 'bg-opacity-60' : ''}
           transition-all duration-150 cursor-pointer hover:shadow-sm
+          ${dragState.isDragging ? 'hover:ring-2 hover:ring-blue-300' : ''}
         `}
         onDragOver={(e) => handleDragOver(e, cellId)}
-        onDragLeave={handleDragLeave}
+        onDragLeave={(e) => handleDragLeave(e, cellId)}
         onDrop={(e) => handleDrop(e, room.room?._id || room.config.roomId, format(date, 'yyyy-MM-dd'), room.config.roomNumber)}
         onClick={() => handleRoomSelect(room.config._id)}
         onContextMenu={(e) => handleRightClick(e, room.config._id)}
@@ -594,11 +809,37 @@ const TapeChartView: React.FC = () => {
         {/* Notification badges */}
         {getNotificationBadge(getRoomNotifications(room.config.roomNumber, timelineData))}
         
-        {/* Drag drop indicator */}
-        {isDragOver && (
+        {/* Enhanced drag drop indicators */}
+        {isDragOver && !hasConflict && (
           <div className="absolute inset-0 flex items-center justify-center bg-blue-100 bg-opacity-75 border-2 border-dashed border-blue-400">
-            <div className="bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
-              Drop here to assign
+            <div className="bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Drop to assign
+            </div>
+          </div>
+        )}
+
+        {/* Conflict indicator */}
+        {isDragOver && hasConflict && (
+          <div className="absolute inset-0 flex items-center justify-center bg-red-100 bg-opacity-90 border-2 border-dashed border-red-400">
+            <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 18.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              {conflict?.conflictType === 'locked' ? 'Room Locked' : 'Conflict!'}
+            </div>
+          </div>
+        )}
+
+        {/* Recommendation indicator */}
+        {isRecommended && !isDragOver && (
+          <div className="absolute top-1 right-1">
+            <div className="bg-green-500 text-white rounded-full p-1 text-xs">
+              <svg className="w-2 h-2" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
             </div>
           </div>
         )}
@@ -661,7 +902,7 @@ const TapeChartView: React.FC = () => {
     const isSelected = selectedRooms.has(room.config._id);
     
     return (
-      <div key={room.config._id} className="flex border-b border-gray-200">
+      <div key={room.config._id} className="flex min-w-fit border-b border-gray-200">
         {/* Room header */}
         <div className={`
           sticky left-0 z-10 bg-white border-r border-gray-300 p-2
@@ -720,7 +961,7 @@ const TapeChartView: React.FC = () => {
 
   return (
     <TooltipProvider>
-      <div className="h-screen flex" onClick={hideContextMenu}>
+      <div className="h-screen flex overflow-x-auto" onClick={hideContextMenu}>
         {/* Collapsible Menu Sidebar */}
         <CollapsibleSidebar
           isCollapsed={isMenuCollapsed}
@@ -742,7 +983,7 @@ const TapeChartView: React.FC = () => {
         )}
         
         {/* Main content */}
-        <div className="flex-1 p-4 space-y-4 flex flex-col">
+        <div className="flex-1 p-4 space-y-4 flex flex-col min-w-fit">
         {/* Header */}
         <Card className="flex-none">
           <CardHeader className="pb-3">
@@ -773,7 +1014,27 @@ const TapeChartView: React.FC = () => {
 
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                
+                {/* Batch operation controls */}
+                {dragDropManager.getSelectionCount() > 1 && (
+                  <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-lg">
+                    <Users className="w-4 h-4 text-amber-600" />
+                    <span className="text-sm font-medium text-amber-700">
+                      {dragDropManager.getSelectionCount()} selected for batch assignment
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        dragDropManager.clearSelection();
+                        setRefreshTrigger(prev => prev + 1);
+                      }}
+                      className="h-6 px-2 text-xs border-amber-300 text-amber-700 hover:bg-amber-100"
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                )}
+
               </div>
               
               <div className="flex items-center gap-2">
@@ -874,29 +1135,92 @@ const TapeChartView: React.FC = () => {
                   >
                     <RefreshCw className="w-4 h-4" />
                   </Button>
-                  
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        <Settings className="w-4 h-4" />
+
+                  {/* Undo button for drag operations */}
+                  {dragDropManager.canUndo() && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => dragDropManager.undoLastOperation()}
+                      title="Undo last operation"
+                      className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                      </svg>
+                    </Button>
+                  )}
+
+                  {/* Drag operation status */}
+                  {dragState.isDragging && (
+                    <div className="flex items-center gap-2 px-3 py-1 bg-blue-100 rounded-lg border border-blue-200">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                      <span className="text-sm text-blue-700 font-medium">
+                        Dragging {dragState.draggedItems.length} reservation{dragState.draggedItems.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Block creation controls */}
+                  {blockCreationMode && (
+                    <div className="flex items-center gap-2 px-3 py-1 bg-purple-50 border border-purple-200 rounded-lg">
+                      <Building2 className="w-4 h-4 text-purple-600" />
+                      <span className="text-sm font-medium text-purple-700">
+                        Block Mode: {selectedRoomsForBlock.size} room{selectedRoomsForBlock.size !== 1 ? 's' : ''} selected
+                      </span>
+                      {selectedRoomsForBlock.size > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleCreateBlockFromSelection}
+                          className="h-6 px-2 text-xs border-purple-300 text-purple-700 hover:bg-purple-100"
+                        >
+                          Create Block
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={toggleBlockCreationMode}
+                        className="h-6 px-2 text-xs text-purple-600 hover:bg-purple-100"
+                      >
+                        Cancel
                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => setShowGuestNames(!showGuestNames)}>
-                        <UserCheck className="w-4 h-4 mr-2" />
-                        {showGuestNames ? 'Hide' : 'Show'} Guest Names
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setShowRates(!showRates)}>
-                        <DollarSign className="w-4 h-4 mr-2" />
-                        {showRates ? 'Hide' : 'Show'} Rates
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={fetchChartData}>
-                        <Zap className="w-4 h-4 mr-2" />
-                        Refresh Data
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                    </div>
+                  )}
+                  
+                  {/* Advanced Enterprise Features */}
+                  <div className="flex items-center gap-2">
+                    <ReservationWorkflowPanel />
+                    <VIPGuestManager />
+                    <UpgradeProcessor />
+                    <SpecialRequestTracker />
+                    <WaitlistProcessor />
+                    <BlockManagementPanel />
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          <Settings className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setShowGuestNames(!showGuestNames)}>
+                          <UserCheck className="w-4 h-4 mr-2" />
+                          {showGuestNames ? 'Hide' : 'Show'} Guest Names
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setShowRates(!showRates)}>
+                          <IndianRupee className="w-4 h-4 mr-2" />
+                          {showRates ? 'Hide' : 'Show'} Rates
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={fetchChartData}>
+                          <Zap className="w-4 h-4 mr-2" />
+                          Refresh Data
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </div>
               </div>
             </div>
@@ -952,10 +1276,11 @@ const TapeChartView: React.FC = () => {
         {/* Main chart */}
         <Card className="flex-1 overflow-hidden">
           <CardContent className="p-0 h-full">
-            <div className="h-full overflow-auto" ref={chartRef}>
-              {/* Date header */}
-              <div className="sticky top-0 z-20 bg-white border-b border-gray-300">
-                <div className="flex">
+            <div className="w-full h-full overflow-auto" ref={chartRef}>
+              <div className="min-w-fit">
+                {/* Date header */}
+                <div className="sticky top-0 z-20 bg-white border-b border-gray-300">
+                  <div className="flex min-w-fit">
                   <div className="sticky left-0 z-30 bg-gray-50 border-r border-gray-300 min-w-[150px] p-3">
                     <div className="font-medium">Room</div>
                   </div>
@@ -984,22 +1309,23 @@ const TapeChartView: React.FC = () => {
                 </div>
               </div>
               
-              {/* Room rows */}
-              <div className="divide-y divide-gray-200">
-                {chartData?.rooms?.map((room, index) => (
-                  <div key={room.room?._id || `room-${index}`}>
-                    {renderRoomRow(room, index)}
-                  </div>
-                ))}
-              </div>
-              
-              {(!chartData?.rooms || chartData.rooms.length === 0) && (
-                <div className="p-8 text-center text-gray-500">
-                  <Bed className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                  <p>No room data available</p>
-                  <p className="text-sm">Try selecting a different view or date range</p>
+                {/* Room rows */}
+                <div className="divide-y divide-gray-200">
+                  {chartData?.rooms?.map((room, index) => (
+                    <div key={room.room?._id || `room-${index}`}>
+                      {renderRoomRow(room, index)}
+                    </div>
+                  ))}
                 </div>
-              )}
+
+                {(!chartData?.rooms || chartData.rooms.length === 0) && (
+                  <div className="p-8 text-center text-gray-500">
+                    <Bed className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                    <p>No room data available</p>
+                    <p className="text-sm">Try selecting a different view or date range</p>
+                  </div>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -1091,7 +1417,7 @@ const TapeChartView: React.FC = () => {
                 Move Guest
               </button>
               <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50">
-                <DollarSign className="mr-2 h-4 w-4 text-green-600" />
+                <IndianRupee className="mr-2 h-4 w-4 text-green-600" />
                 Billing Details
               </button>
               <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50">

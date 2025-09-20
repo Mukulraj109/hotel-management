@@ -194,8 +194,8 @@ export const syncToChannel = async (req, res) => {
     }
     
     const result = await channelManager.syncToChannel(channelId, roomTypeId, {
-      startDate: new Date(startDate),
-      endDate: new Date(endDate)
+      startDate,
+      endDate
     });
     
     res.json({
@@ -392,8 +392,9 @@ export const getRateParityLogs = async (req, res) => {
 // Channel Performance
 export const getChannelPerformance = async (req, res) => {
   try {
-    const { channelId, startDate, endDate } = req.query;
-    
+    const { channelId } = req.params;
+    const { startDate, endDate } = req.query;
+
     if (!channelId || !startDate || !endDate) {
       return res.status(400).json({
         success: false,

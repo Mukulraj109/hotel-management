@@ -2,7 +2,7 @@ import express from 'express';
 import HotelService from '../models/HotelService.js';
 import ServiceBooking from '../models/ServiceBooking.js';
 import { authenticate } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 
@@ -151,12 +151,12 @@ router.get('/bookings/:bookingId',
       .populate('userId', 'name email');
       
     if (!booking) {
-      throw new AppError('Booking not found', 404);
+      throw new ApplicationError('Booking not found', 404);
     }
     
     // Check if user owns this booking
     if (booking.userId._id.toString() !== req.user._id.toString()) {
-      throw new AppError('Not authorized to view this booking', 403);
+      throw new ApplicationError('Not authorized to view this booking', 403);
     }
 
     res.json({
@@ -240,7 +240,7 @@ router.get('/:serviceId', catchAsync(async (req, res) => {
     .populate('hotelId', 'name address');
     
   if (!service) {
-    throw new AppError('Service not found', 404);
+    throw new ApplicationError('Service not found', 404);
   }
 
   res.json({
@@ -283,7 +283,7 @@ router.get('/:serviceId/availability', catchAsync(async (req, res) => {
   const { date, people } = req.query;
   
   if (!date || !people) {
-    throw new AppError('Date and number of people are required', 400);
+    throw new ApplicationError('Date and number of people are required', 400);
   }
   
   const availability = await ServiceBooking.checkAvailability(
@@ -346,7 +346,7 @@ router.post('/:serviceId/bookings',
     // Get the service
     const service = await HotelService.findById(serviceId);
     if (!service) {
-      throw new AppError('Service not found', 404);
+      throw new ApplicationError('Service not found', 404);
     }
     
     // Check availability
@@ -357,7 +357,7 @@ router.post('/:serviceId/bookings',
     );
     
     if (!availability.available) {
-      throw new AppError(availability.reason, 400);
+      throw new ApplicationError(availability.reason, 400);
     }
     
     // Calculate total amount
@@ -431,12 +431,12 @@ router.post('/bookings/:bookingId/cancel',
     
     const booking = await ServiceBooking.findById(bookingId);
     if (!booking) {
-      throw new AppError('Booking not found', 404);
+      throw new ApplicationError('Booking not found', 404);
     }
     
     // Check if user owns this booking
     if (booking.userId.toString() !== req.user._id.toString()) {
-      throw new AppError('Not authorized to cancel this booking', 403);
+      throw new ApplicationError('Not authorized to cancel this booking', 403);
     }
     
     await booking.cancelBooking(reason, req.user._id);

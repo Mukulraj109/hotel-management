@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { 
   Plus, 
   Search, 
@@ -24,9 +25,10 @@ import {
   MoreHorizontal
 } from 'lucide-react';
 import { format } from 'date-fns';
-import assignmentRulesService, { AssignmentRule, AssignmentRuleFilters, AssignmentRulesStats } from '@/services/assignmentRulesService';
+import assignmentRulesService, { AssignmentRule, AssignmentRuleFilters, AssignmentRulesStats, AutoAssignCriteria } from '@/services/assignmentRulesService';
 import AssignmentRuleForm from './AssignmentRuleForm';
 import AssignmentRuleDetails from './AssignmentRuleDetails';
+import { toast } from 'react-hot-toast';
 
 const AssignmentRules: React.FC = () => {
   const [assignmentRules, setAssignmentRules] = useState<AssignmentRule[]>([]);
@@ -43,6 +45,9 @@ const AssignmentRules: React.FC = () => {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [selectedRule, setSelectedRule] = useState<AssignmentRule | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [editingRule, setEditingRule] = useState<AssignmentRule | null>(null);
+  const [autoAssigning, setAutoAssigning] = useState(false);
   const [pagination, setPagination] = useState({
     current: 1,
     pages: 1,
@@ -140,9 +145,63 @@ const AssignmentRules: React.FC = () => {
     );
   };
 
+  const handleAutoAssign = async () => {
+    if (!window.confirm('Are you sure you want to auto-assign rooms based on active assignment rules? This will assign rooms to unassigned bookings.')) {
+      return;
+    }
+
+    try {
+      setAutoAssigning(true);
+      const result = await assignmentRulesService.autoAssignRooms();
+
+      toast.success(
+        `Auto-assignment completed! ${result.assigned} rooms assigned, ${result.failed} failed, ${result.skipped} skipped.`
+      );
+
+      // Refresh stats after auto-assignment
+      fetchStats();
+
+    } catch (error) {
+      console.error('Auto-assign failed:', error);
+      toast.error('Failed to auto-assign rooms. Please try again.');
+    } finally {
+      setAutoAssigning(false);
+    }
+  };
+
+  const handleEditRule = (rule: AssignmentRule) => {
+    setEditingRule(rule);
+    setShowEditForm(true);
+  };
+
+  const handleDeleteRule = async (rule: AssignmentRule) => {
+    if (!window.confirm(`Are you sure you want to delete the rule "${rule.ruleName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await assignmentRulesService.deleteAssignmentRule(rule._id);
+      setAssignmentRules(prev => prev.filter(r => r._id !== rule._id));
+      toast.success('Assignment rule deleted successfully');
+      fetchStats();
+    } catch (error) {
+      console.error('Failed to delete assignment rule:', error);
+      toast.error('Failed to delete assignment rule. Please try again.');
+    }
+  };
+
   const handleCreateSuccess = (newRule: AssignmentRule) => {
     setAssignmentRules(prev => [newRule, ...prev]);
     setShowCreateForm(false);
+    fetchStats();
+  };
+
+  const handleEditSuccess = (updatedRule: AssignmentRule) => {
+    setAssignmentRules(prev =>
+      prev.map(rule => rule._id === updatedRule._id ? updatedRule : rule)
+    );
+    setShowEditForm(false);
+    setEditingRule(null);
     fetchStats();
   };
 
@@ -164,10 +223,21 @@ const AssignmentRules: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Room Assignment Rules</h1>
           <p className="text-gray-600">Configure automatic room assignment logic</p>
         </div>
-        <Button onClick={() => setShowCreateForm(true)} className="flex items-center gap-2">
-          <Plus className="w-4 h-4" />
-          Create Rule
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={handleAutoAssign}
+            disabled={autoAssigning || assignmentRules.length === 0}
+            variant="outline"
+            className="flex items-center gap-2"
+          >
+            <Play className="w-4 h-4" />
+            {autoAssigning ? 'Auto-Assigning...' : 'Auto-Assign'}
+          </Button>
+          <Button onClick={() => setShowCreateForm(true)} className="flex items-center gap-2">
+            <Plus className="w-4 h-4" />
+            Create Rule
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -357,6 +427,27 @@ const AssignmentRules: React.FC = () => {
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleEditRule(rule)}>
+                            <Edit className="w-4 h-4 mr-2" />
+                            Edit Rule
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => handleDeleteRule(rule)}
+                            className="text-red-600 focus:text-red-600"
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Delete Rule
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 </div>
@@ -378,6 +469,26 @@ const AssignmentRules: React.FC = () => {
           <AssignmentRuleForm
             onSuccess={handleCreateSuccess}
             onCancel={() => setShowCreateForm(false)}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Assignment Rule Dialog */}
+      <Dialog open={showEditForm} onOpenChange={setShowEditForm}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Assignment Rule</DialogTitle>
+            <DialogDescription>
+              Modify the existing room assignment rule
+            </DialogDescription>
+          </DialogHeader>
+          <AssignmentRuleForm
+            editRule={editingRule}
+            onSuccess={handleEditSuccess}
+            onCancel={() => {
+              setShowEditForm(false);
+              setEditingRule(null);
+            }}
           />
         </DialogContent>
       </Dialog>

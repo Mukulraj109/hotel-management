@@ -151,6 +151,10 @@ const guestServiceSchema = new mongoose.Schema({
     type: mongoose.Schema.ObjectId,
     ref: 'User'
   },
+  relatedHotelService: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'HotelService'
+  },
   scheduledTime: {
     type: Date
   },
@@ -203,7 +207,106 @@ const guestServiceSchema = new mongoose.Schema({
   feedback: {
     type: String,
     maxlength: [500, 'Feedback cannot be more than 500 characters']
-  }
+  },
+  // Inventory Tracking Fields
+  inventoryConsumed: [{
+    inventoryItemId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'InventoryItem',
+      required: true
+    },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 0.01
+    },
+    unitCost: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    totalCost: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    chargeToGuest: {
+      type: Boolean,
+      default: false
+    },
+    guestChargeAmount: {
+      type: Number,
+      min: 0,
+      default: 0
+    },
+    isComplimentary: {
+      type: Boolean,
+      default: false
+    },
+    isVIPBenefit: {
+      type: Boolean,
+      default: false
+    },
+    notes: String,
+    recordedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  guestPreferences: {
+    inventoryPreferences: [{
+      inventoryItemId: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'InventoryItem'
+      },
+      preferenceLevel: {
+        type: String,
+        enum: ['dislike', 'neutral', 'like', 'love'],
+        default: 'neutral'
+      },
+      notes: String,
+      lastUpdated: {
+        type: Date,
+        default: Date.now
+      }
+    }],
+    dietaryRestrictions: [String],
+    allergies: [String],
+    specialRequests: [String]
+  },
+  vipServicesApplied: [{
+    serviceType: {
+      type: String,
+      enum: ['complimentary_upgrade', 'discount_applied', 'special_amenity', 'priority_service']
+    },
+    description: String,
+    value: Number,
+    appliedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  billingItems: [{
+    inventoryConsumptionId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'InventoryConsumption'
+    },
+    amount: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+    description: String,
+    billed: {
+      type: Boolean,
+      default: false
+    },
+    billedAt: Date,
+    invoiceId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'Invoice'
+    }
+  }]
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -219,8 +322,12 @@ guestServiceSchema.index({ serviceType: 1, priority: 1 });
 
 // Calculate total cost
 guestServiceSchema.methods.calculateTotalCost = function() {
-  const itemsTotal = this.items.reduce((total, item) => total + (item.price * item.quantity), 0);
-  return itemsTotal + (this.actualCost || this.estimatedCost);
+  const itemsTotal = (this.items || []).reduce((total, item) => total + ((item.price || 0) * (item.quantity || 0)), 0);
+  const inventoryTotal = (this.inventoryConsumed || []).reduce((total, item) => total + (item.totalCost || 0), 0);
+  const guestChargeTotal = (this.inventoryConsumed || []).reduce((total, item) =>
+    total + (item.chargeToGuest ? (item.guestChargeAmount || 0) : 0), 0);
+
+  return itemsTotal + inventoryTotal + guestChargeTotal + (this.actualCost || this.estimatedCost || 0);
 };
 
 // Update status with timestamp
@@ -281,5 +388,211 @@ guestServiceSchema.statics.getServiceStats = async function(hotelId, startDate, 
 
   return await this.aggregate(pipeline);
 };
+
+// Static method to auto-assign service request to appropriate staff
+guestServiceSchema.statics.autoAssignToStaff = async function(serviceRequest, hotelId) {
+  const HotelService = mongoose.model('HotelService');
+
+  // Try to find a matching hotel service based on service type
+  const matchingHotelServices = await HotelService.find({
+    hotelId,
+    type: this.mapServiceTypeToHotelServiceType(serviceRequest.serviceType),
+    isActive: true,
+    'assignedStaff.isActive': true
+  }).populate('assignedStaff.staffId', 'name email');
+
+  if (matchingHotelServices.length > 0) {
+    // Prefer services with auto-assignment enabled
+    let targetService = matchingHotelServices.find(
+      service => service.serviceSettings?.autoAssignRequests
+    ) || matchingHotelServices[0];
+
+    // Get available staff from the service
+    const availableStaff = targetService.getActiveStaff();
+
+    if (availableStaff.length > 0) {
+      // Prefer primary contact, otherwise use least loaded staff
+      let assignedStaff = availableStaff.find(staff => staff.primaryContact);
+
+      if (!assignedStaff) {
+        // Find staff member with least current assignments
+        const staffWorkloads = await Promise.all(
+          availableStaff.map(async (staff) => {
+            const currentAssignments = await this.countDocuments({
+              assignedTo: staff.staffId._id,
+              status: { $in: ['assigned', 'in_progress'] }
+            });
+            return { staff, workload: currentAssignments };
+          })
+        );
+
+        staffWorkloads.sort((a, b) => a.workload - b.workload);
+        assignedStaff = staffWorkloads[0].staff;
+      }
+
+      if (assignedStaff) {
+        serviceRequest.assignedTo = assignedStaff.staffId._id;
+        serviceRequest.relatedHotelService = targetService._id;
+        serviceRequest.status = 'assigned';
+        return serviceRequest;
+      }
+    }
+  }
+
+  // Fallback to random staff assignment if no hotel service match
+  const User = mongoose.model('User');
+  const availableStaff = await User.find({
+    hotelId,
+    role: 'staff',
+    isActive: true
+  });
+
+  if (availableStaff.length > 0) {
+    const randomStaff = availableStaff[Math.floor(Math.random() * availableStaff.length)];
+    serviceRequest.assignedTo = randomStaff._id;
+    serviceRequest.status = 'assigned';
+  }
+
+  return serviceRequest;
+};
+
+// Helper method to map guest service types to hotel service types
+guestServiceSchema.statics.mapServiceTypeToHotelServiceType = function(guestServiceType) {
+  const mapping = {
+    'room_service': 'dining',
+    'housekeeping': 'wellness',
+    'maintenance': 'business',
+    'concierge': 'business',
+    'transport': 'transport',
+    'spa': 'spa',
+    'laundry': 'wellness',
+    'other': 'business'
+  };
+
+  return mapping[guestServiceType] || 'business';
+};
+
+// Instance methods for inventory tracking
+
+// Add consumed inventory item
+guestServiceSchema.methods.addInventoryConsumption = function(inventoryData) {
+  const {
+    inventoryItemId,
+    quantity,
+    unitCost,
+    chargeToGuest = false,
+    guestChargeAmount = 0,
+    isComplimentary = false,
+    isVIPBenefit = false,
+    notes
+  } = inventoryData;
+
+  this.inventoryConsumed.push({
+    inventoryItemId,
+    quantity,
+    unitCost,
+    totalCost: quantity * unitCost,
+    chargeToGuest,
+    guestChargeAmount,
+    isComplimentary,
+    isVIPBenefit,
+    notes,
+    recordedAt: new Date()
+  });
+
+  return this.save();
+};
+
+// Update guest preferences
+guestServiceSchema.methods.updateGuestPreferences = function(preferences) {
+  this.guestPreferences = {
+    ...this.guestPreferences,
+    ...preferences
+  };
+
+  return this.save();
+};
+
+// Add VIP service applied
+guestServiceSchema.methods.addVIPService = function(serviceData) {
+  const { serviceType, description, value } = serviceData;
+
+  this.vipServicesApplied.push({
+    serviceType,
+    description,
+    value,
+    appliedAt: new Date()
+  });
+
+  return this.save();
+};
+
+// Add billing item
+guestServiceSchema.methods.addBillingItem = function(billingData) {
+  const { inventoryConsumptionId, amount, description } = billingData;
+
+  this.billingItems.push({
+    inventoryConsumptionId,
+    amount,
+    description,
+    billed: false
+  });
+
+  return this.save();
+};
+
+// Mark billing items as billed
+guestServiceSchema.methods.markBillingItemsBilled = function(invoiceId) {
+  this.billingItems.forEach(item => {
+    if (!item.billed) {
+      item.billed = true;
+      item.billedAt = new Date();
+      item.invoiceId = invoiceId;
+    }
+  });
+
+  return this.save();
+};
+
+// Virtual for total inventory cost
+guestServiceSchema.virtual('totalInventoryCost').get(function() {
+  return (this.inventoryConsumed || []).reduce((total, item) => total + (item.totalCost || 0), 0);
+});
+
+// Virtual for total guest charges
+guestServiceSchema.virtual('totalGuestCharges').get(function() {
+  return (this.inventoryConsumed || []).reduce((total, item) =>
+    total + (item.chargeToGuest ? (item.guestChargeAmount || 0) : 0), 0);
+});
+
+// Virtual for complimentary value
+guestServiceSchema.virtual('complimentaryValue').get(function() {
+  return (this.inventoryConsumed || []).reduce((total, item) =>
+    total + (item.isComplimentary ? (item.totalCost || 0) : 0), 0);
+});
+
+// Virtual for VIP benefits value
+guestServiceSchema.virtual('vipBenefitsValue').get(function() {
+  const inventoryVIP = (this.inventoryConsumed || []).reduce((total, item) =>
+    total + (item.isVIPBenefit ? (item.totalCost || 0) : 0), 0);
+  const serviceVIP = (this.vipServicesApplied || []).reduce((total, service) => total + (service.value || 0), 0);
+  return inventoryVIP + serviceVIP;
+});
+
+// Virtual for inventory items count
+guestServiceSchema.virtual('inventoryItemsCount').get(function() {
+  return (this.inventoryConsumed || []).length;
+});
+
+// Virtual for billing status
+guestServiceSchema.virtual('billingStatus').get(function() {
+  const billingItems = this.billingItems || [];
+  if (billingItems.length === 0) return 'no_charges';
+
+  const billedItems = billingItems.filter(item => item.billed).length;
+  if (billedItems === billingItems.length) return 'fully_billed';
+  if (billedItems > 0) return 'partially_billed';
+  return 'pending_billing';
+});
 
 export default mongoose.model('GuestService', guestServiceSchema);

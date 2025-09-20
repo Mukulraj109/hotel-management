@@ -1,5 +1,5 @@
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { operationalManagementService } from '../services/operationalManagementService.js';
 import Counter from '../models/Counter.js';
 import ArrivalDepartureMode from '../models/ArrivalDepartureMode.js';
@@ -41,7 +41,7 @@ export const getCounter = catchAsync(async (req, res, next) => {
     .populate('createdBy updatedBy', 'name email');
 
   if (!counter) {
-    return next(new AppError('Counter not found', 404));
+    return next(new ApplicationError('Counter not found', 404));
   }
 
   res.status(200).json({
@@ -132,7 +132,7 @@ export const getArrivalDepartureMode = catchAsync(async (req, res, next) => {
     .populate('createdBy updatedBy', 'name email');
 
   if (!mode) {
-    return next(new AppError('Arrival/Departure mode not found', 404));
+    return next(new ApplicationError('Arrival/Departure mode not found', 404));
   }
 
   res.status(200).json({
@@ -213,7 +213,7 @@ export const getLostFoundItem = catchAsync(async (req, res, next) => {
     .populate('guest.guestId', 'name email phone');
 
   if (!item) {
-    return next(new AppError('Lost & Found item not found', 404));
+    return next(new ApplicationError('Lost & Found item not found', 404));
   }
 
   res.status(200).json({
@@ -307,7 +307,7 @@ export const bulkUpdateCounterStatus = catchAsync(async (req, res, next) => {
   const { updates } = req.body;
 
   if (!Array.isArray(updates) || updates.length === 0) {
-    return next(new AppError('Updates array is required', 400));
+    return next(new ApplicationError('Updates array is required', 400));
   }
 
   const results = await operationalManagementService.bulkUpdateCounterStatus(

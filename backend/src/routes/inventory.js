@@ -1,7 +1,7 @@
 import express from 'express';
 import Inventory from '../models/Inventory.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
@@ -72,7 +72,7 @@ router.patch('/:id', authenticate, authorize('admin', 'staff'), catchAsync(async
   );
 
   if (!item) {
-    throw new AppError('Inventory item not found', 404);
+    throw new ApplicationError('Inventory item not found', 404);
   }
 
   res.json({
@@ -88,7 +88,7 @@ router.post('/request', authenticate, authorize('staff'), catchAsync(async (req,
   const item = await Inventory.findById(itemId);
   
   if (!item) {
-    throw new AppError('Inventory item not found', 404);
+    throw new ApplicationError('Inventory item not found', 404);
   }
 
   item.requests.push({
@@ -120,13 +120,13 @@ router.patch('/request/:itemId/:requestId',
     const item = await Inventory.findById(itemId);
     
     if (!item) {
-      throw new AppError('Inventory item not found', 404);
+      throw new ApplicationError('Inventory item not found', 404);
     }
 
     const request = item.requests.id(requestId);
     
     if (!request) {
-      throw new AppError('Request not found', 404);
+      throw new ApplicationError('Request not found', 404);
     }
 
     request.status = status;

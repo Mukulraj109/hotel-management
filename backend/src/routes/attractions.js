@@ -1,7 +1,7 @@
 import express from 'express';
 import LocalAttraction from '../models/LocalAttraction.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
@@ -120,7 +120,7 @@ router.get('/categories', catchAsync(async (req, res) => {
   const { hotelId, maxDistance = 10 } = req.query;
 
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   // Build query
@@ -220,7 +220,7 @@ router.get('/:id', catchAsync(async (req, res) => {
     .populate('hotelId', 'name address');
 
   if (!attraction) {
-    throw new AppError('Attraction not found', 404);
+    throw new ApplicationError('Attraction not found', 404);
   }
 
   res.json({
@@ -350,7 +350,7 @@ router.patch('/:id',
     );
 
     if (!attraction) {
-      throw new AppError('Attraction not found', 404);
+      throw new ApplicationError('Attraction not found', 404);
     }
 
     res.json({
@@ -387,7 +387,7 @@ router.delete('/:id',
     const attraction = await LocalAttraction.findByIdAndDelete(req.params.id);
 
     if (!attraction) {
-      throw new AppError('Attraction not found', 404);
+      throw new ApplicationError('Attraction not found', 404);
     }
 
     res.status(204).json({

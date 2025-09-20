@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -8,6 +8,7 @@ import { Users, Calendar, MapPin, Clock, UserPlus, CheckCircle, XCircle, Plus, E
 import { meetUpRequestService } from '../../services/meetUpRequestService';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-hot-toast';
+import { api } from '../../services/api';
 
 export default function MeetUpRequestsDashboard() {
   const { user } = useAuth();
@@ -54,7 +55,9 @@ export default function MeetUpRequestsDashboard() {
       toast.success('Meet-up request created successfully!');
     },
     onError: (error) => {
-      toast.error(error.message || 'Failed to create meet-up request');
+      const errorMessage = error.response?.data?.error?.message || error.message || 'Failed to create meet-up request';
+      console.error('Meet-up creation error:', error);
+      toast.error(errorMessage);
     }
   });
 
@@ -392,7 +395,7 @@ function CreateMeetUpModal({ onClose, onSubmit, targetUserId, isLoading }) {
     type: 'casual',
     title: '',
     description: '',
-    proposedDate: '',
+    proposedDate: new Date().toISOString().split('T')[0], // Set to today's date
     proposedTime: {
       start: '',
       end: ''
@@ -403,9 +406,65 @@ function CreateMeetUpModal({ onClose, onSubmit, targetUserId, isLoading }) {
       details: ''
     }
   });
+  const [fetchingHotel, setFetchingHotel] = useState(true);
+  const [users, setUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+
+  // Fetch hotel and users when modal opens
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch hotel data
+        const hotelResponse = await api.get('/contact/hotels');
+        const hotels = hotelResponse.data.data?.hotels || hotelResponse.data.hotels || [];
+        
+        if (hotels && hotels.length > 0) {
+          const hotel = hotels[0];
+          const hotelId = hotel.id || hotel._id;
+          setFormData(prev => ({ ...prev, hotelId }));
+          console.log('Hotel ID set to:', hotelId);
+        } else {
+          console.error('No hotels found in response');
+        }
+      } catch (error) {
+        console.error('Failed to fetch hotel:', error);
+        toast.error('Failed to fetch hotel information');
+      } finally {
+        setFetchingHotel(false);
+      }
+
+      try {
+        // Fetch users for dropdown
+        const usersResponse = await api.get('/meet-up-requests/search/partners');
+        const usersList = usersResponse.data.data?.users || [];
+        setUsers(usersList);
+        console.log('Users loaded:', usersList.length);
+      } catch (error) {
+        console.error('Failed to fetch users:', error);
+        toast.error('Failed to load users');
+      } finally {
+        setLoadingUsers(false);
+      }
+    };
+
+    fetchData();
+  }, []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    console.log('Form data on submit:', formData); // Debug log
+    
+    if (!formData.targetUserId) {
+      toast.error('Please select a user to meet up with');
+      return;
+    }
+    
+    if (!formData.hotelId) {
+      console.error('Hotel ID missing:', formData.hotelId); // Debug log
+      toast.error('Hotel information is required');
+      return;
+    }
+    
     onSubmit(formData);
   };
 
@@ -413,29 +472,34 @@ function CreateMeetUpModal({ onClose, onSubmit, targetUserId, isLoading }) {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <Card className="w-full max-w-2xl p-6 max-h-[80vh] overflow-y-auto">
         <h2 className="text-xl font-semibold mb-4">Create Meet-Up Request</h2>
+        
+        {(fetchingHotel || loadingUsers) ? (
+          <div className="flex items-center justify-center py-8">
+            <LoadingSpinner />
+            <span className="ml-2 text-gray-600">
+              {fetchingHotel ? 'Loading hotel information...' : 'Loading users...'}
+            </span>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Target User ID
+                Select User
               </label>
-              <Input
+              <select
                 value={formData.targetUserId}
                 onChange={(e) => setFormData(prev => ({ ...prev, targetUserId: e.target.value }))}
-                placeholder="Enter user ID"
+                className="w-full border border-gray-300 rounded-md px-3 py-2"
                 required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Hotel ID
-              </label>
-              <Input
-                value={formData.hotelId}
-                onChange={(e) => setFormData(prev => ({ ...prev, hotelId: e.target.value }))}
-                placeholder="Enter hotel ID"
-                required
-              />
+              >
+                <option value="">Choose a user...</option>
+                {users.map((user) => (
+                  <option key={user._id || user.id} value={user._id || user.id}>
+                    {user.name} ({user.email})
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -491,6 +555,7 @@ function CreateMeetUpModal({ onClose, onSubmit, targetUserId, isLoading }) {
               <Input
                 type="date"
                 value={formData.proposedDate}
+                min={new Date().toISOString().split('T')[0]}
                 onChange={(e) => setFormData(prev => ({ ...prev, proposedDate: e.target.value }))}
                 required
               />
@@ -579,6 +644,7 @@ function CreateMeetUpModal({ onClose, onSubmit, targetUserId, isLoading }) {
             </Button>
           </div>
         </form>
+        )}
       </Card>
     </div>
   );

@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { BookingComConnector } from '../services/bookingComConnector.js';
 
@@ -18,7 +18,7 @@ router.post('/setup/:hotelId',
       const hotel = await Hotel.findById(hotelId);
       
       if (!hotel) {
-        throw new AppError('Hotel not found', 404);
+        throw new ApplicationError('Hotel not found', 404);
       }
 
       // Initialize and enable Booking.com integration for demo
@@ -44,7 +44,7 @@ router.post('/setup/:hotelId',
         }
       });
     } catch (error) {
-      throw new AppError(`Setup failed: ${error.message}`, 500);
+      throw new ApplicationError(`Setup failed: ${error.message}`, 500);
     }
   })
 );
@@ -57,7 +57,7 @@ router.post('/bookingcom/sync',
     const { hotelId } = req.body;
     
     if (!hotelId) {
-      throw new AppError('Hotel ID is required', 400);
+      throw new ApplicationError('Hotel ID is required', 400);
     }
 
     try {
@@ -73,7 +73,7 @@ router.post('/bookingcom/sync',
         }
       });
     } catch (error) {
-      throw new AppError(`Sync failed: ${error.message}`, 500);
+      throw new ApplicationError(`Sync failed: ${error.message}`, 500);
     }
   })
 );
@@ -94,7 +94,7 @@ router.get('/bookingcom/status/:hotelId',
         data: status
       });
     } catch (error) {
-      throw new AppError(`Failed to get sync status: ${error.message}`, 500);
+      throw new ApplicationError(`Failed to get sync status: ${error.message}`, 500);
     }
   })
 );
@@ -158,7 +158,7 @@ router.get('/sync-history',
         }
       });
     } catch (error) {
-      throw new AppError(`Failed to get sync history: ${error.message}`, 500);
+      throw new ApplicationError(`Failed to get sync history: ${error.message}`, 500);
     }
   })
 );
@@ -176,7 +176,7 @@ router.get('/config/:hotelId',
       const hotel = await Hotel.findById(hotelId);
       
       if (!hotel) {
-        throw new AppError('Hotel not found', 404);
+        throw new ApplicationError('Hotel not found', 404);
       }
       
       // Initialize OTA connections if they don't exist
@@ -226,7 +226,7 @@ router.get('/config/:hotelId',
         data: { config }
       });
     } catch (error) {
-      throw new AppError(`Failed to get OTA configuration: ${error.message}`, 500);
+      throw new ApplicationError(`Failed to get OTA configuration: ${error.message}`, 500);
     }
   })
 );
@@ -240,7 +240,7 @@ router.patch('/config/:hotelId',
     const { provider, config } = req.body;
 
     if (!provider || !config) {
-      throw new AppError('Provider and configuration are required', 400);
+      throw new ApplicationError('Provider and configuration are required', 400);
     }
 
     try {
@@ -248,7 +248,7 @@ router.patch('/config/:hotelId',
       const hotel = await Hotel.findById(hotelId);
       
       if (!hotel) {
-        throw new AppError('Hotel not found', 404);
+        throw new ApplicationError('Hotel not found', 404);
       }
 
       // Initialize OTA connections if they don't exist
@@ -280,7 +280,7 @@ router.patch('/config/:hotelId',
         }
       });
     } catch (error) {
-      throw new AppError(`Failed to update OTA configuration: ${error.message}`, 500);
+      throw new ApplicationError(`Failed to update OTA configuration: ${error.message}`, 500);
     }
   })
 );
@@ -299,7 +299,7 @@ router.get('/stats/:hotelId',
       // Get hotel and check active providers
       const hotel = await Hotel.findById(hotelId);
       if (!hotel) {
-        throw new AppError('Hotel not found', 404);
+        throw new ApplicationError('Hotel not found', 404);
       }
 
       const activeProviders = [];
@@ -388,7 +388,7 @@ router.get('/stats/:hotelId',
         data: { stats }
       });
     } catch (error) {
-      throw new AppError(`Failed to get OTA statistics: ${error.message}`, 500);
+      throw new ApplicationError(`Failed to get OTA statistics: ${error.message}`, 500);
     }
   })
 );

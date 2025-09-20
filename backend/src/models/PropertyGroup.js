@@ -315,19 +315,50 @@ propertyGroupSchema.methods.updateMetrics = async function() {
       {
         $group: {
           _id: null,
-          totalProperties: { $sum: 1 },
-          totalRooms: { $sum: '$totalRooms' }
+          totalProperties: { $sum: 1 }
         }
       }
     ]);
-    
+
+    // Get property IDs for this group
+    const propertyIds = await Hotel.find({ propertyGroupId: this._id, isActive: true }).distinct('_id');
+
+    // Count total rooms for all properties in this group
+    const Room = mongoose.model('Room');
+    const totalRooms = await Room.countDocuments({ hotelId: { $in: propertyIds } });
+
     // Count active users
     const userCount = await User.countDocuments({ propertyGroupId: this._id, isActive: true });
-    
+
+    // Calculate revenue from bookings
+    const Booking = mongoose.model('Booking');
+    const revenueStats = await Booking.aggregate([
+      {
+        $match: {
+          hotelId: { $in: propertyIds },
+          status: { $in: ['confirmed', 'checked_in', 'checked_out'] },
+          checkIn: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // Last 30 days
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: '$totalAmount' },
+          totalBookings: { $sum: 1 }
+        }
+      }
+    ]);
+
     // Update metrics
     if (propertyStats.length > 0) {
       this.metrics.totalProperties = propertyStats[0].totalProperties;
-      this.metrics.totalRooms = propertyStats[0].totalRooms || 0;
+    }
+    this.metrics.totalRooms = totalRooms;
+
+    if (revenueStats.length > 0) {
+      this.metrics.totalRevenue = revenueStats[0].totalRevenue || 0;
+      this.metrics.averageOccupancyRate = this.metrics.totalRooms > 0 ?
+        (revenueStats[0].totalBookings / this.metrics.totalRooms) * 100 : 0;
     }
     
     this.metrics.activeUsers = userCount;

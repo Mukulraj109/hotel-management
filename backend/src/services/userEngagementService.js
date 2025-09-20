@@ -2,7 +2,7 @@ import UserAnalytics from '../models/UserAnalytics.js';
 import User from '../models/User.js';
 import LoginSession from '../models/LoginSession.js';
 import AuditLog from '../models/AuditLog.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import mongoose from 'mongoose';
 
 class UserEngagementService {
@@ -113,7 +113,7 @@ class UserEngagementService {
           (result.atRiskUsers / result.totalUsers.length) * 100 : 0
       };
     } catch (error) {
-      throw new AppError('Failed to fetch user engagement analytics', 500);
+      throw new ApplicationError('Failed to fetch user engagement analytics', 500);
     }
   }
 
@@ -205,7 +205,7 @@ class UserEngagementService {
         activityDistribution: this.calculateActivityDistribution(behaviorData)
       };
     } catch (error) {
-      throw new AppError('Failed to fetch user behavior analysis', 500);
+      throw new ApplicationError('Failed to fetch user behavior analysis', 500);
     }
   }
 
@@ -315,7 +315,7 @@ class UserEngagementService {
         ) / 3
       };
     } catch (error) {
-      throw new AppError('Failed to fetch performance metrics', 500);
+      throw new ApplicationError('Failed to fetch performance metrics', 500);
     }
   }
 
@@ -382,7 +382,7 @@ class UserEngagementService {
         stageDistribution: this.calculateStageDistribution(lifecycleData)
       };
     } catch (error) {
-      throw new AppError('Failed to fetch user lifecycle analysis', 500);
+      throw new ApplicationError('Failed to fetch user lifecycle analysis', 500);
     }
   }
 
@@ -429,7 +429,7 @@ class UserEngagementService {
           updatedAnalytics.reduce((sum, record) => sum + record.churnRisk, 0) / updatedAnalytics.length : 0
       };
     } catch (error) {
-      throw new AppError('Failed to calculate engagement scores', 500);
+      throw new ApplicationError('Failed to calculate engagement scores', 500);
     }
   }
 
@@ -475,7 +475,7 @@ class UserEngagementService {
 
       return await UserAnalytics.aggregate(pipeline);
     } catch (error) {
-      throw new AppError('Failed to fetch engagement trends', 500);
+      throw new ApplicationError('Failed to fetch engagement trends', 500);
     }
   }
 
@@ -541,7 +541,7 @@ class UserEngagementService {
 
       return await UserAnalytics.aggregate(pipeline);
     } catch (error) {
-      throw new AppError('Failed to fetch top engaged users', 500);
+      throw new ApplicationError('Failed to fetch top engaged users', 500);
     }
   }
 
@@ -582,7 +582,7 @@ class UserEngagementService {
 
       return await UserAnalytics.aggregate(pipeline);
     } catch (error) {
-      throw new AppError('Failed to fetch performance trends', 500);
+      throw new ApplicationError('Failed to fetch performance trends', 500);
     }
   }
 
@@ -652,7 +652,7 @@ class UserEngagementService {
 
       return await UserAnalytics.aggregate(pipeline);
     } catch (error) {
-      throw new AppError('Failed to calculate lifecycle transitions', 500);
+      throw new ApplicationError('Failed to calculate lifecycle transitions', 500);
     }
   }
 

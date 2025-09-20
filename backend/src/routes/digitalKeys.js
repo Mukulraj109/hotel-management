@@ -4,8 +4,8 @@ import DigitalKey from '../models/DigitalKey.js';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
 import User from '../models/User.js';
-import { authenticate } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { authenticate, authorize } from '../middleware/auth.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 
@@ -88,10 +88,14 @@ router.post('/generate', validate(schemas.generateDigitalKey), catchAsync(async 
     _id: bookingId, 
     userId: req.user.id,
     status: { $in: ['confirmed', 'checked_in'] }
-  }).populate('roomId hotelId');
+  }).populate('hotelId').populate('rooms.roomId');
   
   if (!booking) {
-    throw new AppError('Booking not found or not eligible for digital key', 404);
+    throw new ApplicationError('Booking not found or not eligible for digital key', 404);
+  }
+  
+  if (!booking.rooms || booking.rooms.length === 0) {
+    throw new ApplicationError('Booking has no rooms assigned', 400);
   }
   
   // Check if key already exists for this booking
@@ -102,18 +106,21 @@ router.post('/generate', validate(schemas.generateDigitalKey), catchAsync(async 
   });
   
   if (existingKey && type === 'primary') {
-    throw new AppError('A primary key already exists for this booking', 400);
+    throw new ApplicationError('A primary key already exists for this booking', 400);
   }
   
-  // Generate QR code data
+  // Use the first room (for multi-room bookings, we'll generate key for first room)
+  const firstRoom = booking.rooms[0];
+  
+  // Generate QR code data (keep it minimal for QR code size limits)
   const keyCode = DigitalKey.generateKeyCode();
   const qrData = JSON.stringify({
-    keyCode,
-    bookingId: booking._id.toString(),
-    roomId: booking.roomId._id.toString(),
-    hotelId: booking.hotelId._id.toString(),
-    type,
-    timestamp: Date.now()
+    k: keyCode,                                    // key code
+    b: booking._id.toString().slice(-8),           // last 8 chars of booking ID  
+    r: firstRoom.roomId._id.toString().slice(-8),  // last 8 chars of room ID
+    h: booking.hotelId._id.toString().slice(-8),   // last 8 chars of hotel ID
+    t: type.charAt(0),                             // first letter of type
+    ts: Math.floor(Date.now() / 1000)              // timestamp in seconds
   });
   
   const qrCode = await QRCode.toDataURL(qrData);
@@ -122,7 +129,7 @@ router.post('/generate', validate(schemas.generateDigitalKey), catchAsync(async 
   const digitalKey = new DigitalKey({
     userId: req.user.id,
     bookingId: booking._id,
-    roomId: booking.roomId._id,
+    roomId: firstRoom.roomId._id,
     hotelId: booking.hotelId._id,
     keyCode,
     qrCode,
@@ -162,6 +169,254 @@ router.post('/generate', validate(schemas.generateDigitalKey), catchAsync(async 
   });
 }));
 
+// Admin Routes - System-wide digital key management (MUST be before /:keyId route)
+// Get all digital keys (admin only)
+router.get('/admin', authenticate, authorize(['admin']), catchAsync(async (req, res) => {
+  const { page = 1, limit = 20, status, type, hotel, search } = req.query;
+  const skip = (page - 1) * limit;
+  
+  const filter = {};
+  if (status) filter.status = status;
+  if (type) filter.type = type;
+  if (hotel) filter.hotelId = hotel;
+  
+  // Add search functionality
+  if (search) {
+    filter.$or = [
+      { keyCode: { $regex: search, $options: 'i' } },
+      { 'bookingId.bookingNumber': { $regex: search, $options: 'i' } }
+    ];
+  }
+  
+  const keys = await DigitalKey.find(filter)
+    .populate('userId', 'firstName lastName email')
+    .populate('bookingId', 'bookingNumber checkIn checkOut')
+    .populate('roomId', 'number type floor')
+    .populate('hotelId', 'name address')
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(parseInt(limit));
+  
+  const total = await DigitalKey.countDocuments(filter);
+  
+  res.json({
+    success: true,
+    data: {
+      keys,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        totalItems: total,
+        hasNext: skip + keys.length < total,
+        hasPrev: page > 1
+      }
+    }
+  });
+}));
+
+// Get admin analytics for digital keys
+router.get('/admin/analytics', authenticate, authorize(['admin']), catchAsync(async (req, res) => {
+  const { timeRange = '30d' } = req.query;
+  
+  // Calculate date range
+  let startDate = new Date();
+  switch (timeRange) {
+    case '7d':
+      startDate.setDate(startDate.getDate() - 7);
+      break;
+    case '30d':
+      startDate.setDate(startDate.getDate() - 30);
+      break;
+    case '90d':
+      startDate.setDate(startDate.getDate() - 90);
+      break;
+    case '1y':
+      startDate.setFullYear(startDate.getFullYear() - 1);
+      break;
+    default:
+      startDate.setDate(startDate.getDate() - 30);
+  }
+  
+  const [
+    totalKeys,
+    activeKeys,
+    expiredKeys,
+    revokedKeys,
+    totalUses,
+    uniqueUsers,
+    keysByType,
+    keysByHotel,
+    usageTrends,
+    recentActivity,
+    topUsers
+  ] = await Promise.all([
+    // Total keys count
+    DigitalKey.countDocuments(),
+    
+    // Active keys count
+    DigitalKey.countDocuments({ 
+      status: 'active',
+      validUntil: { $gt: new Date() }
+    }),
+    
+    // Expired keys count
+    DigitalKey.countDocuments({ 
+      $or: [
+        { status: 'expired' },
+        { validUntil: { $lt: new Date() } }
+      ]
+    }),
+    
+    // Revoked keys count
+    DigitalKey.countDocuments({ status: 'revoked' }),
+    
+    // Total usage count
+    DigitalKey.aggregate([
+      { $group: { _id: null, total: { $sum: '$currentUses' } } }
+    ]),
+    
+    // Unique users count
+    DigitalKey.distinct('userId').then(users => users.length),
+    
+    // Keys by type
+    DigitalKey.aggregate([
+      { $group: { _id: '$type', count: { $sum: 1 } } }
+    ]),
+    
+    // Keys by hotel
+    DigitalKey.aggregate([
+      {
+        $lookup: {
+          from: 'hotels',
+          localField: 'hotelId',
+          foreignField: '_id',
+          as: 'hotel'
+        }
+      },
+      { $unwind: '$hotel' },
+      { 
+        $group: { 
+          _id: '$hotelId',
+          hotelName: { $first: '$hotel.name' },
+          count: { $sum: 1 } 
+        } 
+      }
+    ]),
+    
+    // Usage trends over time
+    DigitalKey.aggregate([
+      { 
+        $match: { 
+          createdAt: { $gte: startDate } 
+        } 
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' },
+            day: { $dayOfMonth: '$createdAt' }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } }
+    ]),
+    
+    // Recent activity
+    DigitalKey.aggregate([
+      { $unwind: '$accessLogs' },
+      { $sort: { 'accessLogs.timestamp': -1 } },
+      { $limit: 20 },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+      { $unwind: '$user' },
+      {
+        $lookup: {
+          from: 'hotels',
+          localField: 'hotelId',
+          foreignField: '_id',
+          as: 'hotel'
+        }
+      },
+      { $unwind: '$hotel' },
+      { $project: {
+        keyId: '$_id',
+        action: '$accessLogs.action',
+        timestamp: '$accessLogs.timestamp',
+        user: {
+          name: { $concat: ['$user.firstName', ' ', '$user.lastName'] },
+          email: '$user.email'
+        },
+        hotel: '$hotel.name',
+        deviceInfo: '$accessLogs.deviceInfo'
+      }}
+    ]),
+    
+    // Top users by key count
+    DigitalKey.aggregate([
+      {
+        $group: {
+          _id: '$userId',
+          keyCount: { $sum: 1 },
+          totalUses: { $sum: '$currentUses' }
+        }
+      },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'user'
+        }
+      },
+      { $unwind: '$user' },
+      {
+        $project: {
+          name: { $concat: ['$user.firstName', ' ', '$user.lastName'] },
+          email: '$user.email',
+          keyCount: 1,
+          totalUses: 1
+        }
+      },
+      { $sort: { keyCount: -1 } },
+      { $limit: 10 }
+    ])
+  ]);
+  
+  res.json({
+    success: true,
+    data: {
+      overview: {
+        totalKeys,
+        activeKeys,
+        expiredKeys,
+        revokedKeys,
+        totalUses: totalUses[0]?.total || 0,
+        uniqueUsers
+      },
+      breakdowns: {
+        byType: keysByType,
+        byHotel: keysByHotel
+      },
+      trends: {
+        usage: usageTrends,
+        timeRange
+      },
+      activity: {
+        recent: recentActivity,
+        topUsers
+      }
+    }
+  });
+}));
+
 // Get a specific digital key
 router.get('/:keyId', catchAsync(async (req, res) => {
   const digitalKey = await DigitalKey.findOne({
@@ -177,7 +432,7 @@ router.get('/:keyId', catchAsync(async (req, res) => {
   .populate('sharedWith.userId', 'name email');
   
   if (!digitalKey) {
-    throw new AppError('Digital key not found', 404);
+    throw new ApplicationError('Digital key not found', 404);
   }
   
   res.json({
@@ -194,20 +449,20 @@ router.post('/validate/:keyCode', catchAsync(async (req, res) => {
   const digitalKey = await DigitalKey.findByKeyCode(keyCode);
   
   if (!digitalKey) {
-    throw new AppError('Invalid key code', 404);
+    throw new ApplicationError('Invalid key code', 404);
   }
   
   if (!digitalKey.canBeUsed) {
-    throw new AppError('Key is not valid or has expired', 400);
+    throw new ApplicationError('Key is not valid or has expired', 400);
   }
   
   // Check PIN if required
   if (digitalKey.securitySettings.requirePin) {
     if (!pin) {
-      throw new AppError('PIN is required', 400);
+      throw new ApplicationError('PIN is required', 400);
     }
     if (digitalKey.securitySettings.pin !== pin) {
-      throw new AppError('Invalid PIN', 400);
+      throw new ApplicationError('Invalid PIN', 400);
     }
   }
   
@@ -242,11 +497,11 @@ router.post('/:keyId/share', validate(schemas.shareDigitalKey), catchAsync(async
   });
   
   if (!digitalKey) {
-    throw new AppError('Digital key not found', 404);
+    throw new ApplicationError('Digital key not found', 404);
   }
   
   if (!digitalKey.canBeShared) {
-    throw new AppError('This key cannot be shared', 400);
+    throw new ApplicationError('This key cannot be shared', 400);
   }
   
   // Find user by email if provided
@@ -287,7 +542,7 @@ router.delete('/:keyId/share/:userIdOrEmail', catchAsync(async (req, res) => {
   });
   
   if (!digitalKey) {
-    throw new AppError('Digital key not found', 404);
+    throw new ApplicationError('Digital key not found', 404);
   }
   
   await digitalKey.revokeShare(userIdOrEmail);
@@ -310,7 +565,7 @@ router.get('/:keyId/logs', catchAsync(async (req, res) => {
   }).populate('accessLogs.userId', 'name email');
   
   if (!digitalKey) {
-    throw new AppError('Digital key not found', 404);
+    throw new ApplicationError('Digital key not found', 404);
   }
   
   const logs = digitalKey.accessLogs
@@ -342,7 +597,7 @@ router.delete('/:keyId', catchAsync(async (req, res) => {
   });
   
   if (!digitalKey) {
-    throw new AppError('Digital key not found', 404);
+    throw new ApplicationError('Digital key not found', 404);
   }
   
   await digitalKey.revokeKey();
@@ -410,6 +665,231 @@ router.get('/stats/overview', catchAsync(async (req, res) => {
       recentActivity
     }
   });
+}));
+
+// Get admin activity logs for all digital keys
+router.get('/admin/activity-logs', authenticate, authorize(['admin']), catchAsync(async (req, res) => {
+  const {
+    page = 1,
+    limit = 50,
+    action,
+    userId,
+    timeRange = '30d'
+  } = req.query;
+
+  const skip = (page - 1) * limit;
+
+  // Calculate date range
+  let startDate = new Date();
+  switch (timeRange) {
+    case '1d':
+      startDate.setDate(startDate.getDate() - 1);
+      break;
+    case '7d':
+      startDate.setDate(startDate.getDate() - 7);
+      break;
+    case '30d':
+      startDate.setDate(startDate.getDate() - 30);
+      break;
+    case '90d':
+      startDate.setDate(startDate.getDate() - 90);
+      break;
+    default:
+      startDate.setDate(startDate.getDate() - 30);
+  }
+
+  // Build match conditions for aggregation
+  const matchConditions = {
+    'accessLogs.timestamp': { $gte: startDate }
+  };
+
+  if (action) {
+    matchConditions['accessLogs.action'] = action;
+  }
+
+  if (userId) {
+    matchConditions['accessLogs.userId'] = new mongoose.Types.ObjectId(userId);
+  }
+
+  // Aggregate all access logs from all digital keys
+  const pipeline = [
+    { $unwind: '$accessLogs' },
+    { $match: matchConditions },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'accessLogs.userId',
+        foreignField: '_id',
+        as: 'actorUser'
+      }
+    },
+    {
+      $lookup: {
+        from: 'users',
+        localField: 'userId',
+        foreignField: '_id',
+        as: 'keyOwner'
+      }
+    },
+    {
+      $lookup: {
+        from: 'rooms',
+        localField: 'roomId',
+        foreignField: '_id',
+        as: 'room'
+      }
+    },
+    {
+      $lookup: {
+        from: 'hotels',
+        localField: 'hotelId',
+        foreignField: '_id',
+        as: 'hotel'
+      }
+    },
+    {
+      $project: {
+        _id: '$accessLogs._id',
+        keyId: '$_id',
+        keyCode: '$keyCode',
+        keyType: '$type',
+        keyStatus: '$status',
+        action: '$accessLogs.action',
+        timestamp: '$accessLogs.timestamp',
+        deviceInfo: '$accessLogs.deviceInfo',
+        actor: {
+          _id: { $arrayElemAt: ['$actorUser._id', 0] },
+          name: { $arrayElemAt: ['$actorUser.name', 0] },
+          email: { $arrayElemAt: ['$actorUser.email', 0] },
+          role: { $arrayElemAt: ['$actorUser.role', 0] }
+        },
+        keyOwner: {
+          _id: { $arrayElemAt: ['$keyOwner._id', 0] },
+          name: { $arrayElemAt: ['$keyOwner.name', 0] },
+          email: { $arrayElemAt: ['$keyOwner.email', 0] }
+        },
+        room: {
+          _id: { $arrayElemAt: ['$room._id', 0] },
+          roomNumber: { $arrayElemAt: ['$room.roomNumber', 0] },
+          floor: { $arrayElemAt: ['$room.floor', 0] }
+        },
+        hotel: {
+          _id: { $arrayElemAt: ['$hotel._id', 0] },
+          name: { $arrayElemAt: ['$hotel.name', 0] }
+        }
+      }
+    },
+    { $sort: { timestamp: -1 } }
+  ];
+
+  // Get paginated results
+  const [logs, total] = await Promise.all([
+    DigitalKey.aggregate([
+      ...pipeline,
+      { $skip: skip },
+      { $limit: parseInt(limit) }
+    ]),
+    DigitalKey.aggregate([
+      ...pipeline,
+      { $count: 'total' }
+    ])
+  ]);
+
+  const totalCount = total[0]?.total || 0;
+
+  res.json({
+    success: true,
+    data: {
+      logs,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalCount / limit),
+        totalItems: totalCount,
+        hasNext: skip + logs.length < totalCount,
+        hasPrev: page > 1
+      }
+    }
+  });
+}));
+
+// Export admin digital keys data
+router.get('/admin/export', authenticate, authorize(['admin']), catchAsync(async (req, res) => {
+  const {
+    status,
+    type,
+    hotel,
+    format = 'csv'
+  } = req.query;
+
+  // Build query filters
+  const filters = {};
+  if (status && status !== 'all') filters.status = status;
+  if (type && type !== 'all') filters.type = type;
+  if (hotel && hotel !== 'all') filters.hotelId = hotel;
+
+  // Get all matching keys with populated data
+  const keys = await DigitalKey.find(filters)
+    .populate('userId', 'name email')
+    .populate('roomId', 'roomNumber floor type')
+    .populate('hotelId', 'name')
+    .populate('bookingId', 'bookingNumber')
+    .sort({ createdAt: -1 });
+
+  // Prepare data for export
+  const exportData = keys.map(key => ({
+    'Key Code': key.keyCode,
+    'Key Type': key.type,
+    'Status': key.status,
+    'Owner Name': key.userId?.name || 'N/A',
+    'Owner Email': key.userId?.email || 'N/A',
+    'Room Number': key.roomId?.roomNumber || 'N/A',
+    'Floor': key.roomId?.floor || 'N/A',
+    'Room Type': key.roomId?.type || 'N/A',
+    'Hotel': key.hotelId?.name || 'N/A',
+    'Booking Number': key.bookingId?.bookingNumber || 'N/A',
+    'Valid From': key.validFrom ? key.validFrom.toISOString() : 'N/A',
+    'Valid Until': key.validUntil ? key.validUntil.toISOString() : 'N/A',
+    'Max Uses': key.maxUses === -1 ? 'Unlimited' : key.maxUses,
+    'Current Uses': key.currentUses || 0,
+    'Last Used': key.lastUsedAt ? key.lastUsedAt.toISOString() : 'Never',
+    'Shared Count': key.sharedWith?.length || 0,
+    'Access Logs Count': key.accessLogs?.length || 0,
+    'Requires PIN': key.securitySettings?.requirePin ? 'Yes' : 'No',
+    'Sharing Allowed': key.securitySettings?.allowSharing ? 'Yes' : 'No',
+    'Created Date': key.createdAt.toISOString(),
+    'Updated Date': key.updatedAt.toISOString()
+  }));
+
+  if (format === 'csv') {
+    // Generate CSV
+    const headers = Object.keys(exportData[0] || {});
+    const csvContent = [
+      headers.join(','),
+      ...exportData.map(row =>
+        headers.map(header => {
+          const value = row[header];
+          // Escape commas and quotes in CSV
+          return typeof value === 'string' && (value.includes(',') || value.includes('"'))
+            ? `"${value.replace(/"/g, '""')}"`
+            : value;
+        }).join(',')
+      )
+    ].join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="digital-keys-export-${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(csvContent);
+  } else {
+    // For Excel format, we'll send JSON that can be processed client-side
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="digital-keys-export-${new Date().toISOString().split('T')[0]}.json"`);
+    res.json({
+      exportDate: new Date().toISOString(),
+      totalRecords: exportData.length,
+      filters: { status, type, hotel },
+      data: exportData
+    });
+  }
 }));
 
 export default router;

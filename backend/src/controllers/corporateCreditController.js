@@ -1,7 +1,7 @@
 import CorporateCredit from '../models/CorporateCredit.js';
 import CorporateCompany from '../models/CorporateCompany.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import APIFeatures from '../utils/apiFeatures.js';
 
 /**
@@ -40,7 +40,7 @@ export const createCreditTransaction = catchAsync(async (req, res, next) => {
   });
   
   if (!company) {
-    return next(new AppError('Corporate company not found or inactive', 404));
+    return next(new ApplicationError('Corporate company not found or inactive', 404));
   }
   
   const transactionData = {
@@ -154,7 +154,7 @@ export const getCreditTransaction = catchAsync(async (req, res, next) => {
   .populate('approvalDetails.approvedBy', 'name email');
   
   if (!transaction) {
-    return next(new AppError('Credit transaction not found', 404));
+    return next(new ApplicationError('Credit transaction not found', 404));
   }
   
   res.status(200).json({
@@ -203,11 +203,11 @@ export const approveCreditTransaction = catchAsync(async (req, res, next) => {
   });
   
   if (!transaction) {
-    return next(new AppError('Credit transaction not found', 404));
+    return next(new ApplicationError('Credit transaction not found', 404));
   }
   
   if (transaction.status !== 'pending') {
-    return next(new AppError('Only pending transactions can be approved', 400));
+    return next(new ApplicationError('Only pending transactions can be approved', 400));
   }
   
   await transaction.approve(req.user.id, req.body.notes);
@@ -267,7 +267,7 @@ export const rejectCreditTransaction = catchAsync(async (req, res, next) => {
   const { reason } = req.body;
   
   if (!reason) {
-    return next(new AppError('Rejection reason is required', 400));
+    return next(new ApplicationError('Rejection reason is required', 400));
   }
   
   const transaction = await CorporateCredit.findOne({
@@ -276,11 +276,11 @@ export const rejectCreditTransaction = catchAsync(async (req, res, next) => {
   });
   
   if (!transaction) {
-    return next(new AppError('Credit transaction not found', 404));
+    return next(new ApplicationError('Credit transaction not found', 404));
   }
   
   if (transaction.status !== 'pending') {
-    return next(new AppError('Only pending transactions can be rejected', 400));
+    return next(new ApplicationError('Only pending transactions can be rejected', 400));
   }
   
   await transaction.reject(req.user.id, reason);
@@ -404,7 +404,7 @@ export const getCompanyCreditSummary = catchAsync(async (req, res, next) => {
   });
   
   if (!company) {
-    return next(new AppError('Corporate company not found', 404));
+    return next(new ApplicationError('Corporate company not found', 404));
   }
   
   const creditSummary = await CorporateCredit.getCreditSummary(
@@ -476,7 +476,7 @@ export const bulkApproveCreditTransactions = catchAsync(async (req, res, next) =
   const { transactionIds, notes } = req.body;
   
   if (!transactionIds || !Array.isArray(transactionIds) || transactionIds.length === 0) {
-    return next(new AppError('Transaction IDs array is required', 400));
+    return next(new ApplicationError('Transaction IDs array is required', 400));
   }
   
   const results = {

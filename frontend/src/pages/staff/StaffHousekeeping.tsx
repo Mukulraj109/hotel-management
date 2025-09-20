@@ -4,21 +4,27 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { TaskCompletionModal, getDefaultSteps } from '../../components/staff/TaskCompletionModal';
-import { 
-  ClipboardCheck, 
-  Clock, 
-  CheckCircle, 
-  AlertTriangle, 
-  Play, 
-  Pause, 
-  MapPin, 
+import InventoryConsumptionForm from '../../components/staff/InventoryConsumptionForm';
+import {
+  ClipboardCheck,
+  Clock,
+  CheckCircle,
+  AlertTriangle,
+  Play,
+  Pause,
+  MapPin,
   User,
   RefreshCw,
   Calendar,
-  CheckSquare
+  CheckSquare,
+  Wifi,
+  WifiOff,
+  Package
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { housekeepingService, HousekeepingTask } from '../../services/housekeepingService';
+import { useRealTime } from '../../services/realTimeService';
+import { toast } from 'react-hot-toast';
 
 export default function StaffHousekeeping() {
   const { user } = useAuth();
@@ -28,10 +34,58 @@ export default function StaffHousekeeping() {
   const [updating, setUpdating] = useState(false);
   const [selectedTask, setSelectedTask] = useState<HousekeepingTask | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [showInventoryModal, setShowInventoryModal] = useState(false);
+  const [inventoryTaskId, setInventoryTaskId] = useState<string | null>(null);
+
+  // Real-time connection
+  const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
 
   useEffect(() => {
     fetchTasks();
   }, []);
+
+  // Real-time connection setup
+  useEffect(() => {
+    connect();
+    return () => {
+      disconnect();
+    };
+  }, [connect, disconnect]);
+
+  // Set up real-time event listeners
+  useEffect(() => {
+    if (!isConnected || !user?._id) return;
+    
+    const handleTaskAssigned = (data: any) => {
+      console.log('Real-time housekeeping task assigned:', data);
+      if (data.assignedToUserId === user._id) {
+        fetchTasks();
+        toast.success(`New housekeeping task assigned: ${data.title}!`);
+      }
+    };
+    
+    const handleTaskUpdate = (data: any) => {
+      console.log('Real-time housekeeping task updated:', data);
+      if (data.assignedToUserId === user._id) {
+        fetchTasks();
+        if (data.status === 'cancelled') {
+          toast.error(`Task cancelled: ${data.title}`);
+        } else {
+          toast.success(`Task updated: ${data.title}`);
+        }
+      }
+    };
+    
+    on('housekeeping:task_assigned', handleTaskAssigned);
+    on('housekeeping:task_updated', handleTaskUpdate);
+    on('housekeeping:status_changed', handleTaskUpdate);
+    
+    return () => {
+      off('housekeeping:task_assigned', handleTaskAssigned);
+      off('housekeeping:task_updated', handleTaskUpdate);
+      off('housekeeping:status_changed', handleTaskUpdate);
+    };
+  }, [isConnected, on, off, user?._id]);
 
   const fetchTasks = async () => {
     try {
@@ -140,6 +194,17 @@ export default function StaffHousekeeping() {
           <p className="text-gray-600">Manage your assigned room cleaning and maintenance tasks</p>
         </div>
         <div className="flex items-center space-x-3">
+          <div className={`flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+            isConnected 
+              ? 'bg-green-100 text-green-800' 
+              : 'bg-red-100 text-red-800'
+          }`}>
+            {isConnected ? (
+              <><Wifi className="w-3 h-3 mr-1" /> Live Updates</>
+            ) : (
+              <><WifiOff className="w-3 h-3 mr-1" /> Offline</>
+            )}
+          </div>
           <Button onClick={fetchTasks} variant="secondary" size="sm">
             <RefreshCw className="w-4 h-4 mr-2" />
             Refresh
@@ -275,15 +340,30 @@ export default function StaffHousekeeping() {
                           <span>Started {new Date(task.startedAt!).toLocaleTimeString()}</span>
                         </div>
                       </div>
-                      <Button 
-                        size="sm" 
-                        onClick={() => handleCompleteClick(task)}
-                        disabled={updating}
-                        className="bg-green-600 hover:bg-green-700"
-                      >
-                        <CheckCircle className="w-3 h-3 mr-1" />
-                        Complete
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setInventoryTaskId(task._id);
+                            setShowInventoryModal(true);
+                          }}
+                          disabled={updating}
+                          className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                        >
+                          <Package className="w-3 h-3 mr-1" />
+                          Log Items
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleCompleteClick(task)}
+                          disabled={updating}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          <CheckCircle className="w-3 h-3 mr-1" />
+                          Complete
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ))
@@ -348,6 +428,44 @@ export default function StaffHousekeeping() {
           steps={getDefaultSteps('housekeeping', selectedTask.taskType)}
           loading={updating}
         />
+      )}
+
+      {/* Inventory Consumption Modal */}
+      {showInventoryModal && inventoryTaskId && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-semibold">Log Inventory Consumption</h2>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowInventoryModal(false);
+                    setInventoryTaskId(null);
+                  }}
+                >
+                  Close
+                </Button>
+              </div>
+
+              <InventoryConsumptionForm
+                mode="housekeeping"
+                taskId={inventoryTaskId}
+                roomId={tasks.find(t => t._id === inventoryTaskId)?.roomId._id}
+                onSuccess={() => {
+                  setShowInventoryModal(false);
+                  setInventoryTaskId(null);
+                  toast.success('Inventory consumption logged successfully!');
+                  fetchTasks(); // Refresh tasks to show updated data
+                }}
+                onCancel={() => {
+                  setShowInventoryModal(false);
+                  setInventoryTaskId(null);
+                }}
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

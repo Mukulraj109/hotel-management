@@ -3,6 +3,7 @@ import TapeChart from '../models/TapeChart.js';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
 import User from '../models/User.js';
+import WaitingList from '../models/WaitingList.js';
 
 const { 
   RoomConfiguration, 
@@ -93,7 +94,7 @@ class TapeChartService {
   async getRoomStatusHistory(roomId, dateRange = {}) {
     try {
       const query = { roomId };
-      
+
       if (dateRange.startDate && dateRange.endDate) {
         query.date = {
           $gte: new Date(dateRange.startDate),
@@ -109,6 +110,121 @@ class TapeChartService {
     } catch (error) {
       throw new Error(`Failed to fetch room status history: ${error.message}`);
     }
+  }
+
+  async getAvailableRooms(hotelId, filters = {}) {
+    try {
+      const { checkIn, checkOut, roomType, floor, guestCount } = filters;
+
+      // Build room query
+      const roomQuery = { hotelId, isActive: true };
+      if (roomType) roomQuery.type = roomType;
+      if (floor) roomQuery.floor = floor;
+      if (guestCount) roomQuery.capacity = { $gte: guestCount };
+
+      // Get all rooms matching criteria
+      const rooms = await Room.find(roomQuery);
+
+      // If dates are provided, filter out rooms that are already booked
+      if (checkIn && checkOut) {
+        const startDate = new Date(checkIn);
+        const endDate = new Date(checkOut);
+
+        // Find rooms that are booked during this period
+        const bookedRoomIds = await Booking.aggregate([
+          {
+            $match: {
+              hotelId,
+              status: { $in: ['confirmed', 'checked_in'] },
+              $or: [
+                { checkIn: { $lte: endDate }, checkOut: { $gte: startDate } }
+              ]
+            }
+          },
+          {
+            $unwind: '$rooms'
+          },
+          {
+            $group: {
+              _id: '$rooms.roomId'
+            }
+          }
+        ]);
+
+        const bookedRoomIdsSet = new Set(bookedRoomIds.map(item => item._id.toString()));
+
+        // Filter out booked rooms and add assignment scores
+        const availableRooms = rooms
+          .filter(room => !bookedRoomIdsSet.has(room._id.toString()))
+          .map(room => ({
+            id: room._id,
+            roomNumber: room.roomNumber,
+            roomType: room.type,
+            floor: room.floor,
+            status: room.status,
+            features: room.amenities || [],
+            baseRate: room.currentRate || room.baseRate,
+            maxOccupancy: room.capacity,
+            bedType: room.bedType || 'Standard',
+            size: room.size || 300,
+            view: room.view,
+            lastCleaned: room.lastCleaned,
+            maintenanceNotes: room.maintenanceNotes,
+            assignmentScore: this.calculateAssignmentScore(room, filters)
+          }));
+
+        return availableRooms;
+      }
+
+      // If no dates provided, return all rooms with status info
+      return rooms.map(room => ({
+        id: room._id,
+        roomNumber: room.roomNumber,
+        roomType: room.type,
+        floor: room.floor,
+        status: room.status,
+        features: room.amenities || [],
+        baseRate: room.currentRate || room.baseRate,
+        maxOccupancy: room.capacity,
+        bedType: room.bedType || 'Standard',
+        size: room.size || 300,
+        view: room.view,
+        lastCleaned: room.lastCleaned,
+        maintenanceNotes: room.maintenanceNotes,
+        assignmentScore: this.calculateAssignmentScore(room, filters)
+      }));
+
+    } catch (error) {
+      throw new Error(`Failed to fetch available rooms: ${error.message}`);
+    }
+  }
+
+  calculateAssignmentScore(room, filters) {
+    let score = 50; // Base score
+
+    // Room type match
+    if (filters.roomType && room.type === filters.roomType) {
+      score += 30;
+    }
+
+    // Capacity match
+    if (filters.guestCount && room.capacity >= filters.guestCount) {
+      score += 20;
+    }
+
+    // Floor preference
+    if (filters.floor && room.floor === filters.floor) {
+      score += 10;
+    }
+
+    // Room condition boost
+    if (room.status === 'clean') score += 5;
+    if (room.status === 'maintenance' || room.status === 'dirty') score -= 20;
+
+    // Higher floor rooms get slight boost
+    if (room.floor >= 3) score += 5;
+
+    return Math.max(0, Math.min(100, score));
   }
 
   // Room Block Management
@@ -540,9 +656,9 @@ class TapeChartService {
 
       console.log(`🚀 TAPE CHART DEBUG - Found ${allBookings.length} total bookings in date range`);
       
-      // Filter bookings by status in application logic
+      // Filter bookings by status in application logic - EXCLUDE checked-out and cancelled bookings from TapeChart
       const bookings = allBookings.filter(booking => {
-        const isValidStatus = ['confirmed', 'checked_in', 'checked_out', 'pending', 'modified', 'cancelled'].includes(booking.status);
+        const isValidStatus = ['confirmed', 'checked_in', 'pending', 'modified'].includes(booking.status);
         console.log(`🚀 TAPE CHART DEBUG - Booking ${booking._id} (${booking.userId?.name}) status: ${booking.status}, valid: ${isValidStatus}`);
         return isValidStatus;
       });
@@ -1270,8 +1386,8 @@ class TapeChartService {
         maintenanceRooms: (roomSummary.find(r => r._id === 'maintenance')?.count || 0) + (roomSummary.find(r => r._id === 'out_of_order')?.count || 0),
         dirtyRooms: roomSummary.find(r => r._id === 'dirty')?.count || 0,
         occupancyRate: 0,
-        adr: 12500, // Mock ADR
-        revpar: 8750 // Mock RevPAR
+        adr: await this.calculateADR(hotelId, new Date()),
+        revpar: await this.calculateRevPAR(hotelId, new Date())
       };
 
       summary.occupancyRate = ((summary.occupiedRooms + summary.reservedRooms) / summary.totalRooms) * 100;
@@ -1281,7 +1397,7 @@ class TapeChartService {
         roomBlocks: {
           activeBlocks,
           blockedRooms: blockedRooms[0]?.totalBlocked || 0,
-          upcomingReleases: 5 // Mock data
+          upcomingReleases: await this.getUpcomingReleases(hotelId, new Date())
         },
         reservations: {
           totalReservations: todayBookings.length,
@@ -1291,7 +1407,7 @@ class TapeChartService {
         },
         waitlist: {
           totalOnWaitlist: waitlistCount,
-          availableMatches: Math.floor(waitlistCount * 0.3) // Mock calculation
+          availableMatches: await this.getAvailableWaitlistMatches(hotelId, new Date())
         },
         alerts: [
           {
@@ -1543,6 +1659,342 @@ class TapeChartService {
       wakeUpCall: specialRequests.includes('wake') || specialRequests.includes('call'),
       newspaper: specialRequests.includes('newspaper') || specialRequests.includes('paper')
     };
+  }
+
+  // Dashboard Data Generation
+  async generateTapeChartDashboard(hotelId) {
+    try {
+      const today = new Date();
+      const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+      const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+
+      // Get all rooms for the hotel
+      const rooms = await Room.find({ hotelId, isActive: true });
+
+      // Get today's bookings
+      const bookings = await Booking.find({
+        hotelId,
+        $or: [
+          { checkIn: { $lte: endOfDay }, checkOut: { $gte: startOfDay } },
+          { status: { $in: ['confirmed', 'checked_in'] } }
+        ]
+      }).populate('rooms.roomId');
+
+      // Calculate room statistics
+      const totalRooms = rooms.length;
+      const roomsByStatus = rooms.reduce((acc, room) => {
+        acc[room.status] = (acc[room.status] || 0) + 1;
+        return acc;
+      }, {});
+
+      const occupiedRooms = roomsByStatus.occupied || 0;
+      const availableRooms = roomsByStatus.vacant || 0;
+      const maintenanceRooms = roomsByStatus.maintenance || 0;
+      const dirtyRooms = roomsByStatus.dirty || 0;
+      const blockedRooms = roomsByStatus.blocked || 0;
+
+      const occupancyRate = totalRooms > 0 ? (occupiedRooms / totalRooms) * 100 : 0;
+
+      // Calculate revenue metrics
+      const totalRevenue = bookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
+      const totalRoomNights = bookings.reduce((sum, booking) => sum + (booking.nights || 0), 0);
+      const adr = totalRoomNights > 0 ? totalRevenue / totalRoomNights : 0;
+      const revpar = totalRooms > 0 ? totalRevenue / totalRooms : 0;
+
+      // Get room blocks
+      const roomBlocks = await RoomBlock.find({
+        hotelId,
+        status: 'active',
+        startDate: { $lte: endOfDay },
+        endDate: { $gte: startOfDay }
+      });
+
+      // Reservation statistics
+      const reservationsToday = bookings.filter(b =>
+        new Date(b.checkIn).toDateString() === today.toDateString()
+      );
+
+      const vipReservations = bookings.filter(b =>
+        b.guestDetails?.vipStatus || b.totalAmount > 20000
+      );
+
+      // Generate alerts
+      const alerts = [];
+      if (occupancyRate > 90) {
+        alerts.push({
+          type: 'occupancy',
+          message: 'High occupancy rate - consider overbooking management',
+          severity: 'warning',
+          count: 1
+        });
+      }
+      if (maintenanceRooms > totalRooms * 0.1) {
+        alerts.push({
+          type: 'maintenance',
+          message: `${maintenanceRooms} rooms under maintenance`,
+          severity: 'info',
+          count: maintenanceRooms
+        });
+      }
+      if (dirtyRooms > 5) {
+        alerts.push({
+          type: 'housekeeping',
+          message: `${dirtyRooms} rooms need cleaning`,
+          severity: 'warning',
+          count: dirtyRooms
+        });
+      }
+
+      // Recent activity from real data sources
+      const recentActivity = await this.getRecentActivity(hotelId);
+
+      return {
+        summary: {
+          totalRooms,
+          availableRooms,
+          occupiedRooms,
+          reservedRooms: bookings.filter(b => b.status === 'confirmed').length,
+          maintenanceRooms,
+          dirtyRooms,
+          occupancyRate: Math.round(occupancyRate * 100) / 100,
+          adr: Math.round(adr),
+          revpar: Math.round(revpar)
+        },
+        roomBlocks: {
+          activeBlocks: roomBlocks.length,
+          blockedRooms,
+          upcomingReleases: roomBlocks.filter(block =>
+            new Date(block.endDate) <= new Date(Date.now() + 24 * 60 * 60 * 1000)
+          ).length
+        },
+        reservations: {
+          totalReservations: bookings.length,
+          vipReservations: vipReservations.length,
+          upgradesAvailable: await this.getAvailableUpgrades(hotelId, new Date()),
+          specialRequests: bookings.filter(b => b.specialRequests?.length > 0).length
+        },
+        waitlist: {
+          totalOnWaitlist: await this.getWaitlistCount(hotelId),
+          availableMatches: await this.getAvailableWaitlistMatches(hotelId, new Date())
+        },
+        alerts,
+        recentActivity
+      };
+
+    } catch (error) {
+      console.error('Error generating dashboard data:', error);
+      throw error;
+    }
+  }
+
+  // Helper methods for real data calculations
+  async getUpcomingReleases(hotelId, date) {
+    try {
+      const sevenDaysFromNow = new Date(date);
+      sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+
+      // Count room blocks that will be released in the next 7 days
+      const { RoomBlock } = TapeChart;
+      const upcomingReleases = await RoomBlock.countDocuments({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        releaseDate: { $gte: date, $lte: sevenDaysFromNow },
+        status: 'active'
+      });
+
+      return upcomingReleases;
+    } catch (error) {
+      console.error('Error getting upcoming releases:', error);
+      return 0;
+    }
+  }
+
+  async getWaitlistCount(hotelId) {
+    try {
+      const count = await WaitingList.countDocuments({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        status: { $in: ['waiting', 'active'] }
+      });
+      return count;
+    } catch (error) {
+      console.error('Error getting waitlist count:', error);
+      return 0;
+    }
+  }
+
+  async getAvailableWaitlistMatches(hotelId, date) {
+    try {
+      // Get available rooms for the requested dates
+      const waitlistEntries = await WaitingList.find({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        status: { $in: ['waiting', 'active'] }
+      });
+
+      let matches = 0;
+      for (const entry of waitlistEntries) {
+        // Check if there are available rooms for their preferred dates
+        const availableRooms = await Room.countDocuments({
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          roomType: entry.roomType,
+          status: 'available'
+        });
+
+        if (availableRooms > 0) {
+          matches++;
+        }
+      }
+
+      return matches;
+    } catch (error) {
+      console.error('Error getting available waitlist matches:', error);
+      return 0;
+    }
+  }
+
+  async getAvailableUpgrades(hotelId, date) {
+    try {
+      // Get current bookings for today that could be upgraded
+      const todayBookings = await Booking.find({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        checkIn: { $lte: date },
+        checkOut: { $gt: date },
+        status: { $in: ['confirmed', 'checked_in'] }
+      }).populate('roomId', 'roomType');
+
+      // Get available higher-tier rooms for upgrades
+      const availableUpgradeRooms = await Room.find({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        status: 'available'
+      });
+
+      let upgradeCount = 0;
+      for (const booking of todayBookings) {
+        const currentRoomType = booking.roomId?.roomType;
+
+        // Check if there are available rooms of higher tier
+        const upgradeAvailable = availableUpgradeRooms.some(room => {
+          return this.isUpgrade(currentRoomType, room.roomType);
+        });
+
+        if (upgradeAvailable) {
+          upgradeCount++;
+        }
+      }
+
+      return upgradeCount;
+    } catch (error) {
+      console.error('Error getting available upgrades:', error);
+      return 0;
+    }
+  }
+
+  // Helper method to determine if one room type is an upgrade from another
+  isUpgrade(currentType, newType) {
+    const hierarchy = {
+      'Standard Room': 1,
+      'Deluxe Room': 2,
+      'Executive Room': 3,
+      'Deluxe Suite': 4,
+      'Presidential Suite': 5
+    };
+
+    return (hierarchy[newType] || 0) > (hierarchy[currentType] || 0);
+  }
+
+  async calculateADR(hotelId, date) {
+    try {
+      // Average Daily Rate calculation - total room revenue / occupied rooms
+      const startDate = new Date(date);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(date);
+      endDate.setHours(23, 59, 59, 999);
+
+      const bookings = await Booking.find({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        checkIn: { $lte: endDate },
+        checkOut: { $gt: startDate },
+        status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+      });
+
+      if (bookings.length === 0) return 0;
+
+      const totalRevenue = bookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
+      const totalRoomNights = bookings.reduce((sum, booking) => sum + (booking.nights || 1), 0);
+
+      return totalRoomNights > 0 ? Math.round((totalRevenue / totalRoomNights) * 100) / 100 : 0;
+    } catch (error) {
+      console.error('Error calculating ADR:', error);
+      return 0;
+    }
+  }
+
+  async calculateRevPAR(hotelId, date) {
+    try {
+      // Revenue Per Available Room - total room revenue / total available rooms
+      const adr = await this.calculateADR(hotelId, date);
+
+      const totalRooms = await Room.countDocuments({
+        hotelId: new mongoose.Types.ObjectId(hotelId)
+      });
+
+      const startDate = new Date(date);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(date);
+      endDate.setHours(23, 59, 59, 999);
+
+      const occupiedRooms = await Booking.countDocuments({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        checkIn: { $lte: endDate },
+        checkOut: { $gt: startDate },
+        status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+      });
+
+      const occupancyRate = totalRooms > 0 ? occupiedRooms / totalRooms : 0;
+      return Math.round(adr * occupancyRate * 100) / 100;
+    } catch (error) {
+      console.error('Error calculating RevPAR:', error);
+      return 0;
+    }
+  }
+
+  async getRecentActivity(hotelId) {
+    try {
+      // Get recent bookings and room status changes
+      const recentBookings = await Booking.find({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        createdAt: { $gte: new Date(Date.now() - 2 * 60 * 60 * 1000) } // Last 2 hours
+      }).sort({ createdAt: -1 }).limit(5).populate('userId', 'username email');
+
+      const activities = [];
+
+      for (const booking of recentBookings) {
+        activities.push({
+          time: booking.createdAt.toISOString(),
+          action: 'New Booking',
+          details: `Booking ${booking.bookingId || booking._id} created${booking.roomNumber ? ` for room ${booking.roomNumber}` : ''}`,
+          user: booking.userId?.username || booking.userId?.email || 'Guest'
+        });
+      }
+
+      // Add fallback if no recent activity
+      if (activities.length === 0) {
+        activities.push({
+          time: new Date().toISOString(),
+          action: 'System Status',
+          details: 'No recent activity in the last 2 hours',
+          user: 'System'
+        });
+      }
+
+      return activities.slice(0, 3); // Return top 3 activities
+    } catch (error) {
+      console.error('Error getting recent activity:', error);
+      return [{
+        time: new Date().toISOString(),
+        action: 'System Status',
+        details: 'Unable to load recent activity',
+        user: 'System'
+      }];
+    }
   }
 }
 

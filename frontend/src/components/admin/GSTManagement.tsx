@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable } from '../dashboard/DataTable';
 import { formatCurrency, formatDate } from '../../utils/formatters';
+import { api } from '../../services/api';
 
 interface GSTCalculationResult {
   baseAmount: number;
@@ -93,9 +94,8 @@ const GSTManagement: React.FC = () => {
   const { data: stateCodes, isLoading: stateCodesLoading } = useQuery<{ data: { stateCodes: StateCode[] } }>({
     queryKey: ['stateCodes'],
     queryFn: async () => {
-      const response = await fetch('/api/v1/corporate/gst/state-codes');
-      if (!response.ok) throw new Error('Failed to fetch state codes');
-      return response.json();
+      const response = await api.get('/corporate/gst/state-codes');
+      return response.data;
     }
   });
 
@@ -103,9 +103,8 @@ const GSTManagement: React.FC = () => {
   const { data: bookings } = useQuery({
     queryKey: ['corporateBookings'],
     queryFn: async () => {
-      const response = await fetch('/api/v1/bookings?type=corporate&limit=100');
-      if (!response.ok) throw new Error('Failed to fetch bookings');
-      return response.json();
+      const response = await api.get('/bookings?type=corporate&limit=100');
+      return response.data;
     }
   });
 
@@ -125,13 +124,8 @@ const GSTManagement: React.FC = () => {
             companyState: data.companyState
           };
 
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!response.ok) throw new Error('Failed to calculate GST');
-      return response.json();
+      const response = await api.post(endpoint.replace('/api/v1', ''), payload);
+      return response.data;
     },
     onSuccess: (result) => {
       const calculation = calculatorForm.calculationType === 'reverse' 
@@ -148,13 +142,8 @@ const GSTManagement: React.FC = () => {
   // Calculate booking GST mutation
   const calculateBookingGSTMutation = useMutation({
     mutationFn: async ({ items, gstDetails }: { items: InvoiceItem[]; gstDetails: GSTDetails }) => {
-      const response = await fetch('/api/v1/corporate/gst/calculate-booking', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items, gstDetails })
-      });
-      if (!response.ok) throw new Error('Failed to calculate booking GST');
-      return response.json();
+      const response = await api.post('/corporate/gst/calculate-booking', { items, gstDetails });
+      return response.data;
     },
     onSuccess: (result) => {
       setCalculationResult(result.data.gstCalculation);
@@ -168,13 +157,8 @@ const GSTManagement: React.FC = () => {
   // Validate GST number mutation
   const validateGSTMutation = useMutation({
     mutationFn: async (gstNumber: string) => {
-      const response = await fetch('/api/v1/corporate/gst/validate-number', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ gstNumber })
-      });
-      if (!response.ok) throw new Error('Failed to validate GST number');
-      return response.json();
+      const response = await api.post('/corporate/gst/validate-number', { gstNumber });
+      return response.data;
     },
     onSuccess: (result) => {
       setGstValidationForm(prev => ({ ...prev, validationResult: result.data }));
@@ -189,9 +173,8 @@ const GSTManagement: React.FC = () => {
   // Generate invoice data mutation
   const generateInvoiceMutation = useMutation({
     mutationFn: async (bookingId: string) => {
-      const response = await fetch(`/api/v1/corporate/gst/generate-invoice-data/${bookingId}`);
-      if (!response.ok) throw new Error('Failed to generate invoice data');
-      return response.json();
+      const response = await api.get(`/corporate/gst/generate-invoice-data/${bookingId}`);
+      return response.data;
     },
     onSuccess: (result) => {
       setInvoiceData(result.data);
@@ -206,13 +189,8 @@ const GSTManagement: React.FC = () => {
   // Update booking GST details mutation
   const updateBookingGSTMutation = useMutation({
     mutationFn: async ({ bookingId, gstDetails }: { bookingId: string; gstDetails: any }) => {
-      const response = await fetch(`/api/v1/corporate/gst/update-booking-gst/${bookingId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(gstDetails)
-      });
-      if (!response.ok) throw new Error('Failed to update booking GST details');
-      return response.json();
+      const response = await api.patch(`/corporate/gst/update-booking-gst/${bookingId}`, gstDetails);
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['corporateBookings'] });
@@ -290,32 +268,46 @@ const GSTManagement: React.FC = () => {
 
   const bookingColumns = [
     {
+      key: 'bookingNumber',
       header: 'Booking Number',
-      accessor: (booking: any) => booking.bookingNumber || 'N/A'
+      render: (value: any, booking: any) => (
+        <span className="font-medium text-gray-900">{booking.bookingNumber || 'N/A'}</span>
+      )
     },
     {
+      key: 'company',
       header: 'Company',
-      accessor: (booking: any) => booking.corporateBooking?.corporateCompanyId?.name || 'N/A'
+      render: (value: any, booking: any) => (
+        <span className="text-gray-700">{booking.corporateBooking?.corporateCompanyId?.name || 'N/A'}</span>
+      )
     },
     {
+      key: 'amount',
       header: 'Amount',
-      accessor: (booking: any) => formatCurrency(booking.totalAmount || 0)
+      render: (value: any, booking: any) => (
+        <span className="font-semibold text-gray-900">{formatCurrency(booking.totalAmount || 0)}</span>
+      )
     },
     {
+      key: 'gstStatus',
       header: 'GST Status',
-      accessor: (booking: any) => (
+      render: (value: any, booking: any) => (
         <Badge className={booking.gstDetails?.isGstApplicable ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
           {booking.gstDetails?.isGstApplicable ? 'GST Applied' : 'No GST'}
         </Badge>
       )
     },
     {
+      key: 'date',
       header: 'Date',
-      accessor: (booking: any) => formatDate(booking.createdAt)
+      render: (value: any, booking: any) => (
+        <span className="text-sm text-gray-600">{formatDate(booking.createdAt)}</span>
+      )
     },
     {
+      key: 'actions',
       header: 'Actions',
-      accessor: (booking: any) => (
+      render: (value: any, booking: any) => (
         <div className="flex space-x-2">
           <Button
             variant="outline"
@@ -348,25 +340,27 @@ const GSTManagement: React.FC = () => {
         </TabsList>
 
         <TabsContent value="calculator" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>GST Calculator</CardTitle>
+          <Card className="shadow-sm">
+            <CardHeader className="bg-gray-50 border-b">
+              <CardTitle className="text-xl font-semibold text-gray-900">GST Calculator</CardTitle>
+              <p className="text-sm text-gray-600 mt-1">Calculate GST amounts for forward and reverse calculations</p>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6 p-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Calculation Type</label>
-                  <Select
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Calculation Type</label>
+                  <select
                     value={calculatorForm.calculationType}
-                    onValueChange={(value) => setCalculatorForm(prev => ({ ...prev, calculationType: value }))}
+                    onChange={(e) => setCalculatorForm(prev => ({ ...prev, calculationType: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                   >
                     <option value="forward">Forward (Base Amount → Total)</option>
                     <option value="reverse">Reverse (Total Amount → Base)</option>
-                  </Select>
+                  </select>
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium mb-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
                     {calculatorForm.calculationType === 'forward' ? 'Base Amount' : 'Total Amount (Inc. GST)'}
                   </label>
                   <Input
@@ -375,66 +369,72 @@ const GSTManagement: React.FC = () => {
                     value={calculatorForm.amount}
                     onChange={(e) => setCalculatorForm(prev => ({ ...prev, amount: e.target.value }))}
                     placeholder="Enter amount"
+                    className="w-full"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">GST Rate (%)</label>
-                  <Select
+                  <label className="block text-sm font-medium text-gray-700 mb-2">GST Rate (%)</label>
+                  <select
                     value={calculatorForm.gstRate}
-                    onValueChange={(value) => setCalculatorForm(prev => ({ ...prev, gstRate: value }))}
+                    onChange={(e) => setCalculatorForm(prev => ({ ...prev, gstRate: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                   >
                     <option value="5">5%</option>
                     <option value="12">12%</option>
                     <option value="18">18%</option>
                     <option value="28">28%</option>
-                  </Select>
+                  </select>
                 </div>
 
                 {calculatorForm.calculationType === 'forward' && (
                   <>
                     <div>
-                      <label className="block text-sm font-medium mb-1">Place of Supply</label>
-                      <Select
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Place of Supply</label>
+                      <select
                         value={calculatorForm.placeOfSupply}
-                        onValueChange={(value) => setCalculatorForm(prev => ({ ...prev, placeOfSupply: value }))}
+                        onChange={(e) => setCalculatorForm(prev => ({ ...prev, placeOfSupply: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                       >
                         {stateOptions.map((state) => (
                           <option key={state.code} value={state.name}>
                             {state.name}
                           </option>
                         ))}
-                      </Select>
+                      </select>
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium mb-1">Company State</label>
-                      <Select
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Company State</label>
+                      <select
                         value={calculatorForm.companyState}
-                        onValueChange={(value) => setCalculatorForm(prev => ({ ...prev, companyState: value }))}
+                        onChange={(e) => setCalculatorForm(prev => ({ ...prev, companyState: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                       >
                         {stateOptions.map((state) => (
                           <option key={state.code} value={state.name}>
                             {state.name}
                           </option>
                         ))}
-                      </Select>
+                      </select>
                     </div>
                   </>
                 )}
               </div>
 
-              <Button 
-                onClick={calculateGST} 
-                disabled={calculateGSTMutation.isPending}
-                className="w-full md:w-auto"
-              >
-                {calculateGSTMutation.isPending ? 'Calculating...' : 'Calculate GST'}
-              </Button>
+              <div className="flex justify-center mt-6">
+                <Button
+                  onClick={calculateGST}
+                  disabled={calculateGSTMutation.isPending}
+                  className="w-full md:w-auto px-8 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md shadow-sm"
+                >
+                  {calculateGSTMutation.isPending ? 'Calculating...' : 'Calculate GST'}
+                </Button>
+              </div>
 
               {calculationResult && (
-                <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                  <h3 className="text-lg font-semibold mb-4">GST Calculation Result</h3>
+                <div className="mt-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                  <h3 className="text-lg font-semibold mb-4 text-gray-900">📊 GST Calculation Result</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
                       <div className="text-sm text-gray-600">Base Amount</div>
@@ -477,13 +477,14 @@ const GSTManagement: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="booking-calculator" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Booking GST Calculator</CardTitle>
+          <Card className="shadow-sm">
+            <CardHeader className="bg-gray-50 border-b">
+              <CardTitle className="text-xl font-semibold text-gray-900">Booking GST Calculator</CardTitle>
+              <p className="text-sm text-gray-600 mt-1">Calculate GST for multiple booking items and generate detailed invoices</p>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6 p-6">
               <div className="space-y-4">
-                <h4 className="font-medium">Invoice Items</h4>
+                <h4 className="font-semibold text-gray-900 text-lg">📝 Invoice Items</h4>
                 {bookingItems.map((item, index) => (
                   <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4 border rounded-lg">
                     <div className="md:col-span-2">
@@ -531,44 +532,47 @@ const GSTManagement: React.FC = () => {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t">
                 <div>
-                  <label className="block text-sm font-medium mb-1">GST Rate (%)</label>
-                  <Select
+                  <label className="block text-sm font-medium text-gray-700 mb-2">GST Rate (%)</label>
+                  <select
                     value={bookingGSTDetails.gstRate.toString()}
-                    onValueChange={(value) => setBookingGSTDetails(prev => ({ ...prev, gstRate: parseFloat(value) }))}
+                    onChange={(e) => setBookingGSTDetails(prev => ({ ...prev, gstRate: parseFloat(e.target.value) }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                   >
                     <option value="5">5%</option>
                     <option value="12">12%</option>
                     <option value="18">18%</option>
                     <option value="28">28%</option>
-                  </Select>
+                  </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Place of Supply</label>
-                  <Select
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Place of Supply</label>
+                  <select
                     value={bookingGSTDetails.placeOfSupply}
-                    onValueChange={(value) => setBookingGSTDetails(prev => ({ ...prev, placeOfSupply: value }))}
+                    onChange={(e) => setBookingGSTDetails(prev => ({ ...prev, placeOfSupply: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                   >
                     {stateOptions.map((state) => (
                       <option key={state.code} value={state.name}>
                         {state.name}
                       </option>
                     ))}
-                  </Select>
+                  </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Company State</label>
-                  <Select
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Company State</label>
+                  <select
                     value={bookingGSTDetails.companyState}
-                    onValueChange={(value) => setBookingGSTDetails(prev => ({ ...prev, companyState: value }))}
+                    onChange={(e) => setBookingGSTDetails(prev => ({ ...prev, companyState: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                   >
                     {stateOptions.map((state) => (
                       <option key={state.code} value={state.name}>
                         {state.name}
                       </option>
                     ))}
-                  </Select>
+                  </select>
                 </div>
               </div>
 
@@ -583,13 +587,15 @@ const GSTManagement: React.FC = () => {
                 <label htmlFor="gstApplicable" className="text-sm">GST Applicable</label>
               </div>
 
-              <Button 
-                onClick={calculateBookingGST} 
-                disabled={calculateBookingGSTMutation.isPending}
-                className="w-full md:w-auto"
-              >
-                {calculateBookingGSTMutation.isPending ? 'Calculating...' : 'Calculate Booking GST'}
-              </Button>
+              <div className="flex justify-center mt-6">
+                <Button
+                  onClick={calculateBookingGST}
+                  disabled={calculateBookingGSTMutation.isPending}
+                  className="w-full md:w-auto px-8 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-md shadow-sm"
+                >
+                  {calculateBookingGSTMutation.isPending ? 'Calculating...' : 'Calculate Booking GST'}
+                </Button>
+              </div>
 
               {calculationResult && (
                 <div className="mt-6 p-4 bg-green-50 rounded-lg">
@@ -615,11 +621,12 @@ const GSTManagement: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="validator" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>GST Number Validator</CardTitle>
+          <Card className="shadow-sm">
+            <CardHeader className="bg-gray-50 border-b">
+              <CardTitle className="text-xl font-semibold text-gray-900">GST Number Validator</CardTitle>
+              <p className="text-sm text-gray-600 mt-1">Validate GST numbers and retrieve company information</p>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6 p-6">
               <div className="flex space-x-4">
                 <div className="flex-1">
                   <Input
@@ -684,11 +691,12 @@ const GSTManagement: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="invoices" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Corporate Bookings - Invoice Generation</CardTitle>
+          <Card className="shadow-sm">
+            <CardHeader className="bg-gray-50 border-b">
+              <CardTitle className="text-xl font-semibold text-gray-900">Corporate Bookings - Invoice Generation</CardTitle>
+              <p className="text-sm text-gray-600 mt-1">Generate GST invoices for corporate bookings</p>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-0">
               <DataTable
                 columns={bookingColumns}
                 data={bookings?.data?.filter((booking: any) => 

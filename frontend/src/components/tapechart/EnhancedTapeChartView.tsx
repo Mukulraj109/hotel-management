@@ -14,7 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/utils/toast';
 import {
   CalendarIcon, ChevronLeft, ChevronRight, Filter, Settings, Maximize2,
-  User, Clock, Bed, DollarSign, AlertTriangle, CheckCircle,
+  User, Clock, Bed, IndianRupee, AlertTriangle, CheckCircle,
   MoreHorizontal, Move, Copy, Trash2, Bell, Phone, Mail,
   Zap, Star, Crown, UserCheck, UserX, Coffee, Wifi, Users,
   UserPlus, Building2, Plane, Heart, Baby, Building, Briefcase,

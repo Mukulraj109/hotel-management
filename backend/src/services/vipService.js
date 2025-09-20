@@ -1,7 +1,7 @@
 import VIPGuest from '../models/VIPGuest.js';
 import User from '../models/User.js';
 import Booking from '../models/Booking.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import mongoose from 'mongoose';
 
 class VIPService {
@@ -18,7 +18,7 @@ class VIPService {
 
       return vipGuest;
     } catch (error) {
-      throw new AppError('Failed to check VIP status', 500);
+      throw new ApplicationError('Failed to check VIP status', 500);
     }
   }
 
@@ -34,13 +34,13 @@ class VIPService {
       });
 
       if (existingVIP) {
-        throw new AppError('Guest is already in VIP program', 400);
+        throw new ApplicationError('Guest is already in VIP program', 400);
       }
 
       // Validate guest exists
       const guest = await User.findById(vipData.guestId);
       if (!guest || guest.role !== 'guest') {
-        throw new AppError('Guest not found', 404);
+        throw new ApplicationError('Guest not found', 404);
       }
 
       // Auto-calculate VIP level if not provided
@@ -69,7 +69,7 @@ class VIPService {
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to add guest to VIP program', 500);
+      throw new ApplicationError('Failed to add guest to VIP program', 500);
     }
   }
 
@@ -85,7 +85,7 @@ class VIPService {
       );
 
       if (!vipGuest) {
-        throw new AppError('VIP guest not found', 404);
+        throw new ApplicationError('VIP guest not found', 404);
       }
 
       await vipGuest.populate([
@@ -99,7 +99,7 @@ class VIPService {
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to update VIP guest', 500);
+      throw new ApplicationError('Failed to update VIP guest', 500);
     }
   }
 
@@ -119,7 +119,7 @@ class VIPService {
       );
 
       if (!vipGuest) {
-        throw new AppError('VIP guest not found', 404);
+        throw new ApplicationError('VIP guest not found', 404);
       }
 
       await vipGuest.populate([
@@ -132,7 +132,7 @@ class VIPService {
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to remove guest from VIP program', 500);
+      throw new ApplicationError('Failed to remove guest from VIP program', 500);
     }
   }
 
@@ -195,7 +195,7 @@ class VIPService {
         }
       };
     } catch (error) {
-      throw new AppError('Failed to fetch VIP guests', 500);
+      throw new ApplicationError('Failed to fetch VIP guests', 500);
     }
   }
 
@@ -207,7 +207,7 @@ class VIPService {
       const stats = await VIPGuest.getVIPStatistics(hotelId);
       return stats;
     } catch (error) {
-      throw new AppError('Failed to fetch VIP statistics', 500);
+      throw new ApplicationError('Failed to fetch VIP statistics', 500);
     }
   }
 
@@ -237,7 +237,7 @@ class VIPService {
 
       return vipGuest;
     } catch (error) {
-      throw new AppError('Failed to update VIP qualification', 500);
+      throw new ApplicationError('Failed to update VIP qualification', 500);
     }
   }
 
@@ -249,7 +249,7 @@ class VIPService {
       const expiredCount = await VIPGuest.autoExpireVIPs(hotelId);
       return expiredCount;
     } catch (error) {
-      throw new AppError('Failed to auto-expire VIPs', 500);
+      throw new ApplicationError('Failed to auto-expire VIPs', 500);
     }
   }
 
@@ -261,7 +261,7 @@ class VIPService {
       const expiringVIPs = await VIPGuest.getExpiringVIPs(hotelId, days);
       return expiringVIPs;
     } catch (error) {
-      throw new AppError('Failed to fetch expiring VIPs', 500);
+      throw new ApplicationError('Failed to fetch expiring VIPs', 500);
     }
   }
 
@@ -278,7 +278,7 @@ class VIPService {
       });
 
       if (!concierge) {
-        throw new AppError('Invalid concierge assignment', 400);
+        throw new ApplicationError('Invalid concierge assignment', 400);
       }
 
       const vipGuest = await VIPGuest.findByIdAndUpdate(
@@ -291,7 +291,7 @@ class VIPService {
       );
 
       if (!vipGuest) {
-        throw new AppError('VIP guest not found', 404);
+        throw new ApplicationError('VIP guest not found', 404);
       }
 
       await vipGuest.populate([
@@ -304,7 +304,7 @@ class VIPService {
       if (error instanceof AppError) {
         throw error;
       }
-      throw new AppError('Failed to assign concierge', 500);
+      throw new ApplicationError('Failed to assign concierge', 500);
     }
   }
 
@@ -331,7 +331,7 @@ class VIPService {
         specialRequests: vipGuest.specialRequests
       };
     } catch (error) {
-      throw new AppError('Failed to get VIP benefits', 500);
+      throw new ApplicationError('Failed to get VIP benefits', 500);
     }
   }
 
@@ -360,7 +360,7 @@ class VIPService {
         message: `VIP ${vipGuest.vipLevel} guest - ${benefits.length} benefits available`
       };
     } catch (error) {
-      throw new AppError('Failed to validate VIP booking', 500);
+      throw new ApplicationError('Failed to validate VIP booking', 500);
     }
   }
 
@@ -380,7 +380,7 @@ class VIPService {
 
       return history;
     } catch (error) {
-      throw new AppError('Failed to fetch VIP guest history', 500);
+      throw new ApplicationError('Failed to fetch VIP guest history', 500);
     }
   }
 
@@ -399,7 +399,7 @@ class VIPService {
         modifiedCount: result.modifiedCount
       };
     } catch (error) {
-      throw new AppError('Failed to perform bulk update', 500);
+      throw new ApplicationError('Failed to perform bulk update', 500);
     }
   }
 
@@ -440,7 +440,7 @@ class VIPService {
 
       return vipGuests;
     } catch (error) {
-      throw new AppError('Failed to export VIP data', 500);
+      throw new ApplicationError('Failed to export VIP data', 500);
     }
   }
 

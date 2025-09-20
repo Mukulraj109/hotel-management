@@ -55,3 +55,16 @@ export function AlertDescription({ children, className }: AlertDescriptionProps)
     </div>
   );
 }
+
+interface AlertTitleProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+export function AlertTitle({ children, className }: AlertTitleProps) {
+  return (
+    <div className={cn('font-medium mb-1', className)}>
+      {children}
+    </div>
+  );
+}

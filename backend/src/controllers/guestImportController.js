@@ -2,7 +2,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import guestImportService from '../services/guestImportService.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 // Configure multer for file uploads
@@ -33,7 +33,7 @@ const fileFilter = (req, file, cb) => {
   if (allowedTypes.includes(file.mimetype) || allowedExtensions.includes(fileExtension)) {
     cb(null, true);
   } else {
-    cb(new AppError('Only CSV and Excel files are allowed', 400), false);
+    cb(new ApplicationError('Only CSV and Excel files are allowed', 400), false);
   }
 };
 
@@ -48,7 +48,7 @@ export const upload = multer({
 // Upload and validate file
 export const uploadFile = catchAsync(async (req, res) => {
   if (!req.file) {
-    throw new AppError('No file uploaded', 400);
+    throw new ApplicationError('No file uploaded', 400);
   }
 
   const filePath = req.file.path;
@@ -68,7 +68,7 @@ export const uploadFile = catchAsync(async (req, res) => {
         sheetName: req.body.sheetName || 0
       });
     } else {
-      throw new AppError('Unsupported file format', 400);
+      throw new ApplicationError('Unsupported file format', 400);
     }
 
     // Clean up uploaded file
@@ -99,7 +99,7 @@ export const importGuests = catchAsync(async (req, res) => {
   const { guestData, options = {} } = req.body;
   
   if (!Array.isArray(guestData) || guestData.length === 0) {
-    throw new AppError('Guest data is required', 400);
+    throw new ApplicationError('Guest data is required', 400);
   }
 
   const results = await guestImportService.validateAndImportGuests(
@@ -162,7 +162,7 @@ export const validateGuestData = catchAsync(async (req, res) => {
   const { guestData } = req.body;
   
   if (!Array.isArray(guestData) || guestData.length === 0) {
-    throw new AppError('Guest data is required', 400);
+    throw new ApplicationError('Guest data is required', 400);
   }
 
   const results = {

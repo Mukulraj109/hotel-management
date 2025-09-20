@@ -1,15 +1,15 @@
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
 import RoomTypeAllotment from './src/models/RoomTypeAllotment.js';
 import RoomType from './src/models/RoomType.js';
 import User from './src/models/User.js';
 import Hotel from './src/models/Hotel.js';
 
-dotenv.config();
+// Use the specific MongoDB Atlas URI provided
+const MONGO_URI = 'mongodb+srv://mukulraj756:Zk8q2W4uDCaUWRh3@cluster0.thahvbk.mongodb.net/test?retryWrites=true&w=majority&appName=Cluster0';
 
 const connectDB = async () => {
   try {
-    await mongoose.connect(process.env.DATABASE_URL || process.env.MONGO_URI);
+    await mongoose.connect(MONGO_URI);
     console.log('🔄 Database connected for allotment seeding');
   } catch (error) {
     console.error('❌ Database connection failed:', error);

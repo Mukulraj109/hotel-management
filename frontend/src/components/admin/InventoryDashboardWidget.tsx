@@ -6,7 +6,7 @@ import {
   TrendingUp,
   RefreshCw,
   ArrowRight,
-  DollarSign
+  IndianRupee
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -384,7 +384,7 @@ export function InventoryDashboardWidget({ hotelId, onNavigate }: InventoryWidge
           
           <div className="text-center p-4 bg-gray-50 rounded-lg">
             <div className="flex items-center justify-center mb-2">
-              <DollarSign className="w-5 h-5 text-green-600" />
+              <IndianRupee className="w-5 h-5 text-green-600" />
             </div>
             <p className="text-2xl font-bold text-gray-900">{formatCurrency(summary.recentTransactionValue)}</p>
             <p className="text-sm text-gray-600">Transaction Value</p>

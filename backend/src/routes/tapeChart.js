@@ -1,5 +1,8 @@
 import express from 'express';
 import tapeChartController from '../controllers/tapeChartController.js';
+import roomLockController from '../controllers/roomLockController.js';
+import searchController from '../controllers/searchController.js';
+import bulkOperationsController from '../controllers/bulkOperationsController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -13,6 +16,7 @@ router.delete('/room-config/:id', authenticate, authorize(['admin']), tapeChartC
 // Room Status Management Routes
 router.put('/rooms/:roomId/status', authenticate, authorize(['admin', 'staff']), tapeChartController.updateRoomStatus);
 router.get('/rooms/:roomId/status-history', authenticate, authorize(['admin', 'staff']), tapeChartController.getRoomStatusHistory);
+router.get('/rooms/available', authenticate, authorize(['admin', 'staff']), tapeChartController.getAvailableRooms);
 
 // Room Block Management Routes
 router.post('/room-blocks', authenticate, authorize(['admin', 'staff']), tapeChartController.createRoomBlock);
@@ -63,5 +67,28 @@ router.get('/room-status-updates', authenticate, authorize(['admin', 'staff']), 
 // Bulk Operations Routes
 router.post('/bulk/room-status', authenticate, authorize(['admin', 'staff']), tapeChartController.bulkUpdateRoomStatus);
 router.post('/bulk/room-assignment', authenticate, authorize(['admin', 'staff']), tapeChartController.bulkRoomAssignment);
+
+// Room Lock Management Routes
+router.post('/rooms/:roomId/lock', authenticate, authorize(['admin', 'staff']), roomLockController.lockRoom);
+router.delete('/rooms/:roomId/unlock', authenticate, authorize(['admin', 'staff']), roomLockController.unlockRoom);
+router.get('/rooms/:roomId/lock-status', authenticate, authorize(['admin', 'staff']), roomLockController.getRoomLockStatus);
+router.put('/rooms/:roomId/lock/extend', authenticate, authorize(['admin', 'staff']), roomLockController.extendLock);
+router.get('/rooms/locks', authenticate, authorize(['admin', 'staff']), roomLockController.getActiveLocks);
+router.delete('/rooms/locks/cleanup', authenticate, authorize(['admin']), roomLockController.cleanupExpiredLocks);
+router.post('/rooms/locks/bulk-unlock', authenticate, authorize(['admin']), roomLockController.bulkUnlockRooms);
+
+// Advanced Search and Filtering Routes
+router.post('/search', authenticate, authorize(['admin', 'staff']), searchController.advancedSearch);
+router.post('/filter', authenticate, authorize(['admin', 'staff']), searchController.advancedFilter);
+router.get('/search/suggestions', authenticate, authorize(['admin', 'staff']), searchController.getSearchSuggestions);
+router.get('/search/filters', authenticate, authorize(['admin', 'staff']), searchController.getFilterOptions);
+
+// Bulk Operations Routes
+router.post('/bulk/room-status', authenticate, authorize(['admin', 'staff']), bulkOperationsController.bulkUpdateRoomStatus);
+router.post('/bulk/room-assignment', authenticate, authorize(['admin', 'staff']), bulkOperationsController.bulkRoomAssignment);
+router.post('/bulk/room-block', authenticate, authorize(['admin']), bulkOperationsController.bulkRoomBlock);
+router.post('/bulk/room-release', authenticate, authorize(['admin', 'staff']), bulkOperationsController.bulkRoomRelease);
+router.get('/bulk/progress/:batchId', authenticate, authorize(['admin', 'staff']), bulkOperationsController.getBulkOperationProgress);
+router.get('/bulk/active', authenticate, authorize(['admin', 'staff']), bulkOperationsController.getActiveBulkOperations);
 
 export default router;

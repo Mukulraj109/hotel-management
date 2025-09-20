@@ -20,7 +20,7 @@ import {
   ChevronLeft,
   Building,
   Bed,
-  DollarSign,
+  IndianRupee,
   User,
   Phone,
   Mail,

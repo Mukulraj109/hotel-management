@@ -118,24 +118,29 @@ export function DataTable<T extends Record<string, any>>({
   };
 
   return (
-    <Card className={cn('overflow-hidden', className)}>
+    <Card className={cn('overflow-hidden bg-white/95 backdrop-blur-sm border-0 shadow-xl rounded-2xl', className)}>
       {(title || searchable || actions) && (
-        <CardHeader className="pb-3 sm:pb-4 px-4 sm:px-6">
+        <CardHeader className="pb-3 sm:pb-4 px-4 sm:px-6 bg-gradient-to-r from-slate-50 to-gray-50 border-b border-gray-200/50">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="min-w-0">
-              {title && <CardTitle className="text-base sm:text-lg truncate">{title}</CardTitle>}
+              {title && <CardTitle className="text-base sm:text-lg truncate text-gray-800 font-bold">{title}</CardTitle>}
             </div>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
               {searchable && (
-                <Input
-                  placeholder={searchPlaceholder}
-                  value={searchTerm}
-                  onChange={(e) => {
-                    setSearchTerm(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="w-full sm:w-64 text-sm"
-                />
+                <div className="relative">
+                  <Input
+                    placeholder={searchPlaceholder}
+                    value={searchTerm}
+                    onChange={(e) => {
+                      setSearchTerm(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    className="w-full sm:w-64 text-sm border-2 border-gray-200 rounded-xl px-4 py-2 bg-white/80 backdrop-blur-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all duration-200 font-medium pl-10"
+                  />
+                  <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                </div>
               )}
               {actions && <div className="flex-shrink-0">{actions}</div>}
             </div>
@@ -146,7 +151,7 @@ export function DataTable<T extends Record<string, any>>({
       <CardContent className="p-0 flex-1 flex flex-col min-h-0">
         <div className="overflow-x-auto scrollbar-thin flex-1">
           <table className="w-full min-w-full">
-            <thead className="bg-gray-50 border-b border-gray-200 sticky top-0">
+            <thead className="bg-gradient-to-r from-gray-50 to-slate-50 border-b border-gray-200/50 sticky top-0 backdrop-blur-sm">
               <tr>
                 {columns.map((column, index) => (
                   <th
@@ -168,13 +173,13 @@ export function DataTable<T extends Record<string, any>>({
                 ))}
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white/90 backdrop-blur-sm divide-y divide-gray-100">
               {loading ? (
                 Array.from({ length: pageSize }, (_, index) => (
-                  <tr key={index}>
+                  <tr key={index} className="animate-pulse">
                     {columns.map((_, colIndex) => (
                       <td key={colIndex} className="px-3 sm:px-6 py-3 sm:py-4">
-                        <div className="animate-pulse bg-gray-200 h-3 sm:h-4 rounded"></div>
+                        <div className="bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 h-3 sm:h-4 rounded-lg animate-shimmer bg-[length:400px_100%]"></div>
                       </td>
                     ))}
                   </tr>
@@ -193,8 +198,8 @@ export function DataTable<T extends Record<string, any>>({
                   <tr
                     key={rowIndex}
                     className={cn(
-                      'hover:bg-gray-50',
-                      onRowClick && 'cursor-pointer'
+                      'hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-indigo-50/50 transition-all duration-200 hover:shadow-sm border-l-2 border-transparent hover:border-blue-400',
+                      onRowClick && 'cursor-pointer transform hover:scale-[1.001]'
                     )}
                     onClick={() => onRowClick && onRowClick(row)}
                   >

@@ -86,32 +86,33 @@ export default function WebSettingsForm({
   };
 
   const renderGeneralSettings = () => (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Hotel Information */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Globe className="w-5 h-5 mr-2" />
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center text-sm sm:text-base">
+            <Globe className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
             Hotel Information
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
-              <Label htmlFor="hotelName">Hotel Name *</Label>
+              <Label htmlFor="hotelName" className="text-xs sm:text-sm">Hotel Name *</Label>
               <Input
                 id="hotelName"
                 value={formData.hotelName || ''}
                 onChange={(e) => handleChange('hotelName', e.target.value)}
                 placeholder="Enter hotel name"
                 required
+                className="text-sm"
               />
             </div>
             
             <div>
-              <Label htmlFor="timezone">Timezone</Label>
+              <Label htmlFor="timezone" className="text-xs sm:text-sm">Timezone</Label>
               <Select value={formData.timezone || 'UTC'} onValueChange={(value) => handleChange('timezone', value)}>
-                <SelectTrigger>
+                <SelectTrigger className="text-sm">
                   <SelectValue placeholder="Select timezone" />
                 </SelectTrigger>
                 <SelectContent>
@@ -131,7 +132,7 @@ export default function WebSettingsForm({
           </div>
 
           <div>
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description" className="text-xs sm:text-sm">Description</Label>
             <Textarea
               id="description"
               value={formData.description || ''}
@@ -139,6 +140,7 @@ export default function WebSettingsForm({
               placeholder="Brief description of your hotel"
               rows={3}
               maxLength={1000}
+              className="text-sm"
             />
           </div>
         </CardContent>
@@ -146,45 +148,48 @@ export default function WebSettingsForm({
 
       {/* Contact Information */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Phone className="w-5 h-5 mr-2" />
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center text-sm sm:text-base">
+            <Phone className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
             Contact Information
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
-              <Label htmlFor="email">Email Address</Label>
+              <Label htmlFor="email" className="text-xs sm:text-sm">Email Address</Label>
               <Input
                 id="email"
                 type="email"
                 value={formData.contact?.email || ''}
                 onChange={(e) => handleChange('contact.email', e.target.value)}
                 placeholder="hotel@example.com"
+                className="text-sm"
               />
             </div>
             
             <div>
-              <Label htmlFor="phone">Phone Number</Label>
+              <Label htmlFor="phone" className="text-xs sm:text-sm">Phone Number</Label>
               <Input
                 id="phone"
                 type="tel"
                 value={formData.contact?.phone || ''}
                 onChange={(e) => handleChange('contact.phone', e.target.value)}
                 placeholder="+1 (555) 123-4567"
+                className="text-sm"
               />
             </div>
           </div>
 
           <div>
-            <Label htmlFor="website">Website</Label>
+            <Label htmlFor="website" className="text-xs sm:text-sm">Website</Label>
             <Input
               id="website"
               type="url"
               value={formData.contact?.website || ''}
               onChange={(e) => handleChange('contact.website', e.target.value)}
               placeholder="https://www.yourhotel.com"
+              className="text-sm"
             />
           </div>
         </CardContent>
@@ -192,21 +197,21 @@ export default function WebSettingsForm({
 
       {/* Currency Settings */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <CreditCard className="w-5 h-5 mr-2" />
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center text-sm sm:text-base">
+            <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
             Currency Settings
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             <div>
-              <Label htmlFor="currencyCode">Currency Code</Label>
+              <Label htmlFor="currencyCode" className="text-xs sm:text-sm">Currency Code</Label>
               <Select 
                 value={formData.currency?.code || 'USD'} 
                 onValueChange={(value) => handleChange('currency.code', value)}
               >
-                <SelectTrigger>
+                <SelectTrigger className="text-sm">
                   <SelectValue placeholder="Select currency" />
                 </SelectTrigger>
                 <SelectContent>
@@ -223,23 +228,24 @@ export default function WebSettingsForm({
             </div>
             
             <div>
-              <Label htmlFor="currencySymbol">Currency Symbol</Label>
+              <Label htmlFor="currencySymbol" className="text-xs sm:text-sm">Currency Symbol</Label>
               <Input
                 id="currencySymbol"
                 value={formData.currency?.symbol || '$'}
                 onChange={(e) => handleChange('currency.symbol', e.target.value)}
                 placeholder="$"
                 maxLength={3}
+                className="text-sm"
               />
             </div>
             
             <div>
-              <Label htmlFor="currencyPosition">Symbol Position</Label>
+              <Label htmlFor="currencyPosition" className="text-xs sm:text-sm">Symbol Position</Label>
               <Select 
                 value={formData.currency?.position || 'before'} 
                 onValueChange={(value) => handleChange('currency.position', value)}
               >
-                <SelectTrigger>
+                <SelectTrigger className="text-sm">
                   <SelectValue placeholder="Select position" />
                 </SelectTrigger>
                 <SelectContent>
@@ -255,19 +261,19 @@ export default function WebSettingsForm({
   );
 
   const renderBookingSettings = () => (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Stay Restrictions */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Clock className="w-5 h-5 mr-2" />
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center text-sm sm:text-base">
+            <Clock className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
             Stay Restrictions
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
             <div>
-              <Label htmlFor="minimumStay">Minimum Stay (nights)</Label>
+              <Label htmlFor="minimumStay" className="text-xs sm:text-sm">Minimum Stay (nights)</Label>
               <Input
                 id="minimumStay"
                 type="number"
@@ -275,11 +281,12 @@ export default function WebSettingsForm({
                 max="365"
                 value={formData.minimumStay || 1}
                 onChange={(e) => handleChange('minimumStay', parseInt(e.target.value))}
+                className="text-sm"
               />
             </div>
             
             <div>
-              <Label htmlFor="maximumStay">Maximum Stay (nights)</Label>
+              <Label htmlFor="maximumStay" className="text-xs sm:text-sm">Maximum Stay (nights)</Label>
               <Input
                 id="maximumStay"
                 type="number"
@@ -287,11 +294,12 @@ export default function WebSettingsForm({
                 max="365"
                 value={formData.maximumStay || 30}
                 onChange={(e) => handleChange('maximumStay', parseInt(e.target.value))}
+                className="text-sm"
               />
             </div>
             
             <div>
-              <Label htmlFor="advanceBookingLimit">Advance Booking Limit (days)</Label>
+              <Label htmlFor="advanceBookingLimit" className="text-xs sm:text-sm">Advance Booking Limit (days)</Label>
               <Input
                 id="advanceBookingLimit"
                 type="number"
@@ -299,6 +307,7 @@ export default function WebSettingsForm({
                 max="1095"
                 value={formData.advanceBookingLimit || 365}
                 onChange={(e) => handleChange('advanceBookingLimit', parseInt(e.target.value))}
+                className="text-sm"
               />
             </div>
           </div>
@@ -307,28 +316,30 @@ export default function WebSettingsForm({
 
       {/* Check-in/out Times */}
       <Card>
-        <CardHeader>
-          <CardTitle>Check-in/out Times</CardTitle>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm sm:text-base">Check-in/out Times</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
-              <Label htmlFor="checkInTime">Check-in Time</Label>
+              <Label htmlFor="checkInTime" className="text-xs sm:text-sm">Check-in Time</Label>
               <Input
                 id="checkInTime"
                 type="time"
                 value={formData.checkInTime || '15:00'}
                 onChange={(e) => handleChange('checkInTime', e.target.value)}
+                className="text-sm"
               />
             </div>
             
             <div>
-              <Label htmlFor="checkOutTime">Check-out Time</Label>
+              <Label htmlFor="checkOutTime" className="text-xs sm:text-sm">Check-out Time</Label>
               <Input
                 id="checkOutTime"
                 type="time"
                 value={formData.checkOutTime || '11:00'}
                 onChange={(e) => handleChange('checkOutTime', e.target.value)}
+                className="text-sm"
               />
             </div>
           </div>
@@ -337,14 +348,14 @@ export default function WebSettingsForm({
 
       {/* Booking Options */}
       <Card>
-        <CardHeader>
-          <CardTitle>Booking Options</CardTitle>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm sm:text-base">Booking Options</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>Instant Confirmation</Label>
-              <p className="text-sm text-gray-600">Automatically confirm bookings without manual approval</p>
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex-1">
+              <Label className="text-xs sm:text-sm">Instant Confirmation</Label>
+              <p className="text-xs sm:text-sm text-gray-600">Automatically confirm bookings without manual approval</p>
             </div>
             <Switch
               checked={formData.instantConfirmation || true}
@@ -352,10 +363,10 @@ export default function WebSettingsForm({
             />
           </div>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>Requires Approval</Label>
-              <p className="text-sm text-gray-600">All bookings require manual approval</p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex-1">
+              <Label className="text-xs sm:text-sm">Requires Approval</Label>
+              <p className="text-xs sm:text-sm text-gray-600">All bookings require manual approval</p>
             </div>
             <Switch
               checked={formData.requiresApproval || false}
@@ -368,25 +379,31 @@ export default function WebSettingsForm({
   );
 
   const renderPaymentSettings = () => (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Payment Gateways */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span className="flex items-center">
-              <CreditCard className="w-5 h-5 mr-2" />
+        <CardHeader className="pb-3">
+          <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <span className="flex items-center text-sm sm:text-base">
+              <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
               Payment Gateways
             </span>
-            <Button size="sm" variant="outline" onClick={() => handleChange('gateways', [...(formData.gateways || []), { name: 'stripe', isActive: false, configuration: {}, fees: { percentage: 0, fixed: 0 } }])}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Gateway
+            <Button 
+              size="sm" 
+              variant="outline" 
+              onClick={() => handleChange('gateways', [...(formData.gateways || []), { name: 'stripe', isActive: false, configuration: {}, fees: { percentage: 0, fixed: 0 } }])}
+              className="w-full sm:w-auto text-xs sm:text-sm"
+            >
+              <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Add Gateway</span>
+              <span className="sm:hidden">Add</span>
             </Button>
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
           {(formData.gateways || []).map((gateway: any, index: number) => (
-            <div key={index} className="border rounded-lg p-4 space-y-3">
-              <div className="flex items-center justify-between">
+            <div key={index} className="border rounded-lg p-3 sm:p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <Select
                   value={gateway.name}
                   onValueChange={(value) => {
@@ -395,7 +412,7 @@ export default function WebSettingsForm({
                     handleChange('gateways', updated);
                   }}
                 >
-                  <SelectTrigger className="w-48">
+                  <SelectTrigger className="w-full sm:w-48 text-sm">
                     <SelectValue placeholder="Select gateway" />
                   </SelectTrigger>
                   <SelectContent>
@@ -408,36 +425,42 @@ export default function WebSettingsForm({
                   </SelectContent>
                 </Select>
 
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    checked={gateway.isActive}
-                    onCheckedChange={(checked) => {
-                      const updated = [...formData.gateways];
-                      updated[index].isActive = checked;
-                      handleChange('gateways', updated);
-                    }}
-                  />
-                  {onTest && (
-                    <Button size="sm" variant="outline" onClick={() => onTest('payment_gateway', gateway)}>
-                      <TestTube className="w-4 h-4" />
+                <div className="flex items-center justify-between sm:justify-end space-x-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs sm:text-sm text-gray-600">Active</span>
+                    <Switch
+                      checked={gateway.isActive}
+                      onCheckedChange={(checked) => {
+                        const updated = [...formData.gateways];
+                        updated[index].isActive = checked;
+                        handleChange('gateways', updated);
+                      }}
+                    />
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    {onTest && (
+                      <Button size="sm" variant="outline" onClick={() => onTest('payment_gateway', gateway)} className="p-2">
+                        <TestTube className="w-3 h-3 sm:w-4 sm:h-4" />
+                      </Button>
+                    )}
+                    <Button 
+                      size="sm" 
+                      variant="destructive"
+                      onClick={() => {
+                        const updated = formData.gateways.filter((_: any, i: number) => i !== index);
+                        handleChange('gateways', updated);
+                      }}
+                      className="p-2"
+                    >
+                      <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                     </Button>
-                  )}
-                  <Button 
-                    size="sm" 
-                    variant="destructive"
-                    onClick={() => {
-                      const updated = formData.gateways.filter((_: any, i: number) => i !== index);
-                      handleChange('gateways', updated);
-                    }}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <Label>Fee Percentage (%)</Label>
+                  <Label className="text-xs sm:text-sm">Fee Percentage (%)</Label>
                   <Input
                     type="number"
                     min="0"
@@ -449,11 +472,12 @@ export default function WebSettingsForm({
                       updated[index].fees = { ...updated[index].fees, percentage: parseFloat(e.target.value) };
                       handleChange('gateways', updated);
                     }}
+                    className="text-sm"
                   />
                 </div>
                 
                 <div>
-                  <Label>Fixed Fee ({formData.currency?.symbol || '$'})</Label>
+                  <Label className="text-xs sm:text-sm">Fixed Fee ({formData.currency?.symbol || '₹'})</Label>
                   <Input
                     type="number"
                     min="0"
@@ -464,6 +488,7 @@ export default function WebSettingsForm({
                       updated[index].fees = { ...updated[index].fees, fixed: parseFloat(e.target.value) };
                       handleChange('gateways', updated);
                     }}
+                    className="text-sm"
                   />
                 </div>
               </div>
@@ -495,14 +520,14 @@ export default function WebSettingsForm({
 
       {/* Deposit Settings */}
       <Card>
-        <CardHeader>
-          <CardTitle>Deposit Settings</CardTitle>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm sm:text-base">Deposit Settings</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>Require Deposit</Label>
-              <p className="text-sm text-gray-600">Require guests to pay a deposit when booking</p>
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex-1">
+              <Label className="text-xs sm:text-sm">Require Deposit</Label>
+              <p className="text-xs sm:text-sm text-gray-600">Require guests to pay a deposit when booking</p>
             </div>
             <Switch
               checked={formData.depositRequired || false}
@@ -511,14 +536,14 @@ export default function WebSettingsForm({
           </div>
 
           {formData.depositRequired && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <Label>Deposit Type</Label>
+                <Label className="text-xs sm:text-sm">Deposit Type</Label>
                 <Select
                   value={formData.depositAmount?.type || 'percentage'}
                   onValueChange={(value) => handleChange('depositAmount.type', value)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="text-sm">
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -529,8 +554,8 @@ export default function WebSettingsForm({
               </div>
               
               <div>
-                <Label>
-                  Deposit Amount ({formData.depositAmount?.type === 'percentage' ? '%' : formData.currency?.symbol || '$'})
+                <Label className="text-xs sm:text-sm">
+                  Deposit Amount ({formData.depositAmount?.type === 'percentage' ? '%' : formData.currency?.symbol || '₹'})
                 </Label>
                 <Input
                   type="number"
@@ -539,6 +564,7 @@ export default function WebSettingsForm({
                   step={formData.depositAmount?.type === 'percentage' ? '1' : '0.01'}
                   value={formData.depositAmount?.value || 0}
                   onChange={(e) => handleChange('depositAmount.value', parseFloat(e.target.value))}
+                  className="text-sm"
                 />
               </div>
             </div>
@@ -549,24 +575,25 @@ export default function WebSettingsForm({
   );
 
   const renderSEOSettings = () => (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Meta Tags */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Search className="w-5 h-5 mr-2" />
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center text-sm sm:text-base">
+            <Search className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
             Meta Tags
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
           <div>
-            <Label htmlFor="metaTitle">SEO Title</Label>
+            <Label htmlFor="metaTitle" className="text-xs sm:text-sm">SEO Title</Label>
             <Input
               id="metaTitle"
               value={formData.metaTags?.title || ''}
               onChange={(e) => handleChange('metaTags.title', e.target.value)}
               placeholder="Your Hotel Name - Best Hotel in City"
               maxLength={60}
+              className="text-sm"
             />
             <p className="text-xs text-gray-500 mt-1">
               {(formData.metaTags?.title || '').length}/60 characters
@@ -574,7 +601,7 @@ export default function WebSettingsForm({
           </div>
 
           <div>
-            <Label htmlFor="metaDescription">SEO Description</Label>
+            <Label htmlFor="metaDescription" className="text-xs sm:text-sm">SEO Description</Label>
             <Textarea
               id="metaDescription"
               value={formData.metaTags?.description || ''}
@@ -582,6 +609,7 @@ export default function WebSettingsForm({
               placeholder="Book your stay at our luxury hotel. Experience comfort and convenience in the heart of the city."
               maxLength={160}
               rows={3}
+              className="text-sm"
             />
             <p className="text-xs text-gray-500 mt-1">
               {(formData.metaTags?.description || '').length}/160 characters
@@ -592,14 +620,14 @@ export default function WebSettingsForm({
 
       {/* Robots & Indexing */}
       <Card>
-        <CardHeader>
-          <CardTitle>Search Engine Settings</CardTitle>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm sm:text-base">Search Engine Settings</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>Allow Search Engine Indexing</Label>
-              <p className="text-sm text-gray-600">Allow search engines to index your website</p>
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex-1">
+              <Label className="text-xs sm:text-sm">Allow Search Engine Indexing</Label>
+              <p className="text-xs sm:text-sm text-gray-600">Allow search engines to index your website</p>
             </div>
             <Switch
               checked={formData.robots?.index !== false}
@@ -607,10 +635,10 @@ export default function WebSettingsForm({
             />
           </div>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>Follow Links</Label>
-              <p className="text-sm text-gray-600">Allow search engines to follow links on your website</p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex-1">
+              <Label className="text-xs sm:text-sm">Follow Links</Label>
+              <p className="text-xs sm:text-sm text-gray-600">Allow search engines to follow links on your website</p>
             </div>
             <Switch
               checked={formData.robots?.follow !== false}
@@ -618,10 +646,10 @@ export default function WebSettingsForm({
             />
           </div>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>Auto-generate Sitemap</Label>
-              <p className="text-sm text-gray-600">Automatically generate and update XML sitemap</p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex-1">
+              <Label className="text-xs sm:text-sm">Auto-generate Sitemap</Label>
+              <p className="text-xs sm:text-sm text-gray-600">Automatically generate and update XML sitemap</p>
             </div>
             <Switch
               checked={formData.sitemap?.autoGenerate !== false}
@@ -634,16 +662,16 @@ export default function WebSettingsForm({
   );
 
   const renderIntegrationSettings = () => (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Google Analytics */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            Google Analytics
+        <CardHeader className="pb-3">
+          <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <span className="text-sm sm:text-base">Google Analytics</span>
             <div className="flex items-center space-x-2">
               {onTest && (
-                <Button size="sm" variant="outline" onClick={() => onTest('google_analytics', formData.googleAnalytics)}>
-                  <TestTube className="w-4 h-4" />
+                <Button size="sm" variant="outline" onClick={() => onTest('google_analytics', formData.googleAnalytics)} className="p-2">
+                  <TestTube className="w-3 h-3 sm:w-4 sm:h-4" />
                 </Button>
               )}
               <Switch
@@ -653,15 +681,16 @@ export default function WebSettingsForm({
             </div>
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
           <div>
-            <Label htmlFor="trackingId">Tracking ID</Label>
+            <Label htmlFor="trackingId" className="text-xs sm:text-sm">Tracking ID</Label>
             <Input
               id="trackingId"
               value={formData.googleAnalytics?.trackingId || ''}
               onChange={(e) => handleChange('googleAnalytics.trackingId', e.target.value)}
               placeholder="UA-XXXXXXXXX-X or G-XXXXXXXXXX"
               disabled={!formData.googleAnalytics?.isActive}
+              className="text-sm"
             />
           </div>
         </CardContent>
@@ -669,24 +698,25 @@ export default function WebSettingsForm({
 
       {/* Facebook Pixel */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            Facebook Pixel
+        <CardHeader className="pb-3">
+          <CardTitle className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <span className="text-sm sm:text-base">Facebook Pixel</span>
             <Switch
               checked={formData.facebookPixel?.isActive || false}
               onCheckedChange={(checked) => handleChange('facebookPixel.isActive', checked)}
             />
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
           <div>
-            <Label htmlFor="pixelId">Pixel ID</Label>
+            <Label htmlFor="pixelId" className="text-xs sm:text-sm">Pixel ID</Label>
             <Input
               id="pixelId"
               value={formData.facebookPixel?.pixelId || ''}
               onChange={(e) => handleChange('facebookPixel.pixelId', e.target.value)}
               placeholder="123456789012345"
               disabled={!formData.facebookPixel?.isActive}
+              className="text-sm"
             />
           </div>
         </CardContent>
@@ -695,17 +725,17 @@ export default function WebSettingsForm({
   );
 
   const renderThemeSettings = () => (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Color Scheme */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Palette className="w-5 h-5 mr-2" />
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center text-sm sm:text-base">
+            <Palette className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
             Color Scheme
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {[
               { key: 'primary', label: 'Primary', description: 'Main brand color' },
               { key: 'secondary', label: 'Secondary', description: 'Secondary color' },
@@ -713,20 +743,20 @@ export default function WebSettingsForm({
               { key: 'background', label: 'Background', description: 'Page background' }
             ].map(({ key, label, description }) => (
               <div key={key}>
-                <Label>{label}</Label>
+                <Label className="text-xs sm:text-sm">{label}</Label>
                 <p className="text-xs text-gray-500 mb-2">{description}</p>
                 <div className="flex items-center space-x-2">
                   <Input
                     type="color"
                     value={formData.colorScheme?.[key] || '#2563eb'}
                     onChange={(e) => handleChange(`colorScheme.${key}`, e.target.value)}
-                    className="w-16 h-8"
+                    className="w-12 h-8 sm:w-16"
                   />
                   <Input
                     type="text"
                     value={formData.colorScheme?.[key] || '#2563eb'}
                     onChange={(e) => handleChange(`colorScheme.${key}`, e.target.value)}
-                    className="flex-1"
+                    className="flex-1 text-sm"
                     placeholder="#2563eb"
                   />
                 </div>
@@ -738,18 +768,18 @@ export default function WebSettingsForm({
 
       {/* Typography */}
       <Card>
-        <CardHeader>
-          <CardTitle>Typography</CardTitle>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm sm:text-base">Typography</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
-              <Label>Primary Font</Label>
+              <Label className="text-xs sm:text-sm">Primary Font</Label>
               <Select
                 value={formData.typography?.primaryFont || 'Inter'}
                 onValueChange={(value) => handleChange('typography.primaryFont', value)}
               >
-                <SelectTrigger>
+                <SelectTrigger className="text-sm">
                   <SelectValue placeholder="Select font" />
                 </SelectTrigger>
                 <SelectContent>
@@ -765,12 +795,12 @@ export default function WebSettingsForm({
             </div>
 
             <div>
-              <Label>Base Font Size</Label>
+              <Label className="text-xs sm:text-sm">Base Font Size</Label>
               <Select
                 value={formData.typography?.fontSize?.base || '16px'}
                 onValueChange={(value) => handleChange('typography.fontSize.base', value)}
               >
-                <SelectTrigger>
+                <SelectTrigger className="text-sm">
                   <SelectValue placeholder="Select size" />
                 </SelectTrigger>
                 <SelectContent>
@@ -788,20 +818,20 @@ export default function WebSettingsForm({
   );
 
   const renderAdvancedSettings = () => (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Caching */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Shield className="w-5 h-5 mr-2" />
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center text-sm sm:text-base">
+            <Shield className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
             Performance & Security
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>Enable Caching</Label>
-              <p className="text-sm text-gray-600">Improve website performance with caching</p>
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex-1">
+              <Label className="text-xs sm:text-sm">Enable Caching</Label>
+              <p className="text-xs sm:text-sm text-gray-600">Improve website performance with caching</p>
             </div>
             <Switch
               checked={formData.caching?.enabled !== false}
@@ -809,10 +839,10 @@ export default function WebSettingsForm({
             />
           </div>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>Enable Compression</Label>
-              <p className="text-sm text-gray-600">Compress files to reduce load times</p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex-1">
+              <Label className="text-xs sm:text-sm">Enable Compression</Label>
+              <p className="text-xs sm:text-sm text-gray-600">Compress files to reduce load times</p>
             </div>
             <Switch
               checked={formData.compression?.enabled !== false}
@@ -820,10 +850,10 @@ export default function WebSettingsForm({
             />
           </div>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>CSRF Protection</Label>
-              <p className="text-sm text-gray-600">Enable cross-site request forgery protection</p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex-1">
+              <Label className="text-xs sm:text-sm">CSRF Protection</Label>
+              <p className="text-xs sm:text-sm text-gray-600">Enable cross-site request forgery protection</p>
             </div>
             <Switch
               checked={formData.security?.csrfProtection !== false}
@@ -836,20 +866,20 @@ export default function WebSettingsForm({
   );
 
   const renderMaintenanceSettings = () => (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Maintenance Mode */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Settings className="w-5 h-5 mr-2" />
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center text-sm sm:text-base">
+            <Settings className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
             Maintenance Mode
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>Enable Maintenance Mode</Label>
-              <p className="text-sm text-gray-600">Show maintenance page to visitors</p>
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex-1">
+              <Label className="text-xs sm:text-sm">Enable Maintenance Mode</Label>
+              <p className="text-xs sm:text-sm text-gray-600">Show maintenance page to visitors</p>
             </div>
             <Switch
               checked={formData.isMaintenanceMode || false}
@@ -859,7 +889,7 @@ export default function WebSettingsForm({
 
           {formData.isMaintenanceMode && (
             <div>
-              <Label htmlFor="maintenanceMessage">Maintenance Message</Label>
+              <Label htmlFor="maintenanceMessage" className="text-xs sm:text-sm">Maintenance Message</Label>
               <Textarea
                 id="maintenanceMessage"
                 value={formData.maintenanceMessage || 'We are currently performing maintenance. Please check back soon.'}
@@ -867,6 +897,7 @@ export default function WebSettingsForm({
                 placeholder="Enter maintenance message for visitors"
                 rows={3}
                 maxLength={500}
+                className="text-sm"
               />
             </div>
           )}
@@ -875,14 +906,14 @@ export default function WebSettingsForm({
 
       {/* Backup Settings */}
       <Card>
-        <CardHeader>
-          <CardTitle>Backup Settings</CardTitle>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm sm:text-base">Backup Settings</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>Auto Backup</Label>
-              <p className="text-sm text-gray-600">Automatically backup settings</p>
+        <CardContent className="pt-0 space-y-3 sm:space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex-1">
+              <Label className="text-xs sm:text-sm">Auto Backup</Label>
+              <p className="text-xs sm:text-sm text-gray-600">Automatically backup settings</p>
             </div>
             <Switch
               checked={formData.autoBackup?.enabled !== false}
@@ -891,14 +922,14 @@ export default function WebSettingsForm({
           </div>
 
           {formData.autoBackup?.enabled !== false && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <div>
-                <Label>Backup Frequency</Label>
+                <Label className="text-xs sm:text-sm">Backup Frequency</Label>
                 <Select
                   value={formData.autoBackup?.frequency || 'weekly'}
                   onValueChange={(value) => handleChange('autoBackup.frequency', value)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="text-sm">
                     <SelectValue placeholder="Select frequency" />
                   </SelectTrigger>
                   <SelectContent>
@@ -910,13 +941,14 @@ export default function WebSettingsForm({
               </div>
 
               <div>
-                <Label>Retention (days)</Label>
+                <Label className="text-xs sm:text-sm">Retention (days)</Label>
                 <Input
                   type="number"
                   min="1"
                   max="365"
                   value={formData.autoBackup?.retention || 30}
                   onChange={(e) => handleChange('autoBackup.retention', parseInt(e.target.value))}
+                  className="text-sm"
                 />
               </div>
             </div>
@@ -941,18 +973,19 @@ export default function WebSettingsForm({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {getSectionContent()}
       
       {/* Save Button */}
-      <div className="flex justify-end pt-4 border-t">
+      <div className="flex justify-end pt-3 sm:pt-4 border-t">
         <Button 
           onClick={handleSave} 
           disabled={!hasChanges}
-          className="flex items-center"
+          className="flex items-center w-full sm:w-auto text-xs sm:text-sm"
         >
-          <Save className="w-4 h-4 mr-2" />
-          Save {section.charAt(0).toUpperCase() + section.slice(1)} Settings
+          <Save className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+          <span className="hidden sm:inline">Save {section.charAt(0).toUpperCase() + section.slice(1)} Settings</span>
+          <span className="sm:hidden">Save Settings</span>
         </Button>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Calendar, User, MessageSquare, Globe, Star, ConciergeBell, Bell, Key, Users, CreditCard, LogOut, Package, MessageCircle, X } from 'lucide-react';
+import { Home, Calendar, User, MessageSquare, Globe, Star, ConciergeBell, Bell, Key, Users, CreditCard, LogOut, Package, MessageCircle, X, BookOpen } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 const navigation = [
@@ -9,6 +9,7 @@ const navigation = [
   { name: 'Billing & Payments', href: '/app/billing', icon: CreditCard },
   { name: 'Loyalty', href: '/app/loyalty', icon: Star },
   { name: 'Hotel Services', href: '/app/services', icon: ConciergeBell },
+  { name: 'Service Bookings', href: '/app/services/bookings', icon: BookOpen },
   { name: 'Notifications', href: '/app/notifications', icon: Bell },
   { name: 'Digital Keys', href: '/app/keys', icon: Key },
   { name: 'Meet-Ups', href: '/app/meet-ups', icon: Users },

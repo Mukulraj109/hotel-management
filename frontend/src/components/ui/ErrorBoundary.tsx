@@ -5,7 +5,10 @@ import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 
 interface Props {
   children: ReactNode;
-  fallback?: ReactNode;
+  fallback?: React.ComponentType<{ error: Error; resetError: () => void }>;
+  fallbackMessage?: string;
+  onError?: (error: Error, errorInfo: ErrorInfo) => void;
+  showErrorDetails?: boolean;
 }
 
 interface State {
@@ -31,6 +34,11 @@ class ErrorBoundary extends Component<Props, State> {
       errorInfo
     });
 
+    // Call custom error handler if provided
+    if (this.props.onError) {
+      this.props.onError(error, errorInfo);
+    }
+
     // Log error to external service in production
     if (import.meta.env.MODE === 'production') {
       // You can log to your error reporting service here
@@ -52,8 +60,12 @@ class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
-      if (this.props.fallback) {
-        return this.props.fallback;
+      const { fallback: FallbackComponent, fallbackMessage, showErrorDetails } = this.props;
+      const { error } = this.state;
+
+      // Use custom fallback component if provided
+      if (FallbackComponent && error) {
+        return <FallbackComponent error={error} resetError={this.handleRetry} />;
       }
 
       return (
@@ -65,11 +77,11 @@ class ErrorBoundary extends Component<Props, State> {
               </div>
               <CardTitle className="text-2xl text-red-800">Something went wrong</CardTitle>
               <p className="text-gray-600 mt-2">
-                We encountered an unexpected error. Please try again or contact support if the problem persists.
+                {fallbackMessage || 'An unexpected error occurred. Please try again.'}
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
-              {import.meta.env.MODE === 'development' && this.state.error && (
+              {showErrorDetails && this.state.error && import.meta.env.MODE === 'development' && (
                 <div className="bg-gray-100 p-4 rounded-lg">
                   <h4 className="font-semibold mb-2">Error Details (Development):</h4>
                   <pre className="text-sm text-red-800 overflow-auto">

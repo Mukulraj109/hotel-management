@@ -164,7 +164,8 @@ const eventQueueSchema = new mongoose.Schema({
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  toObject: { virtuals: true },
+  suppressReservedKeysWarning: true // Suppresses warning for 'errors' field
 });
 
 // Compound indexes for efficient querying

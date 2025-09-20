@@ -36,11 +36,46 @@ export const getBudgets = catchAsync(async (req, res) => {
     Budget.countDocuments(filter)
   ]);
 
+  // Calculate totals for each budget
+  const budgetsWithTotals = budgets.map(budget => {
+    const budgetObj = budget.toObject();
+
+    let totalRevenue = 0;
+    let totalExpenses = 0;
+
+    budgetObj.budgetLines.forEach(line => {
+      // Calculate annual total for this line
+      const annualTotal = (line.period1 || 0) + (line.period2 || 0) + (line.period3 || 0) +
+                         (line.period4 || 0) + (line.period5 || 0) + (line.period6 || 0) +
+                         (line.period7 || 0) + (line.period8 || 0) + (line.period9 || 0) +
+                         (line.period10 || 0) + (line.period11 || 0) + (line.period12 || 0);
+
+      line.annualTotal = annualTotal;
+
+      // Add to revenue or expense totals based on account type
+      if (line.accountId && line.accountId.accountType === 'Revenue') {
+        totalRevenue += annualTotal;
+      } else if (line.accountId && line.accountId.accountType === 'Expense') {
+        totalExpenses += annualTotal;
+      }
+    });
+
+    budgetObj.totalRevenue = totalRevenue;
+    budgetObj.totalExpenses = totalExpenses;
+    budgetObj.netIncome = totalRevenue - totalExpenses;
+
+    // Add fields that frontend expects
+    budgetObj.totalBudgetedAmount = totalRevenue + totalExpenses; // Total budget (revenue target + expense budget)
+    budgetObj.totalActualAmount = 0; // TODO: Calculate from actual transactions later
+
+    return budgetObj;
+  });
+
   res.status(200).json({
     status: 'success',
-    results: budgets.length,
+    results: budgetsWithTotals.length,
     data: {
-      budgets,
+      budgets: budgetsWithTotals,
       pagination: {
         current: parseInt(page),
         pages: Math.ceil(totalBudgets / parseInt(limit)),
@@ -111,6 +146,11 @@ export const createBudget = catchAsync(async (req, res) => {
       });
     }
   }
+
+  // Get first hotel ID for testing
+  const Hotel = (await import('../models/Hotel.js')).default;
+  const firstHotel = await Hotel.findOne();
+  const hotelId = firstHotel ? firstHotel._id : null;
 
   const budgetData = {
     ...req.body,
@@ -483,6 +523,53 @@ export const getBudgetSummary = catchAsync(async (req, res) => {
   });
 });
 
+// Get budget statistics
+export const getBudgetStatistics = catchAsync(async (req, res) => {
+  try {
+    // Get basic counts and stats using simple operations
+    const [totalCount, activeBudgets, draftBudgets, approvedBudgets] = await Promise.all([
+      Budget.countDocuments(),
+      Budget.countDocuments({ status: 'Active' }),
+      Budget.countDocuments({ status: 'Draft' }),
+      Budget.countDocuments({ status: 'Approved' })
+    ]);
+
+    // Get all budgets for calculations
+    const budgets = await Budget.find().select('totalRevenue totalExpenses netIncome');
+
+    const totalBudgetedRevenue = budgets.reduce((sum, budget) => sum + (budget.totalRevenue || 0), 0);
+    const totalBudgetedExpenses = budgets.reduce((sum, budget) => sum + (budget.totalExpenses || 0), 0);
+    const totalProjectedNetIncome = budgets.reduce((sum, budget) => sum + (budget.netIncome || 0), 0);
+
+    const avgBudgetedRevenue = totalCount > 0 ? totalBudgetedRevenue / totalCount : 0;
+    const avgNetIncomeMargin = totalBudgetedRevenue > 0 ? (totalProjectedNetIncome / totalBudgetedRevenue) * 100 : 0;
+
+    const statistics = {
+      totalBudgets: totalCount,
+      totalBudgetedRevenue,
+      totalBudgetedExpenses,
+      totalProjectedNetIncome,
+      activeBudgets,
+      draftBudgets,
+      approvedBudgets,
+      avgBudgetedRevenue,
+      avgNetIncomeMargin
+    };
+
+    res.status(200).json({
+      status: 'success',
+      data: { statistics }
+    });
+
+  } catch (error) {
+    logger.error('Error calculating budget statistics:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to calculate budget statistics'
+    });
+  }
+});
+
 // Get budget templates
 export const getBudgetTemplates = catchAsync(async (req, res) => {
   const templates = [
@@ -547,5 +634,6 @@ export default {
   generateForecast,
   createRevision,
   getBudgetSummary,
+  getBudgetStatistics,
   getBudgetTemplates
 };

@@ -10,7 +10,7 @@ export default function HomePage() {
   const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
   const [reviewsLoading, setReviewsLoading] = useState(true);
 
-  const HOTEL_ID = '68afe8080c02fcbe30092b8e';
+  const HOTEL_ID = '68c7e6ebca8aed0ec8036a9c';
 
   const amenities = [
     { icon: Wifi, name: 'Free WiFi' },
@@ -218,7 +218,7 @@ export default function HomePage() {
           
           <div className="max-w-4xl mx-auto">
             <LocalAttractions 
-              hotelId="68afe8080c02fcbe30092b8e"
+              hotelId="68c7e6ebca8aed0ec8036a9c"
               maxDistance={10}
               className="shadow-xl border-0"
             />

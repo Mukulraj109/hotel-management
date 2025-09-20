@@ -4,7 +4,7 @@ import BillingSession from '../models/BillingSession.js';
 import POSOutlet from '../models/POSOutlet.js';
 import User from '../models/User.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
@@ -22,7 +22,7 @@ router.get('/sales-summary', authorize('admin', 'staff'), catchAsync(async (req,
   } = req.query;
 
   if (!startDate || !endDate) {
-    throw new AppError('Start date and end date are required', 400);
+    throw new ApplicationError('Start date and end date are required', 400);
   }
 
   const matchQuery = {
@@ -127,7 +127,7 @@ router.get('/outlet-performance', authorize('admin', 'staff'), catchAsync(async 
   } = req.query;
 
   if (!startDate || !endDate) {
-    throw new AppError('Start date and end date are required', 400);
+    throw new ApplicationError('Start date and end date are required', 400);
   }
 
   const matchQuery = {
@@ -325,7 +325,7 @@ router.get('/payment-methods', authorize('admin', 'staff'), catchAsync(async (re
   } = req.query;
 
   if (!startDate || !endDate) {
-    throw new AppError('Start date and end date are required', 400);
+    throw new ApplicationError('Start date and end date are required', 400);
   }
 
   const matchQuery = {
@@ -393,7 +393,7 @@ router.get('/top-items', authorize('admin', 'staff'), catchAsync(async (req, res
   } = req.query;
 
   if (!startDate || !endDate) {
-    throw new AppError('Start date and end date are required', 400);
+    throw new ApplicationError('Start date and end date are required', 400);
   }
 
   const matchQuery = {
@@ -474,7 +474,7 @@ router.get('/staff-performance', authorize('admin', 'staff'), catchAsync(async (
   } = req.query;
 
   if (!startDate || !endDate) {
-    throw new AppError('Start date and end date are required', 400);
+    throw new ApplicationError('Start date and end date are required', 400);
   }
 
   const matchQuery = {
@@ -551,7 +551,7 @@ router.get('/guest-analytics', authorize('admin', 'staff'), catchAsync(async (re
   } = req.query;
 
   if (!startDate || !endDate) {
-    throw new AppError('Start date and end date are required', 400);
+    throw new ApplicationError('Start date and end date are required', 400);
   }
 
   const matchQuery = {
@@ -645,7 +645,7 @@ router.get('/peak-hours', authorize('admin', 'staff'), catchAsync(async (req, re
   } = req.query;
 
   if (!startDate || !endDate) {
-    throw new AppError('Start date and end date are required', 400);
+    throw new ApplicationError('Start date and end date are required', 400);
   }
 
   const matchQuery = {

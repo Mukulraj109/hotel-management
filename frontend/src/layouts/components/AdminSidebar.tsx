@@ -31,7 +31,15 @@ import {
   Brain,
   Shield,
   FileCode,
-  Target
+  Target,
+  Gift,
+  ConciergeBell,
+  Key,
+  Coffee,
+  ShoppingBag,
+  MessageSquare,
+  CheckSquare,
+  Receipt
 } from 'lucide-react';
 
 const navigation = [
@@ -48,23 +56,34 @@ const navigation = [
   { name: 'Billing & Payments', href: '/admin/billing', icon: CreditCard },
   { name: 'POS System', href: '/admin/pos', icon: ShoppingCart },
   { name: 'Revenue Management', href: '/admin/revenue', icon: TrendingUp },
+  { name: 'Offer Management', href: '/admin/offers', icon: Gift },
   { name: 'Overbooking Config', href: '/admin/overbooking', icon: Shield },
   { name: 'Booking Engine', href: '/admin/booking-engine', icon: Zap },
   { name: 'Form Builder', href: '/admin/booking-forms', icon: FileCode },
   { name: 'Web Settings', href: '/admin/web-settings', icon: Globe },
   { name: 'Housekeeping', href: '/admin/housekeeping', icon: ClipboardList },
+  { name: 'Daily Check Management', href: '/admin/daily-check-management', icon: CheckSquare },
   { name: 'Maintenance', href: '/admin/maintenance', icon: Wrench },
   { name: 'Guest Services', href: '/admin/guest-services', icon: Headphones },
+  { name: 'Service Requests', href: '/admin/service-requests', icon: MessageSquare },
+  { name: 'Inventory Requests', href: '/admin/inventory-requests', icon: ShoppingBag },
+  { name: 'Hotel Services', href: '/admin/services', icon: ConciergeBell },
+  { name: 'Digital Keys', href: '/admin/digital-keys', icon: Key },
+  { name: 'Meet-Up Management', href: '/admin/meet-up-management', icon: Coffee },
   { name: 'Supply Requests', href: '/admin/supply-requests', icon: FileText },
   { name: 'Inventory', href: '/admin/inventory', icon: Package },
+  { name: 'Checkout Inventory', href: '/admin/checkout-inventory', icon: Receipt },
   { name: 'Automation', href: '/admin/automation', icon: Zap },
   { name: 'Inventory Management', href: '/admin/inventory-management', icon: CalendarDays },
-  { name: 'Reports', href: '/admin/reports', icon: BarChart3 },
+  // { name: 'Reports', href: '/admin/reports', icon: BarChart3 }, // Temporarily disabled
   { name: 'Multi-Property', href: '/admin/multi-property', icon: Building },
-  { name: 'Mobile Apps', href: '/admin/mobile-apps', icon: Smartphone },
+  // { name: 'Mobile Apps', href: '/admin/mobile-apps', icon: Smartphone }, // Temporarily disabled
   { name: 'API Management', href: '/admin/api-management', icon: Settings },
-  { name: 'AI Dashboard', href: '/admin/ai-dashboard', icon: Brain },
+  // { name: 'AI Dashboard', href: '/admin/ai-dashboard', icon: Brain }, // Temporarily hidden
   { name: 'Bypass Checkout', href: '/admin/bypass-checkout', icon: AlertTriangle },
+  { name: 'Bypass Approvals', href: '/admin/bypass-approvals', icon: CheckSquare },
+  { name: 'Security Dashboard', href: '/admin/security-dashboard', icon: Shield },
+  { name: 'Financial Analytics', href: '/admin/financial-analytics', icon: BarChart3 },
   { name: 'OTA Analytics', href: '/admin/ota', icon: Wifi },
 ];
 

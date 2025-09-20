@@ -2,7 +2,7 @@ import RevenueAccount from '../models/RevenueAccount.js';
 import RoomType from '../models/RoomType.js';
 import revenueTrackingService from '../services/revenueTrackingService.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import logger from '../utils/logger.js';
 
 /**
@@ -109,7 +109,7 @@ export const getRevenueAccount = catchAsync(async (req, res, next) => {
     .populate('updatedBy', 'name email');
 
   if (!account) {
-    return next(new AppError('Revenue account not found', 404));
+    return next(new ApplicationError('Revenue account not found', 404));
   }
 
   res.status(200).json({
@@ -131,7 +131,7 @@ export const createRevenueAccount = catchAsync(async (req, res, next) => {
   const requiredFields = ['accountCode', 'accountName', 'revenueCategory', 'accountType'];
   for (const field of requiredFields) {
     if (!req.body[field]) {
-      return next(new AppError(`${field} is required`, 400));
+      return next(new ApplicationError(`${field} is required`, 400));
     }
   }
 
@@ -142,7 +142,7 @@ export const createRevenueAccount = catchAsync(async (req, res, next) => {
   });
 
   if (existingAccount) {
-    return next(new AppError('An account with this code already exists', 400));
+    return next(new ApplicationError('An account with this code already exists', 400));
   }
 
   // Validate parent account if specified
@@ -153,12 +153,12 @@ export const createRevenueAccount = catchAsync(async (req, res, next) => {
     });
 
     if (!parentAccount) {
-      return next(new AppError('Parent account not found', 400));
+      return next(new ApplicationError('Parent account not found', 400));
     }
 
     // Check account level depth
     if (parentAccount.accountLevel >= 5) {
-      return next(new AppError('Account hierarchy cannot exceed 5 levels', 400));
+      return next(new ApplicationError('Account hierarchy cannot exceed 5 levels', 400));
     }
   }
 
@@ -170,7 +170,7 @@ export const createRevenueAccount = catchAsync(async (req, res, next) => {
     });
 
     if (roomTypes.length !== req.body.applicableRoomTypes.length) {
-      return next(new AppError('One or more room types are invalid', 400));
+      return next(new ApplicationError('One or more room types are invalid', 400));
     }
   }
 
@@ -182,7 +182,7 @@ export const createRevenueAccount = catchAsync(async (req, res, next) => {
     });
 
     if (!basedOnAccount) {
-      return next(new AppError('Based on account not found', 400));
+      return next(new ApplicationError('Based on account not found', 400));
     }
   }
 
@@ -227,12 +227,12 @@ export const updateRevenueAccount = catchAsync(async (req, res, next) => {
   const account = await RevenueAccount.findById(id);
 
   if (!account) {
-    return next(new AppError('Revenue account not found', 404));
+    return next(new ApplicationError('Revenue account not found', 404));
   }
 
   // Check if account is system generated
   if (account.isSystemGenerated && req.body.isActive === false) {
-    return next(new AppError('System generated accounts cannot be deactivated', 400));
+    return next(new ApplicationError('System generated accounts cannot be deactivated', 400));
   }
 
   // Check for duplicate account code if being changed
@@ -244,7 +244,7 @@ export const updateRevenueAccount = catchAsync(async (req, res, next) => {
     });
 
     if (existingAccount) {
-      return next(new AppError('An account with this code already exists', 400));
+      return next(new ApplicationError('An account with this code already exists', 400));
     }
   }
 
@@ -256,17 +256,17 @@ export const updateRevenueAccount = catchAsync(async (req, res, next) => {
     });
 
     if (!parentAccount) {
-      return next(new AppError('Parent account not found', 400));
+      return next(new ApplicationError('Parent account not found', 400));
     }
 
     // Check for circular reference
     if (req.body.parentAccount.toString() === id) {
-      return next(new AppError('Account cannot be its own parent', 400));
+      return next(new ApplicationError('Account cannot be its own parent', 400));
     }
 
     // Check account level depth
     if (parentAccount.accountLevel >= 5) {
-      return next(new AppError('Account hierarchy cannot exceed 5 levels', 400));
+      return next(new ApplicationError('Account hierarchy cannot exceed 5 levels', 400));
     }
   }
 
@@ -278,7 +278,7 @@ export const updateRevenueAccount = catchAsync(async (req, res, next) => {
     });
 
     if (roomTypes.length !== req.body.applicableRoomTypes.length) {
-      return next(new AppError('One or more room types are invalid', 400));
+      return next(new ApplicationError('One or more room types are invalid', 400));
     }
   }
 
@@ -325,12 +325,12 @@ export const deleteRevenueAccount = catchAsync(async (req, res, next) => {
   const account = await RevenueAccount.findById(id);
 
   if (!account) {
-    return next(new AppError('Revenue account not found', 404));
+    return next(new ApplicationError('Revenue account not found', 404));
   }
 
   // Check if account is system generated
   if (account.isSystemGenerated) {
-    return next(new AppError('System generated accounts cannot be deleted', 400));
+    return next(new ApplicationError('System generated accounts cannot be deleted', 400));
   }
 
   // Check if account has child accounts
@@ -340,7 +340,7 @@ export const deleteRevenueAccount = catchAsync(async (req, res, next) => {
   });
 
   if (childAccounts.length > 0) {
-    return next(new AppError('Cannot delete account with active child accounts', 400));
+    return next(new ApplicationError('Cannot delete account with active child accounts', 400));
   }
 
   // Soft delete by setting isActive to false
@@ -380,7 +380,7 @@ export const calculateRevenueAllocation = catchAsync(async (req, res, next) => {
   } = req.body;
 
   if (!baseAmount || baseAmount <= 0) {
-    return next(new AppError('Base amount is required and must be greater than 0', 400));
+    return next(new ApplicationError('Base amount is required and must be greater than 0', 400));
   }
 
   try {
@@ -409,7 +409,7 @@ export const calculateRevenueAllocation = catchAsync(async (req, res, next) => {
       stack: error.stack
     });
     
-    return next(new AppError('Revenue allocation calculation failed', 500));
+    return next(new ApplicationError('Revenue allocation calculation failed', 500));
   }
 });
 
@@ -486,11 +486,11 @@ export const bulkUpdateAccountStatus = catchAsync(async (req, res, next) => {
   const userId = req.user._id;
 
   if (!Array.isArray(accountIds) || accountIds.length === 0) {
-    return next(new AppError('Account IDs array is required', 400));
+    return next(new ApplicationError('Account IDs array is required', 400));
   }
 
   if (typeof isActive !== 'boolean') {
-    return next(new AppError('isActive must be a boolean value', 400));
+    return next(new ApplicationError('isActive must be a boolean value', 400));
   }
 
   const result = await RevenueAccount.updateMany(

@@ -4,7 +4,7 @@ import Hotel from '../models/Hotel.js';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 
@@ -148,15 +148,23 @@ router.get('/users', catchAsync(async (req, res) => {
   } = req.query;
 
   const query = {};
-  
-  if (role) query.role = role;
+
   if (isActive !== undefined) query.isActive = isActive === 'true';
-  
-  // Filter staff/admin users by the current admin's hotel
-  if (role === 'staff' || role === 'admin' || !role) {
+
+  // Handle role filtering properly for staff management vs general user management
+  if (role === 'guest') {
+    // Only show guest users (no hotel filtering needed)
+    query.role = 'guest';
+  } else if (role === 'staff' || role === 'admin') {
+    // Show specific staff/admin role from this hotel
+    query.role = role;
+    query.hotelId = req.user.hotelId;
+  } else if (!role) {
+    // No role specified - check if this is a staff management context
+    // For staff management, only include staff/admin from this hotel
     query.$or = [
-      { role: 'guest' }, // Include all guests
-      { hotelId: req.user.hotelId } // Include staff/admin from this hotel
+      { role: 'staff', hotelId: req.user.hotelId },
+      { role: 'admin', hotelId: req.user.hotelId }
     ];
   }
   
@@ -248,7 +256,7 @@ router.post('/users', catchAsync(async (req, res) => {
   // Check if user already exists
   const existingUser = await User.findOne({ email });
   if (existingUser) {
-    throw new AppError('User with this email already exists', 409);
+    throw new ApplicationError('User with this email already exists', 409);
   }
 
   const userData = {
@@ -323,7 +331,7 @@ router.patch('/users/:id', catchAsync(async (req, res) => {
   ).select('-password -passwordResetToken -passwordResetExpires');
 
   if (!user) {
-    throw new AppError('User not found', 404);
+    throw new ApplicationError('User not found', 404);
   }
 
   res.json({
@@ -355,7 +363,7 @@ router.delete('/users/:id', catchAsync(async (req, res) => {
 
   const user = await User.findByIdAndDelete(id);
   if (!user) {
-    throw new AppError('User not found', 404);
+    throw new ApplicationError('User not found', 404);
   }
 
   res.json({
@@ -457,6 +465,103 @@ router.get('/hotels', catchAsync(async (req, res) => {
 
 /**
  * @swagger
+ * /admin/hotels:
+ *   post:
+ *     summary: Create a new hotel
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - address
+ *               - contact
+ *             properties:
+ *               name:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               address:
+ *                 type: object
+ *                 properties:
+ *                   street:
+ *                     type: string
+ *                   city:
+ *                     type: string
+ *                   state:
+ *                     type: string
+ *                   country:
+ *                     type: string
+ *                   zipCode:
+ *                     type: string
+ *               contact:
+ *                 type: object
+ *                 properties:
+ *                   phone:
+ *                     type: string
+ *                   email:
+ *                     type: string
+ *                   website:
+ *                     type: string
+ *               amenities:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               type:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Hotel created successfully
+ */
+router.post('/hotels', catchAsync(async (req, res) => {
+  const {
+    name,
+    description,
+    address,
+    contact,
+    amenities = [],
+    type = 'hotel'
+  } = req.body;
+
+  // Create the hotel
+  const hotel = new Hotel({
+    name,
+    description,
+    address: {
+      street: address.street,
+      city: address.city,
+      state: address.state,
+      country: address.country,
+      zipCode: address.zipCode
+    },
+    contact: {
+      phone: contact.phone,
+      email: contact.email,
+      website: contact.website
+    },
+    amenities,
+    type,
+    ownerId: req.user._id,
+    isActive: true
+  });
+
+  await hotel.save();
+
+  res.status(201).json({
+    status: 'success',
+    data: {
+      hotel
+    }
+  });
+}));
+
+/**
+ * @swagger
  * /admin/hotels/{id}:
  *   patch:
  *     summary: Update hotel status
@@ -493,12 +598,126 @@ router.patch('/hotels/:id', catchAsync(async (req, res) => {
   ).populate('ownerId', 'name email');
 
   if (!hotel) {
-    throw new AppError('Hotel not found', 404);
+    throw new ApplicationError('Hotel not found', 404);
   }
 
   res.json({
     status: 'success',
     data: { hotel }
+  });
+}));
+
+/**
+ * @swagger
+ * /admin/hotels/{id}:
+ *   put:
+ *     summary: Update hotel details
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               address:
+ *                 type: object
+ *               contact:
+ *                 type: object
+ *               amenities:
+ *                 type: array
+ *               type:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Hotel updated successfully
+ */
+router.put('/hotels/:id', catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const {
+    name,
+    description,
+    address,
+    contact,
+    amenities = [],
+    type = 'hotel'
+  } = req.body;
+
+  const hotel = await Hotel.findByIdAndUpdate(
+    id,
+    {
+      name,
+      description,
+      address: {
+        street: address.street,
+        city: address.city,
+        state: address.state,
+        country: address.country,
+        zipCode: address.zipCode
+      },
+      contact: {
+        phone: contact.phone,
+        email: contact.email,
+        website: contact.website
+      },
+      amenities,
+      type
+    },
+    { new: true, runValidators: true }
+  ).populate('ownerId', 'name email');
+
+  if (!hotel) {
+    throw new ApplicationError('Hotel not found', 404);
+  }
+
+  res.json({
+    status: 'success',
+    data: { hotel }
+  });
+}));
+
+/**
+ * @swagger
+ * /admin/hotels/{id}:
+ *   delete:
+ *     summary: Delete hotel
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Hotel deleted successfully
+ */
+router.delete('/hotels/:id', catchAsync(async (req, res) => {
+  const { id } = req.params;
+
+  const hotel = await Hotel.findByIdAndDelete(id);
+
+  if (!hotel) {
+    throw new ApplicationError('Hotel not found', 404);
+  }
+
+  res.json({
+    status: 'success',
+    message: 'Hotel deleted successfully'
   });
 }));
 
@@ -576,7 +795,7 @@ router.get('/bookings', catchAsync(async (req, res) => {
     Booking.find(query)
       .populate('userId', 'name email')
       .populate('hotelId', 'name')
-      .populate('rooms.roomId', 'number type')
+      .populate('rooms.roomId', 'roomNumber type baseRate currentRate')
       .sort('-createdAt')
       .skip(skip)
       .limit(parseInt(limit)),
@@ -715,6 +934,27 @@ router.get('/analytics', catchAsync(async (req, res) => {
       revenueTrends,
       statusDistribution,
       topHotels
+    }
+  });
+}));
+
+/**
+ * @swagger
+ * /admin/current-hotel:
+ *   get:
+ *     summary: Get current user's hotel ID
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current user's hotel ID
+ */
+router.get('/current-hotel', catchAsync(async (req, res) => {
+  res.json({
+    status: 'success',
+    data: {
+      hotelId: req.user.hotelId
     }
   });
 }));

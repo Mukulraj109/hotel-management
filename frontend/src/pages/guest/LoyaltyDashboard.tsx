@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { 
   Star, 
   Gift, 
@@ -10,7 +11,9 @@ import {
   Zap,
   Percent,
   ArrowUp,
-  Circle
+  Circle,
+  Heart,
+  Sparkles
 } from 'lucide-react';
 import { loyaltyService, LoyaltyDashboard as LoyaltyDashboardType } from '../../services/loyaltyService';
 import { Card } from '@/components/ui/card';
@@ -55,6 +58,7 @@ const getOfferIcon = (type: string) => {
 
 export default function LoyaltyDashboard() {
   const [redeemingOffer, setRedeemingOffer] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const { data: dashboard, isLoading, error, refetch } = useQuery({
     queryKey: ['loyalty-dashboard'],
@@ -159,7 +163,11 @@ export default function LoyaltyDashboard() {
       <Card className="p-6 mb-8">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
-          <Button variant="secondary" size="sm">
+          <Button 
+            variant="secondary" 
+            size="sm"
+            onClick={() => navigate('/app/loyalty/transactions')}
+          >
             View All
           </Button>
         </div>
@@ -201,9 +209,33 @@ export default function LoyaltyDashboard() {
       <Card className="p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-gray-900">Available Offers</h3>
-          <Button variant="secondary" size="sm">
-            View All Offers
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => navigate('/app/loyalty/favorites')}
+              className="flex items-center gap-1"
+            >
+              <Heart className="h-4 w-4" />
+              Favorites
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => navigate('/app/loyalty/recommendations')}
+              className="flex items-center gap-1"
+            >
+              <Sparkles className="h-4 w-4" />
+              For You
+            </Button>
+            <Button 
+              variant="secondary" 
+              size="sm"
+              onClick={() => navigate('/app/loyalty/offers')}
+            >
+              View All Offers
+            </Button>
+          </div>
         </div>
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {dashboard.availableOffers.length === 0 ? (

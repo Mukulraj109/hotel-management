@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Bell, User, Menu } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { Button } from '../../components/ui/Button';
+import { Button } from '../../components/ui/button';
 
 interface GuestHeaderProps {
   onMenuToggle?: () => void;
@@ -9,6 +9,7 @@ interface GuestHeaderProps {
 
 export default function GuestHeader({ onMenuToggle }: GuestHeaderProps) {
   const { user, logout } = useAuth();
+
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-200 px-4 sm:px-6 lg:px-8 py-4">
@@ -30,9 +31,12 @@ export default function GuestHeader({ onMenuToggle }: GuestHeaderProps) {
         </div>
         
         <div className="flex items-center space-x-2 sm:space-x-4">
-          <button className="p-2 rounded-md text-gray-500 hover:bg-gray-100">
-            <Bell className="h-5 w-5" />
-          </button>
+          {/* Static Notification Bell */}
+          <div className="relative">
+            <button className="relative p-2 rounded-md text-gray-500 hover:bg-gray-100 transition-colors">
+              <Bell className="h-5 w-5" />
+            </button>
+          </div>
           
           <div className="hidden sm:flex items-center space-x-3">
             <div className="text-right">

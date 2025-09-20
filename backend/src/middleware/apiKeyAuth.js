@@ -1,5 +1,5 @@
 import APIKey from '../models/APIKey.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import logger from '../utils/logger.js';
 
@@ -20,7 +20,7 @@ export const authenticateAPIKey = catchAsync(async (req, res, next) => {
   }
   
   if (!apiKey) {
-    return next(new AppError('API key is required. Provide it in Authorization header, x-api-key header, or api_key query parameter.', 401));
+    return next(new ApplicationError('API key is required. Provide it in Authorization header, x-api-key header, or api_key query parameter.', 401));
   }
   
   // Verify API key
@@ -31,7 +31,7 @@ export const authenticateAPIKey = catchAsync(async (req, res, next) => {
       ip: req.ip,
       userAgent: req.headers['user-agent']
     });
-    return next(new AppError('Invalid or expired API key', 401));
+    return next(new ApplicationError('Invalid or expired API key', 401));
   }
   
   // Check IP restrictions
@@ -46,7 +46,7 @@ export const authenticateAPIKey = catchAsync(async (req, res, next) => {
         clientIP,
         allowedIPs: validKey.allowedIPs
       });
-      return next(new AppError('API key not authorized for this IP address', 403));
+      return next(new ApplicationError('API key not authorized for this IP address', 403));
     }
   }
   
@@ -64,7 +64,7 @@ export const authenticateAPIKey = catchAsync(async (req, res, next) => {
           domain,
           allowedDomains: validKey.allowedDomains
         });
-        return next(new AppError('API key not authorized for this domain', 403));
+        return next(new ApplicationError('API key not authorized for this domain', 403));
       }
     }
   }
@@ -77,7 +77,7 @@ export const authenticateAPIKey = catchAsync(async (req, res, next) => {
     res.set('X-RateLimit-Reset', rateLimitCheck.resetTime.toISOString());
     res.set('Retry-After', resetTime);
     
-    return next(new AppError(`Rate limit exceeded. Try again in ${resetTime} seconds.`, 429));
+    return next(new ApplicationError(`Rate limit exceeded. Try again in ${resetTime} seconds.`, 429));
   }
   
   // Record usage (async, don't wait)
@@ -111,7 +111,7 @@ export const authenticateAPIKey = catchAsync(async (req, res, next) => {
 export const requirePermission = (resource, action = 'read') => {
   return catchAsync(async (req, res, next) => {
     if (!req.apiKey) {
-      return next(new AppError('API key authentication required', 401));
+      return next(new ApplicationError('API key authentication required', 401));
     }
     
     const { permissions, type } = req.apiKey;
@@ -143,7 +143,7 @@ export const requirePermission = (resource, action = 'read') => {
         action,
         permissions
       });
-      return next(new AppError(`Insufficient permissions. Required: ${action} on ${resource}`, 403));
+      return next(new ApplicationError(`Insufficient permissions. Required: ${action} on ${resource}`, 403));
     }
     
     next();

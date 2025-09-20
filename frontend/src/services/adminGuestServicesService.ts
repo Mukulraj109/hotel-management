@@ -134,7 +134,7 @@ class AdminGuestServicesService {
     }
     
     // Use the correct hotelId that matches the database
-    const correctHotelId = '68afe8080c02fcbe30092b8e';
+    const correctHotelId = '68c7e6ebca8aed0ec8036a9c';
     console.log('Using correct hotelId for guest services:', correctHotelId);
     
     // Cache the correct hotelId for 10 minutes to avoid repeated lookups

@@ -1,9 +1,10 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Room from '../models/Room.js';
 import Booking from '../models/Booking.js';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth.js';
 import { validate, schemas } from '../middleware/validation.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
@@ -95,7 +96,7 @@ router.get('/', optionalAuth, catchAsync(async (req, res) => {
     const checkOutDate = new Date(checkOut + 'T00:00:00.000Z');
     
     if (checkInDate > checkOutDate) {
-      throw new AppError('Check-out date must be after check-in date', 400);
+      throw new ApplicationError('Check-out date must be after check-in date', 400);
     }
 
     // If no hotelId provided, get the first available hotel
@@ -105,45 +106,64 @@ router.get('/', optionalAuth, catchAsync(async (req, res) => {
       if (firstRoom) {
         targetHotelId = firstRoom.hotelId;
       } else {
-        throw new AppError('No hotels available', 404);
+        throw new ApplicationError('No hotels available', 404);
       }
     }
 
     // For admin requests, show all rooms but mark availability
     if (req.headers['x-admin-request'] || req.user?.role === 'admin') {
       console.log('Admin request detected - showing all rooms with availability status');
-      
+      console.log('Date range:', { checkInDate, checkOutDate });
+      console.log('Target hotel ID:', targetHotelId);
+
       // Get all rooms for the hotel
       const allRooms = await Room.find({
         hotelId: targetHotelId,
         isActive: true,
         ...(type && { type })
       }).sort({ roomNumber: 1 });
-      
-      // Get conflicting bookings for the date range
+
+      console.log(`Found ${allRooms.length} total rooms for hotel ${targetHotelId}`);
+
+      // Get conflicting bookings for the date range with proper date overlap logic
       const conflictingBookings = await Booking.find({
         hotelId: targetHotelId,
         status: { $in: ['confirmed', 'checked_in'] },
-        $or: [
-          { checkIn: { $lt: checkOutDate, $gte: checkInDate } },
-          { checkOut: { $gt: checkInDate, $lte: checkOutDate } },
-          { checkIn: { $lte: checkInDate }, checkOut: { $gte: checkOutDate } }
+        $and: [
+          { checkIn: { $lt: checkOutDate } },
+          { checkOut: { $gt: checkInDate } }
         ]
-      }).select('rooms.roomId');
-      
-      // Extract occupied room IDs
-      const occupiedRoomIds = conflictingBookings.flatMap(booking => 
-        booking.rooms.map(room => room.roomId.toString())
-      );
-      
-             // For admin requests, show all rooms but mark availability based on booking conflicts only
-       // Don't restrict by room status for admin walk-in bookings
-       rooms = allRooms.map(room => ({
-         ...room.toObject(),
-         isAvailable: !occupiedRoomIds.includes(room._id.toString()),
-         currentStatus: room.status // Include current status for admin reference
-       }));
-      
+      }).populate('rooms.roomId');
+
+      console.log(`Found ${conflictingBookings.length} conflicting bookings`);
+
+      // Extract occupied room IDs with better logging
+      const occupiedRoomIds = [];
+      conflictingBookings.forEach(booking => {
+        booking.rooms.forEach(room => {
+          if (room.roomId && room.roomId._id) {
+            occupiedRoomIds.push(room.roomId._id.toString());
+          }
+        });
+      });
+
+      console.log('Occupied room IDs:', occupiedRoomIds);
+
+      // For admin requests, show all rooms but mark availability based on booking conflicts only
+      // For walk-in bookings, only check booking conflicts, not room status
+      rooms = allRooms.map(room => {
+        const isOccupied = occupiedRoomIds.includes(room._id.toString());
+        const isAvailable = !isOccupied && (room.status === 'vacant' || room.status === 'dirty');
+
+        return {
+          ...room.toObject(),
+          isAvailable,
+          currentStatus: room.status,
+          isOccupiedByBooking: isOccupied
+        };
+      });
+
+      console.log(`Processed ${rooms.length} rooms, ${rooms.filter(r => r.isAvailable).length} available`);
       total = rooms.length;
       
       // Apply pagination
@@ -225,30 +245,34 @@ router.get('/', optionalAuth, catchAsync(async (req, res) => {
 router.get('/debug', async (req, res) => {
   try {
     const { hotelId } = req.query;
-    
+
+    // Convert hotelId to ObjectId if provided
+    const hotelQuery = hotelId ? { hotelId: new mongoose.Types.ObjectId(hotelId) } : {};
+    const baseQuery = { isActive: true, ...hotelQuery };
+
     // Get total rooms
-    const totalRooms = await Room.countDocuments({ isActive: true, ...(hotelId && { hotelId }) });
-    
+    const totalRooms = await Room.countDocuments(baseQuery);
+
     // Get rooms with different statuses
     const statusCounts = await Room.aggregate([
-      { $match: { isActive: true, ...(hotelId && { hotelId }) } },
+      { $match: baseQuery },
       { $group: { _id: '$status', count: { $sum: 1 } } }
     ]);
     
     // Get all bookings
     const allBookings = await Booking.find({
-      ...(hotelId && { hotelId }),
+      ...hotelQuery,
       status: { $in: ['confirmed', 'checked_in'] }
     }).select('status checkIn checkOut rooms.roomId hotelId');
-    
+
     // Get current date info
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-    
+
     // Get current bookings
     const currentBookings = await Booking.find({
-      ...(hotelId && { hotelId }),
+      ...hotelQuery,
       status: { $in: ['confirmed', 'checked_in'] },
       checkOut: { $gte: today },
       checkIn: { $lte: tomorrow }
@@ -280,7 +304,7 @@ router.get('/metrics', authenticate, catchAsync(async (req, res) => {
   const { hotelId } = req.query;
   
   if (!hotelId) {
-    throw new AppError('Hotel ID is required', 400);
+    throw new ApplicationError('Hotel ID is required', 400);
   }
 
   // Use real-time status calculation instead of static status
@@ -336,7 +360,7 @@ router.get('/:id', catchAsync(async (req, res) => {
     .populate('hotelId', 'name address contact policies');
 
   if (!room || !room.isActive) {
-    throw new AppError('Room not found', 404);
+    throw new ApplicationError('Room not found', 404);
   }
 
   res.json({
@@ -411,7 +435,7 @@ router.patch('/:id',
     );
 
     if (!room) {
-      throw new AppError('Room not found', 404);
+      throw new ApplicationError('Room not found', 404);
     }
 
     res.json({
@@ -453,7 +477,7 @@ router.delete('/:id',
     );
 
     if (!room) {
-      throw new AppError('Room not found', 404);
+      throw new ApplicationError('Room not found', 404);
     }
 
     res.status(204).json({

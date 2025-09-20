@@ -2,7 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import StaffTask from '../models/StaffTask.js';
 import Room from '../models/Room.js';
 import InventoryItem from '../models/InventoryItem.js';
@@ -67,12 +67,12 @@ router.get('/:taskId', authorize('staff', 'admin'), catchAsync(async (req, res) 
     .populate('verifiedBy', 'name email');
 
   if (!task) {
-    throw new AppError('Task not found', 404);
+    throw new ApplicationError('Task not found', 404);
   }
 
   // Staff can only view their own tasks unless they're admin
   if (req.user.role === 'staff' && task.assignedTo._id.toString() !== req.user._id.toString()) {
-    throw new AppError('You can only view your own tasks', 403);
+    throw new ApplicationError('You can only view your own tasks', 403);
   }
 
   res.json({
@@ -89,18 +89,18 @@ router.patch('/:taskId/status', authorize('staff', 'admin'), catchAsync(async (r
 
   const task = await StaffTask.findById(req.params.taskId);
   if (!task) {
-    throw new AppError('Task not found', 404);
+    throw new ApplicationError('Task not found', 404);
   }
 
   // Staff can only update their own tasks
   if (req.user.role === 'staff' && task.assignedTo.toString() !== req.user._id.toString()) {
-    throw new AppError('You can only update your own tasks', 403);
+    throw new ApplicationError('You can only update your own tasks', 403);
   }
 
   // Validate status transition
   const validStatuses = ['assigned', 'in_progress', 'completed', 'cancelled'];
   if (!validStatuses.includes(status)) {
-    throw new AppError('Invalid status', 400);
+    throw new ApplicationError('Invalid status', 400);
   }
 
   // Update task
@@ -148,11 +148,11 @@ router.patch('/:taskId/progress', authorize('staff', 'admin'), catchAsync(async 
 
   const task = await StaffTask.findById(req.params.taskId);
   if (!task) {
-    throw new AppError('Task not found', 404);
+    throw new ApplicationError('Task not found', 404);
   }
 
   if (req.user.role === 'staff' && task.assignedTo.toString() !== req.user._id.toString()) {
-    throw new AppError('You can only update your own tasks', 403);
+    throw new ApplicationError('You can only update your own tasks', 403);
   }
 
   await task.updateProgress(progressData);
@@ -171,11 +171,11 @@ router.post('/:taskId/photos', authorize('staff', 'admin'), catchAsync(async (re
 
   const task = await StaffTask.findById(req.params.taskId);
   if (!task) {
-    throw new AppError('Task not found', 404);
+    throw new ApplicationError('Task not found', 404);
   }
 
   if (req.user.role === 'staff' && task.assignedTo.toString() !== req.user._id.toString()) {
-    throw new AppError('You can only update your own tasks', 403);
+    throw new ApplicationError('You can only update your own tasks', 403);
   }
 
   await task.addCompletionPhoto(photoUrl, description);
@@ -204,7 +204,7 @@ router.post('/', authorize('admin'), catchAsync(async (req, res) => {
     });
     
     if (rooms.length !== taskData.roomIds.length) {
-      throw new AppError('Some rooms not found or don\'t belong to your hotel', 400);
+      throw new ApplicationError('Some rooms not found or don\'t belong to your hotel', 400);
     }
   }
 
@@ -217,7 +217,7 @@ router.post('/', authorize('admin'), catchAsync(async (req, res) => {
     });
     
     if (items.length !== itemIds.length) {
-      throw new AppError('Some inventory items not found or don\'t belong to your hotel', 400);
+      throw new ApplicationError('Some inventory items not found or don\'t belong to your hotel', 400);
     }
   }
 
@@ -323,12 +323,12 @@ router.delete('/:taskId', authorize('admin'), catchAsync(async (req, res) => {
   });
 
   if (!task) {
-    throw new AppError('Task not found', 404);
+    throw new ApplicationError('Task not found', 404);
   }
 
   // Don't allow deletion of completed tasks with important data
   if (task.status === 'completed' && task.completionData) {
-    throw new AppError('Cannot delete completed tasks with completion data', 400);
+    throw new ApplicationError('Cannot delete completed tasks with completion data', 400);
   }
 
   await StaffTask.findByIdAndDelete(req.params.taskId);
@@ -346,7 +346,7 @@ router.post('/create-daily-inventory-checks', authorize('admin'), catchAsync(asy
   const { assignedTo, dueDate = new Date() } = req.body;
 
   if (!assignedTo) {
-    throw new AppError('Staff member must be assigned', 400);
+    throw new ApplicationError('Staff member must be assigned', 400);
   }
 
   // Get all active rooms
@@ -357,7 +357,7 @@ router.post('/create-daily-inventory-checks', authorize('admin'), catchAsync(asy
   });
 
   if (rooms.length === 0) {
-    throw new AppError('No available rooms for inventory checks', 400);
+    throw new ApplicationError('No available rooms for inventory checks', 400);
   }
 
   // Create tasks for each room or batch them

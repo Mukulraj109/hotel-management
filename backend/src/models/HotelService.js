@@ -209,6 +209,71 @@ const hotelServiceSchema = new mongoose.Schema({
       default: 0,
       min: 0
     }
+  },
+  // Staff Assignment Fields
+  assignedStaff: [{
+    staffId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    role: {
+      type: String,
+      enum: ['manager', 'supervisor', 'attendant', 'specialist'],
+      default: 'attendant'
+    },
+    primaryContact: {
+      type: Boolean,
+      default: false
+    },
+    assignedAt: {
+      type: Date,
+      default: Date.now
+    },
+    isActive: {
+      type: Boolean,
+      default: true
+    }
+  }],
+  staffRequirements: {
+    minimumStaff: {
+      type: Number,
+      default: 1,
+      min: 0
+    },
+    requiredSkills: [{
+      type: String,
+      trim: true
+    }],
+    workingHours: {
+      type: String,
+      enum: ['full_time', 'part_time', 'on_demand', 'scheduled'],
+      default: 'on_demand'
+    }
+  },
+  serviceSettings: {
+    autoAssignRequests: {
+      type: Boolean,
+      default: true
+    },
+    allowMultipleAssignments: {
+      type: Boolean,
+      default: false
+    },
+    notificationSettings: {
+      emailNotifications: {
+        type: Boolean,
+        default: true
+      },
+      pushNotifications: {
+        type: Boolean,
+        default: true
+      },
+      smsNotifications: {
+        type: Boolean,
+        default: false
+      }
+    }
   }
 }, {
   timestamps: true,
@@ -290,6 +355,81 @@ hotelServiceSchema.methods.updateRating = async function(newRating) {
   this.rating.count += 1;
   this.rating.average = totalRating / this.rating.count;
   return await this.save();
+};
+
+// Staff Management Methods
+
+// Assign staff member to service
+hotelServiceSchema.methods.assignStaff = function(staffId, role = 'attendant', isPrimary = false) {
+  // Check if staff is already assigned
+  const existingAssignment = this.assignedStaff.find(
+    assignment => assignment.staffId.toString() === staffId.toString() && assignment.isActive
+  );
+
+  if (existingAssignment) {
+    // Update existing assignment
+    existingAssignment.role = role;
+    existingAssignment.primaryContact = isPrimary;
+    return this;
+  }
+
+  // If setting as primary, remove primary from others
+  if (isPrimary) {
+    this.assignedStaff.forEach(assignment => {
+      assignment.primaryContact = false;
+    });
+  }
+
+  // Add new assignment
+  this.assignedStaff.push({
+    staffId,
+    role,
+    primaryContact: isPrimary,
+    isActive: true
+  });
+
+  return this;
+};
+
+// Remove staff assignment
+hotelServiceSchema.methods.unassignStaff = function(staffId) {
+  const assignment = this.assignedStaff.find(
+    assignment => assignment.staffId.toString() === staffId.toString()
+  );
+
+  if (assignment) {
+    assignment.isActive = false;
+  }
+
+  return this;
+};
+
+// Get active assigned staff
+hotelServiceSchema.methods.getActiveStaff = function() {
+  return this.assignedStaff.filter(assignment => assignment.isActive);
+};
+
+// Get primary contact staff
+hotelServiceSchema.methods.getPrimaryContact = function() {
+  return this.assignedStaff.find(
+    assignment => assignment.isActive && assignment.primaryContact
+  );
+};
+
+// Check if service has adequate staffing
+hotelServiceSchema.methods.hasAdequateStaffing = function() {
+  const activeStaff = this.getActiveStaff();
+  return activeStaff.length >= (this.staffRequirements?.minimumStaff || 1);
+};
+
+// Static method to get services assigned to staff member
+hotelServiceSchema.statics.getServicesForStaff = async function(staffId, hotelId) {
+  return await this.find({
+    hotelId,
+    'assignedStaff.staffId': staffId,
+    'assignedStaff.isActive': true,
+    isActive: true
+  }).populate('assignedStaff.staffId', 'name email department');
 };
 
 // Pre-save middleware to validate operating hours

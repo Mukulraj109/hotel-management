@@ -16,7 +16,7 @@ import {
   Package,
   AlertCircle,
   Clock,
-  DollarSign,
+  IndianRupee,
   Save,
   X,
   Info,

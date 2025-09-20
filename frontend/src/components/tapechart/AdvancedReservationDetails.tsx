@@ -24,7 +24,7 @@ import {
   Flag,
   Bed,
   Star,
-  DollarSign
+  IndianRupee
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { AdvancedReservation } from '@/services/advancedReservationsService';

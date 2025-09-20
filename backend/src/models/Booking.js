@@ -196,6 +196,46 @@ const bookingSchema = new mongoose.Schema({
     default: 'INR',
     uppercase: true
   },
+  // Detailed payment information for check-in/check-out
+  paymentDetails: {
+    totalPaid: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    remainingAmount: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    paymentMethods: [{
+      method: {
+        type: String,
+        enum: ['cash', 'card', 'upi', 'online_portal', 'corporate'],
+        required: true
+      },
+      amount: {
+        type: Number,
+        required: true,
+        min: 0
+      },
+      reference: String, // Transaction reference, UPI ID, etc.
+      processedBy: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User'
+      },
+      processedAt: {
+        type: Date,
+        default: Date.now
+      },
+      notes: String
+    }],
+    collectedAt: Date,
+    collectedBy: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'User'
+    }
+  },
   roomType: {
     type: String,
     enum: ['single', 'double', 'suite', 'deluxe'],
@@ -210,7 +250,11 @@ const bookingSchema = new mongoose.Schema({
   reservedUntil: {
     type: Date,
     default: function() {
-      return new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+      // Only set expiration for pending bookings
+      if (this.status === 'pending') {
+        return new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+      }
+      return undefined; // No expiration for confirmed bookings
     }
   },
   guestDetails: {
@@ -522,10 +566,25 @@ bookingSchema.index({ userId: 1, status: 1 });
 bookingSchema.index({ status: 1, paymentStatus: 1 });
 // idempotencyKey already has unique and sparse constraints in schema
 // bookingNumber already has unique constraint in schema
-bookingSchema.index({ reservedUntil: 1 }, { expireAfterSeconds: 0 });
+// TTL index for pending reservations only - confirmed bookings should not expire
+// Corporate bookings are protected by setting their status to 'confirmed' or not setting reservedUntil
+bookingSchema.index({
+  reservedUntil: 1
+}, {
+  expireAfterSeconds: 0,
+  partialFilterExpression: {
+    status: 'pending',
+    reservedUntil: { $exists: true }
+  }
+});
 
 // Compound index for channel-specific idempotency (prevents OTA duplicates)
-bookingSchema.index({ source: 1, channelBookingId: 1 }, { unique: true, sparse: true });
+// Only enforce uniqueness when channelBookingId is not null (for OTA bookings only)
+bookingSchema.index({ source: 1, channelBookingId: 1 }, { 
+  unique: true, 
+  sparse: true,
+  partialFilterExpression: { channelBookingId: { $ne: null } }
+});
 
 // Enhanced indexes for status tracking and OTA amendments
 bookingSchema.index({ 'lastStatusChange.timestamp': -1 });
@@ -537,12 +596,37 @@ bookingSchema.index({ 'otaAmendments.channelAmendmentId': 1 }, { sparse: true })
 
 // Enhanced pre-save middleware for status tracking and validation
 bookingSchema.pre('save', function(next) {
+  // Protect corporate bookings from TTL deletion
+  if (this.corporateBooking && this.corporateBooking.corporateCompanyId) {
+    // Remove reservedUntil for corporate bookings
+    if (this.reservedUntil) {
+      this.reservedUntil = undefined;
+    }
+    // Ensure corporate bookings are never left in pending status
+    if (this.status === 'pending' && this.isNew) {
+      this.status = 'confirmed';
+    }
+  }
+
   // Calculate nights when dates change
   if (this.isModified('checkIn') || this.isModified('checkOut')) {
     const timeDiff = this.checkOut.getTime() - this.checkIn.getTime();
     this.nights = Math.ceil(timeDiff / (1000 * 3600 * 24));
   }
-  
+
+  // Calculate payment details
+  if (this.paymentDetails && this.paymentDetails.paymentMethods) {
+    this.paymentDetails.totalPaid = this.paymentDetails.paymentMethods.reduce((total, payment) => total + payment.amount, 0);
+    this.paymentDetails.remainingAmount = Math.max(0, this.totalAmount - this.paymentDetails.totalPaid);
+    
+    // Auto-update payment status based on payment amount
+    if (this.paymentDetails.totalPaid >= this.totalAmount) {
+      this.paymentStatus = 'paid';
+    } else if (this.paymentDetails.totalPaid > 0) {
+      this.paymentStatus = 'pending'; // Partial payment
+    }
+  }
+
   // Generate booking number if not exists
   if (!this.bookingNumber) {
     const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -632,7 +716,8 @@ bookingSchema.methods.calculateTotalAmount = function() {
 bookingSchema.statics.findOverlapping = async function(roomIds, checkIn, checkOut, excludeBookingId = null) {
   const query = {
     'rooms.roomId': { $in: roomIds },
-    status: { $in: ['confirmed', 'checked_in'] },
+    // Only include bookings that actually occupy the room (exclude checked_out, cancelled, no_show)
+    status: { $in: ['pending', 'confirmed', 'modified', 'checked_in'] },
     $or: [
       { checkIn: { $lt: checkOut, $gte: checkIn } },
       { checkOut: { $gt: checkIn, $lte: checkOut } },

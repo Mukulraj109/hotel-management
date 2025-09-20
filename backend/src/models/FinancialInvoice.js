@@ -190,6 +190,7 @@ const financialInvoiceSchema = new mongoose.Schema({
 });
 
 // Indexes
+// Note: invoiceNumber already has unique: true, so compound index covers it
 financialInvoiceSchema.index({ hotelId: 1, invoiceNumber: 1 });
 financialInvoiceSchema.index({ hotelId: 1, status: 1 });
 financialInvoiceSchema.index({ hotelId: 1, dueDate: 1 });

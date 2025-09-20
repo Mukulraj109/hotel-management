@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Plus, Search, Filter, Calendar, BarChart3, Settings, TrendingUp, Users, AlertTriangle } from 'lucide-react';
+import { Plus, Search, Filter, Calendar, BarChart3, Settings, TrendingUp, Users, AlertTriangle, RefreshCw, Download } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -8,9 +8,13 @@ import { Badge } from '../../components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import AllotmentCalendar from '../../components/admin/AllotmentCalendar';
 import AllotmentAnalytics from '../../components/admin/AllotmentAnalytics';
-import { allotmentService, RoomTypeAllotment } from '../../services/allotmentService';
+import allotmentService, { RoomTypeAllotment } from '../../services/allotmentService';
+import GlobalSettingsForm from '../../components/allotments/settings/GlobalSettingsForm';
+import IntegrationSettingsForm from '../../components/allotments/settings/IntegrationSettingsForm';
+import allotmentSettingsService, { HotelAllotmentSettings } from '../../services/allotmentSettingsService';
 
 const AdminRoomTypeAllotments: React.FC = () => {
   const [allotments, setAllotments] = useState<RoomTypeAllotment[]>([]);
@@ -28,6 +32,15 @@ const AdminRoomTypeAllotments: React.FC = () => {
     total: 0,
     limit: 12
   });
+  const [dateRange, setDateRange] = useState({
+    startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0]
+  });
+
+  // Settings state
+  const [hotelSettings, setHotelSettings] = useState<HotelAllotmentSettings | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [activeSettingsTab, setActiveSettingsTab] = useState('global');
 
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -35,6 +48,7 @@ const AdminRoomTypeAllotments: React.FC = () => {
   useEffect(() => {
     loadAllotments();
     loadDashboard();
+    loadHotelSettings();
   }, [searchParams]);
 
   useEffect(() => {
@@ -63,11 +77,11 @@ const AdminRoomTypeAllotments: React.FC = () => {
       console.log('🔍 [DEBUG] loadAllotments - Response success:', response?.success);
       console.log('🔍 [DEBUG] loadAllotments - Response data:', response?.data);
       
-      if (response?.success) {
-        console.log('✅ [SUCCESS] loadAllotments - Setting allotments:', response.data.allotments);
-        console.log('✅ [SUCCESS] loadAllotments - Setting pagination:', response.data.pagination);
-        setAllotments(response.data.allotments);
-        setPagination(response.data.pagination);
+      if (response) {
+        console.log('✅ [SUCCESS] loadAllotments - Setting allotments:', response.allotments);
+        console.log('✅ [SUCCESS] loadAllotments - Setting pagination:', response.pagination);
+        setAllotments(response.allotments);
+        setPagination(response.pagination);
       } else {
         console.error('❌ [ERROR] loadAllotments - Response not successful:', response);
         toast.error('Failed to load allotments');
@@ -93,8 +107,12 @@ const AdminRoomTypeAllotments: React.FC = () => {
     try {
       console.log('🔍 [DEBUG] loadDashboard - Starting dashboard API call');
       console.log('🔍 [DEBUG] loadDashboard - allotmentService:', allotmentService);
+      console.log('🔍 [DEBUG] loadDashboard - dateRange:', dateRange);
       
-      const response = await allotmentService.getDashboard();
+      const response = await allotmentService.getDashboard({
+        startDate: dateRange.startDate,
+        endDate: dateRange.endDate
+      });
       
       console.log('🔍 [DEBUG] loadDashboard - Response received:', response);
       console.log('🔍 [DEBUG] loadDashboard - Response success:', response?.success);
@@ -173,24 +191,89 @@ const AdminRoomTypeAllotments: React.FC = () => {
     }
   };
 
+  const handleExportDashboard = async () => {
+    try {
+      const exportData = {
+        exportDate: new Date().toISOString(),
+        dateRange: dateRange,
+        dashboardData: dashboardData,
+        allotments: filteredAllotments
+      };
+
+      const dataStr = JSON.stringify(exportData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      const url = URL.createObjectURL(dataBlob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `allotment-dashboard-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      toast.success('Dashboard data exported successfully');
+    } catch (error) {
+      console.error('Error exporting dashboard:', error);
+      toast.error('Failed to export dashboard data');
+    }
+  };
+
+  // Hotel Settings Functions
+  const loadHotelSettings = async () => {
+    try {
+      setSettingsLoading(true);
+      const settings = await allotmentSettingsService.getHotelSettings();
+      setHotelSettings(settings);
+    } catch (error) {
+      console.error('Error loading hotel settings:', error);
+      toast.error('Failed to load hotel settings');
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const handleSaveGlobalSettings = async (settings: Partial<HotelAllotmentSettings>) => {
+    try {
+      const updatedSettings = await allotmentSettingsService.updateGlobalSettings(settings);
+      setHotelSettings(updatedSettings);
+      toast.success('Global settings saved successfully');
+    } catch (error) {
+      console.error('Error saving global settings:', error);
+      throw error;
+    }
+  };
+
+  const handleSaveIntegrationSettings = async (settings: { [key: string]: any }) => {
+    try {
+      const updatedSettings = await allotmentSettingsService.updateIntegrationSettings(settings);
+      setHotelSettings(updatedSettings);
+      toast.success('Integration settings saved successfully');
+    } catch (error) {
+      console.error('Error saving integration settings:', error);
+      throw error;
+    }
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
-        return 'bg-green-100 text-green-800';
+        return 'bg-emerald-100 text-emerald-700 border-emerald-200';
       case 'inactive':
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-100 text-gray-600 border-gray-200';
       case 'suspended':
-        return 'bg-red-100 text-red-800';
+        return 'bg-red-100 text-red-700 border-red-200';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-gray-100 text-gray-600 border-gray-200';
     }
   };
 
   const getOccupancyColor = (rate: number) => {
     if (rate >= 90) return 'text-red-600';
-    if (rate >= 70) return 'text-orange-600';
-    if (rate >= 50) return 'text-yellow-600';
-    return 'text-green-600';
+    if (rate >= 70) return 'text-orange-500';
+    if (rate >= 50) return 'text-amber-500';
+    if (rate >= 30) return 'text-emerald-500';
+    return 'text-emerald-600';
   };
 
   if (selectedAllotment && activeTab === 'calendar') {
@@ -250,22 +333,40 @@ const AdminRoomTypeAllotments: React.FC = () => {
 
   return (
     <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Room Type Allotments</h1>
-          <p className="text-gray-600">Manage inventory allocation across distribution channels</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Room Type Allotments</h1>
+          <p className="text-gray-500 text-lg">Manage inventory allocation across distribution channels</p>
         </div>
-        <Button onClick={handleCreateAllotment} className="bg-blue-600 hover:bg-blue-700">
+        <Button 
+          onClick={handleCreateAllotment} 
+          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl transition-all duration-200"
+        >
           <Plus className="w-4 h-4 mr-2" />
           Create Allotment
         </Button>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3 bg-gray-100 p-1 rounded-lg">
+          <TabsTrigger 
+            value="overview" 
+            className="data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all"
+          >
+            Overview
+          </TabsTrigger>
+          <TabsTrigger 
+            value="dashboard" 
+            className="data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all"
+          >
+            Dashboard
+          </TabsTrigger>
+          <TabsTrigger 
+            value="settings" 
+            className="data-[state=active]:bg-white data-[state=active]:shadow-sm transition-all"
+          >
+            Settings
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">
@@ -320,7 +421,7 @@ const AdminRoomTypeAllotments: React.FC = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    ${dashboardData.totalRevenue.toLocaleString()}
+                    ₹{dashboardData.totalRevenue.toLocaleString()}
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Last 30 days
@@ -406,34 +507,44 @@ const AdminRoomTypeAllotments: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredAllotments.map((allotment) => (
-                <Card key={allotment._id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg font-semibold truncate">
+                <Card key={allotment._id} className="hover:shadow-xl transition-all duration-300 border-0 shadow-md bg-gradient-to-br from-white to-gray-50">
+                  <CardHeader className="pb-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <CardTitle className="text-lg font-semibold text-gray-900 truncate">
                           {allotment.name}
                         </CardTitle>
-                        <p className="text-sm text-gray-600 mt-1">
+                        <p className="text-sm text-gray-500 mt-1 truncate">
                           {allotment.roomTypeId?.name || 'Unknown Room Type'}
                         </p>
                       </div>
-                      <Badge className={getStatusColor(allotment.status)}>
+                      <Badge 
+                        className={`${getStatusColor(allotment.status)} text-xs font-medium px-2 py-1 rounded-full border-0 shadow-sm flex-shrink-0`}
+                      >
                         {allotment.status}
                       </Badge>
                     </div>
                   </CardHeader>
                   
                   <CardContent className="pt-0">
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                       {/* Key Metrics */}
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <span className="text-gray-600">Total Inventory</span>
-                          <p className="font-semibold">{allotment.defaultSettings?.totalInventory || 0}</p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-white rounded-lg p-3 border border-gray-100">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Inventory</span>
+                          </div>
+                          <p className="text-xl font-bold text-gray-900 mt-1">
+                            {allotment.defaultSettings?.totalInventory || 0}
+                          </p>
                         </div>
-                        <div>
-                          <span className="text-gray-600">Occupancy</span>
-                          <p className={`font-semibold ${getOccupancyColor(allotment.overallOccupancyRate || 0)}`}>
+                        <div className="bg-white rounded-lg p-3 border border-gray-100">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${getOccupancyColor(allotment.overallOccupancyRate || 0).replace('text-', 'bg-')}`}></div>
+                            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Occupancy</span>
+                          </div>
+                          <p className={`text-xl font-bold mt-1 ${getOccupancyColor(allotment.overallOccupancyRate || 0)}`}>
                             {allotment.overallOccupancyRate?.toFixed(1) || 0}%
                           </p>
                         </div>
@@ -441,15 +552,22 @@ const AdminRoomTypeAllotments: React.FC = () => {
 
                       {/* Active Channels */}
                       <div>
-                        <span className="text-sm text-gray-600">Active Channels</span>
-                        <div className="flex flex-wrap gap-1 mt-1">
+                        <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Active Channels</span>
+                        <div className="flex flex-wrap gap-2 mt-2">
                           {allotment.channels?.filter(c => c.isActive).slice(0, 3).map((channel, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
+                            <Badge 
+                              key={index} 
+                              variant="outline" 
+                              className="text-xs px-2 py-1 bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100 transition-colors"
+                            >
                               {channel.channelName}
                             </Badge>
                           ))}
                           {allotment.channels?.filter(c => c.isActive).length > 3 && (
-                            <Badge variant="outline" className="text-xs">
+                            <Badge 
+                              variant="outline" 
+                              className="text-xs px-2 py-1 bg-blue-50 border-blue-200 text-blue-700"
+                            >
                               +{allotment.channels.filter(c => c.isActive).length - 3} more
                             </Badge>
                           )}
@@ -457,35 +575,99 @@ const AdminRoomTypeAllotments: React.FC = () => {
                       </div>
 
                       {/* Action Buttons */}
-                      <div className="flex gap-2 pt-2">
+                      <div className="flex gap-2 pt-3 border-t border-gray-100">
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => handleViewCalendar(allotment)}
-                          className="flex-1"
+                          className="flex-1 bg-white border-gray-200 text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all"
                         >
-                          <Calendar className="w-3 h-3 mr-1" />
+                          <Calendar className="w-4 h-4 mr-2" />
                           Calendar
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => handleViewAnalytics(allotment)}
+                          className="bg-white border-gray-200 text-gray-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-all"
                         >
-                          <BarChart3 className="w-3 h-3" />
+                          <BarChart3 className="w-4 h-4" />
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => handleOptimizeAllotment(allotment)}
+                          className="bg-white border-gray-200 text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 transition-all"
                         >
-                          <TrendingUp className="w-3 h-3" />
+                          <TrendingUp className="w-4 h-4" />
                         </Button>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               ))}
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {filteredAllotments.length > 0 && (
+            <div className="flex items-center justify-between mt-8">
+              <div className="text-sm text-gray-700">
+                Showing {((pagination.current - 1) * pagination.limit) + 1} to {Math.min(pagination.current * pagination.limit, pagination.total)} of {pagination.total} allotments
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const newPage = Math.max(1, pagination.current - 1);
+                    navigate(`?page=${newPage}`);
+                  }}
+                  disabled={pagination.current <= 1}
+                >
+                  Previous
+                </Button>
+                <div className="flex items-center space-x-1">
+                  {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
+                    const pageNum = i + 1;
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={pagination.current === pageNum ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => navigate(`?page=${pageNum}`)}
+                        className="w-8 h-8 p-0"
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                  {pagination.pages > 5 && (
+                    <>
+                      <span className="text-gray-500">...</span>
+                      <Button
+                        variant={pagination.current === pagination.pages ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => navigate(`?page=${pagination.pages}`)}
+                        className="w-8 h-8 p-0"
+                      >
+                        {pagination.pages}
+                      </Button>
+                    </>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const newPage = Math.min(pagination.pages, pagination.current + 1);
+                    navigate(`?page=${newPage}`);
+                  }}
+                  disabled={pagination.current >= pagination.pages}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           )}
 
@@ -510,15 +692,164 @@ const AdminRoomTypeAllotments: React.FC = () => {
 
         <TabsContent value="dashboard" className="mt-6">
           <div className="space-y-6">
-            {/* Channel Performance */}
-            {dashboardData?.topPerformingChannel && (
+            {/* Date Range Filter */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Dashboard Filters</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-4 items-center">
+                  <div className="flex items-center space-x-2">
+                    <label className="text-sm font-medium">Date Range:</label>
+                    <Input
+                      type="date"
+                      value={dateRange.startDate}
+                      onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
+                      className="w-40"
+                    />
+                    <span className="text-gray-500">to</span>
+                    <Input
+                      type="date"
+                      value={dateRange.endDate}
+                      onChange={(e) => setDateRange(prev => ({ ...prev, endDate: e.target.value }))}
+                      className="w-40"
+                    />
+                  </div>
+                  <Button 
+                    onClick={loadDashboard}
+                    variant="outline"
+                    size="sm"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Apply Filters
+                  </Button>
+                  <Button 
+                    onClick={handleExportDashboard}
+                    variant="outline"
+                    size="sm"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export Data
+                  </Button>
+                  <div className="flex space-x-2">
+                    <Button 
+                      onClick={() => {
+                        const today = new Date();
+                        const last7Days = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+                        setDateRange({
+                          startDate: last7Days.toISOString().split('T')[0],
+                          endDate: today.toISOString().split('T')[0]
+                        });
+                      }}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Last 7 Days
+                    </Button>
+                    <Button 
+                      onClick={() => {
+                        const today = new Date();
+                        const last30Days = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+                        setDateRange({
+                          startDate: last30Days.toISOString().split('T')[0],
+                          endDate: today.toISOString().split('T')[0]
+                        });
+                      }}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Last 30 Days
+                    </Button>
+                    <Button 
+                      onClick={() => {
+                        const today = new Date();
+                        const last90Days = new Date(today.getTime() - 90 * 24 * 60 * 60 * 1000);
+                        setDateRange({
+                          startDate: last90Days.toISOString().split('T')[0],
+                          endDate: today.toISOString().split('T')[0]
+                        });
+                      }}
+                      variant="outline"
+                      size="sm"
+                    >
+                      Last 90 Days
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Dashboard Summary Cards */}
+            {dashboardData && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Allotments</CardTitle>
+                    <Settings className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{dashboardData.totalAllotments}</div>
+                    <p className="text-xs text-muted-foreground">
+                      {dashboardData.totalRoomTypes} room types configured
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Avg Occupancy</CardTitle>
+                    <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className={`text-2xl font-bold ${getOccupancyColor(dashboardData.averageOccupancyRate)}`}>
+                      {dashboardData.averageOccupancyRate.toFixed(1)}%
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Last 30 days average
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Active Channels</CardTitle>
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{dashboardData.totalChannels}</div>
+                    <p className="text-xs text-muted-foreground">
+                      {dashboardData.topPerformingChannel?.channelName || 'N/A'} performing best
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      ₹{dashboardData.totalRevenue.toLocaleString()}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Last 30 days
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* Channel Performance Overview */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Top Performing Channel */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Channel Performance</CardTitle>
+                  <CardTitle>Top Performing Channel</CardTitle>
                 </CardHeader>
                 <CardContent>
+                  {dashboardData?.topPerformingChannel ? (
                   <div className="space-y-4">
-                    {dashboardData.topPerformingChannel ? (
                       <div className="flex items-center justify-between p-4 bg-green-50 rounded-lg">
                         <div>
                           <h4 className="font-medium text-green-900">Top Performer</h4>
@@ -531,34 +862,148 @@ const AdminRoomTypeAllotments: React.FC = () => {
                           <p className="text-sm text-green-700">Utilization</p>
                         </div>
                       </div>
-                    ) : (
-                      <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
+                          <span className="text-gray-600">Revenue</span>
+                          <p className="font-semibold">₹{dashboardData.topPerformingChannel.totalRevenue?.toLocaleString() || 0}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Bookings</span>
+                          <p className="font-semibold">{dashboardData.topPerformingChannel.totalSold || 0}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center p-8 bg-gray-50 rounded-lg">
+                      <div className="text-center">
+                        <BarChart3 className="mx-auto h-12 w-12 text-gray-400 mb-4" />
                           <h4 className="font-medium text-gray-600">No Channel Data Available</h4>
                           <p className="text-sm text-gray-500">Performance data will appear once bookings are made</p>
                         </div>
                       </div>
                     )}
+                </CardContent>
+              </Card>
 
-                    {dashboardData.lowUtilizationChannels?.length > 0 && (
+              {/* Low Utilization Channels */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Low Utilization Channels</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {dashboardData?.lowUtilizationChannels?.length > 0 ? (
+                    <div className="space-y-3">
+                      {dashboardData.lowUtilizationChannels.slice(0, 3).map((channel: any, index: number) => (
+                        <div key={index} className="flex items-center justify-between p-3 bg-orange-50 rounded">
                       <div>
-                        <h4 className="font-medium mb-2">Low Utilization Channels</h4>
-                        <div className="space-y-2">
-                          {dashboardData.lowUtilizationChannels.map((channel: any, index: number) => (
-                            <div key={index} className="flex items-center justify-between p-3 bg-orange-50 rounded">
-                              <span className="text-sm">{channel.channelName}</span>
+                            <span className="text-sm font-medium">{channel.channelName}</span>
+                            <p className="text-xs text-gray-600">Allocated: {channel.totalAllocated || 0}</p>
+                          </div>
                               <Badge variant="outline" className="text-orange-600">
                                 {channel.utilizationRate.toFixed(1)}%
                               </Badge>
                             </div>
                           ))}
+                      {dashboardData.lowUtilizationChannels.length > 3 && (
+                        <p className="text-xs text-gray-500 text-center">
+                          +{dashboardData.lowUtilizationChannels.length - 3} more channels
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center p-8 bg-gray-50 rounded-lg">
+                      <div className="text-center">
+                        <AlertTriangle className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                        <h4 className="font-medium text-gray-600">All Channels Performing Well</h4>
+                        <p className="text-sm text-gray-500">No low utilization channels found</p>
                         </div>
                       </div>
                     )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Channel Performance Chart */}
+            {dashboardData?.topPerformingChannel && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Channel Performance Overview</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={[
+                        {
+                          channel: dashboardData.topPerformingChannel.channelName,
+                          utilization: dashboardData.topPerformingChannel.utilizationRate || 0,
+                          revenue: dashboardData.topPerformingChannel.totalRevenue || 0,
+                          bookings: dashboardData.topPerformingChannel.totalSold || 0
+                        },
+                        ...(dashboardData.lowUtilizationChannels || []).slice(0, 4).map((channel: any) => ({
+                          channel: channel.channelName,
+                          utilization: channel.utilizationRate || 0,
+                          revenue: 0, // Low utilization channels might not have revenue data
+                          bookings: 0
+                        }))
+                      ]}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="channel" />
+                        <YAxis yAxisId="left" />
+                        <YAxis yAxisId="right" orientation="right" />
+                        <Tooltip 
+                          formatter={(value: number, name: string) => [
+                            name === 'revenue' ? `₹${value.toLocaleString()}` : 
+                            name === 'utilization' ? `${value.toFixed(1)}%` : 
+                            value,
+                            name === 'revenue' ? 'Revenue' : 
+                            name === 'utilization' ? 'Utilization' : 
+                            name === 'bookings' ? 'Bookings' : name
+                          ]}
+                        />
+                        <Legend />
+                        <Bar yAxisId="left" dataKey="utilization" fill="#3b82f6" name="Utilization (%)" />
+                        <Bar yAxisId="right" dataKey="revenue" fill="#10b981" name="Revenue (₹)" />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
                 </CardContent>
               </Card>
             )}
+
+            {/* Quick Actions */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Quick Actions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Button 
+                    variant="outline" 
+                    className="h-20 flex flex-col items-center justify-center space-y-2"
+                    onClick={handleCreateAllotment}
+                  >
+                    <Plus className="h-6 w-6" />
+                    <span>Create New Allotment</span>
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="h-20 flex flex-col items-center justify-center space-y-2"
+                    onClick={() => loadDashboard()}
+                  >
+                    <RefreshCw className="h-6 w-6" />
+                    <span>Refresh Data</span>
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    className="h-20 flex flex-col items-center justify-center space-y-2"
+                    onClick={() => setActiveTab('overview')}
+                  >
+                    <BarChart3 className="h-6 w-6" />
+                    <span>View All Allotments</span>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Recent Recommendations */}
             {dashboardData?.recentRecommendations?.length > 0 && (
@@ -590,31 +1035,34 @@ const AdminRoomTypeAllotments: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="settings" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Allotment Settings</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                <div>
-                  <h4 className="font-medium mb-2">Global Settings</h4>
-                  <p className="text-sm text-gray-600 mb-4">Configure default settings for new allotments</p>
-                  {/* Settings would be implemented here */}
-                  <div className="p-4 bg-gray-50 rounded text-center text-gray-600">
-                    Global allotment settings coming soon
-                  </div>
-                </div>
+          <Tabs value={activeSettingsTab} onValueChange={setActiveSettingsTab}>
+            <TabsList className="grid w-full grid-cols-2 mb-6">
+              <TabsTrigger value="global" className="flex items-center">
+                <Settings className="w-4 h-4 mr-2" />
+                Global Settings
+              </TabsTrigger>
+              <TabsTrigger value="integration" className="flex items-center">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Integration Settings
+              </TabsTrigger>
+            </TabsList>
 
-                <div>
-                  <h4 className="font-medium mb-2">Integration Settings</h4>
-                  <p className="text-sm text-gray-600 mb-4">Configure channel manager and PMS integrations</p>
-                  <div className="p-4 bg-gray-50 rounded text-center text-gray-600">
-                    Integration settings coming soon
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+            <TabsContent value="global">
+              <GlobalSettingsForm
+                settings={hotelSettings}
+                onSave={handleSaveGlobalSettings}
+                loading={settingsLoading}
+              />
+            </TabsContent>
+
+            <TabsContent value="integration">
+              <IntegrationSettingsForm
+                settings={hotelSettings}
+                onSave={handleSaveIntegrationSettings}
+                loading={settingsLoading}
+              />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
       </Tabs>
     </div>

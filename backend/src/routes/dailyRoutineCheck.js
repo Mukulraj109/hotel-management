@@ -2,7 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import DailyRoutineCheck from '../models/DailyRoutineCheck.js';
 import Room from '../models/Room.js';
 import InventoryItem from '../models/InventoryItem.js';
@@ -226,7 +226,7 @@ router.get('/rooms/:roomId/inventory', authorize('staff', 'admin'), catchAsync(a
   });
 
   if (!room) {
-    throw new AppError('Room not found', 404);
+    throw new ApplicationError('Room not found', 404);
   }
 
   // Get room inventory template
@@ -236,7 +236,7 @@ router.get('/rooms/:roomId/inventory', authorize('staff', 'admin'), catchAsync(a
   });
 
   if (!template) {
-    throw new AppError('No inventory template found for this room type', 404);
+    throw new ApplicationError('No inventory template found for this room type', 404);
   }
 
   // Get current room inventory status
@@ -336,7 +336,7 @@ router.post('/rooms/:roomId/complete', authorize('staff', 'admin'), catchAsync(a
   });
 
   if (!room) {
-    throw new AppError('Room not found', 404);
+    throw new ApplicationError('Room not found', 404);
   }
 
   // Check if already completed today
@@ -353,7 +353,7 @@ router.post('/rooms/:roomId/complete', authorize('staff', 'admin'), catchAsync(a
   });
 
   if (existingCheck && existingCheck.status === 'completed') {
-    throw new AppError('Daily check already completed for this room today', 400);
+    throw new ApplicationError('Daily check already completed for this room today', 400);
   }
 
   // Create or update daily check
@@ -369,8 +369,36 @@ router.post('/rooms/:roomId/complete', authorize('staff', 'admin'), catchAsync(a
     });
   }
 
-  // Process cart items
+  // Validate category-action combinations before processing
+  const validateCategoryActionCombination = (category, action) => {
+    // All items can be added or reused
+    if (action === 'add' || action === 'reuse' || action === 'replace') {
+      return true;
+    }
+
+    // Only bedroom and bathroom items can go to laundry
+    if (action === 'laundry') {
+      const laundryCategories = ['bedroom', 'bathroom'];
+      return laundryCategories.includes(category.toLowerCase());
+    }
+
+    return false;
+  };
+
+  // Process cart items with validation
   if (cart && cart.length > 0) {
+    // Validate all items first
+    const invalidItems = cart.filter(cartItem =>
+      !validateCategoryActionCombination(cartItem.category, cartItem.action)
+    );
+
+    if (invalidItems.length > 0) {
+      const invalidItemsDetails = invalidItems.map(item =>
+        `${item.itemName} (${item.category}) cannot have action: ${item.action}`
+      ).join(', ');
+      throw new ApplicationError(`Invalid category-action combinations: ${invalidItemsDetails}`, 400);
+    }
+
     dailyCheck.items = cart.map(cartItem => ({
       itemId: new mongoose.Types.ObjectId(cartItem.itemId),
       itemName: cartItem.itemName,
@@ -552,7 +580,7 @@ router.post('/rooms/:roomId/mark-checked', authorize('staff', 'admin'), catchAsy
   });
 
   if (!room) {
-    throw new AppError('Room not found', 404);
+    throw new ApplicationError('Room not found', 404);
   }
 
   const today = new Date();
@@ -623,7 +651,7 @@ router.post('/assign', authorize('admin', 'manager'), catchAsync(async (req, res
   const { assignments } = req.body;
 
   if (!assignments || !Array.isArray(assignments) || assignments.length === 0) {
-    throw new AppError('Assignments array is required', 400);
+    throw new ApplicationError('Assignments array is required', 400);
   }
 
   const today = new Date();
@@ -730,6 +758,148 @@ router.get('/templates', authorize('admin', 'manager', 'staff'), catchAsync(asyn
 
 /**
  * @swagger
+ * /api/v1/daily-routine-check/templates:
+ *   post:
+ *     summary: Create new inventory template for a room type
+ *     tags: [Daily Routine Check]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - roomType
+ *               - fixedInventory
+ *               - dailyInventory
+ *             properties:
+ *               roomType:
+ *                 type: string
+ *                 enum: [single, double, suite, deluxe]
+ *               fixedInventory:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                     category:
+ *                       type: string
+ *                       enum: [electronics, furniture, appliances, fixtures, other]
+ *                     description:
+ *                       type: string
+ *                     unitPrice:
+ *                       type: number
+ *                     standardQuantity:
+ *                       type: number
+ *                     checkInstructions:
+ *                       type: string
+ *                     expectedCondition:
+ *                       type: string
+ *                       enum: [working, clean, undamaged, functional]
+ *               dailyInventory:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                     category:
+ *                       type: string
+ *                       enum: [bathroom, bedroom, kitchen, amenities, other]
+ *                     description:
+ *                       type: string
+ *                     unitPrice:
+ *                       type: number
+ *                     standardQuantity:
+ *                       type: number
+ *                     checkInstructions:
+ *                       type: string
+ *                     expectedCondition:
+ *                       type: string
+ *                       enum: [clean, fresh, undamaged, adequate]
+ *               estimatedCheckDuration:
+ *                 type: number
+ *                 default: 15
+ *     responses:
+ *       201:
+ *         description: Template created successfully
+ *       400:
+ *         description: Template already exists for this room type
+ */
+router.post('/templates', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+  const { hotelId, _id: createdBy } = req.user;
+  const { roomType, fixedInventory, dailyInventory, estimatedCheckDuration } = req.body;
+
+  // Validate required fields
+  if (!roomType || !fixedInventory || !dailyInventory) {
+    throw new ApplicationError('Room type, fixed inventory, and daily inventory are required', 400);
+  }
+
+  // Check if template already exists
+  const existingTemplate = await DailyRoutineCheckTemplate.findOne({
+    hotelId: new mongoose.Types.ObjectId(hotelId),
+    roomType: roomType,
+    isActive: true
+  });
+
+  if (existingTemplate) {
+    throw new ApplicationError(`Template already exists for ${roomType} rooms`, 400);
+  }
+
+  // Validate inventory items
+  const validateInventoryItem = (item, type) => {
+    if (!item.name || !item.category) {
+      throw new ApplicationError(`${type} inventory item must have name and category`, 400);
+    }
+  };
+
+  fixedInventory.forEach(item => validateInventoryItem(item, 'Fixed'));
+  dailyInventory.forEach(item => validateInventoryItem(item, 'Daily'));
+
+  // Create new template
+  const newTemplate = new DailyRoutineCheckTemplate({
+    hotelId: new mongoose.Types.ObjectId(hotelId),
+    roomType: roomType,
+    fixedInventory: fixedInventory.map(item => ({
+      name: item.name,
+      category: item.category,
+      description: item.description || '',
+      unitPrice: item.unitPrice || 0,
+      standardQuantity: item.standardQuantity || 1,
+      checkInstructions: item.checkInstructions || '',
+      expectedCondition: item.expectedCondition || 'working'
+    })),
+    dailyInventory: dailyInventory.map(item => ({
+      name: item.name,
+      category: item.category,
+      description: item.description || '',
+      unitPrice: item.unitPrice || 0,
+      standardQuantity: item.standardQuantity || 1,
+      checkInstructions: item.checkInstructions || '',
+      expectedCondition: item.expectedCondition || 'clean'
+    })),
+    estimatedCheckDuration: estimatedCheckDuration || 15,
+    createdBy: new mongoose.Types.ObjectId(createdBy),
+    lastUpdatedBy: new mongoose.Types.ObjectId(createdBy),
+    isActive: true
+  });
+
+  await newTemplate.save();
+
+  res.status(201).json({
+    status: 'success',
+    data: {
+      message: `Template for ${roomType} rooms created successfully`,
+      template: newTemplate
+    }
+  });
+}));
+
+/**
+ * @swagger
  * /api/v1/daily-routine-check/templates/{roomType}:
  *   put:
  *     summary: Update inventory template for a room type
@@ -754,6 +924,8 @@ router.get('/templates', authorize('admin', 'manager', 'staff'), catchAsync(asyn
  *                 type: array
  *               dailyInventory:
  *                 type: array
+ *               estimatedCheckDuration:
+ *                 type: number
  *     responses:
  *       200:
  *         description: Template updated successfully
@@ -761,23 +933,45 @@ router.get('/templates', authorize('admin', 'manager', 'staff'), catchAsync(asyn
 router.put('/templates/:roomType', authorize('admin', 'manager'), catchAsync(async (req, res) => {
   const { hotelId, _id: updatedBy } = req.user;
   const { roomType } = req.params;
-  const { fixedInventory, dailyInventory } = req.body;
+  const { fixedInventory, dailyInventory, estimatedCheckDuration } = req.body;
+
+  // Validate inventory items if provided
+  if (fixedInventory) {
+    fixedInventory.forEach(item => {
+      if (!item.name || !item.category) {
+        throw new ApplicationError('Fixed inventory item must have name and category', 400);
+      }
+    });
+  }
+
+  if (dailyInventory) {
+    dailyInventory.forEach(item => {
+      if (!item.name || !item.category) {
+        throw new ApplicationError('Daily inventory item must have name and category', 400);
+      }
+    });
+  }
+
+  const updateData = {
+    lastUpdatedBy: new mongoose.Types.ObjectId(updatedBy)
+  };
+
+  if (fixedInventory) updateData.fixedInventory = fixedInventory;
+  if (dailyInventory) updateData.dailyInventory = dailyInventory;
+  if (estimatedCheckDuration) updateData.estimatedCheckDuration = estimatedCheckDuration;
 
   const template = await DailyRoutineCheckTemplate.findOneAndUpdate(
     {
       hotelId: new mongoose.Types.ObjectId(hotelId),
-      roomType: roomType
+      roomType: roomType,
+      isActive: true
     },
-    {
-      fixedInventory,
-      dailyInventory,
-      lastUpdatedBy: new mongoose.Types.ObjectId(updatedBy)
-    },
+    updateData,
     { new: true }
   );
 
   if (!template) {
-    throw new AppError('Template not found for this room type', 404);
+    throw new ApplicationError('Template not found for this room type', 404);
   }
 
   res.status(200).json({
@@ -785,6 +979,56 @@ router.put('/templates/:roomType', authorize('admin', 'manager'), catchAsync(asy
     data: {
       message: `Template for ${roomType} rooms updated successfully`,
       template
+    }
+  });
+}));
+
+/**
+ * @swagger
+ * /api/v1/daily-routine-check/templates/{roomType}:
+ *   delete:
+ *     summary: Delete inventory template for a room type
+ *     tags: [Daily Routine Check]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: roomType
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Room type to delete template for
+ *     responses:
+ *       200:
+ *         description: Template deleted successfully
+ *       404:
+ *         description: Template not found
+ */
+router.delete('/templates/:roomType', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+  const { hotelId, _id: updatedBy } = req.user;
+  const { roomType } = req.params;
+
+  const template = await DailyRoutineCheckTemplate.findOneAndUpdate(
+    {
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      roomType: roomType,
+      isActive: true
+    },
+    {
+      isActive: false,
+      lastUpdatedBy: new mongoose.Types.ObjectId(updatedBy)
+    },
+    { new: true }
+  );
+
+  if (!template) {
+    throw new ApplicationError('Template not found for this room type', 404);
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      message: `Template for ${roomType} rooms deleted successfully`
     }
   });
 }));
@@ -864,6 +1108,53 @@ router.get('/admin/overview', authorize('admin', 'manager'), catchAsync(async (r
       overdueChecks,
       assignmentSummary: Object.values(assignmentSummary),
       unassignedRooms: pendingChecks
+    }
+  });
+}));
+
+/**
+ * @swagger
+ * /api/v1/daily-routine-check/admin/unassigned-rooms:
+ *   get:
+ *     summary: Get unassigned rooms for today
+ *     tags: [Daily Routine Check]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of unassigned rooms
+ */
+router.get('/admin/unassigned-rooms', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+  const { hotelId } = req.user;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  // Get all active rooms
+  const allRooms = await Room.find({
+    hotelId: new mongoose.Types.ObjectId(hotelId),
+    isActive: true
+  });
+
+  // Get rooms that have daily check assignments for today
+  const assignedRoomIds = await DailyRoutineCheck.find({
+    hotelId: new mongoose.Types.ObjectId(hotelId),
+    checkDate: { $gte: today, $lt: tomorrow }
+  }).distinct('roomId');
+
+  // Filter out assigned rooms to get unassigned ones
+  const unassignedRooms = allRooms.filter(room =>
+    !assignedRoomIds.some(assignedId => assignedId.equals(room._id))
+  );
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      rooms: unassignedRooms,
+      count: unassignedRooms.length
     }
   });
 }));

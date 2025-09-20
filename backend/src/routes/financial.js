@@ -7,6 +7,7 @@ import * as generalLedgerController from '../controllers/generalLedgerController
 import * as journalEntryController from '../controllers/journalEntryController.js';
 import * as bankAccountController from '../controllers/bankAccountController.js';
 import * as budgetController from '../controllers/budgetController.js';
+import * as financialReportsController from '../controllers/financialReportsController.js';
 import FinancialService from '../services/financialService.js';
 
 const router = express.Router();
@@ -63,6 +64,7 @@ router.route('/chart-of-accounts')
   .post(chartOfAccountsController.createAccount);
 
 router.get('/chart-of-accounts/tree', chartOfAccountsController.getAccountTree);
+router.get('/chart-of-accounts/flattened', chartOfAccountsController.getFlattenedAccounts);
 router.post('/chart-of-accounts/bulk-import', chartOfAccountsController.bulkImportAccounts);
 
 router.route('/chart-of-accounts/:id')
@@ -122,6 +124,7 @@ router.route('/budgets')
   .post(budgetController.createBudget);
 
 router.get('/budgets/summary', budgetController.getBudgetSummary);
+router.get('/budgets/statistics', budgetController.getBudgetStatistics);
 router.get('/budgets/templates', budgetController.getBudgetTemplates);
 router.get('/budgets/vs-actual', budgetController.getBudgetVsActual);
 router.get('/budgets/forecast', budgetController.generateForecast);
@@ -150,7 +153,9 @@ router.route('/invoices')
       
       res.status(200).json({
         status: 'success',
-        data: invoices
+        data: {
+          invoices
+        }
       });
     } catch (error) {
       res.status(500).json({
@@ -184,24 +189,92 @@ router.route('/invoices')
     }
   });
 
+// Helper function for payment statistics calculation
+async function calculatePaymentStatistics(FinancialPayment, query = {}) {
+  try {
+    const aggregationPipeline = [
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          totalPayments: { $sum: 1 },
+          totalAmount: { $sum: '$amount' },
+          completedPayments: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+          },
+          completedAmount: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$amount', 0] }
+          },
+          pendingPayments: {
+            $sum: { $cond: [{ $in: ['$status', ['pending', 'processing']] }, 1, 0] }
+          },
+          pendingAmount: {
+            $sum: { $cond: [{ $in: ['$status', ['pending', 'processing']] }, '$amount', 0] }
+          },
+          failedPayments: {
+            $sum: { $cond: [{ $in: ['$status', ['failed', 'cancelled']] }, 1, 0] }
+          },
+          failedAmount: {
+            $sum: { $cond: [{ $in: ['$status', ['failed', 'cancelled']] }, '$amount', 0] }
+          }
+        }
+      }
+    ];
+
+    const [stats] = await FinancialPayment.aggregate(aggregationPipeline);
+
+    return stats || {
+      totalPayments: 0,
+      totalAmount: 0,
+      completedPayments: 0,
+      completedAmount: 0,
+      pendingPayments: 0,
+      pendingAmount: 0,
+      failedPayments: 0,
+      failedAmount: 0
+    };
+  } catch (error) {
+    console.error('Error calculating payment statistics:', error);
+    throw error;
+  }
+}
+
 // === PAYMENTS ===
 router.route('/payments')
   .get(async (req, res) => {
     try {
       const FinancialPayment = (await import('../models/FinancialPayment.js')).default;
       const mongoose = (await import('mongoose')).default;
-      // Temporarily bypass hotel filtering for testing
-      // const hotelId = req.user?.hotelId ? new mongoose.Types.ObjectId(req.user.hotelId) : null;
-      const payments = await FinancialPayment.find({})
+
+      // Build query filters
+      let query = {};
+      if (req.query.status) query.status = req.query.status;
+      if (req.query.method) query.method = req.query.method;
+      if (req.query.type) query.type = req.query.type;
+
+      // Date range filtering
+      if (req.query.startDate || req.query.endDate) {
+        query.date = {};
+        if (req.query.startDate) query.date.$gte = new Date(req.query.startDate);
+        if (req.query.endDate) query.date.$lte = new Date(req.query.endDate);
+      }
+
+      const payments = await FinancialPayment.find(query)
         .populate('customer.guestId', 'name email')
         .populate('invoice', 'invoiceNumber totalAmount')
         .populate('bankAccount', 'accountName')
         .sort({ createdAt: -1 });
-      
-      res.status(200).json({
-        status: 'success',
-        data: payments
-      });
+
+      // Calculate statistics if requested
+      let statistics = null;
+      if (req.query.includeStats === 'true') {
+        statistics = await calculatePaymentStatistics(FinancialPayment, query);
+      }
+
+      const response = { status: 'success', data: payments };
+      if (statistics) response.statistics = statistics;
+
+      res.status(200).json(response);
     } catch (error) {
       res.status(500).json({
         status: 'error',
@@ -237,6 +310,38 @@ router.route('/payments')
     }
   });
 
+// === PAYMENT STATISTICS ===
+router.get('/payments/statistics', async (req, res) => {
+  try {
+    const FinancialPayment = (await import('../models/FinancialPayment.js')).default;
+
+    // Build query filters (same logic as main payments endpoint)
+    let query = {};
+    if (req.query.status) query.status = req.query.status;
+    if (req.query.method) query.method = req.query.method;
+    if (req.query.type) query.type = req.query.type;
+
+    // Date range filtering
+    if (req.query.startDate || req.query.endDate) {
+      query.date = {};
+      if (req.query.startDate) query.date.$gte = new Date(req.query.startDate);
+      if (req.query.endDate) query.date.$lte = new Date(req.query.endDate);
+    }
+
+    const statistics = await calculatePaymentStatistics(FinancialPayment, query);
+
+    res.status(200).json({
+      status: 'success',
+      data: statistics
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      message: error.message
+    });
+  }
+});
+
 // === FINANCIAL REPORTS ===
 router.get('/reports/trial-balance', async (req, res) => {
   try {
@@ -252,59 +357,11 @@ router.get('/reports/trial-balance', async (req, res) => {
   }
 });
 
-router.get('/reports/income-statement', async (req, res) => {
-  try {
-    res.status(200).json({
-      status: 'success', 
-      data: {
-        revenue: { total: 2850000 },
-        expenses: { total: 1750000 },
-        netIncome: 1100000
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-});
-
-router.get('/reports/cash-flow', async (req, res) => {
-  try {
-    res.status(200).json({
-      status: 'success',
-      data: {
-        operating: 850000,
-        investing: -200000,
-        financing: -50000,
-        netCashFlow: 600000
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-});
-
-router.get('/reports/financial-ratios', async (req, res) => {
-  try {
-    res.status(200).json({
-      status: 'success',
-      data: {
-        liquidity: { currentRatio: 1.85 },
-        profitability: { netProfitMargin: 38.6 },
-        efficiency: { assetTurnover: 1.2 }
-      }
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-});
+// === FINANCIAL REPORTS ROUTES ===
+router.get('/reports/income-statement', financialReportsController.getIncomeStatement);
+router.get('/reports/balance-sheet', financialReportsController.getBalanceSheet);
+router.get('/reports/cash-flow', financialReportsController.getCashFlowStatement);
+router.get('/reports/financial-ratios', financialReportsController.getFinancialRatios);
+router.get('/reports/comprehensive', financialReportsController.getComprehensiveFinancialStatement);
 
 export default router;

@@ -15,7 +15,7 @@ import {
   ScatterChart, Scatter, ComposedChart
 } from 'recharts';
 import {
-  Brain, TrendingUp, TrendingDown, DollarSign, Target, AlertTriangle,
+  Brain, TrendingUp, TrendingDown, IndianRupee, Target, AlertTriangle,
   Zap, Eye, Settings, RefreshCw, Download, Calendar, Users, Building2,
   BarChart3, PieChart as PieChartIcon, Activity, Award, Shield, Clock,
   Lightbulb, Sparkles, Bot, Cpu, Database, Wifi, WifiOff, CheckCircle,
@@ -273,7 +273,7 @@ const AIDashboard: React.FC = () => {
   const getInsightIcon = (type: string) => {
     switch (type) {
       case 'demand': return <TrendingUp className="w-4 h-4" />;
-      case 'pricing': return <DollarSign className="w-4 h-4" />;
+      case 'pricing': return <IndianRupee className="w-4 h-4" />;
       case 'revenue': return <Target className="w-4 h-4" />;
       case 'risk': return <AlertTriangle className="w-4 h-4" />;
       case 'opportunity': return <Lightbulb className="w-4 h-4" />;
@@ -395,7 +395,7 @@ const AIDashboard: React.FC = () => {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Revenue Optimization</CardTitle>
             <div className="p-2 bg-green-100 rounded-full">
-              <DollarSign className="w-4 h-4 text-green-600" />
+              <IndianRupee className="w-4 h-4 text-green-600" />
             </div>
           </CardHeader>
           <CardContent>
@@ -793,7 +793,7 @@ const AIDashboard: React.FC = () => {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <DollarSign className="w-5 h-5" />
+                <IndianRupee className="w-5 h-5" />
                 AI Pricing Recommendations
               </CardTitle>
               <CardDescription>

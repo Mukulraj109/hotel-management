@@ -8,7 +8,7 @@ import {
   Filter,
   Eye,
   User,
-  DollarSign,
+  IndianRupee,
   Calendar,
   RefreshCw,
   CheckSquare,
@@ -322,104 +322,142 @@ export default function AdminSupplyRequests() {
       console.error('AdminSupplyRequests Error:', error, errorInfo);
       toast.error('An error occurred in the supply requests management page');
     }}>
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+    <div className="space-y-6">
+      {/* Modern Header */}
+      <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl shadow-md">
+              <Package className="h-6 w-6 text-white" />
+            </div>
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Supply Requests Management</h1>
-          <p className="text-gray-600">Review and approve supply requests from staff</p>
+              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+                Supply Requests Management
+              </h1>
+              <p className="text-gray-600 mt-1 text-sm sm:text-base">
+                Review and approve supply requests from staff
+              </p>
         </div>
-        <div className="flex items-center space-x-3">
-          {/* Real-time connection status */}
-          <div className="flex items-center space-x-2">
-            <div className={`w-2 h-2 rounded-full ${
-              connectionState === 'connected' ? 'bg-green-500' : 
-              connectionState === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
-            }`}></div>
-            <span className="text-xs text-gray-500 capitalize">{connectionState}</span>
           </div>
           
-          <Button onClick={fetchRequests} variant="secondary" size="sm" disabled={loading}>
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            {/* Real-time connection status */}
+            <div className={`flex items-center justify-center px-3 py-2 rounded-full text-xs font-medium ${
+              connectionState === 'connected' 
+                ? 'bg-green-100 text-green-800 border border-green-200' 
+                : connectionState === 'connecting' 
+                ? 'bg-yellow-100 text-yellow-800 border border-yellow-200' 
+                : 'bg-red-100 text-red-800 border border-red-200'
+            }`}>
+              <div className={`w-2 h-2 rounded-full mr-2 ${
+                connectionState === 'connected' ? 'bg-green-500 animate-pulse' : 
+                connectionState === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+              }`}></div>
+              {connectionState === 'connected' ? 'Live Connected' : connectionState}
+            </div>
+            
+            <Button 
+              onClick={fetchRequests} 
+              size="sm" 
+              disabled={loading}
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
+          </div>
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Modern Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-9 gap-4 mb-8">
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
-              <div className="text-sm text-gray-600">Total Requests</div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4 lg:gap-6">
+          <Card className="bg-gradient-to-br from-white to-blue-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+            <CardContent className="p-3 sm:p-4 lg:p-6">
+              <div className="flex items-center">
+                <div className="p-2 sm:p-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-md">
+                  <FileText className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 text-white" />
+                </div>
+                <div className="ml-2 sm:ml-3 lg:ml-4">
+                  <p className="text-xs sm:text-sm font-semibold text-gray-600">Total Requests</p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{stats.total}</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-yellow-600">{stats.pending}</div>
-              <div className="text-sm text-gray-600">Pending</div>
+
+          <Card className="bg-gradient-to-br from-white to-yellow-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+            <CardContent className="p-3 sm:p-4 lg:p-6">
+              <div className="flex items-center">
+                <div className="p-2 sm:p-3 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl shadow-md">
+                  <Clock className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 text-white" />
+                </div>
+                <div className="ml-2 sm:ml-3 lg:ml-4">
+                  <p className="text-xs sm:text-sm font-semibold text-gray-600">Pending</p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{stats.pending}</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-blue-600">{stats.approved}</div>
-              <div className="text-sm text-gray-600">Approved</div>
+
+          <Card className="bg-gradient-to-br from-white to-green-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+            <CardContent className="p-3 sm:p-4 lg:p-6">
+              <div className="flex items-center">
+                <div className="p-2 sm:p-3 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl shadow-md">
+                  <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 text-white" />
+                </div>
+                <div className="ml-2 sm:ml-3 lg:ml-4">
+                  <p className="text-xs sm:text-sm font-semibold text-gray-600">Approved</p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{stats.approved}</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-red-600">{stats.rejected}</div>
-              <div className="text-sm text-gray-600">Rejected</div>
+
+          <Card className="bg-gradient-to-br from-white to-red-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border-l-4 border-red-500">
+            <CardContent className="p-3 sm:p-4 lg:p-6">
+              <div className="flex items-center">
+                <div className="p-2 sm:p-3 bg-gradient-to-br from-red-500 to-red-600 rounded-xl shadow-md">
+                  <AlertTriangle className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 text-white" />
+                </div>
+                <div className="ml-2 sm:ml-3 lg:ml-4">
+                  <p className="text-xs sm:text-sm font-semibold text-gray-600">Overdue</p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600">{stats.overdue}</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-purple-600">{stats.ordered}</div>
-              <div className="text-sm text-gray-600">Ordered</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">{stats.received}</div>
-              <div className="text-sm text-gray-600">Received</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-gray-600">{stats.cancelled}</div>
-              <div className="text-sm text-gray-600">Cancelled</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-green-600">${formatNumber(stats.totalValue)}</div>
-              <div className="text-sm text-gray-600">Total Value</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <div className="text-2xl font-bold text-red-600">{stats.overdue}</div>
-              <div className="text-sm text-gray-600">Overdue</div>
+
+          <Card className="bg-gradient-to-br from-white to-purple-50 border-0 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+            <CardContent className="p-3 sm:p-4 lg:p-6">
+              <div className="flex items-center">
+                <div className="p-2 sm:p-3 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-xl shadow-md">
+                  <IndianRupee className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6 text-white" />
+                </div>
+                <div className="ml-2 sm:ml-3 lg:ml-4">
+                  <p className="text-xs sm:text-sm font-semibold text-gray-600">Total Value</p>
+                  <p className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">{formatNumber(stats.totalValue)}</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
       )}
 
-      {/* Filters */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Filter className="h-5 w-5 mr-2" />
-            Filters
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      {/* Modern Filters */}
+      <Card className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 sm:p-6">
+        <div className="flex items-center mb-4">
+          <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg shadow-md">
+            <Filter className="h-4 w-4 text-white" />
+          </div>
+          <h3 className="text-lg font-bold text-gray-900 ml-3">Filter Supply Requests</h3>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
               <select
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 value={filters.status || ''}
                 onChange={(e) => setFilters({ ...filters, status: e.target.value || undefined, page: 1 })}
               >
@@ -434,9 +472,9 @@ export default function AdminSupplyRequests() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Department</label>
               <select
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 value={filters.department || ''}
                 onChange={(e) => setFilters({ ...filters, department: e.target.value || undefined, page: 1 })}
               >
@@ -450,9 +488,9 @@ export default function AdminSupplyRequests() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Priority</label>
               <select
-                className="w-full border border-gray-300 rounded-md px-3 py-2"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 value={filters.priority || ''}
                 onChange={(e) => setFilters({ ...filters, priority: e.target.value || undefined, page: 1 })}
               >
@@ -473,8 +511,7 @@ export default function AdminSupplyRequests() {
                 Reset Filters
               </Button>
             </div>
-          </div>
-        </CardContent>
+        </div>
       </Card>
 
       {/* Requests Table */}

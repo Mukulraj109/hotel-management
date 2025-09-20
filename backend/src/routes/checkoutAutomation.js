@@ -1,7 +1,7 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import checkoutAutomationService from '../services/checkoutAutomationService.js';
 import CheckoutAutomationConfig from '../models/CheckoutAutomationConfig.js';
 import CheckoutAutomationLog from '../models/CheckoutAutomationLog.js';
@@ -138,7 +138,7 @@ router.get('/status/:bookingId', authorize('staff', 'admin'), catchAsync(async (
   // Verify booking belongs to hotel
   const booking = await Booking.findOne({ _id: bookingId, hotelId });
   if (!booking) {
-    throw new AppError('Booking not found', 404);
+    throw new ApplicationError('Booking not found', 404);
   }
 
   const status = await checkoutAutomationService.getAutomationStatus(bookingId);
@@ -188,11 +188,11 @@ router.post('/process/:bookingId', authorize('staff', 'admin'), catchAsync(async
   // Verify booking belongs to hotel and is checked out
   const booking = await Booking.findOne({ _id: bookingId, hotelId });
   if (!booking) {
-    throw new AppError('Booking not found', 404);
+    throw new ApplicationError('Booking not found', 404);
   }
 
   if (booking.status !== 'checked_out') {
-    throw new AppError('Booking must be checked out to trigger automation', 400);
+    throw new ApplicationError('Booking must be checked out to trigger automation', 400);
   }
 
   const result = await checkoutAutomationService.processCheckout(bookingId, {
@@ -234,7 +234,7 @@ router.post('/retry/:bookingId', authorize('staff', 'admin'), catchAsync(async (
   // Verify booking belongs to hotel
   const booking = await Booking.findOne({ _id: bookingId, hotelId });
   if (!booking) {
-    throw new AppError('Booking not found', 404);
+    throw new ApplicationError('Booking not found', 404);
   }
 
   const result = await checkoutAutomationService.retryAutomation(bookingId, {

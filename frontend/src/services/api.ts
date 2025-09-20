@@ -18,12 +18,35 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
+    console.log('🔐 AUTH: Request interceptor - Token exists?', !!token);
+    console.log('🔐 AUTH: Request URL:', config.url);
+    
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      console.log('🔐 AUTH: Token found, validating...');
+      // Validate token format before sending
+      try {
+        // Basic JWT format validation (3 parts separated by dots)
+        const tokenParts = token.split('.');
+        if (tokenParts.length !== 3) {
+          console.warn('🔐 AUTH: Invalid JWT token format detected, clearing token');
+          localStorage.removeItem('token');
+          window.location.href = '/login';
+          return config;
+        }
+        config.headers.Authorization = `Bearer ${token}`;
+        console.log('🔐 AUTH: Token added to request headers');
+      } catch (error) {
+        console.warn('🔐 AUTH: Token validation failed, clearing token:', error);
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+      }
+    } else {
+      console.warn('🔐 AUTH: No token found in localStorage');
     }
     return config;
   },
   (error) => {
+    console.error('🔐 AUTH: Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
@@ -38,7 +61,17 @@ api.interceptors.response.use(
     
     if (response?.status === 401) {
       // Unauthorized - clear token and redirect to login
+      console.warn('401 Unauthorized - clearing token and redirecting to login');
       localStorage.removeItem('token');
+      window.location.href = '/login';
+      return Promise.reject(error);
+    }
+    
+    // Handle JWT parsing errors specifically
+    if (response?.data?.error?.message?.includes('JSON') && response?.data?.error?.message?.includes('position')) {
+      console.error('JWT token parsing error detected:', response.data.error.message);
+      localStorage.removeItem('token');
+      toast.error('Session expired. Please login again.');
       window.location.href = '/login';
       return Promise.reject(error);
     }
@@ -141,6 +174,9 @@ export const apiManagementApi = {
   testWebhook: (webhookId: string) => api.post(`/api-management/webhooks/${webhookId}/test`),
   regenerateWebhookSecret: (webhookId: string) => api.post(`/api-management/webhooks/${webhookId}/regenerate-secret`),
   
+  // API Endpoints Catalog
+  getAllEndpoints: (params?: any) => api.get('/api-management/endpoints', { params }),
+
   // Metrics and Analytics
   getMetrics: (params?: any) => api.get('/api-management/metrics', { params }),
   getTopEndpoints: (params?: any) => api.get('/api-management/metrics/endpoints', { params }),
@@ -150,6 +186,9 @@ export const apiManagementApi = {
   
   // Export functionality
   exportLogs: (params?: any) => api.get('/api-management/export/logs', { params, responseType: 'blob' }),
+
+  // API Documentation
+  getAPIDocumentation: () => api.get('/api-management/documentation'),
 };
 
 export { api };

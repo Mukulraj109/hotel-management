@@ -40,6 +40,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { PushNotificationSetup } from '../../components/notifications/PushNotificationSetup';
+import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
 
 export default function NotificationsDashboard() {
@@ -55,6 +56,137 @@ export default function NotificationsDashboard() {
   const [activeTab, setActiveTab] = useState<'notifications' | 'preferences'>('notifications');
 
   const queryClient = useQueryClient();
+  const { connectionState, connect, disconnect, on, off } = useRealTime();
+
+  // Real-time WebSocket connection setup
+  useEffect(() => {
+    connect();
+    return () => {
+      disconnect();
+    };
+  }, [connect, disconnect]);
+
+  // Real-time event listeners for notifications
+  useEffect(() => {
+    if (connectionState !== 'connected') return;
+
+    const handleNewNotification = (data: any) => {
+      console.log('New notification received:', data);
+      const newNotification = data.notification;
+      
+      // Add new notification to the cache
+      queryClient.setQueryData(['notifications'], (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          notifications: [newNotification, ...oldData.notifications],
+          unreadCount: oldData.unreadCount + 1
+        };
+      });
+
+      // Update unread count
+      queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
+
+      // Show toast notification
+      const typeInfo = notificationService.getNotificationTypeInfo(newNotification.type);
+      toast.success(newNotification.title, {
+        duration: 5000,
+        icon: typeInfo.icon === 'bell' ? '🔔' : '📢',
+        action: {
+          label: 'View',
+          onClick: () => {
+            // Mark as read when viewed
+            markAsReadMutation.mutate(newNotification._id);
+          },
+        },
+      });
+    };
+
+    const handleNotificationRead = (data: any) => {
+      console.log('Notification marked as read:', data);
+      const notificationId = data.notificationId;
+      
+      // Update the notification in cache
+      queryClient.setQueryData(['notifications'], (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          notifications: oldData.notifications.map((n: Notification) =>
+            n._id === notificationId ? { ...n, status: 'read', readAt: new Date().toISOString() } : n
+          ),
+          unreadCount: Math.max(0, oldData.unreadCount - 1)
+        };
+      });
+
+      // Update unread count
+      queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
+    };
+
+    const handleNotificationDelivered = (data: any) => {
+      console.log('Notification delivered:', data);
+      const notificationId = data.notificationId;
+      
+      // Update delivery status in cache
+      queryClient.setQueryData(['notifications'], (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          notifications: oldData.notifications.map((n: Notification) =>
+            n._id === notificationId ? { ...n, status: 'delivered', deliveredAt: new Date().toISOString() } : n
+          )
+        };
+      });
+    };
+
+    const handleNotificationFailed = (data: any) => {
+      console.log('Notification delivery failed:', data);
+      const notificationId = data.notificationId;
+      
+      // Update failure status in cache
+      queryClient.setQueryData(['notifications'], (oldData: any) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          notifications: oldData.notifications.map((n: Notification) =>
+            n._id === notificationId ? { ...n, status: 'failed' } : n
+          )
+        };
+      });
+
+      toast.error('Notification delivery failed', {
+        duration: 3000,
+        icon: '⚠️'
+      });
+    };
+
+    const handleBulkNotificationUpdate = (data: any) => {
+      console.log('Bulk notification update:', data);
+      
+      // Refresh notifications data
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['unreadCount'] });
+
+      toast.success(`${data.count} notifications updated`, {
+        duration: 3000,
+        icon: '📬'
+      });
+    };
+
+    // Set up event listeners
+    on('notification:new', handleNewNotification);
+    on('notification:read', handleNotificationRead);
+    on('notification:delivered', handleNotificationDelivered);
+    on('notification:failed', handleNotificationFailed);
+    on('notifications:bulk-update', handleBulkNotificationUpdate);
+
+    return () => {
+      off('notification:new', handleNewNotification);
+      off('notification:read', handleNotificationRead);
+      off('notification:delivered', handleNotificationDelivered);
+      off('notification:failed', handleNotificationFailed);
+      off('notifications:bulk-update', handleBulkNotificationUpdate);
+    };
+  }, [connectionState, on, off, queryClient, markAsReadMutation]);
 
   // Fetch notifications
   const {
@@ -281,9 +413,21 @@ export default function NotificationsDashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex-1 min-w-0">
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 truncate">Notifications</h1>
-            <p className="mt-1 sm:mt-2 text-sm sm:text-base text-gray-600">
-              Stay updated with your hotel activities and important information
-            </p>
+            <div className="flex items-center space-x-4 mt-1 sm:mt-2">
+              <p className="text-sm sm:text-base text-gray-600">
+                Stay updated with your hotel activities and important information
+              </p>
+              <div className="flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${
+                  connectionState === 'connected' ? 'bg-green-500' : 
+                  connectionState === 'connecting' ? 'bg-yellow-500' : 'bg-red-500'
+                }`} />
+                <span className="text-xs text-gray-500">
+                  {connectionState === 'connected' ? 'Live Updates' : 
+                   connectionState === 'connecting' ? 'Connecting...' : 'Offline'}
+                </span>
+              </div>
+            </div>
           </div>
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 sm:flex-shrink-0">
             {notificationsData?.unreadCount > 0 && (

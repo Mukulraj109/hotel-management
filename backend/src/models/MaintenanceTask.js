@@ -330,7 +330,7 @@ maintenanceTaskSchema.pre('save', function(next) {
     
     // Calculate actual duration if started
     if (this.startedDate) {
-      this.actualDuration = (this.completedDate - this.startedDate) / (1000 * 60 * 60); // hours
+      this.actualDuration = (this.completedDate - this.startedDate) / (1000 * 60); // minutes
     }
 
     // Schedule next occurrence for recurring tasks

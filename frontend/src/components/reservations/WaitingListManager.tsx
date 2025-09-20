@@ -3,12 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Clock, 
-  Calendar, 
-  Users, 
-  Phone, 
-  Mail, 
+import {
+  Clock,
+  Calendar,
+  Users,
+  Phone,
+  Mail,
   Star,
   ArrowUp,
   ArrowDown,
@@ -19,57 +19,43 @@ import {
   Search,
   Plus,
   MessageSquare,
-  Bell
+  Bell,
+  Loader2
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
+import waitingListService, {
+  WaitingListEntry,
+  RoomAvailability,
+  CreateWaitingListEntryData,
+  WaitingListFilters
+} from '@/services/waitingListService';
 
-interface WaitingListEntry {
-  id: string;
-  guestName: string;
-  email: string;
-  phone: string;
-  roomType: string;
-  preferredDates: {
-    checkIn: string;
-    checkOut: string;
-  };
-  alternativeDates?: {
-    checkIn: string;
-    checkOut: string;
-  }[];
-  guests: number;
-  priority: 'high' | 'medium' | 'low';
-  vipStatus: boolean;
-  specialRequests: string;
-  contactPreference: 'email' | 'phone' | 'sms';
-  maxRate?: number;
-  status: 'active' | 'contacted' | 'confirmed' | 'expired' | 'cancelled';
-  addedDate: string;
-  lastContact?: string;
-  notes: string[];
-  loyaltyTier?: string;
-  source: string;
-}
-
-interface RoomAvailability {
-  roomType: string;
-  available: number;
-  total: number;
-  nextAvailable: string;
-}
+// Interface is now imported from the service
 
 export const WaitingListManager: React.FC = () => {
   const [waitingList, setWaitingList] = useState<WaitingListEntry[]>([]);
-  const [filteredList, setFilteredList] = useState<WaitingListEntry[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<WaitingListEntry | null>(null);
   const [roomAvailability, setRoomAvailability] = useState<RoomAvailability[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [showAddEntry, setShowAddEntry] = useState(false);
-  const [newEntry, setNewEntry] = useState<Partial<WaitingListEntry>>({
+  const [pagination, setPagination] = useState({
+    current: 1,
+    pages: 1,
+    total: 0
+  });
+  const [filters, setFilters] = useState<WaitingListFilters>({
+    page: 1,
+    limit: 20,
+    sortBy: 'priority_score',
+    sortOrder: 'desc'
+  });
+  const [newEntry, setNewEntry] = useState<CreateWaitingListEntryData>({
     guestName: '',
     email: '',
     phone: '',
@@ -80,167 +66,179 @@ export const WaitingListManager: React.FC = () => {
     vipStatus: false,
     specialRequests: '',
     contactPreference: 'email',
-    status: 'active',
-    notes: [],
     source: 'direct'
   });
 
-  const mockWaitingList: WaitingListEntry[] = [
-    {
-      id: 'WL001',
-      guestName: 'Sarah Johnson',
-      email: 'sarah@email.com',
-      phone: '+1-555-0123',
-      roomType: 'Deluxe Suite',
-      preferredDates: { checkIn: '2024-12-15', checkOut: '2024-12-18' },
-      alternativeDates: [
-        { checkIn: '2024-12-20', checkOut: '2024-12-23' },
-        { checkIn: '2024-12-22', checkOut: '2024-12-25' }
-      ],
-      guests: 2,
-      priority: 'high',
-      vipStatus: true,
-      specialRequests: 'Ocean view preferred, late checkout',
-      contactPreference: 'email',
-      maxRate: 450,
-      status: 'active',
-      addedDate: '2024-12-01',
-      lastContact: '2024-12-03',
-      notes: ['VIP guest', 'Previous stay: 5-star rating', 'Preferred room 301'],
-      loyaltyTier: 'Platinum',
-      source: 'direct'
-    },
-    {
-      id: 'WL002',
-      guestName: 'Michael Chen',
-      email: 'mchen@company.com',
-      phone: '+1-555-0456',
-      roomType: 'Executive Room',
-      preferredDates: { checkIn: '2024-12-12', checkOut: '2024-12-14' },
-      guests: 1,
-      priority: 'medium',
-      vipStatus: false,
-      specialRequests: 'Business center access, early breakfast',
-      contactPreference: 'phone',
-      maxRate: 280,
-      status: 'contacted',
-      addedDate: '2024-11-28',
-      lastContact: '2024-12-02',
-      notes: ['Corporate rate requested', 'Frequent business traveler'],
-      loyaltyTier: 'Gold',
-      source: 'booking.com'
-    },
-    {
-      id: 'WL003',
-      guestName: 'Emily Rodriguez',
-      email: 'emily.r@email.com',
-      phone: '+1-555-0789',
-      roomType: 'Standard Room',
-      preferredDates: { checkIn: '2024-12-20', checkOut: '2024-12-22' },
-      alternativeDates: [
-        { checkIn: '2024-12-23', checkOut: '2024-12-25' }
-      ],
-      guests: 3,
-      priority: 'low',
-      vipStatus: false,
-      specialRequests: 'Family room, extra bed for child',
-      contactPreference: 'sms',
-      maxRate: 180,
-      status: 'active',
-      addedDate: '2024-12-02',
-      notes: ['First-time guest', 'Family vacation'],
-      source: 'expedia'
-    }
-  ];
-
-  const mockRoomAvailability: RoomAvailability[] = [
-    { roomType: 'Standard Room', available: 3, total: 12, nextAvailable: '2024-12-10' },
-    { roomType: 'Deluxe Room', available: 1, total: 8, nextAvailable: '2024-12-12' },
-    { roomType: 'Executive Room', available: 0, total: 6, nextAvailable: '2024-12-14' },
-    { roomType: 'Deluxe Suite', available: 0, total: 4, nextAvailable: '2024-12-16' },
-    { roomType: 'Presidential Suite', available: 1, total: 2, nextAvailable: '2024-12-08' }
-  ];
-
+  // Fetch data on component mount and when filters change
   useEffect(() => {
-    setWaitingList(mockWaitingList);
-    setRoomAvailability(mockRoomAvailability);
-  }, []);
+    fetchWaitingList();
+    fetchRoomAvailability();
+  }, [filters]);
 
-  useEffect(() => {
-    let filtered = waitingList.filter(entry => {
-      const matchesSearch = entry.guestName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           entry.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           entry.roomType.toLowerCase().includes(searchTerm.toLowerCase());
-      
-      const matchesStatus = statusFilter === 'all' || entry.status === statusFilter;
-      const matchesPriority = priorityFilter === 'all' || entry.priority === priorityFilter;
-      
-      return matchesSearch && matchesStatus && matchesPriority;
-    });
+  // Fetch waiting list data
+  const fetchWaitingList = async () => {
+    try {
+      setLoading(true);
+      const searchFilters: WaitingListFilters = { ...filters };
 
-    // Sort by priority and date
-    filtered.sort((a, b) => {
-      const priorityOrder = { high: 3, medium: 2, low: 1 };
-      if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
-        return priorityOrder[b.priority] - priorityOrder[a.priority];
+      if (searchTerm.trim()) {
+        searchFilters.search = searchTerm.trim();
       }
-      return new Date(a.addedDate).getTime() - new Date(b.addedDate).getTime();
-    });
 
-    setFilteredList(filtered);
-  }, [waitingList, searchTerm, statusFilter, priorityFilter]);
+      if (statusFilter !== 'all') {
+        searchFilters.status = statusFilter;
+      }
 
-  const updateEntryStatus = (entryId: string, newStatus: WaitingListEntry['status']) => {
-    setWaitingList(waitingList.map(entry => 
-      entry.id === entryId 
-        ? { ...entry, status: newStatus, lastContact: new Date().toISOString().split('T')[0] }
-        : entry
-    ));
-    
-    toast({
-      title: "Status Updated",
-      description: `Entry marked as ${newStatus}`
-    });
+      if (priorityFilter !== 'all') {
+        searchFilters.priority = priorityFilter;
+      }
+
+      const response = await waitingListService.getWaitingList(searchFilters);
+      setWaitingList(response.data);
+      setPagination(response.pagination);
+    } catch (error: any) {
+      console.error('Failed to fetch waiting list:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load waiting list entries",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const updatePriority = (entryId: string, newPriority: WaitingListEntry['priority']) => {
-    setWaitingList(waitingList.map(entry => 
-      entry.id === entryId ? { ...entry, priority: newPriority } : entry
-    ));
-    
-    toast({
-      title: "Priority Updated",
-      description: `Priority changed to ${newPriority}`
-    });
+  // Fetch room availability
+  const fetchRoomAvailability = async () => {
+    try {
+      const availability = await waitingListService.getRoomAvailability();
+      setRoomAvailability(availability);
+    } catch (error: any) {
+      console.error('Failed to fetch room availability:', error);
+      // Service already provides fallback data on error
+    }
   };
 
-  const addNote = (entryId: string, note: string) => {
+  // Handle search and filter
+  const handleSearch = () => {
+    setFilters(prev => ({ ...prev, page: 1 }));
+    fetchWaitingList();
+  };
+
+  const updateEntryStatus = async (entryId: string, newStatus: WaitingListEntry['status']) => {
+    try {
+      setActionLoading(`status-${entryId}`);
+      const updatedEntry = await waitingListService.updateStatus(entryId, newStatus);
+
+      // Update local state
+      setWaitingList(waitingList.map(entry =>
+        entry._id === entryId ? updatedEntry : entry
+      ));
+
+      if (selectedEntry && selectedEntry._id === entryId) {
+        setSelectedEntry(updatedEntry);
+      }
+
+      toast({
+        title: "Status Updated",
+        description: `Entry marked as ${newStatus}`
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update status",
+        variant: "destructive"
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const updatePriority = async (entryId: string, newPriority: WaitingListEntry['priority']) => {
+    try {
+      setActionLoading(`priority-${entryId}`);
+      const updatedEntry = await waitingListService.updatePriority(entryId, newPriority);
+
+      // Update local state
+      setWaitingList(waitingList.map(entry =>
+        entry._id === entryId ? updatedEntry : entry
+      ));
+
+      if (selectedEntry && selectedEntry._id === entryId) {
+        setSelectedEntry(updatedEntry);
+      }
+
+      toast({
+        title: "Priority Updated",
+        description: `Priority changed to ${newPriority}`
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update priority",
+        variant: "destructive"
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const addNote = async (entryId: string, note: string) => {
     if (!note.trim()) return;
-    
-    setWaitingList(waitingList.map(entry => 
-      entry.id === entryId 
-        ? { ...entry, notes: [...entry.notes, `${new Date().toLocaleDateString()}: ${note}`] }
-        : entry
-    ));
-    
-    toast({
-      title: "Note Added",
-      description: "Note has been added to the entry"
-    });
+
+    try {
+      setActionLoading(`note-${entryId}`);
+      const updatedEntry = await waitingListService.addNote(entryId, note, true);
+
+      // Update local state
+      setWaitingList(waitingList.map(entry =>
+        entry._id === entryId ? updatedEntry : entry
+      ));
+
+      if (selectedEntry && selectedEntry._id === entryId) {
+        setSelectedEntry(updatedEntry);
+      }
+
+      toast({
+        title: "Note Added",
+        description: "Note has been added to the entry"
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add note",
+        variant: "destructive"
+      });
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  const removeFromWaitingList = (entryId: string) => {
-    setWaitingList(waitingList.filter(entry => entry.id !== entryId));
-    setSelectedEntry(null);
-    
-    toast({
-      title: "Entry Removed",
-      description: "Entry has been removed from waiting list"
-    });
+  const removeFromWaitingList = async (entryId: string) => {
+    try {
+      setActionLoading(`delete-${entryId}`);
+      await waitingListService.deleteWaitingListEntry(entryId);
+
+      setWaitingList(waitingList.filter(entry => entry._id !== entryId));
+      setSelectedEntry(null);
+
+      toast({
+        title: "Entry Removed",
+        description: "Entry has been removed from waiting list"
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to remove entry",
+        variant: "destructive"
+      });
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  const addNewEntry = () => {
-    if (!newEntry.guestName || !newEntry.email || !newEntry.roomType) {
+  const addNewEntry = async () => {
+    if (!newEntry.guestName || !newEntry.email || !newEntry.roomType || !newEntry.preferredDates.checkIn || !newEntry.preferredDates.checkOut) {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
@@ -249,55 +247,62 @@ export const WaitingListManager: React.FC = () => {
       return;
     }
 
-    const entry: WaitingListEntry = {
-      id: `WL${String(waitingList.length + 1).padStart(3, '0')}`,
-      guestName: newEntry.guestName!,
-      email: newEntry.email!,
-      phone: newEntry.phone || '',
-      roomType: newEntry.roomType!,
-      preferredDates: newEntry.preferredDates!,
-      guests: newEntry.guests || 2,
-      priority: newEntry.priority || 'medium',
-      vipStatus: newEntry.vipStatus || false,
-      specialRequests: newEntry.specialRequests || '',
-      contactPreference: newEntry.contactPreference || 'email',
-      maxRate: newEntry.maxRate,
-      status: 'active',
-      addedDate: new Date().toISOString().split('T')[0],
-      notes: [],
-      loyaltyTier: newEntry.loyaltyTier,
-      source: newEntry.source || 'direct'
-    };
+    try {
+      setActionLoading('add-entry');
+      const createdEntry = await waitingListService.createWaitingListEntry(newEntry);
 
-    setWaitingList([...waitingList, entry]);
-    setNewEntry({
-      guestName: '',
-      email: '',
-      phone: '',
-      roomType: '',
-      preferredDates: { checkIn: '', checkOut: '' },
-      guests: 2,
-      priority: 'medium',
-      vipStatus: false,
-      specialRequests: '',
-      contactPreference: 'email',
-      status: 'active',
-      notes: [],
-      source: 'direct'
-    });
-    setShowAddEntry(false);
-    
-    toast({
-      title: "Entry Added",
-      description: "New waiting list entry has been created"
-    });
+      setWaitingList([createdEntry, ...waitingList]);
+      setNewEntry({
+        guestName: '',
+        email: '',
+        phone: '',
+        roomType: '',
+        preferredDates: { checkIn: '', checkOut: '' },
+        guests: 2,
+        priority: 'medium',
+        vipStatus: false,
+        specialRequests: '',
+        contactPreference: 'email',
+        source: 'direct'
+      });
+      setShowAddEntry(false);
+
+      toast({
+        title: "Entry Added",
+        description: "New waiting list entry has been created"
+      });
+
+      // Refresh the list to ensure proper pagination
+      fetchWaitingList();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create waiting list entry",
+        variant: "destructive"
+      });
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  const sendNotification = (entry: WaitingListEntry) => {
-    toast({
-      title: "Notification Sent",
-      description: `Room availability notification sent to ${entry.guestName} via ${entry.contactPreference}`
-    });
+  const sendNotification = async (entry: WaitingListEntry) => {
+    try {
+      setActionLoading(`notify-${entry._id}`);
+      const result = await waitingListService.sendAvailabilityNotification(entry._id);
+
+      toast({
+        title: "Notification Sent",
+        description: `Room availability notification sent to ${entry.guestName} via ${result.method}`
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send notification",
+        variant: "destructive"
+      });
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const checkAvailabilityMatch = (entry: WaitingListEntry) => {
@@ -379,6 +384,11 @@ export const WaitingListManager: React.FC = () => {
                 placeholder="Search guests..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleSearch();
+                  }
+                }}
                 className="pl-10"
               />
             </div>
@@ -408,7 +418,7 @@ export const WaitingListManager: React.FC = () => {
             </Select>
             <div className="text-sm text-muted-foreground flex items-center">
               <Filter className="mr-2 h-4 w-4" />
-              {filteredList.length} of {waitingList.length} entries
+              {pagination.total} entries
             </div>
           </div>
         </CardContent>
@@ -417,11 +427,37 @@ export const WaitingListManager: React.FC = () => {
       {/* Waiting List Entries */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-4">
-          {filteredList.map(entry => (
-            <Card 
-              key={entry.id} 
+          {loading ? (
+            <div className="flex items-center justify-center p-8">
+              <Loader2 className="h-8 w-8 animate-spin" />
+              <span className="ml-2">Loading waiting list...</span>
+            </div>
+          ) : (() => {
+            // Filter the waitingList based on current filters
+            const filteredList = waitingList.filter(entry => {
+              const matchesSearch = !searchTerm ||
+                entry.guestName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                entry.email.toLowerCase().includes(searchTerm.toLowerCase());
+              const matchesStatus = statusFilter === 'all' || entry.status === statusFilter;
+              const matchesPriority = priorityFilter === 'all' || entry.priority === priorityFilter;
+              return matchesSearch && matchesStatus && matchesPriority;
+            });
+
+            if (filteredList.length === 0) {
+              return (
+                <Card>
+                  <CardContent className="p-8 text-center text-muted-foreground">
+                    No waiting list entries match your filters
+                  </CardContent>
+                </Card>
+              );
+            }
+
+            return filteredList.map(entry => (
+            <Card
+              key={entry._id}
               className={`cursor-pointer transition-colors ${
-                selectedEntry?.id === entry.id ? 'border-blue-500' : ''
+                selectedEntry?._id === entry._id ? 'border-blue-500' : ''
               } ${checkAvailabilityMatch(entry) ? 'border-l-4 border-l-green-500' : ''}`}
               onClick={() => setSelectedEntry(entry)}
             >
@@ -473,15 +509,8 @@ export const WaitingListManager: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
-          ))}
-
-          {filteredList.length === 0 && (
-            <Card>
-              <CardContent className="p-8 text-center text-muted-foreground">
-                No waiting list entries match your filters
-              </CardContent>
-            </Card>
-          )}
+          ));
+          })()}
         </div>
 
         {/* Entry Details */}
@@ -495,16 +524,16 @@ export const WaitingListManager: React.FC = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => updatePriority(selectedEntry.id, 'high')}
-                      disabled={selectedEntry.priority === 'high'}
+                      onClick={() => updatePriority(selectedEntry._id, 'high')}
+                      disabled={selectedEntry.priority === 'high' || actionLoading === `priority-${selectedEntry._id}`}
                     >
                       <ArrowUp className="h-4 w-4" />
                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => updatePriority(selectedEntry.id, 'low')}
-                      disabled={selectedEntry.priority === 'low'}
+                      onClick={() => updatePriority(selectedEntry._id, 'low')}
+                      disabled={selectedEntry.priority === 'low' || actionLoading === `priority-${selectedEntry._id}`}
                     >
                       <ArrowDown className="h-4 w-4" />
                     </Button>
@@ -564,7 +593,15 @@ export const WaitingListManager: React.FC = () => {
                   <div className="space-y-1">
                     {selectedEntry.notes.map((note, idx) => (
                       <div key={idx} className="text-sm bg-muted p-2 rounded">
-                        {note}
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-xs text-muted-foreground">
+                            {note.createdBy.name} • {new Date(note.createdAt).toLocaleDateString()}
+                          </span>
+                          {note.isInternal && (
+                            <Badge variant="outline" className="text-xs">Internal</Badge>
+                          )}
+                        </div>
+                        {note.content}
                       </div>
                     ))}
                   </div>
@@ -576,8 +613,8 @@ export const WaitingListManager: React.FC = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => updateEntryStatus(selectedEntry.id, 'contacted')}
-                      disabled={selectedEntry.status === 'contacted'}
+                      onClick={() => updateEntryStatus(selectedEntry._id, 'contacted')}
+                      disabled={selectedEntry.status === 'contacted' || actionLoading === `status-${selectedEntry._id}`}
                     >
                       <MessageSquare className="mr-2 h-4 w-4" />
                       Mark Contacted
@@ -595,8 +632,8 @@ export const WaitingListManager: React.FC = () => {
                     <Button
                       variant="default"
                       size="sm"
-                      onClick={() => updateEntryStatus(selectedEntry.id, 'confirmed')}
-                      disabled={selectedEntry.status === 'confirmed'}
+                      onClick={() => updateEntryStatus(selectedEntry._id, 'confirmed')}
+                      disabled={selectedEntry.status === 'confirmed' || actionLoading === `status-${selectedEntry._id}`}
                     >
                       <CheckCircle className="mr-2 h-4 w-4" />
                       Confirm Booking
@@ -604,7 +641,8 @@ export const WaitingListManager: React.FC = () => {
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => removeFromWaitingList(selectedEntry.id)}
+                      onClick={() => removeFromWaitingList(selectedEntry._id)}
+                      disabled={actionLoading === `delete-${selectedEntry._id}`}
                     >
                       <XCircle className="mr-2 h-4 w-4" />
                       Remove Entry

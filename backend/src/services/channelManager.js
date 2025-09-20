@@ -63,14 +63,39 @@ class ChannelManagerService {
       throw new Error(`No connector available for ${channel.category}`);
     }
 
+    if (!channel.roomMappings || !Array.isArray(channel.roomMappings) || channel.roomMappings.length === 0) {
+      throw new Error('Channel has no room mappings configured');
+    }
+
     const startDate = new Date(dateRange.startDate);
     const endDate = new Date(dateRange.endDate);
     const syncPromises = [];
 
-    // Iterate through each date in range
-    for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-      const syncData = await this.prepareSyncData(channel, roomTypeId, new Date(date));
-      syncPromises.push(this.executeSyncForDate(connector, channel, syncData));
+    // If no specific roomTypeId provided, sync all mapped room types
+    const roomTypesToSync = roomTypeId ? [roomTypeId] : channel.roomMappings.map(rm => rm.hotelRoomTypeId);
+
+    // Iterate through each room type and date combination
+    for (const targetRoomTypeId of roomTypesToSync) {
+      if (!targetRoomTypeId) continue; // Skip invalid room type IDs
+
+      for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+        try {
+          const syncData = await this.prepareSyncData(channel, targetRoomTypeId, new Date(date));
+          syncPromises.push(this.executeSyncForDate(connector, channel, syncData));
+        } catch (error) {
+          console.error(`Error preparing sync data for room type ${targetRoomTypeId} on ${date}:`, error.message);
+          // Continue with other room types/dates
+        }
+      }
+    }
+
+    if (syncPromises.length === 0) {
+      return {
+        totalDates: 0,
+        successful: 0,
+        failed: 0,
+        errors: ['No valid room type mappings found for sync']
+      };
     }
 
     const results = await Promise.allSettled(syncPromises);
@@ -88,22 +113,31 @@ class ChannelManagerService {
    * Prepare sync data for a specific date
    */
   async prepareSyncData(channel, roomTypeId, date) {
+    // Validate inputs
+    if (!roomTypeId) {
+      throw new Error('Room type ID is required for sync');
+    }
+
+    if (!channel.roomMappings || !Array.isArray(channel.roomMappings)) {
+      throw new Error('Channel has no room mappings configured');
+    }
+
     // Get room availability
     const availability = await this.getRoomAvailability(roomTypeId, date);
-    
+
     // Get rates
     const rates = await this.getRoomRates(roomTypeId, date);
-    
+
     // Get restrictions
     const restrictions = await this.getRoomRestrictions(roomTypeId, date);
-    
+
     // Find room mapping
     const roomMapping = channel.roomMappings.find(
-      rm => rm.hotelRoomTypeId.toString() === roomTypeId.toString()
+      rm => rm.hotelRoomTypeId && rm.hotelRoomTypeId.toString() === roomTypeId.toString()
     );
 
     if (!roomMapping) {
-      throw new Error(`Room mapping not found for room type ${roomTypeId}`);
+      throw new Error(`Room mapping not found for room type ${roomTypeId}. Available mappings: ${channel.roomMappings.map(rm => rm.hotelRoomTypeId).join(', ')}`);
     }
 
     return {
@@ -548,6 +582,10 @@ class ChannelConnector {
     throw new Error('getReservations must be implemented by connector');
   }
 
+  async testConnection(credentials) {
+    throw new Error('testConnection must be implemented by connector');
+  }
+
   async makeRequest(method, endpoint, data = null, headers = {}) {
     try {
       const response = await axios({
@@ -602,6 +640,18 @@ class BookingComConnector extends ChannelConnector {
     return [];
   }
 
+  async testConnection(credentials) {
+    try {
+      // Simple test request to Booking.com API
+      const response = await this.makeRequest('GET', '/hotels/ota/OTA_Ping', null, {
+        'Authorization': `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64')}`
+      });
+      return { success: true, response };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
   buildInventoryXML({ hotelId, roomTypeId, date, inventory, rates, restrictions }) {
     // Build OTA XML for inventory update
     return `<?xml version="1.0" encoding="UTF-8"?>
@@ -650,6 +700,18 @@ class ExpediaConnector extends ChannelConnector {
     // Implementation for pulling reservations from Expedia
     return [];
   }
+
+  async testConnection(credentials) {
+    try {
+      // Simple test request to Expedia API
+      const response = await this.makeRequest('GET', '/api/v1/properties/test', null, {
+        'Authorization': `Bearer ${credentials.apiKey}`
+      });
+      return { success: true, response };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 // Airbnb Connector  
@@ -681,6 +743,18 @@ class AirbnbConnector extends ChannelConnector {
   async getReservations({ credentials, fromDate, toDate }) {
     // Implementation for pulling reservations from Airbnb
     return [];
+  }
+
+  async testConnection(credentials) {
+    try {
+      // Simple test request to Airbnb API
+      const response = await this.makeRequest('GET', '/v2/listings/test', null, {
+        'Authorization': `Bearer ${credentials.accessToken}`
+      });
+      return { success: true, response };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
   }
 }
 
@@ -714,6 +788,18 @@ class AgodaConnector extends ChannelConnector {
   async getReservations({ credentials, fromDate, toDate }) {
     // Implementation for pulling reservations from Agoda
     return [];
+  }
+
+  async testConnection(credentials) {
+    try {
+      // Simple test request to Agoda API
+      const response = await this.makeRequest('GET', '/webservice/TestConnection', null, {
+        'X-API-Key': credentials.apiKey
+      });
+      return { success: true, response };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
   }
 }
 

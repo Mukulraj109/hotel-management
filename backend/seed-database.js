@@ -15,6 +15,7 @@ import AuditLog from './src/models/AuditLog.js';
 import APIKey from './src/models/APIKey.js';
 import WebhookEndpoint from './src/models/WebhookEndpoint.js';
 import APIMetrics from './src/models/APIMetrics.js';
+import RoomTypeAllotment from './src/models/RoomTypeAllotment.js';
 
 // MongoDB connection string
 const MONGO_URI = 'mongodb+srv://mukulraj756:Zk8q2W4uDCaUWRh3@cluster0.thahvbk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
@@ -41,6 +42,7 @@ async function clearExistingData() {
     // Clear all collections in order (respecting foreign key constraints)
     await Booking.deleteMany({});
     await RoomAvailability.deleteMany({});
+    await RoomTypeAllotment.deleteMany({});
     await Room.deleteMany({});
     await RoomType.deleteMany({});
     await WebSettings.deleteMany({});

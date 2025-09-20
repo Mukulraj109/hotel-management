@@ -47,6 +47,8 @@ import GeneralLedger from '../models/GeneralLedger.js';
 import JournalEntry from '../models/JournalEntry.js';
 import BankAccount from '../models/BankAccount.js';
 import Budget from '../models/Budget.js';
+import DepartmentBudget from '../models/DepartmentBudget.js';
+import Vendor from '../models/Vendor.js';
 import RoomType from '../models/RoomType.js';
 import AccountAttribute from '../models/AccountAttribute.js';
 import AddOnService from '../models/AddOnService.js';
@@ -113,6 +115,7 @@ import RoomInventoryTemplate from '../models/RoomInventoryTemplate.js';
 import RoomTax from '../models/RoomTax.js';
 import RoomTypeAllotment from '../models/RoomTypeAllotment.js';
 import { RatePlan, RateOverride, SeasonalRate, DynamicPricing, YieldManagement, Package } from '../models/RateManagement.js';
+import { PricingRule, RateShopping, CorporateRate, RevenueAnalytics } from '../models/RevenueManagement.js';
 import Reason from '../models/Reason.js';
 import RevenueAccount from '../models/RevenueAccount.js';
 import RevenueReport from '../models/RevenueReport.js';
@@ -148,6 +151,7 @@ const seedData = async () => {
     await IncidentReport.deleteMany({});
     await Invoice.deleteMany({});
     await SupplyRequest.deleteMany({});
+    await Vendor.deleteMany({});
     await Communication.deleteMany({});
     await MessageTemplate.deleteMany({});
     await Housekeeping.deleteMany({});
@@ -305,7 +309,7 @@ const seedData = async () => {
         }
       },
       contact: {
-        phone: '+91-22-1234-5678',
+        phone: '+912212345678',
         email: 'info@thepentouz.com',
         website: 'https://thepentouz.com'
       },
@@ -365,7 +369,7 @@ const seedData = async () => {
           { code: 'AC', name: 'Air Conditioning', category: 'comfort', isHighlight: false },
           { code: 'MINIBAR', name: 'Mini Bar', category: 'comfort', isHighlight: false }
         ],
-        totalRooms: 25,
+        totalRooms: 34,
         baseRate: 2500,
         baseCurrency: 'USD',
         category: 'standard',
@@ -410,7 +414,7 @@ const seedData = async () => {
           { code: 'ROOMSERVICE', name: 'Room Service', category: 'other', isHighlight: false },
           { code: 'BALCONY', name: 'Balcony', category: 'comfort', isHighlight: true }
         ],
-        totalRooms: 20,
+        totalRooms: 24,
         baseRate: 3500,
         baseCurrency: 'USD',
         category: 'deluxe',
@@ -457,7 +461,7 @@ const seedData = async () => {
           { code: 'JACUZZI', name: 'Jacuzzi', category: 'comfort', isHighlight: true },
           { code: 'LIVINGAREA', name: 'Living Area', category: 'comfort', isHighlight: true }
         ],
-        totalRooms: 10,
+        totalRooms: 19,
         baseRate: 8000,
         baseCurrency: 'USD',
         category: 'suite',
@@ -504,7 +508,7 @@ const seedData = async () => {
           { code: 'WORKDESK', name: 'Work Desk', category: 'business', isHighlight: false },
           { code: 'BREAKFAST', name: 'Complimentary Breakfast', category: 'other', isHighlight: true }
         ],
-        totalRooms: 15,
+        totalRooms: 23,
         baseRate: 6000,
         baseCurrency: 'USD',
         category: 'executive',
@@ -591,7 +595,7 @@ const seedData = async () => {
         name: 'John Doe',
         email: 'john@example.com',
         password: 'guest123',
-        phone: '+91-98765-43210',
+        phone: '+919876543210',
         role: 'guest',
         preferences: {
           bedType: 'king',
@@ -607,7 +611,7 @@ const seedData = async () => {
         name: 'Jane Smith',
         email: 'jane@example.com',
         password: 'guest123',
-        phone: '+91-98765-43211',
+        phone: '+919876543211',
         role: 'guest',
         preferences: {
           bedType: 'queen',
@@ -622,24 +626,291 @@ const seedData = async () => {
         name: 'Mike Johnson',
         email: 'mike@example.com',
         password: 'guest123',
-        phone: '+91-98765-43212',
+        phone: '+919876543212',
         role: 'guest'
+      },
+      {
+        name: 'Sarah Wilson',
+        email: 'sarah@example.com',
+        password: 'guest123',
+        phone: '+919876543213',
+        role: 'guest',
+        preferences: {
+          bedType: 'double',
+          smokingAllowed: false
+        },
+        loyalty: {
+          points: 500,
+          tier: 'bronze'
+        }
+      },
+      {
+        name: 'David Brown',
+        email: 'david@example.com',
+        password: 'guest123',
+        phone: '+919876543214',
+        role: 'guest',
+        preferences: {
+          bedType: 'king',
+          smokingAllowed: false
+        },
+        loyalty: {
+          points: 2000,
+          tier: 'gold'
+        }
+      },
+      {
+        name: 'Lisa Garcia',
+        email: 'lisa@example.com',
+        password: 'guest123',
+        phone: '+919876543215',
+        role: 'guest',
+        preferences: {
+          bedType: 'queen',
+          smokingAllowed: false
+        },
+        loyalty: {
+          points: 300,
+          tier: 'bronze'
+        }
+      },
+      {
+        name: 'Robert Miller',
+        email: 'robert@example.com',
+        password: 'guest123',
+        phone: '+919876543216',
+        role: 'guest',
+        preferences: {
+          bedType: 'king',
+          smokingAllowed: false
+        },
+        loyalty: {
+          points: 1800,
+          tier: 'gold'
+        }
+      },
+      {
+        name: 'Emily Davis',
+        email: 'emily@example.com',
+        password: 'guest123',
+        phone: '+919876543217',
+        role: 'guest',
+        preferences: {
+          bedType: 'double',
+          smokingAllowed: false
+        },
+        loyalty: {
+          points: 950,
+          tier: 'silver'
+        }
       }
     ]);
 
     // Create staffUsers array for use in other sections
-    const staffUsers = [adminUser, staffUser, managerUser, barManagerUser, frontDeskStaff, kitchenStaff];
+    let staffUsers = [adminUser, staffUser, managerUser, barManagerUser, frontDeskStaff, kitchenStaff];
 
-    // Create rooms
+    // Create additional housekeeping staff members
+    logger.info('👥 Creating specialized housekeeping staff...');
+    const housekeepingStaffData = [
+      {
+        name: 'Maria Gonzalez',
+        email: 'maria.housekeeping@hotel.com',
+        password: await bcrypt.hash('staff123', 12),
+        role: 'staff',
+        department: 'Housekeeping',
+        position: 'Senior Housekeeper',
+        shift: 'morning',
+        phoneNumber: '+1-555-0101',
+        emergencyContact: {
+          name: 'Carlos Gonzalez',
+          phone: '+1-555-0102'
+        },
+        hotelId: hotel._id,
+        guestType: 'normal',
+        isActive: true,
+        employmentDetails: {
+          startDate: new Date('2024-01-01'),
+          employmentType: 'full-time',
+          status: 'active'
+        },
+        preferences: {
+          smokingAllowed: false,
+          workingAreas: ['floors_1-5', 'suites'],
+          maxRoomsPerDay: 15
+        }
+      },
+      {
+        name: 'Jennifer Chen',
+        email: 'jennifer.housekeeping@hotel.com',
+        password: await bcrypt.hash('staff123', 12),
+        role: 'staff',
+        department: 'Housekeeping',
+        position: 'Room Attendant',
+        shift: 'morning',
+        phoneNumber: '+1-555-0103',
+        emergencyContact: {
+          name: 'David Chen',
+          phone: '+1-555-0104'
+        },
+        hotelId: hotel._id,
+        guestType: 'normal',
+        isActive: true,
+        employmentDetails: {
+          startDate: new Date('2024-01-01'),
+          employmentType: 'full-time',
+          status: 'active'
+        },
+        preferences: {
+          smokingAllowed: false,
+          workingAreas: ['floors_1-5', 'suites'],
+          maxRoomsPerDay: 12
+        }
+      },
+      {
+        name: 'Robert Johnson',
+        email: 'robert.housekeeping@hotel.com',
+        password: await bcrypt.hash('staff123', 12),
+        role: 'staff',
+        department: 'Housekeeping',
+        position: 'Room Attendant',
+        shift: 'afternoon',
+        phoneNumber: '+1-555-0105',
+        emergencyContact: {
+          name: 'Sarah Johnson',
+          phone: '+1-555-0106'
+        },
+        hotelId: hotel._id,
+        guestType: 'normal',
+        isActive: true,
+        employmentDetails: {
+          startDate: new Date('2024-01-01'),
+          employmentType: 'full-time',
+          status: 'active'
+        },
+        preferences: {
+          smokingAllowed: false,
+          workingAreas: ['floors_1-5', 'suites'],
+          maxRoomsPerDay: 12
+        }
+      },
+      {
+        name: 'Priya Patel',
+        email: 'priya.housekeeping@hotel.com',
+        password: await bcrypt.hash('staff123', 12),
+        role: 'staff',
+        department: 'Housekeeping',
+        position: 'Laundry Supervisor',
+        shift: 'morning',
+        phoneNumber: '+1-555-0107',
+        emergencyContact: {
+          name: 'Raj Patel',
+          phone: '+1-555-0108'
+        },
+        hotelId: hotel._id,
+        guestType: 'normal',
+        isActive: true,
+        employmentDetails: {
+          startDate: new Date('2024-01-01'),
+          employmentType: 'full-time',
+          status: 'active'
+        },
+        preferences: {
+          smokingAllowed: false,
+          workingAreas: ['floors_1-5', 'suites'],
+          maxRoomsPerDay: 15
+        }
+      },
+      {
+        name: 'Ahmed Hassan',
+        email: 'ahmed.housekeeping@hotel.com',
+        password: await bcrypt.hash('staff123', 12),
+        role: 'staff',
+        department: 'Housekeeping',
+        position: 'Room Attendant',
+        shift: 'afternoon',
+        phoneNumber: '+1-555-0109',
+        emergencyContact: {
+          name: 'Fatima Hassan',
+          phone: '+1-555-0110'
+        },
+        hotelId: hotel._id,
+        guestType: 'normal',
+        isActive: true,
+        employmentDetails: {
+          startDate: new Date('2024-01-01'),
+          employmentType: 'full-time',
+          status: 'active'
+        },
+        preferences: {
+          smokingAllowed: false,
+          workingAreas: ['floors_1-5', 'suites'],
+          maxRoomsPerDay: 12
+        }
+      },
+      {
+        name: 'Lisa Thompson',
+        email: 'lisa.housekeeping@hotel.com',
+        password: await bcrypt.hash('staff123', 12),
+        role: 'staff',
+        department: 'Housekeeping',
+        position: 'Inspector',
+        shift: 'morning',
+        phoneNumber: '+1-555-0111',
+        emergencyContact: {
+          name: 'Michael Thompson',
+          phone: '+1-555-0112'
+        },
+        hotelId: hotel._id,
+        guestType: 'normal',
+        isActive: true,
+        employmentDetails: {
+          startDate: new Date('2024-01-01'),
+          employmentType: 'full-time',
+          status: 'active'
+        },
+        preferences: {
+          smokingAllowed: false,
+          workingAreas: ['floors_1-5', 'suites'],
+          maxRoomsPerDay: 20
+        }
+      }
+    ];
+
+    const createdHousekeepingStaff = await User.create(housekeepingStaffData);
+    logger.info(`Created ${createdHousekeepingStaff.length} housekeeping staff members`);
+
+    // Add housekeeping staff to the main staffUsers array
+    staffUsers = [...staffUsers, ...createdHousekeepingStaff];
+
+    // Create rooms with proper room type mapping
     const legacyRoomTypes = ['single', 'double', 'suite', 'deluxe'];
     const rooms = [];
 
-    for (let floor = 1; floor <= 10; floor++) {
-      for (let roomNum = 1; roomNum <= 10; roomNum++) {
-        const roomNumber = `${floor}${roomNum.toString().padStart(2, '0')}`;
-        const type = legacyRoomTypes[Math.floor(Math.random() * legacyRoomTypes.length)];
-        let baseRate;
+    // Create mapping from legacy types to room type IDs
+    const typeMapping = {
+      'single': createdRoomTypes.find(rt => rt.code === 'STD')._id,    // Standard Room
+      'double': createdRoomTypes.find(rt => rt.code === 'DLX')._id,    // Deluxe Room  
+      'suite': createdRoomTypes.find(rt => rt.code === 'STE')._id,     // Premium Suite
+      'deluxe': createdRoomTypes.find(rt => rt.code === 'EXE')._id     // Executive Deluxe
+    };
 
+    // Create rooms with specific distribution to match the room type counts
+    const roomDistribution = {
+      'single': 34,   // Standard Room
+      'double': 24,   // Deluxe Room
+      'suite': 19,    // Premium Suite
+      'deluxe': 23    // Executive Deluxe
+    };
+
+    let roomCount = 0;
+    for (const [type, count] of Object.entries(roomDistribution)) {
+      for (let i = 0; i < count; i++) {
+        roomCount++;
+        const floor = Math.ceil(roomCount / 10);
+        const roomNum = ((roomCount - 1) % 10) + 1;
+        const roomNumber = `${floor}${roomNum.toString().padStart(2, '0')}`;
+        
+        let baseRate;
         switch (type) {
           case 'single': baseRate = 2500; break;
           case 'double': baseRate = 3500; break;
@@ -652,6 +923,7 @@ const seedData = async () => {
           hotelId: hotel._id,
           roomNumber,
           type,
+          roomTypeId: typeMapping[type], // Link to room type
           baseRate,
           currentRate: baseRate + Math.floor(Math.random() * 50),
           floor,
@@ -739,7 +1011,8 @@ const seedData = async () => {
         source: 'direct',
         channelBookingId: `DIRECT-${Date.now()}-${i}`,
         idempotencyKey: `seed-${i}-${Date.now()}`,
-        reservedUntil: ['confirmed', 'checked_in', 'checked_out'].includes(status) ? null : undefined
+        // Only set reservedUntil for pending bookings to prevent TTL deletion of confirmed bookings
+        ...(status === 'pending' ? { reservedUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) } : {})
       });
     }
 
@@ -869,7 +1142,7 @@ const seedData = async () => {
     logger.info(`Created ${createdReviews.length} reviews`);
 
     // Create Guest Services
-    const serviceTypes = ['room_service', 'housekeeping', 'maintenance', 'concierge', 'laundry', 'spa', 'transport'];
+    const serviceTypes = ['room_service', 'housekeeping', 'maintenance', 'concierge', 'laundry', 'spa', 'transport', 'other'];
     const guestServicesData = [];
     
     for (let i = 0; i < 30; i++) {
@@ -889,7 +1162,7 @@ const seedData = async () => {
         transport: ['Airport Pickup', 'Airport Drop-off', 'City Tour', 'Taxi Booking', 'Car Rental', 'Train Station Transfer', 'Sightseeing Trip'],
         spa: ['Massage Appointment', 'Facial Treatment', 'Spa Package', 'Manicure/Pedicure', 'Hair Styling', 'Wellness Consultation', 'Relaxation Therapy'],
         laundry: ['Clothes Washing', 'Dry Cleaning', 'Iron & Press', 'Express Laundry', 'Shoe Cleaning', 'Special Fabric Care', 'Pickup & Delivery'],
-        other: ['Special Request', 'Event Setup', 'Medical Assistance', 'Baby/Child Services', 'Pet Services', 'Lost & Found', 'Complaint Resolution']
+        other: ['inventory_request', 'Special Request', 'Event Setup', 'Medical Assistance', 'Baby/Child Services', 'Pet Services', 'Lost & Found', 'Complaint Resolution']
       };
       
       const variations = serviceVariations[serviceType];
@@ -948,6 +1221,164 @@ const seedData = async () => {
     const createdGuestServices = await GuestService.create(guestServicesData);
     logger.info(`Created ${createdGuestServices.length} guest services`);
 
+    // Create Inventory Requests (specific)
+    const inventoryRequestsData = [];
+    const inventoryRequestItems = [
+      'Missing towels', 'Damaged TV remote', 'Broken hairdryer', 'Missing toiletries',
+      'Damaged curtains', 'Missing bed sheets', 'Broken lamp', 'Damaged carpet',
+      'Missing pillows', 'Broken coffee maker', 'Damaged bathroom tiles', 'Missing bathrobe',
+      'Broken safe', 'Damaged furniture', 'Missing blankets', 'Broken thermostat'
+    ];
+
+    for (let i = 0; i < 15; i++) {
+      const guest = guests[Math.floor(Math.random() * guests.length)];
+      const room = createdRooms[Math.floor(Math.random() * createdRooms.length)];
+      const booking = createdBookings[Math.floor(Math.random() * createdBookings.length)];
+      const priority = ['low', 'medium', 'high', 'urgent'][Math.floor(Math.random() * 4)];
+      const status = ['pending', 'assigned', 'in_progress', 'completed'][Math.floor(Math.random() * 4)];
+      const item = inventoryRequestItems[Math.floor(Math.random() * inventoryRequestItems.length)];
+
+      inventoryRequestsData.push({
+        hotelId: hotel._id,
+        userId: guest._id,
+        bookingId: booking._id,
+        serviceType: 'other',
+        serviceVariation: 'inventory_request',
+        serviceVariations: ['inventory_request'],
+        title: `Inventory Request: ${item}`,
+        description: `Guest reported issue with ${item.toLowerCase()} in room ${room.number}`,
+        priority,
+        status,
+        assignedTo: status !== 'pending' ? staffUsers[Math.floor(Math.random() * staffUsers.length)]._id : null,
+        estimatedCost: Math.random() * 500 + 50, // $50-$550
+        actualCost: status === 'completed' ? Math.random() * 500 + 50 : null,
+        items: [{
+          name: item,
+          quantity: 1,
+          price: Math.random() * 200 + 25
+        }],
+        specialInstructions: Math.random() > 0.5 ? 'Please handle with priority - guest is VIP' : null,
+        createdAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000), // Random time in last 7 days
+        updatedAt: new Date()
+      });
+    }
+
+    const createdInventoryRequests = await GuestService.create(inventoryRequestsData);
+    logger.info(`Created ${createdInventoryRequests.length} inventory requests`);
+
+    // Create Current Date Daily Check Assignments
+    logger.info('🔄 Generating current date daily check assignments...');
+    const dailyCheckDate = new Date();
+    dailyCheckDate.setHours(0, 0, 0, 0);
+
+    const dailyCheckAssignments = [];
+    const dailyCheckInventoryItems = [
+      {
+        itemName: 'Bed Sheets',
+        category: 'bedroom',
+        inventoryType: 'daily',
+        action: 'replace',
+        quantity: 2,
+        unitPrice: 200,
+        totalPrice: 400,
+        notes: 'Fresh linen set',
+        status: 'working'
+      },
+      {
+        itemName: 'Towels',
+        category: 'bathroom',
+        inventoryType: 'daily',
+        action: 'replace',
+        quantity: 3,
+        unitPrice: 80,
+        totalPrice: 240,
+        notes: 'Clean towel set',
+        status: 'working'
+      },
+      {
+        itemName: 'Toiletries',
+        category: 'bathroom',
+        inventoryType: 'daily',
+        action: 'add',
+        quantity: 1,
+        unitPrice: 150,
+        totalPrice: 150,
+        notes: 'Shampoo, soap, toothbrush set',
+        status: 'working'
+      }
+    ];
+
+    // Create different scenarios for realistic data
+    let assignedCount = 0;
+    let completedCount = 0;
+    const limitedRooms = createdRooms.slice(0, 50); // Limit for testing
+    const allStaffUsers = staffUsers.filter(s => s.role === 'staff' && s.isActive);
+
+    for (let i = 0; i < limitedRooms.length; i++) {
+      const room = limitedRooms[i];
+      const staffMember = allStaffUsers[i % allStaffUsers.length];
+
+      // Create different statuses for realistic data
+      let checkStatus = 'pending';
+      let completedAt = null;
+      let startedAt = null;
+      let actualDuration = null;
+      let items = [];
+      let totalCost = 0;
+
+      // 30% completed, 50% assigned pending, 20% unassigned
+      const scenario = Math.random();
+
+      if (scenario < 0.3) {
+        // Completed checks
+        checkStatus = 'completed';
+        const checkTime = new Date();
+        checkTime.setHours(8 + Math.floor(Math.random() * 6)); // Between 8 AM - 2 PM
+        completedAt = checkTime;
+        startedAt = new Date(checkTime.getTime() - (15 + Math.random() * 20) * 60 * 1000); // 15-35 min duration
+        actualDuration = Math.floor((completedAt - startedAt) / (1000 * 60));
+        items = dailyCheckInventoryItems.map(item => ({
+          ...item,
+          itemId: new mongoose.Types.ObjectId()
+        }));
+        totalCost = items.reduce((sum, item) => sum + item.totalPrice, 0);
+        completedCount++;
+      } else if (scenario < 0.8) {
+        // Assigned but pending
+        checkStatus = 'pending';
+        assignedCount++;
+      } else {
+        // Skip this room (unassigned)
+        continue;
+      }
+
+      const dailyCheck = {
+        hotelId: hotel._id,
+        roomId: room._id,
+        checkedBy: staffMember._id,
+        checkDate: dailyCheckDate,
+        status: checkStatus,
+        estimatedDuration: 15 + Math.floor(Math.random() * 15), // 15-30 minutes
+        actualDuration,
+        startedAt,
+        completedAt,
+        items,
+        totalCost,
+        notes: checkStatus === 'completed' ?
+          `Daily check completed for room ${room.number}. All items checked and maintained.` :
+          null,
+        qualityScore: checkStatus === 'completed' ? 4 + Math.floor(Math.random() * 2) : null
+      };
+
+      dailyCheckAssignments.push(dailyCheck);
+    }
+
+    const createdCurrentDailyChecks = await DailyRoutineCheck.insertMany(dailyCheckAssignments);
+    logger.info(`Created ${createdCurrentDailyChecks.length} current date daily check assignments`);
+    logger.info(`   ✅ Completed: ${completedCount}`);
+    logger.info(`   ⏳ Pending: ${assignedCount - completedCount}`);
+    logger.info(`   📅 Date: ${dailyCheckDate.toDateString()}`);
+
     // Create Maintenance Tasks
     const maintenanceData = [];
     for (let i = 0; i < 20; i++) {
@@ -959,13 +1390,14 @@ const seedData = async () => {
         title: ['AC repair', 'Plumbing fix', 'Light replacement', 'Door lock repair', 'TV repair'][Math.floor(Math.random() * 5)],
         description: 'Maintenance task description',
         type: ['electrical', 'plumbing', 'hvac', 'cleaning', 'carpentry'][Math.floor(Math.random() * 5)],
+        category: ['preventive', 'corrective', 'emergency', 'inspection'][Math.floor(Math.random() * 4)],
         priority: ['low', 'medium', 'high', 'urgent', 'emergency'][Math.floor(Math.random() * 5)],
         status: ['pending', 'assigned', 'in_progress', 'completed', 'cancelled'][Math.floor(Math.random() * 5)],
         reportedBy: staffUser._id,
         assignedTo: Math.random() > 0.3 ? staffUser._id : null,
         roomOutOfOrder: Math.random() > 0.7,
-        estimatedHours: 1 + Math.floor(Math.random() * 8),
-        actualHours: 1 + Math.floor(Math.random() * 6),
+        estimatedDuration: 60 + Math.floor(Math.random() * 480), // 1-8 hours in minutes
+        actualDuration: 60 + Math.floor(Math.random() * 360), // 1-6 hours in minutes
         materials: [{
           name: 'Replacement parts',
           quantity: 1,
@@ -1860,8 +2292,8 @@ VIP Services Team
         type: ['cleaning', 'maintenance', 'inspection'][Math.floor(Math.random() * 3)],
         priority: ['low', 'medium', 'high'][Math.floor(Math.random() * 3)],
         status: ['pending', 'assigned', 'in_progress', 'completed'][Math.floor(Math.random() * 4)],
-        checkIn: new Date(Date.now() - Math.random() * 2 * 60 * 60 * 1000),
-        checkOut: Math.random() > 0.5 ? new Date(Date.now() - Math.random() * 60 * 60 * 1000) : null,
+        checkIn: new Date(Date.now() - Math.random() * 24 * 60 * 60 * 1000),
+        checkOut: Math.random() > 0.5 ? new Date(Date.now() + Math.random() * 24 * 60 * 60 * 1000) : null,
         roomStatus: ['dirty', 'clean', 'inspected', 'maintenance_required'][Math.floor(Math.random() * 4)],
         notes: Math.random() > 0.7 ? 'Additional cleaning required' : '',
         supplies: [{
@@ -1992,7 +2424,7 @@ VIP Services Team
         userId: guests[0]._id,
         hotelId: hotel._id,
         type: 'redeemed',
-        points: -200,
+        points: 200,
         description: 'Redeemed: Free Welcome Drink',
         offerId: createdOffers[1]._id,
         createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000)
@@ -2054,122 +2486,152 @@ VIP Services Team
         hotelId: hotel._id,
         name: 'Spa & Wellness',
         description: 'Relax and rejuvenate with our premium spa treatments and wellness facilities.',
-        category: 'spa',
         type: 'spa',
         price: 2500,
+        currency: 'INR',
         duration: 90,
-        availability: 'available',
+        capacity: 4,
         isActive: true,
-        isFeatured: true,
+        featured: true,
         images: ['https://images.pexels.com/photos/3757942/pexels-photo-3757942.jpeg'],
         amenities: ['Steam room', 'Sauna', 'Massage therapy', 'Aromatherapy'],
+        tags: ['relaxation', 'wellness', 'luxury', 'rejuvenation'],
+        location: 'Ground Floor, Wellness Wing',
+        contactInfo: {
+          phone: '+91 22 1234 5678',
+          email: 'spa@thepentouz.com'
+        },
         operatingHours: {
-          monday: { open: '09:00', close: '21:00' },
-          tuesday: { open: '09:00', close: '21:00' },
-          wednesday: { open: '09:00', close: '21:00' },
-          thursday: { open: '09:00', close: '21:00' },
-          friday: { open: '09:00', close: '22:00' },
-          saturday: { open: '08:00', close: '22:00' },
-          sunday: { open: '08:00', close: '21:00' }
+          open: '09:00',
+          close: '21:00'
+        },
+        specialInstructions: 'Advance booking required. Please arrive 15 minutes early.',
+        rating: {
+          average: 4.5,
+          count: 48
         }
       },
       {
         hotelId: hotel._id,
         name: 'Fine Dining Restaurant',
         description: 'Experience exquisite cuisine prepared by our award-winning chefs.',
-        category: 'dining',
         type: 'dining',
         price: 1500,
+        currency: 'INR',
         duration: 120,
-        availability: 'available',
+        capacity: 50,
         isActive: true,
-        isFeatured: true,
+        featured: true,
         images: ['https://images.pexels.com/photos/262978/pexels-photo-262978.jpeg'],
         amenities: ['Multi-cuisine', 'Wine selection', 'Private dining', 'Outdoor seating'],
+        tags: ['fine dining', 'chef special', 'romantic', 'business meals'],
+        location: 'First Floor, Main Building',
+        contactInfo: {
+          phone: '+91 22 1234 5679',
+          email: 'dining@thepentouz.com'
+        },
         operatingHours: {
-          monday: { open: '07:00', close: '23:00' },
-          tuesday: { open: '07:00', close: '23:00' },
-          wednesday: { open: '07:00', close: '23:00' },
-          thursday: { open: '07:00', close: '23:00' },
-          friday: { open: '07:00', close: '00:00' },
-          saturday: { open: '07:00', close: '00:00' },
-          sunday: { open: '07:00', close: '23:00' }
+          open: '07:00',
+          close: '23:00'
+        },
+        specialInstructions: 'Dress code: Smart casual. Reservations recommended.',
+        rating: {
+          average: 4.7,
+          count: 127
         }
       },
       {
         hotelId: hotel._id,
         name: 'Airport Transfer',
         description: 'Convenient and comfortable transportation to and from the airport.',
-        category: 'transport',
         type: 'transport',
         price: 800,
+        currency: 'INR',
         duration: 45,
-        availability: 'available',
+        capacity: 4,
         isActive: true,
-        isFeatured: false,
+        featured: false,
         images: ['https://images.pexels.com/photos/164634/pexels-photo-164634.jpeg'],
         amenities: ['Professional driver', 'Premium vehicle', 'Meet & greet', '24/7 service'],
+        tags: ['airport', 'transport', 'convenient', 'reliable'],
+        location: 'Hotel Entrance',
+        contactInfo: {
+          phone: '+91 22 1234 5680',
+          email: 'transport@thepentouz.com'
+        },
         operatingHours: {
-          monday: { open: '00:00', close: '23:59' },
-          tuesday: { open: '00:00', close: '23:59' },
-          wednesday: { open: '00:00', close: '23:59' },
-          thursday: { open: '00:00', close: '23:59' },
-          friday: { open: '00:00', close: '23:59' },
-          saturday: { open: '00:00', close: '23:59' },
-          sunday: { open: '00:00', close: '23:59' }
+          open: '00:00',
+          close: '23:59'
+        },
+        specialInstructions: 'Book at least 2 hours in advance. Flight details required.',
+        rating: {
+          average: 4.3,
+          count: 89
         }
       },
       {
         hotelId: hotel._id,
         name: 'Business Center',
         description: 'Complete business facilities including meeting rooms and office services.',
-        category: 'business',
         type: 'business',
         price: 500,
+        currency: 'INR',
         duration: 60,
-        availability: 'available',
+        capacity: 12,
         isActive: true,
-        isFeatured: false,
+        featured: false,
         images: ['https://images.pexels.com/photos/416405/pexels-photo-416405.jpeg'],
         amenities: ['High-speed internet', 'Printing services', 'Meeting rooms', 'Presentation equipment'],
+        tags: ['business', 'meetings', 'professional', 'corporate'],
+        location: 'Second Floor, Business Wing',
+        contactInfo: {
+          phone: '+91 22 1234 5681',
+          email: 'business@thepentouz.com'
+        },
         operatingHours: {
-          monday: { open: '06:00', close: '22:00' },
-          tuesday: { open: '06:00', close: '22:00' },
-          wednesday: { open: '06:00', close: '22:00' },
-          thursday: { open: '06:00', close: '22:00' },
-          friday: { open: '06:00', close: '22:00' },
-          saturday: { open: '08:00', close: '20:00' },
-          sunday: { open: '08:00', close: '20:00' }
+          open: '06:00',
+          close: '22:00'
+        },
+        specialInstructions: 'Meeting room bookings require advance notice.',
+        rating: {
+          average: 4.2,
+          count: 34
         }
       },
       {
         hotelId: hotel._id,
         name: 'Fitness Center',
         description: 'Stay fit with our modern gym equipment and personal training services.',
-        category: 'fitness',
         type: 'gym',
         price: 0,
+        currency: 'INR',
         duration: 60,
-        availability: 'available',
+        capacity: 20,
         isActive: true,
-        isFeatured: true,
+        featured: true,
         images: ['https://images.pexels.com/photos/1552252/pexels-photo-1552252.jpeg'],
         amenities: ['Modern equipment', 'Personal training', 'Group classes', 'Locker facilities'],
+        tags: ['fitness', 'health', 'exercise', 'complimentary'],
+        location: 'Ground Floor, Fitness Wing',
+        contactInfo: {
+          phone: '+91 22 1234 5682',
+          email: 'fitness@thepentouz.com'
+        },
         operatingHours: {
-          monday: { open: '05:00', close: '23:00' },
-          tuesday: { open: '05:00', close: '23:00' },
-          wednesday: { open: '05:00', close: '23:00' },
-          thursday: { open: '05:00', close: '23:00' },
-          friday: { open: '05:00', close: '23:00' },
-          saturday: { open: '06:00', close: '22:00' },
-          sunday: { open: '06:00', close: '22:00' }
+          open: '05:00',
+          close: '23:00'
+        },
+        specialInstructions: 'Complimentary for hotel guests. Personal training sessions extra.',
+        rating: {
+          average: 4.4,
+          count: 76
         }
       }
     ];
     const createdHotelServices = await HotelService.create(hotelServicesData);
     logger.info(`Created ${createdHotelServices.length} hotel services`);
 
-    // Create meet-up requests
+    // Create meet-up requests with comprehensive data
     const meetUpRequestsData = [
       {
         requesterId: guests[0]._id,
@@ -2188,11 +2650,35 @@ VIP Services Team
           name: 'Hotel Main Lobby',
           details: 'Meet at the main reception area'
         },
+        participants: {
+          maxParticipants: 4,
+          confirmedParticipants: []
+        },
         activity: {
           type: 'walk',
           duration: 90,
           cost: 0,
           costSharing: false
+        },
+        safety: {
+          verifiedOnly: false,
+          publicLocation: true,
+          hotelStaffPresent: false
+        },
+        preferences: {
+          interests: ['fitness', 'outdoor', 'morning'],
+          languages: ['English'],
+          ageGroup: 'any',
+          gender: 'any'
+        },
+        communication: {
+          preferredMethod: 'in_app',
+          contactInfo: {}
+        },
+        metadata: {
+          tags: ['fitness', 'morning', 'jogging'],
+          category: 'sports',
+          difficulty: 'easy'
         },
         status: 'pending'
       },
@@ -2213,7 +2699,42 @@ VIP Services Team
           name: 'Hotel Restaurant',
           details: 'Starting point for the food tour'
         },
-        status: 'pending'
+        participants: {
+          maxParticipants: 6,
+          confirmedParticipants: []
+        },
+        activity: {
+          type: 'tour',
+          duration: 180,
+          cost: 25,
+          costSharing: true
+        },
+        safety: {
+          verifiedOnly: true,
+          publicLocation: true,
+          hotelStaffPresent: false
+        },
+        preferences: {
+          interests: ['food', 'culture', 'local experience'],
+          languages: ['English', 'Spanish'],
+          ageGroup: 'any',
+          gender: 'any'
+        },
+        communication: {
+          preferredMethod: 'in_app',
+          contactInfo: {}
+        },
+        metadata: {
+          tags: ['food', 'tour', 'local', 'evening'],
+          category: 'food',
+          difficulty: 'easy'
+        },
+        status: 'accepted',
+        response: {
+          status: 'accepted',
+          message: 'Sounds amazing! I love trying local food. Count me in!',
+          respondedAt: new Date(Date.now() - 12 * 60 * 60 * 1000) // 12 hours ago
+        }
       },
       {
         requesterId: guests[2]._id,
@@ -2232,7 +2753,150 @@ VIP Services Team
           name: 'Hotel Restaurant',
           details: 'Business breakfast meeting'
         },
+        participants: {
+          maxParticipants: 3,
+          confirmedParticipants: []
+        },
+        activity: {
+          type: 'lunch', // Business breakfast counts as meal activity
+          duration: 90,
+          cost: 15,
+          costSharing: true
+        },
+        safety: {
+          verifiedOnly: true,
+          publicLocation: true,
+          hotelStaffPresent: true
+        },
+        preferences: {
+          interests: ['business', 'networking', 'professional development'],
+          languages: ['English'],
+          ageGroup: '26-35',
+          gender: 'any'
+        },
+        communication: {
+          preferredMethod: 'email',
+          contactInfo: {
+            email: 'mike.johnson@example.com'
+          }
+        },
+        metadata: {
+          tags: ['business', 'networking', 'breakfast', 'professional'],
+          category: 'business',
+          difficulty: 'easy'
+        },
         status: 'pending'
+      },
+      {
+        requesterId: guests[3]._id,
+        targetUserId: guests[1]._id,
+        hotelId: hotel._id,
+        title: 'Evening Drinks & Local Culture',
+        description: 'Let\'s explore the local nightlife and have some drinks while discussing travel experiences. Great way to unwind after a busy day!',
+        type: 'social',
+        proposedDate: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000),
+        proposedTime: {
+          start: '19:30',
+          end: '22:30'
+        },
+        location: {
+          type: 'bar',
+          name: 'Hotel Rooftop Bar',
+          details: 'Rooftop bar with city views'
+        },
+        participants: {
+          maxParticipants: 5,
+          confirmedParticipants: []
+        },
+        activity: {
+          type: 'drinks',
+          duration: 180,
+          cost: 30,
+          costSharing: false
+        },
+        safety: {
+          verifiedOnly: false,
+          publicLocation: true,
+          hotelStaffPresent: true
+        },
+        preferences: {
+          interests: ['nightlife', 'culture', 'travel stories'],
+          languages: ['English', 'French'],
+          ageGroup: '26-35',
+          gender: 'any'
+        },
+        communication: {
+          preferredMethod: 'in_app',
+          contactInfo: {}
+        },
+        metadata: {
+          tags: ['drinks', 'nightlife', 'social', 'rooftop'],
+          category: 'entertainment',
+          difficulty: 'easy'
+        },
+        status: 'declined',
+        response: {
+          status: 'declined',
+          message: 'Thanks for the invite, but I have other plans that evening. Maybe another time!',
+          respondedAt: new Date(Date.now() - 6 * 60 * 60 * 1000), // 6 hours ago
+          alternativeDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+          alternativeTime: {
+            start: '20:00',
+            end: '23:00'
+          }
+        }
+      },
+      {
+        requesterId: guests[0]._id,
+        targetUserId: guests[2]._id,
+        hotelId: hotel._id,
+        title: 'Coffee & Co-working Session',
+        description: 'Looking for a productive co-working buddy! Let\'s grab coffee and work together in the hotel\'s business center.',
+        type: 'casual',
+        proposedDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000),
+        proposedTime: {
+          start: '10:00',
+          end: '12:00'
+        },
+        location: {
+          type: 'meeting_room',
+          name: 'Business Center',
+          details: 'Quiet workspace with WiFi and coffee'
+        },
+        meetingRoomBooking: {
+          isRequired: true
+        },
+        participants: {
+          maxParticipants: 2,
+          confirmedParticipants: []
+        },
+        activity: {
+          type: 'coffee',
+          duration: 120,
+          cost: 8,
+          costSharing: true
+        },
+        safety: {
+          verifiedOnly: true,
+          publicLocation: true,
+          hotelStaffPresent: true
+        },
+        preferences: {
+          interests: ['productivity', 'coffee', 'remote work'],
+          languages: ['English'],
+          ageGroup: 'any',
+          gender: 'any'
+        },
+        communication: {
+          preferredMethod: 'in_app',
+          contactInfo: {}
+        },
+        metadata: {
+          tags: ['coffee', 'work', 'productivity', 'business center'],
+          category: 'business',
+          difficulty: 'easy'
+        },
+        status: 'completed'
       }
     ];
     const createdMeetUpRequests = await MeetUpRequest.create(meetUpRequestsData);
@@ -2752,7 +3416,7 @@ VIP Services Team
         },
         guestProfile: {
           vipStatus: 'gold',
-          loyaltyNumber: 'GLD-567890',
+          loyaltyNumber: 'GLD567890',
           preferences: {
             bedType: 'king',
             pillowType: 'memory_foam',
@@ -2947,12 +3611,14 @@ VIP Services Team
     logger.info('✅ Comprehensive seed data created successfully!');
     logger.info('\n📊 Data Summary:');
     logger.info(`🏨 Hotels: 1`);
-    logger.info(`👥 Users: ${3 + guests.length} (1 admin, 1 staff, ${guests.length} guests)`);
+    logger.info(`👥 Users: ${3 + guests.length + createdHousekeepingStaff.length} (1 admin, 1 staff, ${createdHousekeepingStaff.length} housekeeping, ${guests.length} guests)`);
     logger.info(`🏠 Rooms: ${createdRooms.length}`);
     logger.info(`📅 Bookings: ${createdBookings.length}`);
     logger.info(`📦 Inventory: ${createdInventory.length}`);
     logger.info(`⭐ Reviews: ${createdReviews.length}`);
     logger.info(`🛎️ Guest Services: ${createdGuestServices.length}`);
+    logger.info(`📦 Inventory Requests: ${createdInventoryRequests.length}`);
+    logger.info(`📅 Current Daily Checks: ${createdCurrentDailyChecks.length}`);
     logger.info(`🔧 Maintenance: ${createdMaintenance.length}`);
     logger.info(`🚨 Incidents: ${createdIncidents.length}`);
     logger.info(`💰 Invoices: ${createdInvoices.length}`);
@@ -4523,7 +5189,7 @@ VIP Services Team
         accountManager: {
           name: 'Priya Sharma',
           email: 'priya.sharma@hdfcbank.com',
-          phone: '+91-22-40756789'
+          phone: '+912240756789'
         },
         notes: 'Primary operational account for daily transactions',
         hotelId: hotel._id,
@@ -4624,7 +5290,7 @@ VIP Services Team
         accountManager: {
           name: 'Rajesh Kumar',
           email: 'rajesh.kumar@icicibank.com',
-          phone: '+91-22-66536789'
+          phone: '+912266536789'
         },
         notes: 'Emergency reserve fund and investment savings',
         hotelId: hotel._id,
@@ -4692,7 +5358,7 @@ VIP Services Team
         accountManager: {
           name: 'Amit Singh',
           email: 'amit.singh@sbi.co.in',
-          phone: '+91-22-22074567'
+          phone: '+912222074567'
         },
         notes: 'Corporate credit card for operational expenses',
         hotelId: hotel._id,
@@ -4770,7 +5436,7 @@ VIP Services Team
         accountManager: {
           name: 'Sunita Reddy',
           email: 'sunita.reddy@axisbank.com',
-          phone: '+91-22-40123456'
+          phone: '+912240123456'
         },
         notes: 'Long-term fixed deposit investment for capital growth',
         hotelId: hotel._id,
@@ -4844,7 +5510,7 @@ VIP Services Team
         accountManager: {
           name: 'Vikram Joshi',
           email: 'vikram.joshi@kotak.com',
-          phone: '+91-22-39876543'
+          phone: '+912239876543'
         },
         notes: 'Petty cash account for small daily operational expenses',
         hotelId: hotel._id,
@@ -5190,6 +5856,394 @@ VIP Services Team
 
     const createdBudgets = await Budget.insertMany(budgetData);
     logger.info(`💰 Budgets created: ${createdBudgets.length}`);
+
+    // === DEPARTMENT BUDGET SEED DATA ===
+    console.log('🏢 Seeding Department Budgets...');
+
+    // Department budget configurations
+    const departmentConfigs = {
+      housekeeping: {
+        monthly: { supply_requests: 25000, equipment: 8000, maintenance: 3000 },
+        quarterly: { supply_requests: 75000, equipment: 25000, maintenance: 10000 },
+        yearly: { supply_requests: 300000, equipment: 100000, maintenance: 40000 }
+      },
+      maintenance: {
+        monthly: { supply_requests: 35000, equipment: 15000, maintenance: 12000 },
+        quarterly: { supply_requests: 105000, equipment: 45000, maintenance: 36000 },
+        yearly: { supply_requests: 420000, equipment: 180000, maintenance: 144000 }
+      },
+      front_desk: {
+        monthly: { supply_requests: 15000, equipment: 5000, maintenance: 2000 },
+        quarterly: { supply_requests: 45000, equipment: 15000, maintenance: 6000 },
+        yearly: { supply_requests: 180000, equipment: 60000, maintenance: 24000 }
+      },
+      food_beverage: {
+        monthly: { supply_requests: 40000, equipment: 12000, maintenance: 8000 },
+        quarterly: { supply_requests: 120000, equipment: 36000, maintenance: 24000 },
+        yearly: { supply_requests: 480000, equipment: 144000, maintenance: 96000 }
+      },
+      spa: {
+        monthly: { supply_requests: 20000, equipment: 8000, maintenance: 4000 },
+        quarterly: { supply_requests: 60000, equipment: 24000, maintenance: 12000 },
+        yearly: { supply_requests: 240000, equipment: 96000, maintenance: 48000 }
+      },
+      laundry: {
+        monthly: { supply_requests: 18000, equipment: 10000, maintenance: 6000 },
+        quarterly: { supply_requests: 54000, equipment: 30000, maintenance: 18000 },
+        yearly: { supply_requests: 216000, equipment: 120000, maintenance: 72000 }
+      },
+      kitchen: {
+        monthly: { supply_requests: 45000, equipment: 20000, maintenance: 15000 },
+        quarterly: { supply_requests: 135000, equipment: 60000, maintenance: 45000 },
+        yearly: { supply_requests: 540000, equipment: 240000, maintenance: 180000 }
+      },
+      bar: {
+        monthly: { supply_requests: 30000, equipment: 8000, maintenance: 4000 },
+        quarterly: { supply_requests: 90000, equipment: 24000, maintenance: 12000 },
+        yearly: { supply_requests: 360000, equipment: 96000, maintenance: 48000 }
+      }
+    };
+
+    const departments = Object.keys(departmentConfigs);
+    const currentMonth = new Date().getMonth() + 1;
+    const currentQuarter = Math.ceil(currentMonth / 3);
+
+    const departmentBudgetData = [];
+
+    for (const hotelItem of [hotel]) {
+      for (const department of departments) {
+        const config = departmentConfigs[department];
+
+        // Create yearly budget
+        departmentBudgetData.push({
+          hotelId: hotelItem._id,
+          department,
+          budgetPeriod: { year: currentYear },
+          allocations: {
+            total: config.yearly.supply_requests + config.yearly.equipment + config.yearly.maintenance,
+            supply_requests: config.yearly.supply_requests,
+            equipment: config.yearly.equipment,
+            maintenance: config.yearly.maintenance,
+            other: 0
+          },
+          spent: {
+            total: Math.floor(Math.random() * config.yearly.supply_requests * 0.3),
+            supply_requests: Math.floor(Math.random() * config.yearly.supply_requests * 0.25),
+            equipment: Math.floor(Math.random() * config.yearly.equipment * 0.15),
+            maintenance: Math.floor(Math.random() * config.yearly.maintenance * 0.2),
+            other: 0
+          },
+          commitments: {
+            pending_approvals: Math.floor(Math.random() * 10000),
+            approved_orders: Math.floor(Math.random() * 15000)
+          },
+          status: 'active',
+          createdBy: adminUser._id
+        });
+
+        // Create quarterly budget (current quarter)
+        departmentBudgetData.push({
+          hotelId: hotelItem._id,
+          department,
+          budgetPeriod: { year: currentYear, quarter: currentQuarter },
+          allocations: {
+            total: config.quarterly.supply_requests + config.quarterly.equipment + config.quarterly.maintenance,
+            supply_requests: config.quarterly.supply_requests,
+            equipment: config.quarterly.equipment,
+            maintenance: config.quarterly.maintenance,
+            other: 0
+          },
+          spent: {
+            total: Math.floor(Math.random() * config.quarterly.supply_requests * 0.4),
+            supply_requests: Math.floor(Math.random() * config.quarterly.supply_requests * 0.35),
+            equipment: Math.floor(Math.random() * config.quarterly.equipment * 0.25),
+            maintenance: Math.floor(Math.random() * config.quarterly.maintenance * 0.3),
+            other: 0
+          },
+          commitments: {
+            pending_approvals: Math.floor(Math.random() * 5000),
+            approved_orders: Math.floor(Math.random() * 8000)
+          },
+          status: 'active',
+          createdBy: adminUser._id
+        });
+
+        // Create monthly budget (current month)
+        departmentBudgetData.push({
+          hotelId: hotelItem._id,
+          department,
+          budgetPeriod: { year: currentYear, month: currentMonth },
+          allocations: {
+            total: config.monthly.supply_requests + config.monthly.equipment + config.monthly.maintenance,
+            supply_requests: config.monthly.supply_requests,
+            equipment: config.monthly.equipment,
+            maintenance: config.monthly.maintenance,
+            other: 0
+          },
+          spent: {
+            total: Math.floor(Math.random() * config.monthly.supply_requests * 0.6),
+            supply_requests: Math.floor(Math.random() * config.monthly.supply_requests * 0.55),
+            equipment: Math.floor(Math.random() * config.monthly.equipment * 0.35),
+            maintenance: Math.floor(Math.random() * config.monthly.maintenance * 0.4),
+            other: 0
+          },
+          commitments: {
+            pending_approvals: Math.floor(Math.random() * 3000),
+            approved_orders: Math.floor(Math.random() * 4000)
+          },
+          status: 'active',
+          createdBy: adminUser._id
+        });
+
+        // Create some previous months for trend analysis (last 6 months)
+        for (let monthOffset = 1; monthOffset <= 6; monthOffset++) {
+          const targetDate = new Date();
+          targetDate.setMonth(targetDate.getMonth() - monthOffset);
+          const targetYear = targetDate.getFullYear();
+          const targetMonth = targetDate.getMonth() + 1;
+
+          departmentBudgetData.push({
+            hotelId: hotel._id,
+            department,
+            budgetPeriod: { year: targetYear, month: targetMonth },
+            allocations: {
+              total: config.monthly.supply_requests + config.monthly.equipment + config.monthly.maintenance,
+              supply_requests: config.monthly.supply_requests,
+              equipment: config.monthly.equipment,
+              maintenance: config.monthly.maintenance,
+              other: 0
+            },
+            spent: {
+              total: Math.floor(config.monthly.supply_requests * (0.7 + Math.random() * 0.3)),
+              supply_requests: Math.floor(config.monthly.supply_requests * (0.65 + Math.random() * 0.3)),
+              equipment: Math.floor(config.monthly.equipment * (0.5 + Math.random() * 0.4)),
+              maintenance: Math.floor(config.monthly.maintenance * (0.6 + Math.random() * 0.3)),
+              other: 0
+            },
+            commitments: {
+              pending_approvals: 0, // Past months should have no pending commitments
+              approved_orders: 0
+            },
+            status: monthOffset > 3 ? 'closed' : 'active',
+            createdBy: adminUser._id
+          });
+        }
+      }
+    }
+
+    const createdDepartmentBudgets = await DepartmentBudget.insertMany(departmentBudgetData);
+    logger.info(`🏢 Department Budgets created: ${createdDepartmentBudgets.length}`);
+
+    // Connect some existing supply requests to the budgets by updating spending
+    console.log('🔗 Connecting existing supply requests to department budgets...');
+
+    // Update department budget spending based on existing supply requests
+    for (const supplyRequest of createdSupplyRequests.slice(0, 10)) { // Update first 10 supply requests
+      if (supplyRequest.status === 'approved' || supplyRequest.status === 'ordered' || supplyRequest.status === 'received') {
+        const budget = await DepartmentBudget.findOne({
+          hotelId: supplyRequest.hotelId,
+          department: supplyRequest.department,
+          'budgetPeriod.year': currentYear,
+          'budgetPeriod.month': currentMonth
+        });
+
+        if (budget) {
+          if (supplyRequest.status === 'approved') {
+            budget.commitments.pending_approvals += supplyRequest.totalEstimatedCost;
+          } else if (supplyRequest.status === 'ordered') {
+            budget.commitments.approved_orders += supplyRequest.totalEstimatedCost;
+          } else if (supplyRequest.status === 'received') {
+            budget.spent.supply_requests += supplyRequest.totalActualCost || supplyRequest.totalEstimatedCost;
+          }
+          await budget.save();
+        }
+      }
+    }
+    logger.info('🔗 Connected supply requests to department budgets');
+
+    // === VENDOR SEED DATA ===
+    console.log('🏪 Seeding Vendor data...');
+
+    const vendorCategories = ['cleaning', 'general', 'food_beverage', 'maintenance', 'electronics', 'textiles', 'other'];
+    const paymentTermsOptions = ['Net 15', 'Net 30', 'Net 45', 'COD', 'Advance Payment'];
+    const deliveryTimeOptions = ['1-2 days', '2-3 days', '3-5 days', '1 week', '2 weeks'];
+
+    const vendorTemplates = [
+      // Cleaning suppliers
+      {
+        category: 'cleaning',
+        vendors: [
+          { name: 'CleanPro Supplies India', contactPerson: 'Raj Kumar', email: 'raj@cleanpro.in', specializations: ['cleaning', 'hygiene', 'disinfectants'] },
+          { name: 'Hygiene Solutions Ltd', contactPerson: 'Priya Sharma', email: 'priya@hygiene.com', specializations: ['sanitizers', 'cleaning equipment', 'industrial cleaners'] },
+          { name: 'Fresh Clean Industries', contactPerson: 'Amit Singh', email: 'amit@freshclean.co.in', specializations: ['eco-friendly cleaners', 'floor care', 'washroom supplies'] }
+        ]
+      },
+      // General suppliers
+      {
+        category: 'general',
+        vendors: [
+          { name: 'Hotel Essentials Ltd', contactPerson: 'Priya Sharma', email: 'priya@hotelcorp.com', specializations: ['linens', 'amenities', 'guest supplies'] },
+          { name: 'Hospitality Plus', contactPerson: 'Rohit Mehta', email: 'rohit@hospitalityplus.in', specializations: ['stationery', 'office supplies', 'guest amenities'] },
+          { name: 'Premier Hotel Supplies', contactPerson: 'Anita Rao', email: 'anita@premier.com', specializations: ['room supplies', 'toiletries', 'minibar items'] }
+        ]
+      },
+      // Food & Beverage suppliers
+      {
+        category: 'food_beverage',
+        vendors: [
+          { name: 'Fresh Foods Distribution', contactPerson: 'Vikram Gupta', email: 'vikram@freshfoods.in', specializations: ['fresh produce', 'dairy', 'beverages'] },
+          { name: 'Metro Food Services', contactPerson: 'Sunita Devi', email: 'sunita@metrofood.com', specializations: ['frozen foods', 'dry goods', 'kitchen equipment'] },
+          { name: 'Quality Beverages Corp', contactPerson: 'Rajesh Kumar', email: 'rajesh@qualitybev.co.in', specializations: ['alcoholic beverages', 'soft drinks', 'juices'] }
+        ]
+      },
+      // Maintenance suppliers
+      {
+        category: 'maintenance',
+        vendors: [
+          { name: 'TechFix Solutions', contactPerson: 'Suresh Yadav', email: 'suresh@techfix.in', specializations: ['electrical', 'plumbing', 'HVAC'] },
+          { name: 'Building Care Services', contactPerson: 'Meera Joshi', email: 'meera@buildingcare.com', specializations: ['structural repairs', 'painting', 'maintenance tools'] },
+          { name: 'Facility Masters', contactPerson: 'Arjun Patel', email: 'arjun@facilitymasters.co.in', specializations: ['equipment maintenance', 'spare parts', 'technical services'] }
+        ]
+      },
+      // Electronics suppliers
+      {
+        category: 'electronics',
+        vendors: [
+          { name: 'Digital Solutions Hub', contactPerson: 'Ravi Agarwal', email: 'ravi@digitalhub.in', specializations: ['computers', 'networking', 'audio-visual'] },
+          { name: 'Smart Electronics Ltd', contactPerson: 'Neha Kapoor', email: 'neha@smartelec.com', specializations: ['security systems', 'communication devices', 'smart home tech'] }
+        ]
+      },
+      // Textiles suppliers
+      {
+        category: 'textiles',
+        vendors: [
+          { name: 'Luxury Linens India', contactPerson: 'Deepak Malhotra', email: 'deepak@luxurylinens.in', specializations: ['bed linens', 'towels', 'curtains'] },
+          { name: 'Comfort Textiles', contactPerson: 'Kavita Sharma', email: 'kavita@comforttextiles.com', specializations: ['uniforms', 'upholstery', 'decorative fabrics'] }
+        ]
+      }
+    ];
+
+    const vendorData = [];
+
+    for (const hotelItem of [hotel]) {
+      for (const categoryGroup of vendorTemplates) {
+        for (const vendorTemplate of categoryGroup.vendors) {
+          // Generate realistic performance metrics
+          const orderCount = Math.floor(Math.random() * 50) + 10; // 10-60 orders
+          const onTimeDelivery = 70 + Math.random() * 30; // 70-100%
+          const qualityRating = 3 + Math.random() * 2; // 3-5 stars
+          const completionRate = 80 + Math.random() * 20; // 80-100%
+          const averageDeliveryTime = 1 + Math.random() * 7; // 1-8 days
+
+          const vendorCode = `VEN${String(vendorData.length + 1).padStart(6, '0')}`;
+          
+          vendorData.push({
+            name: vendorTemplate.name,
+            vendorCode: vendorCode,
+            category: categoryGroup.category,
+            contactInfo: {
+              email: vendorTemplate.email,
+              phone: '+91-' + Math.floor(Math.random() * 9000000000 + 1000000000),
+              address: {
+                street: `${Math.floor(Math.random() * 999) + 1} ${['MG Road', 'Brigade Road', 'Commercial Street', 'Residency Road', 'Airport Road'][Math.floor(Math.random() * 5)]}`,
+                city: ['Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Kolkata', 'Pune', 'Hyderabad'][Math.floor(Math.random() * 7)],
+                state: ['Maharashtra', 'Delhi', 'Karnataka', 'Tamil Nadu', 'West Bengal', 'Telangana'][Math.floor(Math.random() * 6)],
+                country: 'India',
+                zipCode: Math.floor(Math.random() * 900000 + 100000).toString()
+              },
+              primaryContact: {
+                name: vendorTemplate.contactPerson,
+                title: 'Sales Manager'
+              }
+            },
+            // Legacy fields for backward compatibility
+            contactPerson: vendorTemplate.contactPerson,
+            email: vendorTemplate.email,
+            phone: '+91-' + Math.floor(Math.random() * 9000000000 + 1000000000),
+            address: {
+              street: `${Math.floor(Math.random() * 999) + 1} ${['MG Road', 'Brigade Road', 'Commercial Street', 'Residency Road', 'Airport Road'][Math.floor(Math.random() * 5)]}`,
+              city: ['Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Kolkata', 'Pune', 'Hyderabad'][Math.floor(Math.random() * 7)],
+              state: ['Maharashtra', 'Delhi', 'Karnataka', 'Tamil Nadu', 'West Bengal', 'Telangana'][Math.floor(Math.random() * 6)],
+              country: 'India',
+              zipCode: Math.floor(Math.random() * 900000 + 100000).toString()
+            },
+            rating: qualityRating,
+            isPreferred: Math.random() > 0.7, // 30% chance of being preferred
+            paymentTerms: paymentTermsOptions[Math.floor(Math.random() * paymentTermsOptions.length)],
+            deliveryTime: deliveryTimeOptions[Math.floor(Math.random() * deliveryTimeOptions.length)],
+            minOrderValue: [500, 1000, 1500, 2000, 2500][Math.floor(Math.random() * 5)],
+            specializations: vendorTemplate.specializations,
+            lastOrderDate: new Date(Date.now() - Math.random() * 90 * 24 * 60 * 60 * 1000), // Within last 90 days
+            totalOrderValue: Math.floor(Math.random() * 500000 + 50000), // 50K - 550K
+            hotelId: hotelItem._id,
+            isActive: Math.random() > 0.1, // 90% active
+            performance: {
+              onTimeDelivery: Math.round(onTimeDelivery * 100) / 100,
+              qualityRating: Math.round(qualityRating * 100) / 100,
+              averageDeliveryTime: Math.round(averageDeliveryTime * 100) / 100,
+              orderCount,
+              completionRate: Math.round(completionRate * 100) / 100
+            },
+            contract: {
+              hasContract: Math.random() > 0.6, // 40% have contracts
+              contractStartDate: new Date(Date.now() - Math.random() * 365 * 24 * 60 * 60 * 1000),
+              contractEndDate: new Date(Date.now() + Math.random() * 365 * 24 * 60 * 60 * 1000),
+              contractValue: Math.floor(Math.random() * 1000000 + 100000)
+            },
+            financial: {
+              creditLimit: Math.floor(Math.random() * 100000 + 20000),
+              outstandingAmount: Math.floor(Math.random() * 10000),
+              paymentHistory: []
+            },
+            notes: `Reliable ${categoryGroup.category} supplier with good track record`,
+            tags: ['supplier', categoryGroup.category, Math.random() > 0.5 ? 'preferred' : 'standard'],
+            createdBy: adminUser._id
+          });
+        }
+      }
+    }
+
+    const createdVendors = await Vendor.insertMany(vendorData);
+    logger.info(`🏪 Vendors created: ${createdVendors.length}`);
+
+    // Connect some vendors to existing supply requests
+    console.log('🔗 Connecting vendors to supply requests...');
+
+    for (const supplyRequest of createdSupplyRequests.slice(0, 15)) {
+      // Find a vendor in the same category as the supply request department
+      const matchingVendors = createdVendors.filter(v =>
+        v.hotelId.toString() === supplyRequest.hotelId.toString() &&
+        (v.category === 'general' ||
+         (supplyRequest.department === 'housekeeping' && v.category === 'cleaning') ||
+         (supplyRequest.department === 'food_beverage' && v.category === 'food_beverage') ||
+         (supplyRequest.department === 'maintenance' && v.category === 'maintenance'))
+      );
+
+      if (matchingVendors.length > 0) {
+        const randomVendor = matchingVendors[Math.floor(Math.random() * matchingVendors.length)];
+
+        // Update supply request items with vendor information
+        supplyRequest.items.forEach(item => {
+          if (!item.supplier) {
+            item.supplier = randomVendor.name;
+          }
+        });
+
+        await supplyRequest.save();
+
+        // Update vendor performance if the request is completed
+        if (['received', 'ordered'].includes(supplyRequest.status)) {
+          await randomVendor.updatePerformance({
+            amount: supplyRequest.totalActualCost || supplyRequest.totalEstimatedCost,
+            deliveredOnTime: Math.random() > 0.2, // 80% on time
+            deliveryTime: Math.floor(Math.random() * 7) + 1,
+            qualityRating: 3 + Math.random() * 2
+          });
+        }
+      }
+    }
+
+    logger.info('🔗 Connected vendors to supply requests');
 
     // Create Account Attributes
     const accountAttributesData = [
@@ -7087,8 +8141,8 @@ VIP Services Team
         title: 'Thank You Message',
         description: 'Standard thank you message with contact information',
         messageType: 'FOOTER',
-        content: 'Thank you for your patronage!\n\nFor any queries, please contact:\nFront Desk: +91-22-6789-1234\nEmail: info@thepentouz.com\n\nWe hope to serve you again!',
-        htmlContent: '<div style=\"text-align: center; font-size: 12px; border-top: 1px solid #ccc; padding-top: 10px;\"><p><strong>Thank you for your patronage!</strong></p><br><p>For any queries, please contact:<br><strong>Front Desk:</strong> +91-22-6789-1234<br><strong>Email:</strong> info@thepentouz.com</p><br><p><em>We hope to serve you again!</em></p></div>',
+        content: 'Thank you for your patronage!\n\nFor any queries, please contact:\nFront Desk: +91-2267891234\nEmail: info@thepentouz.com\n\nWe hope to serve you again!',
+        htmlContent: '<div style=\"text-align: center; font-size: 12px; border-top: 1px solid #ccc; padding-top: 10px;\"><p><strong>Thank you for your patronage!</strong></p><br><p>For any queries, please contact:<br><strong>Front Desk:</strong> +91-2267891234<br><strong>Email:</strong> info@thepentouz.com</p><br><p><em>We hope to serve you again!</em></p></div>',
         displayConfig: {
           position: 'BOTTOM',
           alignment: 'CENTER',
@@ -7109,7 +8163,7 @@ VIP Services Team
           translations: [
             {
               language: 'hi',
-              content: 'आपके संरक्षण के लिए धन्यवाद!\n\nकिसी भी प्रश्न के लिए संपर्क करें:\nफ्रंट डेस्क: +91-22-6789-1234\nईमेल: info@thepentouz.com\n\nहमें आपकी फिर से सेवा करने की आशा है!',
+              content: 'आपके संरक्षण के लिए धन्यवाद!\n\nकिसी भी प्रश्न के लिए संपर्क करें:\nफ्रंट डेस्क: +91-2267891234\nईमेल: info@thepentouz.com\n\nहमें आपकी फिर से सेवा करने की आशा है!',
               title: 'धन्यवाद संदेश'
             }
           ]
@@ -7240,7 +8294,7 @@ VIP Services Team
         title: 'Contact Details',
         description: 'Hotel contact information and social media details',
         messageType: 'CONTACT_INFO',
-        content: 'THE PENTOUZ HOTEL\\n\\nAddress: 123 Marine Drive, Mumbai 400001\\nPhone: +91-22-6789-1234\\nEmail: info@thepentouz.com\\nWebsite: www.thepentouz.com\\n\\nFollow us:\\nFacebook: @ThePentouzHotel\\nInstagram: @thepentouz\\nTwitter: @pentouz_hotel',
+        content: 'THE PENTOUZ HOTEL\\n\\nAddress: 123 Marine Drive, Mumbai 400001\\nPhone: +91-2267891234\\nEmail: info@thepentouz.com\\nWebsite: www.thepentouz.com\\n\\nFollow us:\\nFacebook: @ThePentouzHotel\\nInstagram: @thepentouz\\nTwitter: @pentouz_hotel',
         displayConfig: {
           position: 'BOTTOM',
           alignment: 'CENTER',
@@ -7693,8 +8747,8 @@ VIP Services Team
           corporateCompanyId: corporateCompaniesForBookings[0]._id,
           groupName: 'Annual Tech Conference 2024',
           groupCode: 'GRP-TECH-2024',
-          checkIn: new Date('2024-12-20'),
-          checkOut: new Date('2024-12-23'),
+          checkIn: new Date('2025-09-20'),
+          checkOut: new Date('2025-09-23'),
           nights: 3,
           rooms: [
             {
@@ -7732,8 +8786,8 @@ VIP Services Team
           corporateCompanyId: corporateCompaniesForBookings[1]._id,
           groupName: 'Wedding Party - Sharma Family',
           groupCode: 'GRP-WED-2024',
-          checkIn: new Date('2024-12-25'),
-          checkOut: new Date('2024-12-28'),
+          checkIn: new Date('2025-09-25'),
+          checkOut: new Date('2025-09-28'),
           nights: 3,
           rooms: [
             {
@@ -7769,73 +8823,8 @@ VIP Services Team
       ]);
     }
 
-    // Create Channels for OTA bookings if not already created
-    console.log('📡 Creating channels for bookings...');
+    // Channels are created later in the comprehensive channel creation section
     let channelsForBookings = await Channel.find().limit(3);
-    if (channelsForBookings.length < 3) {
-      try {
-        channelsForBookings = await Channel.create([
-        {
-          channelId: 'booking_com_main',
-          name: 'Booking.com',
-          type: 'ota',
-          category: 'booking.com',
-          isActive: true,
-          connectionStatus: 'connected',
-          credentials: {
-            apiKey: 'booking_api_key_2024',
-            apiSecret: 'booking_secret_2024',
-            hotelId: 'pentouz_hotel_001'
-          },
-          commission: {
-            percentage: 15,
-            model: 'commission'
-          },
-          hotelId: hotel._id
-        },
-        {
-          channelId: 'expedia_main',
-          name: 'Expedia',
-          type: 'ota',
-          category: 'expedia',
-          isActive: true,
-          connectionStatus: 'connected',
-          credentials: {
-            apiKey: 'expedia_api_key_2024',
-            apiSecret: 'expedia_secret_2024',
-            hotelId: 'EXP_PENTOUZ_001'
-          },
-          commission: {
-            percentage: 18,
-            model: 'commission'
-          },
-          hotelId: hotel._id
-        },
-        {
-          channelId: 'agoda_main',
-          name: 'Agoda',
-          type: 'ota',
-          category: 'agoda',
-          isActive: true,
-          connectionStatus: 'connected',
-          credentials: {
-            apiKey: 'agoda_api_key_2024',
-            apiSecret: 'agoda_secret_2024',
-            hotelId: 'AGODA_PENTOUZ_001'
-          },
-          commission: {
-            percentage: 20,
-            model: 'commission'
-          },
-          hotelId: hotel._id
-        }
-      ]);
-      } catch (channelError) {
-        console.error('Channel creation error:', channelError);
-        console.log('Using existing channels or skipping channel creation');
-        channelsForBookings = await Channel.find().limit(3);
-      }
-    }
 
     // Enhanced Booking data with all relationships
     const enhancedBookingsData = [
@@ -7847,8 +8836,8 @@ VIP Services Team
           roomId: createdRooms[0]._id,
           rate: 3500
         }],
-        checkIn: new Date('2024-12-15'),
-        checkOut: new Date('2024-12-18'),
+        checkIn: new Date('2025-09-15'),
+        checkOut: new Date('2025-09-18'),
         nights: 3,
         status: 'confirmed',
         statusHistory: [
@@ -7935,8 +8924,8 @@ VIP Services Team
             rate: 5000
           }
         ],
-        checkIn: new Date('2024-12-20'),
-        checkOut: new Date('2024-12-25'),
+        checkIn: new Date('2025-09-20'),
+        checkOut: new Date('2025-09-22'),
         nights: 5,
         status: 'modified',
         statusHistory: [
@@ -8066,8 +9055,8 @@ VIP Services Team
           roomId: createdRooms[3]._id,
           rate: 2500
         }],
-        checkIn: new Date('2024-12-10'),
-        checkOut: new Date('2024-12-12'),
+        checkIn: new Date('2025-09-10'),
+        checkOut: new Date('2025-09-12'),
         nights: 2,
         status: 'checked_out',
         statusHistory: [
@@ -8082,7 +9071,7 @@ VIP Services Team
           },
           {
             status: 'checked_in',
-            timestamp: new Date('2024-12-10T14:00:00Z'),
+            timestamp: new Date('2025-09-10T14:00:00Z'),
             changedBy: {
               source: 'admin',
               userId: staffUser._id.toString(),
@@ -8092,7 +9081,7 @@ VIP Services Team
           },
           {
             status: 'checked_out',
-            timestamp: new Date('2024-12-12T11:00:00Z'),
+            timestamp: new Date('2025-09-12T11:00:00Z'),
             changedBy: {
               source: 'admin',
               userId: staffUser._id.toString(),
@@ -8110,10 +9099,10 @@ VIP Services Team
           children: 0,
           specialRequests: 'Business traveler, quiet room preferred'
         },
-        checkInTime: new Date('2024-12-10T14:00:00Z'),
-        checkOutTime: new Date('2024-12-12T11:00:00Z'),
-        actualCheckIn: new Date('2024-12-10T14:00:00Z'),
-        actualCheckOut: new Date('2024-12-12T11:00:00Z'),
+        checkInTime: new Date('2025-09-10T14:00:00Z'),
+        checkOutTime: new Date('2025-09-12T11:00:00Z'),
+        actualCheckIn: new Date('2025-09-10T14:00:00Z'),
+        actualCheckOut: new Date('2025-09-12T11:00:00Z'),
         source: 'direct',
         channelBookingId: 'DIRECT-PNT-003-2024',
         bookingFormData: {
@@ -8143,8 +9132,8 @@ VIP Services Team
             rate: 4000
           }
         ],
-        checkIn: new Date('2025-01-15'),
-        checkOut: new Date('2025-01-20'),
+        checkIn: new Date('2025-09-15'),
+        checkOut: new Date('2025-09-20'),
         nights: 5,
         status: 'confirmed',
         paymentStatus: 'paid',
@@ -8197,8 +9186,8 @@ VIP Services Team
           roomId: createdRooms[7]._id,
           rate: 7500
         }],
-        checkIn: new Date('2025-02-14'),
-        checkOut: new Date('2025-02-16'),
+        checkIn: new Date('2025-08-14'),
+        checkOut: new Date('2025-08-16'),
         nights: 2,
         status: 'pending',
         statusHistory: [
@@ -8217,7 +9206,7 @@ VIP Services Team
         totalAmount: 15000,
         currency: 'INR',
         roomType: 'suite',
-        reservedUntil: new Date(Date.now() + 15 * 60 * 1000),
+        // Don't set reservedUntil for confirmed bookings to prevent auto-deletion
         guestDetails: {
           adults: 2,
           children: 0,
@@ -8252,8 +9241,8 @@ VIP Services Team
           roomId: createdRooms[8]._id,
           rate: 3000
         }],
-        checkIn: new Date('2024-11-25'),
-        checkOut: new Date('2024-11-27'),
+        checkIn: new Date('2025-09-05'),
+        checkOut: new Date('2025-09-07'),
         nights: 2,
         status: 'cancelled',
         statusHistory: [
@@ -8329,8 +9318,8 @@ VIP Services Team
           roomId: createdRooms[5]._id,
           rate: 4500
         }],
-        checkIn: new Date('2024-12-20'),
-        checkOut: new Date('2024-12-22'),
+        checkIn: new Date('2025-09-20'),
+        checkOut: new Date('2025-09-22'),
         nights: 2,
         status: 'confirmed',
         statusHistory: [
@@ -8399,8 +9388,8 @@ VIP Services Team
           roomId: createdRooms[6]._id,
           rate: 5000
         }],
-        checkIn: new Date('2024-12-23'),
-        checkOut: new Date('2024-12-27'),
+        checkIn: new Date('2025-09-23'),
+        checkOut: new Date('2025-09-27'),
         nights: 4,
         status: 'modified',
         statusHistory: [
@@ -8521,8 +9510,8 @@ VIP Services Team
             rate: 3500
           }
         ],
-        checkIn: new Date('2024-12-20'),
-        checkOut: new Date('2024-12-23'),
+        checkIn: new Date('2025-09-20'),
+        checkOut: new Date('2025-09-23'),
         nights: 3,
         status: 'confirmed',
         statusHistory: [
@@ -8573,8 +9562,8 @@ VIP Services Team
           roomId: createdRooms[9]._id,
           rate: 4000
         }],
-        checkIn: new Date('2024-12-10'),
-        checkOut: new Date('2024-12-12'),
+        checkIn: new Date('2025-09-10'),
+        checkOut: new Date('2025-09-12'),
         nights: 2,
         status: 'checked_in',
         statusHistory: [
@@ -8589,10 +9578,10 @@ VIP Services Team
           },
           {
             status: 'checked_in',
-            timestamp: new Date('2024-12-10T14:00:00Z'),
+            timestamp: new Date('2025-09-10T14:00:00Z'),
             changedBy: {
               source: 'admin',
-              userId: frontdeskUser._id.toString(),
+              userId: frontDeskStaff._id.toString(),
               userName: 'Front Desk'
             },
             reason: 'Guest checked in'
@@ -8601,13 +9590,13 @@ VIP Services Team
         lastStatusChange: {
           from: 'confirmed',
           to: 'checked_in',
-          timestamp: new Date('2024-12-10T14:00:00Z'),
+          timestamp: new Date('2025-09-10T14:00:00Z'),
           reason: 'Guest checked in'
         },
         paymentStatus: 'paid',
         totalAmount: 8000,
         currency: 'INR',
-        checkInTime: new Date('2024-12-10T14:00:00Z'),
+        checkInTime: new Date('2025-09-10T14:00:00Z'),
         source: 'direct',
         guestDetails: {
           adults: 2,
@@ -8624,8 +9613,8 @@ VIP Services Team
           roomId: createdRooms[10]._id,
           rate: 3000
         }],
-        checkIn: new Date('2024-12-18'),
-        checkOut: new Date('2024-12-20'),
+        checkIn: new Date('2025-09-18'),
+        checkOut: new Date('2025-09-20'),
         nights: 2,
         status: 'cancelled',
         statusHistory: [
@@ -8675,8 +9664,8 @@ VIP Services Team
           roomId: createdRooms[11]._id,
           rate: 3500
         }],
-        checkIn: new Date('2024-12-09'),
-        checkOut: new Date('2024-12-11'),
+        checkIn: new Date('2025-09-09'),
+        checkOut: new Date('2025-09-11'),
         nights: 2,
         status: 'no_show',
         statusHistory: [
@@ -8724,8 +9713,8 @@ VIP Services Team
           roomId: createdRooms[12]._id,
           rate: 4500
         }],
-        checkIn: new Date('2024-12-07'),
-        checkOut: new Date('2024-12-09'),
+        checkIn: new Date('2025-09-07'),
+        checkOut: new Date('2025-09-09'),
         nights: 2,
         status: 'checked_out',
         statusHistory: [
@@ -8740,20 +9729,20 @@ VIP Services Team
           },
           {
             status: 'checked_in',
-            timestamp: new Date('2024-12-07T15:00:00Z'),
+            timestamp: new Date('2025-09-07T15:00:00Z'),
             changedBy: {
               source: 'admin',
-              userId: frontdeskUser._id.toString(),
+              userId: frontDeskStaff._id.toString(),
               userName: 'Front Desk'
             },
             reason: 'Guest checked in'
           },
           {
             status: 'checked_out',
-            timestamp: new Date('2024-12-09T11:00:00Z'),
+            timestamp: new Date('2025-09-09T11:00:00Z'),
             changedBy: {
               source: 'admin',
-              userId: frontdeskUser._id.toString(),
+              userId: frontDeskStaff._id.toString(),
               userName: 'Front Desk'
             },
             reason: 'Guest checked out'
@@ -8762,14 +9751,14 @@ VIP Services Team
         lastStatusChange: {
           from: 'checked_in',
           to: 'checked_out',
-          timestamp: new Date('2024-12-09T11:00:00Z'),
+          timestamp: new Date('2025-09-09T11:00:00Z'),
           reason: 'Guest checked out'
         },
         paymentStatus: 'paid',
         totalAmount: 9000,
         currency: 'INR',
-        checkInTime: new Date('2024-12-07T15:00:00Z'),
-        checkOutTime: new Date('2024-12-09T11:00:00Z'),
+        checkInTime: new Date('2025-09-07T15:00:00Z'),
+        checkOutTime: new Date('2025-09-09T11:00:00Z'),
         source: 'direct',
         guestDetails: {
           adults: 2,
@@ -8779,6 +9768,152 @@ VIP Services Team
           name: 'Room Service',
           price: 1500,
           quantity: 2
+        }]
+      },
+      // Additional checked-in bookings for better variation
+      {
+        hotelId: hotel._id,
+        userId: guests[5]._id,
+        bookingNumber: 'BK20241215013',
+        rooms: [{
+          roomId: createdRooms[13]._id,
+          rate: 3800
+        }],
+        checkIn: new Date('2025-09-08'),
+        checkOut: new Date('2025-09-11'),
+        nights: 3,
+        status: 'checked_in',
+        statusHistory: [
+          {
+            status: 'confirmed',
+            timestamp: new Date('2024-12-10T09:00:00Z'),
+            changedBy: {
+              source: 'direct',
+              userName: 'Booking System'
+            },
+            reason: 'Booking confirmed'
+          },
+          {
+            status: 'checked_in',
+            timestamp: new Date('2025-09-08T15:30:00Z'),
+            changedBy: {
+              source: 'admin',
+              userId: frontDeskStaff._id.toString(),
+              userName: 'Front Desk'
+            },
+            reason: 'Guest checked in'
+          }
+        ],
+        paymentStatus: 'paid',
+        totalAmount: 11400,
+        currency: 'INR',
+        checkInTime: new Date('2025-09-08T15:30:00Z'),
+        source: 'direct',
+        guestDetails: {
+          adults: 1,
+          children: 1
+        }
+      },
+      {
+        hotelId: hotel._id,
+        userId: guests[6]._id,
+        bookingNumber: 'BK20241216014',
+        rooms: [{
+          roomId: createdRooms[14]._id,
+          rate: 4200
+        }],
+        checkIn: new Date('2025-09-09'),
+        checkOut: new Date('2025-09-13'),
+        nights: 4,
+        status: 'checked_in',
+        statusHistory: [
+          {
+            status: 'pending',
+            timestamp: new Date('2024-12-11T14:00:00Z'),
+            changedBy: {
+              source: 'direct',
+              userName: 'Guest'
+            },
+            reason: 'Initial booking'
+          },
+          {
+            status: 'confirmed',
+            timestamp: new Date('2024-12-11T14:30:00Z'),
+            changedBy: {
+              source: 'admin',
+              userName: 'Admin'
+            },
+            reason: 'Payment confirmed'
+          },
+          {
+            status: 'checked_in',
+            timestamp: new Date('2025-09-09T16:00:00Z'),
+            changedBy: {
+              source: 'admin',
+              userId: frontDeskStaff._id.toString(),
+              userName: 'Front Desk'
+            },
+            reason: 'Guest checked in'
+          }
+        ],
+        paymentStatus: 'paid',
+        totalAmount: 16800,
+        currency: 'INR',
+        checkInTime: new Date('2025-09-09T16:00:00Z'),
+        source: 'direct',
+        guestDetails: {
+          adults: 2,
+          children: 0,
+          specialRequests: 'High floor room preferred'
+        }
+      },
+      {
+        hotelId: hotel._id,
+        userId: guests[1]._id,
+        bookingNumber: 'BK20241217015',
+        rooms: [{
+          roomId: createdRooms[15]._id,
+          rate: 5000
+        }],
+        checkIn: new Date('2025-09-11'),
+        checkOut: new Date('2025-09-14'),
+        nights: 3,
+        status: 'checked_in',
+        statusHistory: [
+          {
+            status: 'confirmed',
+            timestamp: new Date('2024-12-12T11:00:00Z'),
+            changedBy: {
+              source: 'direct',
+              userName: 'Reservation Agent'
+            },
+            reason: 'Phone booking confirmed'
+          },
+          {
+            status: 'checked_in',
+            timestamp: new Date('2025-09-11T14:45:00Z'),
+            changedBy: {
+              source: 'admin',
+              userId: frontDeskStaff._id.toString(),
+              userName: 'Front Desk'
+            },
+            reason: 'Guest checked in'
+          }
+        ],
+        paymentStatus: 'pending',
+        totalAmount: 15000,
+        currency: 'INR',
+        checkInTime: new Date('2025-09-11T14:45:00Z'),
+        source: 'direct',
+        guestDetails: {
+          adults: 2,
+          children: 1,
+          specialRequests: 'Extra bed required'
+        },
+        extras: [{
+          name: 'Extra Bed',
+          price: 1200,
+          quantity: 1
         }]
       }
     ];
@@ -9067,7 +10202,7 @@ VIP Services Team
           baseRate: 2800 + (index * 300),
           adjustment: {
             type: 'fixed',
-            value: -200 // ₹200 discount
+            value: 200 // ₹200 discount
           },
           availability: {
             isAvailable: true,
@@ -10794,7 +11929,7 @@ VIP Services Team
               ourRate: ourRate,
               difference: difference,
               percentageDifference: (difference / ourRate) * 100,
-              competitivePosition: difference < -200 ? 'cheaper' : (difference > 200 ? 'more_expensive' : 'same')
+              competitivePosition: difference < 200 ? 'cheaper' : (difference > 200 ? 'more_expensive' : 'same')
             }
           });
         });
@@ -11229,7 +12364,7 @@ Email: {{hotelEmail}}`,
             name: 'hotelPhone',
             type: 'string',
             description: 'Hotel contact phone',
-            defaultValue: '+91-22-1234-5678'
+            defaultValue: '+912212345678'
           },
           {
             name: 'hotelEmail',
@@ -11405,7 +12540,7 @@ Email: {{hotelEmail}}`,
             name: 'supportPhone',
             type: 'string',
             description: 'Support phone number',
-            defaultValue: '+91-22-1234-5678'
+            defaultValue: '+912212345678'
           },
           {
             name: 'supportEmail',
@@ -12670,7 +13805,7 @@ Email: {{hotelEmail}}`,
         hotelId: hotel._id,
         name: 'TechCorp Solutions Pvt Ltd',
         email: 'bookings@techcorp.com',
-        phone: '+91-22-6789-1234',
+        phone: '+912267891234',
         gstNumber: '27AABCT1234L1Z5',
         panNumber: 'AABCT1234L',
         address: {
@@ -12687,14 +13822,14 @@ Email: {{hotelEmail}}`,
           {
             name: 'Priya Sharma',
             email: 'priya.sharma@techcorp.com',
-            phone: '+91-22-6789-1235',
+            phone: '+912267891235',
             designation: 'HR Manager',
             isPrimary: true
           },
           {
             name: 'Rajesh Kumar',
             email: 'rajesh.kumar@techcorp.com',
-            phone: '+91-22-6789-1236',
+            phone: '+912267891236',
             designation: 'Travel Coordinator',
             isPrimary: false
           }
@@ -12719,7 +13854,7 @@ Email: {{hotelEmail}}`,
         hotelId: hotel._id,
         name: 'Mumbai Financial Services Ltd',
         email: 'corporate@mfsltd.co.in',
-        phone: '+91-22-2345-6789',
+        phone: '+912223456789',
         gstNumber: '27AABCM5678Q1Z8',
         panNumber: 'AABCM5678Q',
         address: {
@@ -12736,14 +13871,14 @@ Email: {{hotelEmail}}`,
           {
             name: 'Meera Patel',
             email: 'meera.patel@mfsltd.co.in',
-            phone: '+91-22-2345-6790',
+            phone: '+912223456790',
             designation: 'Administration Head',
             isPrimary: true
           },
           {
             name: 'Vikash Singh',
             email: 'vikash.singh@mfsltd.co.in',
-            phone: '+91-22-2345-6791',
+            phone: '+912223456791',
             designation: 'Accounts Manager',
             isPrimary: false
           }
@@ -12768,7 +13903,7 @@ Email: {{hotelEmail}}`,
         hotelId: hotel._id,
         name: 'Pharma Innovations Group',
         email: 'travel@pharmainnovations.in',
-        phone: '+91-22-9876-5432',
+        phone: '+912298765432',
         gstNumber: '27AABCP9876R2Z1',
         panNumber: 'AABCP9876R',
         address: {
@@ -12785,7 +13920,7 @@ Email: {{hotelEmail}}`,
           {
             name: 'Dr. Anita Desai',
             email: 'anita.desai@pharmainnovations.in',
-            phone: '+91-22-9876-5433',
+            phone: '+912298765433',
             designation: 'Head of Operations',
             isPrimary: true
           }
@@ -12810,7 +13945,7 @@ Email: {{hotelEmail}}`,
         hotelId: hotel._id,
         name: 'Global Consulting Partners',
         email: 'bookings@globalcp.com',
-        phone: '+91-22-4567-8901',
+        phone: '+912245678901',
         gstNumber: '27AABCG4567S3Z4',
         panNumber: 'AABCG4567S',
         address: {
@@ -12827,14 +13962,14 @@ Email: {{hotelEmail}}`,
           {
             name: 'Sarah Johnson',
             email: 'sarah.johnson@globalcp.com',
-            phone: '+91-22-4567-8902',
+            phone: '+912245678902',
             designation: 'Regional Manager',
             isPrimary: true
           },
           {
             name: 'Amit Verma',
             email: 'amit.verma@globalcp.com',
-            phone: '+91-22-4567-8903',
+            phone: '+912245678903',
             designation: 'Travel Administrator',
             isPrimary: false
           }
@@ -12859,7 +13994,7 @@ Email: {{hotelEmail}}`,
         hotelId: hotel._id,
         name: 'Mumbai Logistics Hub',
         email: 'admin@mumbailogistics.co.in',
-        phone: '+91-22-7890-1234',
+        phone: '+912278901234',
         gstNumber: '27AABCL7890T4Z7',
         panNumber: 'AABCL7890T',
         address: {
@@ -12876,7 +14011,7 @@ Email: {{hotelEmail}}`,
           {
             name: 'Ramesh Gupta',
             email: 'ramesh.gupta@mumbailogistics.co.in',
-            phone: '+91-22-7890-1235',
+            phone: '+912278901235',
             designation: 'General Manager',
             isPrimary: true
           }
@@ -13250,6 +14385,8 @@ Email: {{hotelEmail}}`,
     logger.info(`📊 Chart of Accounts: ${createdAccounts.length}`);
     logger.info(`🏦 Bank Accounts: ${createdBankAccounts.length}`);
     logger.info(`💰 Budgets: ${createdBudgets.length}`);
+    logger.info(`🏢 Department Budgets: ${createdDepartmentBudgets.length}`);
+    logger.info(`🤝 Vendors: ${createdVendors.length}`);
     logger.info(`🏷️ Account Attributes: ${createdAccountAttributes.length}`);
     logger.info(`🎯 Add-On Services: ${createdAddOnServices.length}`);
     logger.info(`🔑 API Keys: ${createdAPIKeys.length}`);
@@ -14233,7 +15370,7 @@ Email: {{hotelEmail}}`,
           requiresDocumentation: false,
           blackoutDates: [
             new Date('2024-12-24'),
-            new Date('2024-12-25'),
+            new Date('2025-09-22'),
             new Date('2024-12-31'),
             new Date('2025-01-01')
           ],
@@ -14297,10 +15434,10 @@ Email: {{hotelEmail}}`,
           requiresDocumentation: false,
           blackoutDates: [
             new Date('2024-12-24'),
-            new Date('2024-12-25'),
+            new Date('2025-09-22'),
             new Date('2024-12-31'),
             new Date('2025-01-01'),
-            new Date('2025-02-14')
+            new Date('2025-08-14')
           ],
           blackoutDays: ['friday', 'saturday']
         },
@@ -14425,7 +15562,7 @@ Email: {{hotelEmail}}`,
           requiresDocumentation: true,
           blackoutDates: [
             new Date('2024-12-24'),
-            new Date('2024-12-25'),
+            new Date('2025-09-22'),
             new Date('2024-12-31'),
             new Date('2025-01-01')
           ],
@@ -14486,8 +15623,8 @@ Email: {{hotelEmail}}`,
           combinableWithCorporate: false
         },
         dates: {
-          startDate: new Date('2024-12-15'),
-          endDate: new Date('2025-01-15'),
+          startDate: new Date('2025-09-15'),
+          endDate: new Date('2025-12-15'),
           advanceBookingDays: 21
         },
         conditions: {
@@ -14619,10 +15756,10 @@ Email: {{hotelEmail}}`,
           requiresDocumentation: false,
           blackoutDates: [
             new Date('2024-12-24'),
-            new Date('2024-12-25'),
+            new Date('2025-09-22'),
             new Date('2024-12-31'),
             new Date('2025-01-01'),
-            new Date('2025-02-14')
+            new Date('2025-08-14')
           ],
           blackoutDays: []
         },
@@ -16690,7 +17827,7 @@ Email: {{hotelEmail}}`,
           budgetYear: 2024
         },
         contact: {
-          phone: '+91-11-2345-6789',
+          phone: '+911123456789',
           extension: '100',
           email: 'frontoffice@hotel.com',
           location: { building: 'Main', floor: 'Ground', room: 'Lobby' }
@@ -16758,7 +17895,7 @@ Email: {{hotelEmail}}`,
           budgetYear: 2024
         },
         contact: {
-          phone: '+91-11-2345-6790',
+          phone: '+911123456790',
           extension: '200',
           email: 'housekeeping@hotel.com',
           location: { building: 'Main', floor: '2', room: 'HK Office' }
@@ -16825,7 +17962,7 @@ Email: {{hotelEmail}}`,
           budgetYear: 2024
         },
         contact: {
-          phone: '+91-11-2345-6791',
+          phone: '+911123456791',
           extension: '300',
           email: 'restaurant@hotel.com',
           location: { building: 'Main', floor: '1', room: 'Restaurant Manager Office' }
@@ -16893,7 +18030,7 @@ Email: {{hotelEmail}}`,
           budgetYear: 2024
         },
         contact: {
-          phone: '+91-11-2345-6792',
+          phone: '+911123456792',
           extension: '400',
           email: 'maintenance@hotel.com',
           location: { building: 'Main', floor: 'Basement', room: 'Workshop' }
@@ -16960,7 +18097,7 @@ Email: {{hotelEmail}}`,
           budgetYear: 2024
         },
         contact: {
-          phone: '+91-11-2345-6793',
+          phone: '+911123456793',
           extension: '911',
           email: 'security@hotel.com',
           location: { building: 'Main', floor: 'Ground', room: 'Security Control Room' }
@@ -17028,7 +18165,7 @@ Email: {{hotelEmail}}`,
           budgetYear: 2024
         },
         contact: {
-          phone: '+91-11-2345-6794',
+          phone: '+911123456794',
           extension: '500',
           email: 'finance@hotel.com',
           location: { building: 'Main', floor: '3', room: 'Finance Office' }
@@ -17094,7 +18231,7 @@ Email: {{hotelEmail}}`,
           budgetYear: 2024
         },
         contact: {
-          phone: '+91-11-2345-6795',
+          phone: '+911123456795',
           extension: '600',
           email: 'hr@hotel.com',
           location: { building: 'Main', floor: '3', room: 'HR Office' }
@@ -17182,7 +18319,7 @@ Email: {{hotelEmail}}`,
           }],
           blackoutDates: [],
           specialAvailability: [{
-            date: new Date('2024-12-25'),
+            date: new Date('2025-09-22'),
             isAvailable: false,
             reason: 'Christmas Holiday'
           }]
@@ -17389,7 +18526,7 @@ Email: {{hotelEmail}}`,
             firstName: 'John',
             lastName: 'Doe',
             email: 'john@example.com',
-            phone: '+91-98765-43210',
+            phone: '+919876543210',
             identificationNumber: 'PAN98765',
             nationality: 'Indian'
           },
@@ -18364,7 +19501,7 @@ Email: {{hotelEmail}}`,
           emergencyContacts: [{
             name: 'Security Desk',
             role: 'Security Manager',
-            phone: '+91-22-6789-1111',
+            phone: '+912267891111',
             extension: '911'
           }],
           fireSafetyEquipment: [{
@@ -19477,7 +20614,7 @@ Email: {{hotelEmail}}`,
           rating: 4.5,
           coordinates: { lat: 28.6562, lng: 77.2410 },
           address: 'Netaji Subhash Marg, Lal Qila, Chandni Chowk, New Delhi, 110006',
-          phone: '+91-11-2327-7705',
+          phone: '+911123277705',
           website: 'https://asi.nic.in/red-fort',
           openingHours: {
             monday: 'Closed',
@@ -19514,7 +20651,7 @@ Email: {{hotelEmail}}`,
           rating: 4.2,
           coordinates: { lat: 28.6507, lng: 77.2334 },
           address: '16, Gali Kababian, Jama Masjid, New Delhi, 110006',
-          phone: '+91-11-2326-4981',
+          phone: '+911123264981',
           openingHours: {
             monday: '12:00 PM - 12:00 AM',
             tuesday: '12:00 PM - 12:00 AM',
@@ -19540,7 +20677,7 @@ Email: {{hotelEmail}}`,
           rating: 4.7,
           coordinates: { lat: 28.6139, lng: 77.2088 },
           address: 'ITC Maurya, Sardar Patel Marg, New Delhi, 110021',
-          phone: '+91-11-2611-2233'
+          phone: '+911126112233'
         }
       ],
       shopping: [
@@ -19605,7 +20742,7 @@ Email: {{hotelEmail}}`,
           rating: 4.2,
           coordinates: { lat: 28.5672, lng: 77.2100 },
           address: 'Sri Aurobindo Marg, Ansari Nagar, New Delhi, 110029',
-          phone: '+91-11-2659-6565'
+          phone: '+911126596565'
         },
         {
           name: 'Hindu Rao Hospital',
@@ -19614,7 +20751,7 @@ Email: {{hotelEmail}}`,
           rating: 3.5,
           coordinates: { lat: 28.6633, lng: 77.2367 },
           address: 'Malka Ganj, Delhi, 110007',
-          phone: '+91-11-2381-1008'
+          phone: '+911123811008'
         }
       ],
       entertainment: [
@@ -19625,7 +20762,7 @@ Email: {{hotelEmail}}`,
           rating: 4.1,
           coordinates: { lat: 28.4794, lng: 77.0688 },
           address: 'Sector 29, Gurugram, Haryana 122001',
-          phone: '+91-124-4564-200',
+          phone: '+911244564200',
           website: 'https://www.kingdomofdreams.in'
         }
       ]
@@ -21958,9 +23095,13 @@ Email: {{hotelEmail}}`,
         const status = groupStatuses[i % groupStatuses.length];
         const paymentMethod = groupPaymentMethods[i % groupPaymentMethods.length];
         
-        // Generate check-in/out dates
-        const checkIn = new Date();
-        checkIn.setDate(checkIn.getDate() + Math.floor(Math.random() * 180) - 90); // +/- 90 days from today
+        // Generate check-in/out dates in 2025 for current year revenue
+        const checkIn = new Date('2025-01-01');
+        checkIn.setDate(checkIn.getDate() + Math.floor(Math.random() * 365)); // Random date in 2025
+        // Ensure some bookings are in current month (September 2025)
+        if (i < 4) {
+          checkIn.setFullYear(2025, 8, 1 + Math.floor(Math.random() * 28)); // September 2025
+        }
         const checkOut = new Date(checkIn);
         checkOut.setDate(checkOut.getDate() + Math.floor(Math.random() * 7) + 1); // 1-7 nights stay
         
@@ -22104,7 +23245,6 @@ Email: {{hotelEmail}}`,
       logger.info(`🏢 Group Bookings: 0 (failed)`);
     }
 
-    logger.info(`📅 Enhanced Bookings: ${createdEnhancedBookings.length}`);
 
     // ===== Rate Management System Seeding =====
     try {
@@ -22380,8 +23520,8 @@ Email: {{hotelEmail}}`,
                 },
                 {
                   name: 'Winter Season',
-                  startDate: new Date('2024-12-15'),
-                  endDate: new Date('2025-01-15'),
+                  startDate: new Date('2025-09-15'),
+                  endDate: new Date('2025-12-15'),
                   modifier: { type: 'percentage', value: 25 }
                 }
               ],
@@ -22531,8 +23671,8 @@ Email: {{hotelEmail}}`,
           seasonId: `WINTER_2024`,
           name: 'Winter Holiday Season',
           description: 'Premium holiday season rates',
-          startDate: new Date('2024-12-15'),
-          endDate: new Date('2025-01-15'),
+          startDate: new Date('2025-09-15'),
+          endDate: new Date('2025-12-15'),
           rateAdjustments: [
             { roomType: 'single', adjustmentType: 'percentage', adjustmentValue: 35 },
             { roomType: 'double', adjustmentType: 'percentage', adjustmentValue: 40 },
@@ -22722,7 +23862,7 @@ Email: {{hotelEmail}}`,
             baseCurrency: 'INR',
             currencyPrices: [
               {
-                currency: 'USD',
+                currency: 'INR',
                 basePrice: 144,
                 additionalGuestPrice: 36,
                 childPrice: 18,
@@ -22735,7 +23875,7 @@ Email: {{hotelEmail}}`,
             endDate: new Date('2024-12-31'),
             blackoutDates: [
               new Date('2024-02-14'),
-              new Date('2024-12-25'),
+              new Date('2025-09-22'),
               new Date('2024-12-31')
             ]
           },
@@ -22771,7 +23911,7 @@ Email: {{hotelEmail}}`,
             baseCurrency: 'INR',
             currencyPrices: [
               {
-                currency: 'USD',
+                currency: 'INR',
                 basePrice: 102,
                 additionalGuestPrice: 24,
                 childPrice: 10,
@@ -22819,7 +23959,7 @@ Email: {{hotelEmail}}`,
             baseCurrency: 'INR',
             currencyPrices: [
               {
-                currency: 'USD',
+                currency: 'INR',
                 basePrice: 78,
                 additionalGuestPrice: 18,
                 childPrice: 6,
@@ -22848,6 +23988,246 @@ Email: {{hotelEmail}}`,
 
       const createdPackages = await Package.insertMany(packageData);
       logger.info(`📦 Packages: ${createdPackages.length}`);
+
+      // 9. Corporate Rates
+      logger.info('💼 Seeding Corporate Rates...');
+      await CorporateRate.deleteMany({});
+
+      // Get existing data for references
+      const existingCorporateCompanies = await CorporateCompany.find().limit(3);
+      const existingRoomTypes = await RoomType.find().limit(4);
+
+      const corporateRateData = [
+        {
+          contractId: 'CORP-2025-001',
+          company: existingCorporateCompanies[0]?._id,
+          rateType: 'corporate',
+          rateDetails: {
+            baseRate: 5000,
+            discount: 20,
+            discountType: 'percentage'
+          },
+          roomTypes: existingRoomTypes.map(rt => ({
+            roomType: rt._id,
+            rate: Math.round(5000 * 0.8), // 20% discount
+            discount: 20
+          })),
+          validPeriod: {
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2025-12-31')
+          },
+          bookingLimits: {
+            maxRoomsPerBooking: 20,
+            maxRoomsPerNight: 10,
+            totalRoomNights: 1000
+          },
+          paymentTerms: {
+            creditLimit: 250000,
+            paymentDays: 45,
+            requiresApproval: false
+          },
+          isActive: true
+        },
+        {
+          contractId: 'GOV-2025-001',
+          company: existingCorporateCompanies[1]?._id,
+          rateType: 'government',
+          rateDetails: {
+            baseRate: 3500,
+            discount: 30,
+            discountType: 'percentage'
+          },
+          roomTypes: existingRoomTypes.slice(0, 2).map(rt => ({
+            roomType: rt._id,
+            rate: Math.round(3500 * 0.7), // 30% discount
+            discount: 30
+          })),
+          validPeriod: {
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2025-12-31')
+          },
+          bookingLimits: {
+            maxRoomsPerBooking: 15,
+            maxRoomsPerNight: 8,
+            totalRoomNights: 500
+          },
+          paymentTerms: {
+            creditLimit: 150000,
+            paymentDays: 60,
+            requiresApproval: true
+          },
+          isActive: true
+        },
+        {
+          contractId: 'GRP-2025-001',
+          company: existingCorporateCompanies[2]?._id,
+          rateType: 'group',
+          rateDetails: {
+            baseRate: 4200,
+            discount: 15,
+            discountType: 'percentage'
+          },
+          roomTypes: existingRoomTypes.map(rt => ({
+            roomType: rt._id,
+            rate: Math.round(4200 * 0.85), // 15% discount
+            discount: 15
+          })),
+          validPeriod: {
+            startDate: new Date('2025-01-01'),
+            endDate: new Date('2025-12-31')
+          },
+          bookingLimits: {
+            maxRoomsPerBooking: 25,
+            maxRoomsPerNight: 12,
+            totalRoomNights: 800
+          },
+          paymentTerms: {
+            creditLimit: 200000,
+            paymentDays: 30,
+            requiresApproval: false
+          },
+          isActive: true
+        }
+      ];
+
+      const createdCorporateRates = await CorporateRate.insertMany(corporateRateData.filter(cr => cr.company));
+      logger.info(`💼 Corporate Rates: ${createdCorporateRates.length}`);
+
+      // 10. Rate Shopping Data
+      logger.info('🏨 Seeding Competitor Rate Shopping data...');
+      await RateShopping.deleteMany({});
+
+      const rateShoppingData = [
+        {
+          competitorId: 'COMP-001',
+          competitorName: 'Grand Plaza Hotel',
+          url: 'https://grandplaza.com',
+          roomType: 'Standard',
+          checkInDate: new Date(),
+          checkOutDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          rates: [
+            {
+              date: new Date(),
+              rate: 4200,
+              currency: 'INR',
+              availability: true,
+              lastUpdated: new Date()
+            },
+            {
+              date: new Date(Date.now() + 24 * 60 * 60 * 1000),
+              rate: 4500,
+              currency: 'INR',
+              availability: true,
+              lastUpdated: new Date()
+            }
+          ],
+          isActive: true
+        },
+        {
+          competitorId: 'COMP-002',
+          competitorName: 'Royal Palace Inn',
+          url: 'https://royalpalace.com',
+          roomType: 'Standard',
+          checkInDate: new Date(),
+          checkOutDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          rates: [
+            {
+              date: new Date(),
+              rate: 4800,
+              currency: 'INR',
+              availability: true,
+              lastUpdated: new Date()
+            },
+            {
+              date: new Date(Date.now() + 24 * 60 * 60 * 1000),
+              rate: 5100,
+              currency: 'INR',
+              availability: true,
+              lastUpdated: new Date()
+            }
+          ],
+          isActive: true
+        },
+        {
+          competitorId: 'COMP-003',
+          competitorName: 'City Center Lodge',
+          url: 'https://citycenter.com',
+          roomType: 'Standard',
+          checkInDate: new Date(),
+          checkOutDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          rates: [
+            {
+              date: new Date(),
+              rate: 3900,
+              currency: 'INR',
+              availability: true,
+              lastUpdated: new Date()
+            },
+            {
+              date: new Date(Date.now() + 24 * 60 * 60 * 1000),
+              rate: 4200,
+              currency: 'INR',
+              availability: true,
+              lastUpdated: new Date()
+            }
+          ],
+          isActive: true
+        }
+      ];
+
+      const createdRateShopping = await RateShopping.insertMany(rateShoppingData);
+      logger.info(`🏨 Competitor Rates: ${createdRateShopping.length}`);
+
+      // 11. Revenue Analytics Data
+      logger.info('📊 Seeding Revenue Analytics data...');
+      await RevenueAnalytics.deleteMany({});
+
+      const revenueAnalyticsData = [];
+
+      // Generate 30 days of analytics data
+      for (let i = 0; i < 30; i++) {
+        const analyticsDate = new Date();
+        analyticsDate.setDate(analyticsDate.getDate() - i);
+
+        existingRoomTypes.forEach(roomType => {
+          const isWeekend = analyticsDate.getDay() === 0 || analyticsDate.getDay() === 6;
+          const baseOccupancy = 70 + (Math.random() * 20 - 10); // 60-80% base
+          const weekendBoost = isWeekend ? 15 : 0;
+          const occupancy = Math.min(95, Math.max(30, baseOccupancy + weekendBoost));
+
+          const roomsAvailable = 20; // Assume 20 rooms per type
+          const roomsSold = Math.round((occupancy / 100) * roomsAvailable);
+          const adr = roomType.baseRate * (0.9 + Math.random() * 0.2); // ±10% variance
+          const revenue = roomsSold * adr;
+          const revpar = revenue / roomsAvailable;
+
+          revenueAnalyticsData.push({
+            date: analyticsDate,
+            roomType: roomType._id,
+            metrics: {
+              adr: Math.round(adr),
+              revpar: Math.round(revpar),
+              occupancy: Math.round(occupancy),
+              revenue: Math.round(revenue),
+              roomsSold,
+              roomsAvailable
+            },
+            channels: [
+              { channel: 'Direct', bookings: Math.round(roomsSold * 0.4), revenue: Math.round(revenue * 0.5), adr: Math.round(adr * 1.1) },
+              { channel: 'OTA', bookings: Math.round(roomsSold * 0.35), revenue: Math.round(revenue * 0.3), adr: Math.round(adr * 0.85) },
+              { channel: 'Corporate', bookings: Math.round(roomsSold * 0.25), revenue: Math.round(revenue * 0.2), adr: Math.round(adr * 0.8) }
+            ],
+            segments: [
+              { segment: 'Leisure', bookings: Math.round(roomsSold * 0.5), revenue: Math.round(revenue * 0.4), adr: Math.round(adr * 0.9) },
+              { segment: 'Business', bookings: Math.round(roomsSold * 0.3), revenue: Math.round(revenue * 0.4), adr: Math.round(adr * 1.2) },
+              { segment: 'Group', bookings: Math.round(roomsSold * 0.2), revenue: Math.round(revenue * 0.2), adr: Math.round(adr * 0.8) }
+            ]
+          });
+        });
+      }
+
+      const createdRevenueAnalytics = await RevenueAnalytics.insertMany(revenueAnalyticsData);
+      logger.info(`📊 Revenue Analytics: ${createdRevenueAnalytics.length}`);
 
       logger.info('✅ Rate Management System seeding completed successfully!');
       
@@ -23417,13 +24797,12 @@ Email: {{hotelEmail}}`,
             exchangeRate: 1.0
           },
           revenueData: {
-            totalRevenue: 325000,
-            roomRevenue: 248000,
-            addonRevenue: 32000,
-            packageRevenue: 28000,
-            feeRevenue: 12000,
-            penaltyRevenue: 2000,
-            taxRevenue: 3000,
+            totalRevenue: { INR: 325000 },
+            roomRevenue: { INR: 248000 },
+            serviceRevenue: { INR: 72000 }, // addonRevenue + packageRevenue + feeRevenue
+            taxRevenue: { INR: 3000 },
+            discountAmount: { INR: 0 },
+            netRevenue: { INR: 322000 }, // totalRevenue - taxRevenue
             
             dailyBreakdown: Array.from({length: 7}, (_, i) => ({
               date: new Date(today.getTime() - (6-i) * 24 * 60 * 60 * 1000),
@@ -23454,6 +24833,14 @@ Email: {{hotelEmail}}`,
             baseCurrency: 'INR',
             displayCurrency: 'INR',
             exchangeRate: 1.0
+          },
+          revenueData: {
+            totalRevenue: { INR: 1385000 },
+            roomRevenue: { INR: 1195000 },
+            serviceRevenue: { INR: 190000 },
+            taxRevenue: { INR: 15000 },
+            discountAmount: { INR: 0 },
+            netRevenue: { INR: 1370000 }
           },
           forecastData: {
             nextPeriodForecast: 1385000,
@@ -23490,7 +24877,12 @@ Email: {{hotelEmail}}`,
             exchangeRate: 1.0
           },
           revenueData: {
-            totalRevenue: 1052000,
+            totalRevenue: { INR: 1052000 },
+            roomRevenue: { INR: 850000 },
+            serviceRevenue: { INR: 182000 },
+            taxRevenue: { INR: 20000 },
+            discountAmount: { INR: 0 },
+            netRevenue: { INR: 1032000 },
             
             yearOverYearComparison: {
               currentYear: 1245000,
@@ -24006,7 +25398,142 @@ Email: {{hotelEmail}}`,
       // 7. Room Type Allotments (channel allocation management)
       const roomTypeAllotmentData = createdRoomTypes.map((roomType, index) => {
         const totalInventory = [25, 20, 8, 5][index] || 10;
-        
+
+        // Base rates by room type
+        const baseRates = [5000, 7500, 12000, 18000]; // Standard, Deluxe, Suite, Premium Suite
+
+        // Calculate average allocations for performance metrics
+        const avgDirectAllocation = Math.floor(totalInventory * 0.45);
+        const avgBookingComAllocation = Math.floor(totalInventory * 0.325);
+        const avgExpediaAllocation = Math.floor(totalInventory * 0.225);
+
+        // Generate daily allotments for the next 30 days
+        const dailyAllotments = [];
+        const today = new Date();
+
+        for (let i = 0; i < 30; i++) {
+          const currentDate = new Date(today);
+          currentDate.setDate(today.getDate() + i);
+
+          // Weekend vs weekday allocation logic
+          const isWeekend = currentDate.getDay() === 0 || currentDate.getDay() === 6;
+          const directAllocation = Math.floor(totalInventory * (isWeekend ? 0.5 : 0.4));
+          const bookingComAllocation = Math.floor(totalInventory * (isWeekend ? 0.3 : 0.35));
+          const expediaAllocation = Math.floor(totalInventory * (isWeekend ? 0.2 : 0.25));
+
+          // Random sold amounts (0-80% of allocated)
+          const directSold = Math.floor(directAllocation * (0.2 + Math.random() * 0.6));
+          const bookingComSold = Math.floor(bookingComAllocation * (0.1 + Math.random() * 0.7));
+          const expediaSold = Math.floor(expediaAllocation * (0.15 + Math.random() * 0.65));
+
+          // Use base rate from outside the loop
+          const baseRate = baseRates[index] || 5000;
+
+          const dailyAllotment = {
+            date: currentDate,
+            totalInventory,
+            channelAllotments: [
+              {
+                channelId: 'direct',
+                allocated: directAllocation,
+                sold: directSold,
+                available: directAllocation - directSold,
+                blocked: Math.floor(Math.random() * 2), // 0-1 blocked rooms
+                overbooking: 0,
+                rate: baseRate,
+                lastUpdated: new Date()
+              },
+              {
+                channelId: 'booking_com',
+                allocated: bookingComAllocation,
+                sold: bookingComSold,
+                available: bookingComAllocation - bookingComSold,
+                blocked: Math.floor(Math.random() * 2),
+                overbooking: 0,
+                rate: Math.floor(baseRate * 1.15), // 15% markup for Booking.com
+                lastUpdated: new Date()
+              },
+              {
+                channelId: 'expedia',
+                allocated: expediaAllocation,
+                sold: expediaSold,
+                available: expediaAllocation - expediaSold,
+                blocked: Math.floor(Math.random() * 2),
+                overbooking: 0,
+                rate: Math.floor(baseRate * 1.18), // 18% markup for Expedia
+                lastUpdated: new Date()
+              }
+            ],
+            freeStock: totalInventory - (directAllocation + bookingComAllocation + expediaAllocation),
+            totalSold: directSold + bookingComSold + expediaSold,
+            occupancyRate: Math.round(((directSold + bookingComSold + expediaSold) / totalInventory) * 100 * 100) / 100,
+            notes: i === 0 ? 'Current day allocation' : '',
+            isHoliday: Math.random() < 0.05, // 5% chance of holiday
+            isBlackout: false
+          };
+
+          dailyAllotments.push(dailyAllotment);
+        }
+
+        // Generate performance metrics for the last 30 days
+        const performanceMetrics = [
+          {
+            period: {
+              startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+              endDate: new Date()
+            },
+            channelMetrics: [
+              {
+                channelId: 'direct',
+                totalAllocated: avgDirectAllocation * 30,
+                totalSold: Math.floor(avgDirectAllocation * 30 * 0.45),
+                totalRevenue: Math.floor(avgDirectAllocation * 30 * 0.45 * baseRates[index]),
+                averageRate: baseRates[index],
+                conversionRate: 45 + Math.random() * 20,
+                utilizationRate: 45 + Math.random() * 25,
+                leadTime: 7 + Math.random() * 14,
+                cancellationRate: 5 + Math.random() * 10,
+                noShowRate: 2 + Math.random() * 5,
+                revenuePerAvailableRoom: Math.floor(baseRates[index] * 0.4)
+              },
+              {
+                channelId: 'booking_com',
+                totalAllocated: avgBookingComAllocation * 30,
+                totalSold: Math.floor(avgBookingComAllocation * 30 * 0.55),
+                totalRevenue: Math.floor(avgBookingComAllocation * 30 * 0.55 * baseRates[index] * 1.15),
+                averageRate: Math.floor(baseRates[index] * 1.15),
+                conversionRate: 55 + Math.random() * 15,
+                utilizationRate: 55 + Math.random() * 20,
+                leadTime: 12 + Math.random() * 18,
+                cancellationRate: 8 + Math.random() * 12,
+                noShowRate: 3 + Math.random() * 6,
+                revenuePerAvailableRoom: Math.floor(baseRates[index] * 1.15 * 0.5)
+              },
+              {
+                channelId: 'expedia',
+                totalAllocated: avgExpediaAllocation * 30,
+                totalSold: Math.floor(avgExpediaAllocation * 30 * 0.48),
+                totalRevenue: Math.floor(avgExpediaAllocation * 30 * 0.48 * baseRates[index] * 1.18),
+                averageRate: Math.floor(baseRates[index] * 1.18),
+                conversionRate: 48 + Math.random() * 18,
+                utilizationRate: 48 + Math.random() * 22,
+                leadTime: 10 + Math.random() * 16,
+                cancellationRate: 7 + Math.random() * 11,
+                noShowRate: 2.5 + Math.random() * 5.5,
+                revenuePerAvailableRoom: Math.floor(baseRates[index] * 1.18 * 0.45)
+              }
+            ],
+            overallMetrics: {
+              totalInventory: totalInventory * 30,
+              totalSold: Math.floor(totalInventory * 30 * (0.45 + 0.55 + 0.48) / 3),
+              totalRevenue: Math.floor(totalInventory * 30 * 0.5 * baseRates[index] * 1.1),
+              averageOccupancyRate: 49 + Math.random() * 20,
+              revenuePerAvailableRoom: Math.floor(baseRates[index] * 0.5),
+              averageDailyRate: Math.floor(baseRates[index] * 1.1)
+            }
+          }
+        ];
+
         return {
           hotelId: hotel._id,
           roomTypeId: roomType._id,
@@ -24061,11 +25588,11 @@ Email: {{hotelEmail}}`,
                 seasonality: 'medium'
               },
               allocation: {
-                percentage: {
-                  direct: 40,
-                  booking_com: 35,
-                  expedia: 25
-                }
+                percentage: new Map([
+                  ['direct', 40],
+                  ['booking_com', 35],
+                  ['expedia', 25]
+                ])
               },
               fallbackRule: 'equal_distribution'
             },
@@ -24078,15 +25605,15 @@ Email: {{hotelEmail}}`,
                 seasonality: 'high'
               },
               allocation: {
-                percentage: {
-                  direct: 50,
-                  booking_com: 30,
-                  expedia: 20
-                }
+                percentage: new Map([
+                  ['direct', 50],
+                  ['booking_com', 30],
+                  ['expedia', 20]
+                ])
               }
             }
           ],
-          dailyAllotments: [],
+          dailyAllotments,
           defaultSettings: {
             totalInventory,
             defaultAllocationMethod: 'percentage',
@@ -24095,7 +25622,10 @@ Email: {{hotelEmail}}`,
             releaseWindow: 24,
             autoRelease: true
           },
+          performanceMetrics,
           analytics: {
+            lastCalculated: new Date(),
+            nextCalculation: new Date(Date.now() + 24 * 60 * 60 * 1000),
             calculationFrequency: 'daily',
             alerts: [
               {
@@ -24109,6 +25639,16 @@ Email: {{hotelEmail}}`,
                 threshold: 90,
                 isActive: true,
                 frequency: 'immediate'
+              }
+            ],
+            recommendations: [
+              {
+                type: 'increase_allocation',
+                channelId: 'booking_com',
+                priority: 'medium',
+                impact: 'High performing channel with 70% utilization rate',
+                confidence: 85,
+                createdAt: new Date()
               }
             ]
           },
@@ -24125,7 +25665,28 @@ Email: {{hotelEmail}}`,
         };
       });
 
+      console.log('🔍 [SEED] Creating RoomTypeAllotment data...');
+      console.log('📊 [SEED] Allotment data sample:', {
+        count: roomTypeAllotmentData.length,
+        firstItem: roomTypeAllotmentData[0] ? {
+          hotelId: roomTypeAllotmentData[0].hotelId,
+          roomTypeId: roomTypeAllotmentData[0].roomTypeId,
+          channelsCount: roomTypeAllotmentData[0].channels?.length,
+          dailyAllocationsCount: roomTypeAllotmentData[0].dailyAllotments?.length
+        } : null
+      });
+
       const createdRoomAllotments = await RoomTypeAllotment.insertMany(roomTypeAllotmentData);
+
+      console.log('✅ [SEED] Room allotments created successfully!');
+      console.log('📊 [SEED] Created allotments details:', createdRoomAllotments.map(allotment => ({
+        _id: allotment._id,
+        hotelId: allotment.hotelId,
+        roomTypeId: allotment.roomTypeId,
+        channelsCount: allotment.channels?.length || 0,
+        dailyAllocationsCount: allotment.dailyAllotments?.length || 0
+      })));
+
       logger.info(`🏢 Room Allotments: ${createdRoomAllotments.length}`);
 
       logger.info('✅ Room Management System seeding completed successfully!');
@@ -24351,8 +25912,8 @@ Email: {{hotelEmail}}`,
           name: 'Peak Winter Season',
           description: 'High demand winter season with premium pricing',
           type: 'peak',
-          startDate: new Date('2024-12-15'),
-          endDate: new Date('2025-01-15'),
+          startDate: new Date('2025-09-15'),
+          endDate: new Date('2025-12-15'),
           isRecurring: true,
           recurringPattern: {
             type: 'yearly',
@@ -24913,8 +26474,8 @@ Email: {{hotelEmail}}`,
           hotelId: hotel._id,
           bookingDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
           numberOfPeople: 2,
-          totalAmount: 180,
-          currency: 'USD',
+          totalAmount: 15000,
+          currency: 'INR',
           status: 'confirmed',
           specialRequests: 'Couples massage, prefer afternoon time slot',
           paymentStatus: 'paid',
@@ -24926,8 +26487,8 @@ Email: {{hotelEmail}}`,
           hotelId: hotel._id,
           bookingDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
           numberOfPeople: 4,
-          totalAmount: 120,
-          currency: 'USD',
+          totalAmount: 10000,
+          currency: 'INR',
           status: 'confirmed',
           specialRequests: 'Table by the window, vegetarian options required',
           paymentStatus: 'paid',
@@ -24939,8 +26500,8 @@ Email: {{hotelEmail}}`,
           hotelId: hotel._id,
           bookingDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
           numberOfPeople: 1,
-          totalAmount: 45,
-          currency: 'USD',
+          totalAmount: 3750,
+          currency: 'INR',
           status: 'pending',
           specialRequests: 'Swimming lessons if available',
           paymentStatus: 'pending'
@@ -24951,8 +26512,8 @@ Email: {{hotelEmail}}`,
           hotelId: hotel._id,
           bookingDate: new Date(Date.now() + 0.5 * 24 * 60 * 60 * 1000),
           numberOfPeople: 1,
-          totalAmount: 25,
-          currency: 'USD',
+          totalAmount: 2080,
+          currency: 'INR',
           status: 'completed',
           paymentStatus: 'paid',
           paymentMethod: 'cash',
@@ -24983,7 +26544,7 @@ Email: {{hotelEmail}}`,
               roomType: 'all',
               overrideType: 'percentage',
               overrideValue: 50,
-              currency: 'USD'
+              currency: 'INR'
             }
           ],
           restrictions: {
@@ -25031,7 +26592,7 @@ Email: {{hotelEmail}}`,
               roomType: 'all',
               overrideType: 'percentage',
               overrideValue: 35,
-              currency: 'USD'
+              currency: 'INR'
             }
           ],
           restrictions: {
@@ -25068,13 +26629,13 @@ Email: {{hotelEmail}}`,
               roomType: 'suite',
               overrideType: 'percentage',
               overrideValue: 25,
-              currency: 'USD'
+              currency: 'INR'
             },
             {
               roomType: 'deluxe',
               overrideType: 'percentage',
               overrideValue: 20,
-              currency: 'USD'
+              currency: 'INR'
             }
           ],
           demand: {
@@ -25474,7 +27035,7 @@ Email: {{hotelEmail}}`,
           ruleType: 'min_los',
           priority: 9,
           dateRange: {
-            startDate: new Date('2024-12-22'),
+            startDate: new Date('2025-09-22'),
             endDate: new Date('2025-01-06')
           },
           allRoomTypes: true,
@@ -25744,12 +27305,380 @@ Email: {{hotelEmail}}`,
       logger.info(`📏 Room Assignment Rules: ${createdRoomAssignmentRules.length}`);
 
       logger.info('✅ Staff & Operational Management System seeding completed successfully!');
-      
+
     } catch (staffOperationalError) {
       console.error('Staff & Operational Management System seeding error:', staffOperationalError.message);
       console.error('Full error:', staffOperationalError);
       logger.error('Staff & Operational Management System seeding failed:', staffOperationalError);
       logger.info('👥 Staff & Operational Management System: 0 (failed)');
+    }
+
+    // ===== Checkout Inventory Management System =====
+    try {
+      logger.info('🛏️ Starting Checkout Inventory Management System seeding...');
+      
+      // Additional cleanup for checkout data to prevent duplicates
+      await CheckoutInventory.deleteMany({});
+      await CheckoutInspection.deleteMany({});
+      logger.info('🧹 Cleaned up existing checkout data');
+
+      // Get checked-in bookings for realistic checkout scenarios
+      let checkedInBookings = await Booking.find({
+        hotelId: hotel._id,
+        status: 'checked_in'
+      }).limit(8);
+
+      // If no checked-in bookings, use any bookings as fallback
+      if (checkedInBookings.length === 0) {
+        logger.warn('No checked-in bookings found, using any bookings as fallback');
+        checkedInBookings = await Booking.find({
+          hotelId: hotel._id
+        }).limit(8);
+      }
+
+      if (checkedInBookings.length === 0) {
+        logger.warn('No bookings found for checkout inventory creation');
+      }
+
+      // Create comprehensive checkout inventory data
+      const checkoutInventoryData = [];
+      const checkoutInspectionData = [];
+      const billingHistoryData = [];
+
+      // Predefined inventory items with realistic pricing
+      const inventoryItems = [
+        { name: 'Bath Towel', category: 'bathroom', cost: 350, damage: 'stained' },
+        { name: 'Hand Towel', category: 'bathroom', cost: 200, damage: 'torn' },
+        { name: 'Bathrobe', category: 'bathroom', cost: 1200, damage: 'missing' },
+        { name: 'TV Remote Control', category: 'electronics', cost: 800, damage: 'missing' },
+        { name: 'Hair Dryer', category: 'electronics', cost: 2500, damage: 'damaged' },
+        { name: 'Bed Sheet Set', category: 'bedroom', cost: 600, damage: 'stained' },
+        { name: 'Pillow', category: 'bedroom', cost: 450, damage: 'damaged' },
+        { name: 'Blanket', category: 'bedroom', cost: 800, damage: 'missing' },
+        { name: 'Coffee Cup', category: 'kitchen', cost: 150, damage: 'broken' },
+        { name: 'Kettle', category: 'kitchen', cost: 1500, damage: 'damaged' },
+        { name: 'Curtain', category: 'furniture', cost: 1000, damage: 'torn' },
+        { name: 'Lamp Shade', category: 'furniture', cost: 400, damage: 'damaged' }
+      ];
+
+      // Create checkout inventory records for checked-in bookings
+      const processedBookings = new Set(); // Track processed bookings to avoid duplicates
+      
+      for (let i = 0; i < Math.min(checkedInBookings.length, 6); i++) {
+        const booking = checkedInBookings[i];
+        
+        // Skip if we've already processed this booking
+        if (processedBookings.has(booking._id.toString())) {
+          continue;
+        }
+        processedBookings.add(booking._id.toString());
+        
+        // Skip if booking doesn't have roomId or rooms array
+        if (!booking.roomId && (!booking.rooms || booking.rooms.length === 0)) {
+          console.warn(`Skipping booking ${booking._id} - no roomId or rooms`);
+          continue;
+        }
+        
+        // Use roomId from rooms array if direct roomId is not available
+        const actualRoomId = booking.roomId || (booking.rooms && booking.rooms[0] ? booking.rooms[0].roomId : null);
+        if (!actualRoomId) {
+          console.warn(`Skipping booking ${booking._id} - no valid room reference`);
+          continue;
+        }
+        
+        const room = await Room.findById(actualRoomId);
+        const guest = await User.findById(booking.userId || booking.guestId);
+        const assignedStaff = staffUsers[i % staffUsers.length];
+        
+        // Skip if room not found
+        if (!room) {
+          console.warn(`Skipping booking ${booking._id} - room not found`);
+          continue;
+        }
+
+        // Random selection of damaged/missing items (1-4 items per checkout)
+        const numItems = 1 + Math.floor(Math.random() * 3);
+        const selectedItems = [];
+        for (let j = 0; j < numItems; j++) {
+          const item = inventoryItems[Math.floor(Math.random() * inventoryItems.length)];
+          const isDamaged = Math.random() > 0.5;
+          const isMissing = !isDamaged && Math.random() > 0.6;
+
+          selectedItems.push({
+            itemName: item.name,
+            category: item.category,
+            quantity: 1,
+            unitPrice: item.cost,
+            totalPrice: item.cost,
+            status: isDamaged ? 'damaged' : (isMissing ? 'missing' : 'intact'),
+            notes: isDamaged ? `${item.damage} - replacement required` :
+                   (isMissing ? 'Item not found in room' : 'Item in good condition')
+          });
+        }
+
+        const subtotal = selectedItems.reduce((sum, item) => sum + item.totalPrice, 0);
+        const taxRate = 0.18; // 18% GST
+        const tax = Math.round(subtotal * taxRate);
+        const total = subtotal + tax;
+
+        // Determine status and payment status
+        const statuses = ['pending', 'completed', 'completed', 'completed'];
+        const paymentStatuses = ['pending', 'paid', 'paid', 'pending'];
+        const status = statuses[i % statuses.length];
+        const paymentStatus = status === 'completed' ? paymentStatuses[i % paymentStatuses.length] : 'pending';
+
+        const checkoutInventory = {
+          bookingId: booking._id,
+          roomId: actualRoomId,
+          checkedBy: assignedStaff._id,
+          items: selectedItems,
+          subtotal,
+          tax,
+          totalAmount: total,
+          status,
+          paymentStatus,
+          paymentMethod: paymentStatus === 'paid' ? ['cash', 'card', 'upi', 'bank_transfer'][Math.floor(Math.random() * 4)] : null,
+          notes: `Checkout inventory for ${guest?.name || 'Guest'} - Room ${room?.roomNumber || `R${100 + i}`}`,
+          createdAt: new Date(Date.now() - Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000)), // Within last week
+          ...(status === 'completed' ? {
+            completedAt: new Date(Date.now() - Math.floor(Math.random() * 3 * 24 * 60 * 60 * 1000))
+          } : {}),
+          ...(paymentStatus === 'paid' ? {
+            paidAt: new Date(Date.now() - Math.floor(Math.random() * 2 * 24 * 60 * 60 * 1000))
+          } : {})
+        };
+
+        checkoutInventoryData.push(checkoutInventory);
+
+        // Create corresponding checkout inspection
+        const inspectionData = {
+          hotelId: hotel._id,
+          bookingId: booking._id,
+          roomId: actualRoomId,
+          guestId: booking.userId || booking.guestId,
+          inspectedBy: assignedStaff._id,
+          checklistItems: [
+            {
+              category: 'electronics',
+              item: 'TV',
+              description: 'Check if TV is working and all channels accessible',
+              status: 'working',
+              checkedAt: new Date()
+            },
+            {
+              category: 'electronics',
+              item: 'Remote Control',
+              description: 'Verify all buttons function properly',
+              status: selectedItems.some(item => item.name === 'TV Remote Control' && item.damaged) ? 'damaged' : 'working',
+              checkedAt: new Date()
+            },
+            {
+              category: 'plumbing',
+              item: 'Shower',
+              description: 'Test shower functionality and drainage',
+              status: 'working',
+              checkedAt: new Date()
+            },
+            {
+              category: 'furniture',
+              item: 'Bed',
+              description: 'Check bed frame stability and mattress condition',
+              status: selectedItems.some(item => item.category === 'bedroom' && item.damaged) ? 'damaged' : 'working',
+              checkedAt: new Date()
+            },
+            {
+              category: 'cleanliness',
+              item: 'Overall Cleanliness',
+              description: 'Assess general cleanliness of room',
+              status: 'satisfactory',
+              checkedAt: new Date()
+            }
+          ],
+          // inventoryVerification: [] // Skip for now as it requires actual InventoryItem references
+          damagesFound: selectedItems.filter(item => item.damaged || item.missing).map(item => ({
+            type: item.missing ? 'missing_item' : 'inventory_damage',
+            category: item.category,
+            itemName: item.name,
+            description: `${item.name} is ${item.condition}`,
+            severity: 'minor',
+            quantity: 1,
+            estimatedCost: item.cost,
+            chargeGuest: true,
+            chargeAmount: item.cost,
+            chargeReason: `${item.name} ${item.condition}`
+          })),
+          roomConditionScore: Math.max(50, 100 - (selectedItems.length * 10)),
+          totalCharges: total,
+          inspectionStatus: status === 'completed' ? 'completed' : 'in_progress',
+          canCheckout: true,
+          notes: `Room inspection completed. ${selectedItems.length} issue(s) identified requiring guest charges.`,
+          timeSpent: 15 + Math.floor(Math.random() * 30) // 15-45 minutes
+        };
+
+        checkoutInspectionData.push(inspectionData);
+
+        // Create billing history entry if payment is made
+        if (paymentStatus === 'paid') {
+          const billingEntry = {
+            userId: booking.guestId,
+            hotelId: hotel._id,
+            bookingId: booking._id,
+            transactionType: 'checkout_charges',
+            amount: total,
+            currency: 'INR',
+            description: `Checkout inventory charges for Room ${room?.roomNumber || `R${100 + i}`}`,
+            paymentMethod: checkoutInventory.paymentMethod,
+            paymentStatus: 'completed',
+            transactionId: `CHK-${Date.now()}-${i.toString().padStart(3, '0')}`,
+            metadata: {
+              checkoutInventoryId: null, // Will be set after creation
+              roomNumber: room?.roomNumber || `R${100 + i}`,
+              itemsCharged: selectedItems.length,
+              subtotal,
+              tax,
+              taxRate: taxRate * 100
+            },
+            processedAt: checkoutInventory.paidAt,
+            createdAt: checkoutInventory.paidAt,
+            updatedAt: checkoutInventory.paidAt
+          };
+
+          billingHistoryData.push(billingEntry);
+        }
+      }
+
+      // Additional historical checkout inventory data (completed/paid)
+      const historicalData = [];
+      for (let i = 0; i < 15; i++) {
+        const randomRoom = createdRooms[Math.floor(Math.random() * createdRooms.length)];
+        const randomGuest = guests[Math.floor(Math.random() * guests.length)];
+        const randomStaff = staffUsers[Math.floor(Math.random() * staffUsers.length)];
+
+        // Generate random items for historical data
+        const numItems = 1 + Math.floor(Math.random() * 2);
+        const historicalItems = [];
+        for (let j = 0; j < numItems; j++) {
+          const item = inventoryItems[Math.floor(Math.random() * inventoryItems.length)];
+          const isDamaged = Math.random() > 0.6;
+          const isMissing = !isDamaged && Math.random() > 0.8;
+          
+          historicalItems.push({
+            itemName: item.name,
+            category: item.category,
+            quantity: 1,
+            unitPrice: item.cost,
+            totalPrice: item.cost,
+            status: isDamaged ? 'damaged' : (isMissing ? 'missing' : 'intact'),
+            notes: 'Historical checkout charge'
+          });
+        }
+
+        const subtotal = historicalItems.reduce((sum, item) => sum + item.totalPrice, 0);
+        const tax = Math.round(subtotal * 0.18);
+        const total = subtotal + tax;
+        const createdDate = new Date(Date.now() - Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000)); // Within last 30 days
+
+        const historicalCheckout = {
+          bookingId: createdBookings[i % createdBookings.length]._id, // Use actual booking ID
+          roomId: randomRoom._id,
+          checkedBy: randomStaff._id,
+          items: historicalItems,
+          subtotal,
+          tax,
+          totalAmount: total,
+          status: 'completed',
+          paymentStatus: Math.random() > 0.2 ? 'paid' : 'pending',
+          paymentMethod: Math.random() > 0.2 ? ['cash', 'card', 'upi'][Math.floor(Math.random() * 3)] : null,
+          notes: `Historical checkout charge - Room ${randomRoom.roomNumber}`,
+          createdAt: createdDate,
+          completedAt: new Date(createdDate.getTime() + Math.floor(Math.random() * 6 * 60 * 60 * 1000)), // Completed within 6 hours
+          paidAt: Math.random() > 0.2 ? new Date(createdDate.getTime() + Math.floor(Math.random() * 24 * 60 * 60 * 1000)) : null
+        };
+
+        historicalData.push(historicalCheckout);
+      }
+
+      // Combine all checkout inventory data
+      const allCheckoutData = [...checkoutInventoryData, ...historicalData];
+
+      // Create checkout inventory records
+      const createdCheckoutInventory = await CheckoutInventory.create(allCheckoutData);
+      logger.info(`🛏️ Checkout Inventory Records: ${createdCheckoutInventory.length}`);
+
+      // Update billing history with checkout inventory IDs
+      for (let i = 0; i < Math.min(billingHistoryData.length, createdCheckoutInventory.length); i++) {
+        if (billingHistoryData[i]) {
+          billingHistoryData[i].metadata.checkoutInventoryId = createdCheckoutInventory[i]._id;
+        }
+      }
+
+      // Create checkout inspections
+      try {
+        if (checkoutInspectionData.length === 0) {
+          logger.info('🔍 Checkout Inspections: 0 (no data to create)');
+        } else {
+          // Create inspections one by one to handle individual failures
+          let createdCount = 0;
+          for (const inspectionData of checkoutInspectionData) {
+            try {
+              // Check if inspection already exists for this booking
+              const existingInspection = await CheckoutInspection.findOne({ bookingId: inspectionData.bookingId });
+              if (existingInspection) {
+                logger.info(`Skipping inspection for booking ${inspectionData.bookingId} - already exists`);
+                continue;
+              }
+              
+              await CheckoutInspection.create(inspectionData);
+              createdCount++;
+            } catch (individualError) {
+              if (individualError.code === 11000) {
+                // Duplicate key error - record already exists
+                logger.info(`Skipping inspection for booking ${inspectionData.bookingId} - already exists (duplicate key)`);
+              } else {
+                logger.warn(`Failed to create inspection for booking ${inspectionData.bookingId}:`, {
+                  message: individualError.message,
+                  name: individualError.name,
+                  errors: individualError.errors,
+                  code: individualError.code
+                });
+              }
+            }
+          }
+          logger.info(`🔍 Checkout Inspections: ${createdCount}/${checkoutInspectionData.length} created successfully`);
+        }
+      } catch (inspectionError) {
+        logger.warn('CheckoutInspection creation failed:', {
+          message: inspectionError.message,
+          name: inspectionError.name,
+          errors: inspectionError.errors,
+          dataLength: checkoutInspectionData.length
+        });
+      }
+
+      // Skip billing history - model not available
+      logger.info('💳 Billing History: Skipped (model not available)');
+
+      // Calculate and log summary statistics
+      const totalRevenue = allCheckoutData
+        .filter(item => item.paymentStatus === 'paid')
+        .reduce((sum, item) => sum + (item.totalAmount || 0), 0);
+
+      const averageCheckValue = allCheckoutData.length > 0 ?
+        Math.round(allCheckoutData.reduce((sum, item) => sum + (item.totalAmount || 0), 0) / allCheckoutData.length) : 0;
+
+      const pendingPayments = allCheckoutData.filter(item => item.paymentStatus === 'pending').length;
+
+      logger.info(`💰 Total Checkout Revenue: ₹${totalRevenue.toLocaleString('en-IN')}`);
+      logger.info(`📊 Average Check Value: ₹${averageCheckValue.toLocaleString('en-IN')}`);
+      logger.info(`⏳ Pending Payments: ${pendingPayments}`);
+
+      logger.info('✅ Checkout Inventory Management System seeding completed successfully!');
+
+    } catch (checkoutInventoryError) {
+      console.error('Checkout Inventory Management System seeding error:', checkoutInventoryError.message);
+      console.error('Full error:', checkoutInventoryError);
+      logger.error('Checkout Inventory Management System seeding failed:', checkoutInventoryError);
+      logger.info('🛏️ Checkout Inventory Management System: 0 (failed)');
     }
 
     // ===== User Analytics & Web Management System =====
@@ -25870,7 +27799,7 @@ Email: {{hotelEmail}}`,
       // VIP Guest Management
       const vipGuestData = [
         {
-          guestId: guestUsers[0]._id,
+          guestId: guests[0]._id,
           vipLevel: 'gold',
           status: 'active',
           benefits: {
@@ -25907,7 +27836,7 @@ Email: {{hotelEmail}}`,
           updatedBy: adminUser._id
         },
         {
-          guestId: guestUsers[1]._id,
+          guestId: guests[1]._id,
           vipLevel: 'platinum',
           status: 'active',
           benefits: {
@@ -25945,7 +27874,7 @@ Email: {{hotelEmail}}`,
           updatedBy: adminUser._id
         },
         {
-          guestId: guestUsers[2]._id,
+          guestId: guests[2]._id,
           vipLevel: 'silver',
           status: 'active',
           benefits: {
@@ -26047,7 +27976,8 @@ Email: {{hotelEmail}}`,
           metadata: {
             partnerId: 'partner_123',
             contactEmail: 'dev@partner.com'
-          }
+          },
+          secret: 'whsec_booking_webhook_secret_key_123'
         },
         {
           name: 'Payment Processor',
@@ -26100,7 +28030,8 @@ Email: {{hotelEmail}}`,
           metadata: {
             gatewayId: 'gateway_456',
             supportEmail: 'support@gateway.com'
-          }
+          },
+          secret: 'whsec_payment_webhook_secret_key_456'
         }
       ];
 
@@ -26116,6 +28047,7 @@ Email: {{hotelEmail}}`,
       // Web Configuration - A/B testing and performance monitoring
       const webConfigurationData = {
         hotelId: hotel._id,
+        configurationName: 'THE PENTOUZ Web Configuration',
         optimization: {
           caching: {
             enabled: true,
@@ -26147,26 +28079,30 @@ Email: {{hotelEmail}}`,
           enabled: true,
           tests: [
             {
-              name: 'Booking Button Color',
+              testId: 'test_booking_button_001',
+              testName: 'Booking Button Color',
               description: 'Testing blue vs green booking button',
-              status: 'active',
+              testType: 'element',
+              status: 'running',
               startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
               endDate: new Date(Date.now() + 23 * 24 * 60 * 60 * 1000),
               trafficSplit: 50,
               variants: [
                 {
-                  name: 'control',
-                  config: { buttonColor: '#0066cc' },
-                  traffic: 50,
-                  conversions: 45,
-                  impressions: 120
+                  variantId: 'control_001',
+                  variantName: 'Control - Blue Button',
+                  description: 'Original blue booking button',
+                  configuration: { buttonColor: '#0066cc' },
+                  trafficAllocation: 50,
+                  isControl: true
                 },
                 {
-                  name: 'variant_a',
-                  config: { buttonColor: '#00cc66' },
-                  traffic: 50,
-                  conversions: 52,
-                  impressions: 118
+                  variantId: 'variant_a_001',
+                  variantName: 'Variant A - Green Button',
+                  description: 'Green booking button variant',
+                  configuration: { buttonColor: '#00cc66' },
+                  trafficAllocation: 50,
+                  isControl: false
                 }
               ],
               metrics: {
@@ -26192,15 +28128,25 @@ Email: {{hotelEmail}}`,
           },
           metrics: [
             {
+              metricId: 'perf_metric_001',
+              metricName: 'Page Load Performance',
+              metricType: 'page_load_time',
+              value: 1250,
               timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
-              loadTime: 1250,
-              firstContentfulPaint: 800,
-              largestContentfulPaint: 1200,
-              cumulativeLayoutShift: 0.08,
-              firstInputDelay: 45,
-              timeToInteractive: 1800,
-              errorRate: 0.2,
-              availability: 99.9
+              threshold: {
+                good: 1500,
+                warning: 2500,
+                critical: 4000
+              },
+              additionalData: {
+                firstContentfulPaint: 800,
+                largestContentfulPaint: 1200,
+                cumulativeLayoutShift: 0.08,
+                firstInputDelay: 45,
+                timeToInteractive: 1800,
+                errorRate: 0.2,
+                availability: 99.9
+              }
             }
           ],
           thresholds: {
@@ -26219,7 +28165,7 @@ Email: {{hotelEmail}}`,
           data: [
             {
               sessionId: 'session_1',
-              userId: guestUsers[0]._id,
+              userId: guests[0]._id,
               timestamp: new Date(Date.now() - 12 * 60 * 60 * 1000),
               events: [
                 { type: 'pageview', page: '/booking', timestamp: new Date() },
@@ -26240,7 +28186,8 @@ Email: {{hotelEmail}}`,
         },
         conversionFunnels: [
           {
-            name: 'Booking Funnel',
+            funnelId: 'funnel_booking_001',
+            funnelName: 'Booking Funnel',
             steps: [
               { name: 'Landing Page', conversions: 1000, dropoffRate: 0 },
               { name: 'Room Selection', conversions: 750, dropoffRate: 25 },
@@ -26256,7 +28203,8 @@ Email: {{hotelEmail}}`,
           enabled: true,
           rules: [
             {
-              name: 'VIP Guest Experience',
+              ruleId: 'rule_vip_001',
+              ruleName: 'VIP Guest Experience',
               condition: { userSegment: 'vip' },
               action: {
                 type: 'content_change',
@@ -26281,8 +28229,9 @@ Email: {{hotelEmail}}`,
         },
         integrations: [
           {
-            name: 'Google Analytics',
-            type: 'analytics',
+            integrationId: 'ga_integration_001',
+            provider: 'Google Analytics',
+            integrationType: 'analytics',
             config: {
               trackingId: 'GA_TRACKING_ID',
               enhancedEcommerce: true
@@ -26290,8 +28239,9 @@ Email: {{hotelEmail}}`,
             isActive: true
           },
           {
-            name: 'Hotjar',
-            type: 'heatmap',
+            integrationId: 'hotjar_integration_001',
+            provider: 'Hotjar',
+            integrationType: 'heatmap',
             config: {
               siteId: 'HOTJAR_SITE_ID'
             },
@@ -26323,7 +28273,7 @@ Email: {{hotelEmail}}`,
             postalCode: '400001'
           },
           contact: {
-            phone: '+91-22-1234-5678',
+            phone: '+912212345678',
             email: 'info@thepentouz.com',
             website: 'https://thepentouz.com',
             socialMedia: {
@@ -26399,11 +28349,7 @@ Email: {{hotelEmail}}`,
             { code: 'INR', symbol: '₹', exchangeRate: 1 },
             { code: 'USD', symbol: '$', exchangeRate: 83.25 }
           ],
-          paymentMethods: [
-            { type: 'credit_card', isActive: true },
-            { type: 'debit_card', isActive: true },
-            { type: 'bank_transfer', isActive: true }
-          ],
+          paymentMethods: ['credit_card', 'debit_card', 'bank_transfer'],
           depositRequired: true,
           depositAmount: {
             type: 'percentage',

@@ -13,9 +13,12 @@ export default function StaffInventory() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+
   useEffect(() => {
     fetchInventoryData();
   }, []);
+
+
 
   const fetchInventoryData = async () => {
     try {
@@ -89,8 +92,18 @@ export default function StaffInventory() {
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Inventory Management</h1>
-        <p className="text-gray-600">Monitor and manage hotel inventory</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Inventory Management</h1>
+            <p className="text-gray-600">Monitor and manage hotel inventory</p>
+          </div>
+          <div className="flex items-center space-x-3">
+            <Button onClick={fetchInventoryData} variant="outline" size="sm" disabled={loading}>
+              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

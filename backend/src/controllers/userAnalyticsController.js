@@ -1,7 +1,7 @@
 import userEngagementService from '../services/userEngagementService.js';
 import UserAnalytics from '../models/UserAnalytics.js';
 import User from '../models/User.js';
-import { AppError } from '../utils/appError.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import mongoose from 'mongoose';
 
@@ -14,7 +14,7 @@ export const getUserEngagementAnalytics = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
   if (userId) options.userId = userId;
@@ -22,7 +22,7 @@ export const getUserEngagementAnalytics = catchAsync(async (req, res) => {
     try {
       options.segmentTags = JSON.parse(segmentTags);
     } catch (error) {
-      throw new AppError('Invalid segment tags format', 400);
+      throw new ApplicationError('Invalid segment tags format', 400);
     }
   }
 
@@ -43,7 +43,7 @@ export const getUserBehaviorAnalysis = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
   if (userId) options.userId = userId;
@@ -65,7 +65,7 @@ export const getPerformanceMetrics = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
   if (userId) options.userId = userId;
@@ -88,7 +88,7 @@ export const getUserLifecycleAnalysis = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
 
@@ -109,7 +109,7 @@ export const calculateEngagementScores = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
   if (userId) options.userId = userId;
@@ -132,7 +132,7 @@ export const getEngagementTrends = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
 
@@ -153,7 +153,7 @@ export const getTopEngagedUsers = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
   if (limit) options.limit = parseInt(limit);
@@ -176,7 +176,7 @@ export const getPerformanceTrends = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
 
@@ -197,7 +197,7 @@ export const getUserAnalyticsSummary = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
 
@@ -229,7 +229,7 @@ export const getUserSegmentation = catchAsync(async (req, res) => {
     try {
       criteria.segmentTags = JSON.parse(segmentTags);
     } catch (error) {
-      throw new AppError('Invalid segment tags format', 400);
+      throw new ApplicationError('Invalid segment tags format', 400);
     }
   }
   if (lifecycleStage) criteria.lifecycleStage = lifecycleStage;
@@ -253,7 +253,7 @@ export const getPredictiveAnalytics = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
 
@@ -290,7 +290,7 @@ export const getUserAnalyticsById = catchAsync(async (req, res) => {
         $lte: new Date(range.end)
       };
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
 
@@ -300,7 +300,7 @@ export const getUserAnalyticsById = catchAsync(async (req, res) => {
     .limit(parseInt(limit));
 
   if (analytics.length === 0) {
-    throw new AppError('No analytics data found for this user', 404);
+    throw new ApplicationError('No analytics data found for this user', 404);
   }
 
   res.json({
@@ -315,7 +315,7 @@ export const createOrUpdateUserAnalytics = catchAsync(async (req, res) => {
   const { userId, date, activityMetrics, performanceMetrics, behaviorPatterns } = req.body;
 
   if (!userId || !date) {
-    throw new AppError('User ID and date are required', 400);
+    throw new ApplicationError('User ID and date are required', 400);
   }
 
   const analyticsData = {
@@ -353,7 +353,7 @@ export const getUserEngagementInsights = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
   if (userId) options.userId = userId;
@@ -388,7 +388,7 @@ export const exportUserAnalytics = catchAsync(async (req, res) => {
     try {
       options.dateRange = JSON.parse(dateRange);
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
   if (userId) options.userId = userId;
@@ -422,7 +422,7 @@ export const getUserCohortAnalysis = catchAsync(async (req, res) => {
         $lte: new Date(range.end)
       };
     } catch (error) {
-      throw new AppError('Invalid date range format', 400);
+      throw new ApplicationError('Invalid date range format', 400);
     }
   }
 

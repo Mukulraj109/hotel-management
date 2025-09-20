@@ -25,6 +25,7 @@ const syncHistorySchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true
+    // Note: index defined below for compound indexes
   },
   startedAt: {
     type: Date,
@@ -54,12 +55,13 @@ const syncHistorySchema = new mongoose.Schema({
     dataSize: Number
   }
 }, {
-  timestamps: true
+  timestamps: true,
+  suppressReservedKeysWarning: true // Suppresses warning for 'errors' field
 });
 
 // Indexes for efficient querying
 syncHistorySchema.index({ hotelId: 1, startedAt: -1 });
 syncHistorySchema.index({ provider: 1, status: 1 });
-syncHistorySchema.index({ syncId: 1 });
+// Note: syncId already has unique: true, no need for separate index
 
 export default mongoose.model('SyncHistory', syncHistorySchema);
