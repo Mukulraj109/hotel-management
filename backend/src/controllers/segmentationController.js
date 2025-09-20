@@ -1,6 +1,6 @@
 import smartSegmentationService from '../services/smartSegmentationService.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/AppError.js';
+import { AppError } from '../utils/appError.js';
 
 export const performAdvancedSegmentation = catchAsync(async (req, res, next) => {
   const hotelId = req.user.hotelId;

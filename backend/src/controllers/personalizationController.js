@@ -1,6 +1,6 @@
 import personalizationEngineService from '../services/personalizationEngineService.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { AppError } from '../utils/AppError.js';
+import { AppError } from '../utils/appError.js';
 
 export const generatePersonalizedExperience = catchAsync(async (req, res, next) => {
   const userId = req.user.id;
