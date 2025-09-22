@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Wrench, Clock, CheckCircle, AlertTriangle, RefreshCw, User, Calendar, Priority } from 'lucide-react';
+import { Wrench, Clock, CheckCircle, AlertTriangle, RefreshCw, User, Calendar, Flag } from 'lucide-react';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { TaskCompletionModal, getDefaultSteps } from '../../components/staff/TaskCompletionModal';
 import { maintenanceService, MaintenanceTask } from '../../services/maintenanceService';
@@ -301,7 +301,7 @@ export default function StaffMaintenance() {
                         <div className="relative flex items-center justify-between p-4 bg-white/80 backdrop-blur-sm rounded-2xl border border-red-200 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-102">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center mb-2">
-                              <Priority className="h-4 w-4 text-red-500 mr-2" />
+                              <Flag className="h-4 w-4 text-red-500 mr-2" />
                               <p className="font-semibold text-gray-900 truncate">{task.title}</p>
                             </div>
                             <p className="text-sm text-gray-600 mb-2 line-clamp-2">{task.description || 'No description'}</p>
@@ -389,7 +389,7 @@ export default function StaffMaintenance() {
                         <div className="relative flex items-center justify-between p-4 bg-white/80 backdrop-blur-sm rounded-2xl border border-orange-200 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-102">
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center mb-2">
-                              <Priority className="h-4 w-4 text-orange-500 mr-2" />
+                              <Flag className="h-4 w-4 text-orange-500 mr-2" />
                               <p className="font-semibold text-gray-900 truncate">{task.title}</p>
                             </div>
                             <p className="text-sm text-gray-600 mb-2 line-clamp-2">{task.description || 'No description'}</p>
@@ -406,7 +406,7 @@ export default function StaffMaintenance() {
                                 : task.priority === 'high'
                                 ? 'bg-orange-100 text-orange-800'
                                 : 'bg-yellow-100 text-yellow-800'}`}>
-                                <Priority className="h-3 w-3 mr-1" />
+                                <Flag className="h-3 w-3 mr-1" />
                                 Priority: {task.priority}
                               </div>
                               {task.dueDate && (
