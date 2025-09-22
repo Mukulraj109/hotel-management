@@ -30,7 +30,7 @@ import bcrypt from 'bcryptjs';
  *           description: User's phone number
  *         role:
  *           type: string
- *           enum: [guest, staff, admin, manager]
+ *           enum: [guest, staff, admin, manager, travel_agent]
  *           default: guest
  *           description: User role
  *         preferences:
@@ -126,7 +126,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['guest', 'staff', 'admin', 'manager'],
+    enum: ['guest', 'staff', 'admin', 'manager', 'travel_agent'],
     default: 'guest'
   },
   guestType: {
@@ -162,6 +162,42 @@ const userSchema = new mongoose.Schema({
     approverEmail: {
       type: String,
       lowercase: true
+    }
+  },
+  travelAgentDetails: {
+    travelAgentId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'TravelAgent'
+    },
+    agentCode: {
+      type: String,
+      trim: true,
+      uppercase: true
+    },
+    commissionRate: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 10
+    },
+    bookingLimits: {
+      maxBookingsPerDay: {
+        type: Number,
+        default: 50
+      },
+      maxRoomsPerBooking: {
+        type: Number,
+        default: 10
+      }
+    },
+    specialRatesAccess: {
+      type: Boolean,
+      default: true
+    },
+    status: {
+      type: String,
+      enum: ['active', 'inactive', 'suspended'],
+      default: 'active'
     }
   },
   hotelId: {

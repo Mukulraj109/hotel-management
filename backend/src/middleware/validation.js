@@ -22,7 +22,7 @@ export const schemas = {
     email: Joi.string().email().required(),
     password: Joi.string().min(6).required(),
     phone: Joi.string().pattern(/^\+?[\d\s-()]+$/),
-    role: Joi.string().valid('guest', 'staff', 'admin').default('guest')
+    role: Joi.string().valid('guest', 'staff', 'admin', 'manager', 'travel_agent').default('guest')
   }),
 
   login: Joi.object({
@@ -584,6 +584,104 @@ export const schemas = {
     participants: Joi.number().integer().min(2).max(20).optional().default(2).messages({
       'number.min': 'Participants must be at least 2',
       'number.max': 'Participants cannot exceed 20'
+    })
+  }),
+
+  // Travel Agent Booking Schemas
+  createTravelAgentBooking: Joi.object({
+    travelAgentId: Joi.string().required().messages({
+      'string.empty': 'Travel agent ID is required',
+      'any.required': 'Travel agent ID is required'
+    }),
+    hotelId: Joi.string().required().messages({
+      'string.empty': 'Hotel ID is required',
+      'any.required': 'Hotel ID is required'
+    }),
+    guestDetails: Joi.object({
+      primaryGuest: Joi.object({
+        name: Joi.string().required().max(100),
+        email: Joi.string().email().required(),
+        phone: Joi.string().required().pattern(/^\+?[\d\s-()]+$/)
+      }).required(),
+      totalGuests: Joi.number().integer().min(1).required(),
+      totalRooms: Joi.number().integer().min(1).required()
+    }).required(),
+    bookingDetails: Joi.object({
+      checkIn: Joi.date().iso().min('now').required(),
+      checkOut: Joi.date().iso().greater(Joi.ref('checkIn')).required(),
+      nights: Joi.number().integer().min(1).required(),
+      roomTypes: Joi.array().items(Joi.object({
+        roomTypeId: Joi.string().required(),
+        quantity: Joi.number().integer().min(1).required(),
+        ratePerNight: Joi.number().min(0).required(),
+        specialRate: Joi.number().min(0).optional()
+      })).min(1).required()
+    }).required(),
+    pricing: Joi.object({
+      subtotal: Joi.number().min(0).required(),
+      taxes: Joi.number().min(0).default(0),
+      fees: Joi.number().min(0).default(0),
+      discounts: Joi.number().min(0).default(0),
+      totalAmount: Joi.number().min(0).required(),
+      specialRateDiscount: Joi.number().min(0).default(0)
+    }).required(),
+    commission: Joi.object({
+      rate: Joi.number().min(0).max(50).required(),
+      amount: Joi.number().min(0).required(),
+      bonusRate: Joi.number().min(0).max(25).default(0),
+      bonusAmount: Joi.number().min(0).default(0)
+    }).required(),
+    paymentDetails: Joi.object({
+      method: Joi.string().valid('credit_card', 'bank_transfer', 'cash', 'cheque', 'agent_credit').required(),
+      status: Joi.string().valid('pending', 'paid', 'partial', 'failed', 'refunded').default('pending')
+    }).required(),
+    specialConditions: Joi.object({
+      earlyCheckin: Joi.boolean().default(false),
+      lateCheckout: Joi.boolean().default(false),
+      roomUpgrade: Joi.boolean().default(false),
+      specialRequests: Joi.string().max(1000)
+    }).optional(),
+    notes: Joi.string().max(2000).optional()
+  }),
+
+  createTravelAgentRate: Joi.object({
+    travelAgentId: Joi.string().required(),
+    roomTypeId: Joi.string().required(),
+    hotelId: Joi.string().required(),
+    rateType: Joi.string().valid('special_rate', 'discount_percentage', 'commission_bonus').required(),
+    specialRate: Joi.when('rateType', {
+      is: 'special_rate',
+      then: Joi.number().min(0).required(),
+      otherwise: Joi.number().min(0).optional()
+    }),
+    discountPercentage: Joi.when('rateType', {
+      is: 'discount_percentage',
+      then: Joi.number().min(0).max(100).required(),
+      otherwise: Joi.number().min(0).max(100).optional()
+    }),
+    commissionBonus: Joi.when('rateType', {
+      is: 'commission_bonus',
+      then: Joi.number().min(0).max(50).required(),
+      otherwise: Joi.number().min(0).max(50).optional()
+    }),
+    validFrom: Joi.date().iso().required(),
+    validTo: Joi.date().iso().greater(Joi.ref('validFrom')).required(),
+    minimumNights: Joi.number().integer().min(1).default(1),
+    maximumNights: Joi.number().integer().min(1).default(30),
+    conditions: Joi.object({
+      advanceBookingDays: Joi.number().integer().min(0).default(0),
+      cancellationPolicy: Joi.string().valid('flexible', 'moderate', 'strict', 'non_refundable').default('moderate'),
+      paymentTerms: Joi.string().valid('pay_now', 'pay_at_hotel', 'credit_allowed').default('pay_now')
+    }).optional(),
+    description: Joi.string().max(500).optional()
+  }),
+
+  updateCommissionStatus: Joi.object({
+    paymentStatus: Joi.string().valid('pending', 'paid', 'processing', 'cancelled').required(),
+    paymentReference: Joi.string().when('paymentStatus', {
+      is: 'paid',
+      then: Joi.string().required(),
+      otherwise: Joi.string().optional()
     })
   })
 };

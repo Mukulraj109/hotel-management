@@ -75,6 +75,8 @@ import staffAlertsRoutes from './routes/staffAlerts.js';
 import staffMeetUpRoutes from './routes/staffMeetUp.js';
 import meetUpRequestRoutes from './routes/meetUpRequests.js'; // Temporarily disabled
 import meetUpResourceRoutes from './routes/meetUpResources.js';
+import travelAgentRoutes from './routes/travelAgents.js';
+import adminTravelDashboardRoutes from './routes/adminTravelDashboard.js';
 import dashboardUpdatesRoutes from './routes/dashboardUpdates.js'; // Temporarily disabled
 import corporateRoutes from './routes/corporate.js'; // Temporarily disabled
 import roomInventoryRoutes from './routes/roomInventory.js'; // Temporarily disabled
@@ -473,6 +475,8 @@ app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/digital-keys', digitalKeyRoutes);
 app.use('/api/v1/meet-up-requests', meetUpRequestRoutes);
 app.use('/api/v1/meetup-resources', meetUpResourceRoutes);
+app.use('/api/v1/travel-agents', travelAgentRoutes);
+app.use('/api/v1/admin/travel-dashboard', adminTravelDashboardRoutes);
 app.use('/api/v1/dashboard-updates', dashboardUpdatesRoutes);
 app.use('/api/v1/room-inventory', roomInventoryRoutes);
 app.use('/api/v1/photos', photoUploadRoutes);

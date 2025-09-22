@@ -530,6 +530,49 @@ const bookingSchema = new mongoose.Schema({
       default: false
     }
   },
+  // Travel Agent fields
+  travelAgentDetails: {
+    travelAgentId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'TravelAgent'
+    },
+    agentCode: {
+      type: String,
+      uppercase: true,
+      trim: true
+    },
+    agentName: {
+      type: String,
+      trim: true
+    },
+    commissionRate: {
+      type: Number,
+      min: 0,
+      max: 50
+    },
+    commissionAmount: {
+      type: Number,
+      min: 0
+    },
+    specialRatesApplied: {
+      type: Boolean,
+      default: false
+    },
+    totalSavings: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    agentBookingReference: {
+      type: String,
+      trim: true
+    }
+  },
+  bookingSource: {
+    type: String,
+    enum: ['direct', 'travel_agent', 'ota', 'corporate', 'walk_in', 'phone', 'email'],
+    default: 'direct'
+  },
   // Automation fields
   needsAutomaticProcessing: {
     type: Boolean,
