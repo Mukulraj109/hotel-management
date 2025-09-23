@@ -15,7 +15,7 @@ import {
   User, Clock, Bed, IndianRupee, AlertTriangle, CheckCircle,
   MoreHorizontal, Move, Copy, Trash2, Bell, Phone, Mail,
   Zap, Star, Crown, UserCheck, UserX, Coffee, Wifi, Users,
-  UserPlus, Building2, Plane, Heart, Baby, RefreshCw, Check, X
+  UserPlus, Building2, Plane, Heart, Baby, RefreshCw, Check, X, ChevronUp
 } from 'lucide-react';
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, formatISO } from 'date-fns';
 import tapeChartService, { TapeChartData, TapeChartView as TapeChartViewType } from '@/services/tapeChartService';
@@ -32,6 +32,7 @@ import { UpgradeProcessor } from './UpgradeProcessor';
 import { SpecialRequestTracker } from './SpecialRequestTracker';
 import { WaitlistProcessor } from './WaitlistProcessor';
 import BlockManagementPanel from './BlockManagementPanel';
+import BookingDetailsModal from './BookingDetailsModal';
 
 interface RoomCell {
   id: string;
@@ -136,7 +137,14 @@ const TapeChartView: React.FC = () => {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [lastAssignedCell, setLastAssignedCell] = useState<string | null>(null);
   const [recentlyUpdatedCells, setRecentlyUpdatedCells] = useState<Set<string>>(new Set());
-  
+
+  // Booking Details Modal State
+  const [bookingDetailsModal, setBookingDetailsModal] = useState({
+    isOpen: false,
+    bookingId: null as string | null,
+    roomNumber: null as string | null
+  });
+
   // Filters
   const [filters, setFilters] = useState({
     floors: [] as number[],
@@ -355,22 +363,61 @@ const TapeChartView: React.FC = () => {
     return () => clearInterval(interval);
   }, [selectedView, startDate, endDate]);
 
+  // Clear conflict indicators when not dragging to prevent stale indicators
+  useEffect(() => {
+    if (!dragState.isDragging && conflictIndicators.size > 0) {
+      console.log('🧹 Clearing stale conflict indicators (not dragging)');
+      setConflictIndicators(new Map());
+    }
+  }, [dragState.isDragging, conflictIndicators.size]);
+
   const fetchViews = async () => {
     try {
       console.log('Fetching tape chart views...');
       const response = await tapeChartService.getTapeChartViews();
       console.log('Views response:', response);
-      setViews(response.data || []);
-      if (response.data?.length > 0) {
-        console.log('Setting selected view to:', response.data[0]._id);
-        setSelectedView(response.data[0]._id);
-      } else {
-        console.log('No views found');
+
+      let viewsData = response.data || [];
+
+      // Create default views if none exist
+      if (viewsData.length === 0) {
+        viewsData = [
+          {
+            _id: 'default-week',
+            viewName: '7-Day View',
+            viewType: 'daily',
+            isSystemDefault: true
+          },
+          {
+            _id: 'default-month',
+            viewName: '30-Day View',
+            viewType: 'weekly',
+            isSystemDefault: true
+          }
+        ];
+        console.log('Created default views:', viewsData);
+      }
+
+      setViews(viewsData);
+      if (viewsData.length > 0) {
+        console.log('Setting selected view to:', viewsData[0]._id);
+        setSelectedView(viewsData[0]._id);
       }
     } catch (err: any) {
       console.error('Views fetch error:', err);
+      // Create fallback views on error
+      const fallbackViews = [
+        {
+          _id: 'fallback-view',
+          viewName: 'Weekly Overview',
+          viewType: 'daily',
+          isSystemDefault: true
+        }
+      ];
+      setViews(fallbackViews);
+      setSelectedView(fallbackViews[0]._id);
       setError(err.message || 'Failed to fetch views');
-      toast.error('Failed to load tape chart views');
+      toast.error('Failed to load tape chart views, using default view');
     }
   };
 
@@ -379,9 +426,14 @@ const TapeChartView: React.FC = () => {
       console.log('No selectedView, skipping chart data fetch');
       return;
     }
-    
+
     try {
       setLoading(true);
+      // Clear any stale conflict indicators on data refresh
+      if (conflictIndicators.size > 0) {
+        console.log('🧹 Clearing stale conflict indicators on data refresh');
+        setConflictIndicators(new Map());
+      }
       console.log('Fetching chart data for view:', selectedView, 'dates:', startDate, endDate);
       const response = await tapeChartService.generateTapeChartData(selectedView, {
         startDate: formatISO(startDate, { representation: 'date' }),
@@ -402,6 +454,77 @@ const TapeChartView: React.FC = () => {
   const getDatesInRange = useMemo(() => {
     return eachDayOfInterval({ start: startDate, end: endDate });
   }, [startDate, endDate]);
+
+  // Filter logic for rooms
+  const filteredChartData = useMemo(() => {
+    if (!chartData) return null;
+
+    // Apply filters to room data
+    const applyRoomFilters = (rooms: any[]) => {
+      if (!rooms) return [];
+
+      return rooms.filter((room: any) => {
+        // Room type filter
+        if (filters.roomTypes.length > 0 && !filters.roomTypes.includes(room.roomType || room.config?.roomType)) {
+          return false;
+        }
+
+        // Status filter
+        if (filters.statuses.length > 0 && !filters.statuses.includes(room.status || room.currentStatus)) {
+          return false;
+        }
+
+        // Floor filter
+        if (filters.floors.length > 0 && !filters.floors.includes(room.floor || room.config?.floor)) {
+          return false;
+        }
+
+        // Building filter
+        if (filters.buildings.length > 0 && !filters.buildings.includes(room.building || room.config?.building)) {
+          return false;
+        }
+
+        return true;
+      });
+    };
+
+    // Create filtered chart data
+    const filtered = {
+      ...chartData,
+      rooms: applyRoomFilters(chartData.rooms || []),
+      roomData: applyRoomFilters(chartData.roomData || []),
+      timeline: chartData.timeline ? {
+        ...chartData.timeline,
+        rooms: applyRoomFilters(chartData.timeline.rooms || [])
+      } : undefined
+    };
+
+    // Update summary with filtered data
+    if (filtered.rooms && filtered.summary) {
+      const filteredRooms = filtered.rooms;
+      // Preserve backend's correct occupancy calculation while updating room counts for filtered view
+      const filteredAvailableRooms = filteredRooms.filter((r: any) => (r.status || r.currentStatus) === 'available').length;
+      const filteredReservedRooms = filteredRooms.filter((r: any) => (r.status || r.currentStatus) === 'reserved').length;
+      const filteredMaintenanceRooms = filteredRooms.filter((r: any) => (r.status || r.currentStatus) === 'maintenance').length;
+      const filteredDirtyRooms = filteredRooms.filter((r: any) => (r.status || r.currentStatus) === 'dirty').length;
+
+      filtered.summary = {
+        ...chartData.summary, // Keep backend's occupiedRooms calculation
+        totalRooms: filteredRooms.length,
+        availableRooms: filteredAvailableRooms,
+        reservedRooms: filteredReservedRooms,
+        maintenanceRooms: filteredMaintenanceRooms,
+        dirtyRooms: filteredDirtyRooms,
+        // Use backend's occupiedRooms but recalculate occupancy rate for filtered view
+        occupancyRate: filteredRooms.length > 0 ? (chartData.summary.occupiedRooms / filteredRooms.length) * 100 : 0
+      };
+    }
+
+    return filtered;
+  }, [chartData, filters]);
+
+  // Use filtered data for rendering
+  const displayData = filteredChartData || chartData;
 
   const getStatusColor = (status: string): string => {
     const colors = {
@@ -581,7 +704,19 @@ const TapeChartView: React.FC = () => {
       const draggedRoomType = draggedReservation.roomType?.toLowerCase();
       const targetRoomType = room.room?.type?.toLowerCase() || room.config.roomType?.toLowerCase();
 
+      console.log('🔍 Room type validation:', {
+        draggedRoomType,
+        targetRoomType,
+        bookingType: draggedReservation.bookingType || 'unknown',
+        vipStatus: draggedReservation.vipStatus || 'none',
+        guestName: draggedReservation.guestName
+      });
+
       if (draggedRoomType && targetRoomType && draggedRoomType !== targetRoomType) {
+        console.log('❌ Room type mismatch detected!', {
+          booked: draggedReservation.roomType,
+          target: room.room?.type || room.config.roomType
+        });
         setConflictIndicators(new Map([[cellId, {
           reason: `Room type mismatch: Guest booked ${draggedReservation.roomType} but this is ${room.room?.type || room.config.roomType}`
         }]]));
@@ -599,9 +734,31 @@ const TapeChartView: React.FC = () => {
       checkInDate.setHours(0, 0, 0, 0);
       checkOutDate.setHours(0, 0, 0, 0);
 
+      console.log('📅 Date validation:', {
+        targetDate: targetDate.toDateString(),
+        checkIn: checkInDate.toDateString(),
+        checkOut: checkOutDate.toDateString(),
+        isValid: targetDate >= checkInDate && targetDate < checkOutDate,
+        guestName: draggedReservation.guestName
+      });
+
       if (targetDate < checkInDate || targetDate >= checkOutDate) {
+        console.log('❌ Date mismatch detected!', {
+          target: targetDate.toDateString(),
+          validRange: `${checkInDate.toDateString()} to ${new Date(checkOutDate.getTime() - 1).toDateString()}`
+        });
+
+        // More specific error messages
+        let errorMessage = '';
+        if (targetDate < checkInDate) {
+          errorMessage = `Guest ${draggedReservation.guestName} checks in on ${checkInDate.toDateString()}. Cannot assign before check-in.`;
+        } else if (targetDate >= checkOutDate) {
+          errorMessage = `Guest ${draggedReservation.guestName} checks out on ${checkOutDate.toDateString()}. Cannot assign on check-out date.`;
+        }
+
         setConflictIndicators(new Map([[cellId, {
-          reason: `Date mismatch: Cannot assign guest to ${targetDate.toDateString()}. Booking is only valid from ${checkInDate.toDateString()} to ${new Date(checkOutDate.getTime() - 1).toDateString()}`
+          reason: errorMessage,
+          conflictType: 'Date mismatch'
         }]]));
         e.dataTransfer.dropEffect = 'none';
         return;
@@ -610,7 +767,19 @@ const TapeChartView: React.FC = () => {
       // Check if room is already occupied for this date
       const timelineData = room.timeline.find((t: any) => t.date === dateStr);
 
+      console.log('🏠 Room occupancy check:', {
+        roomNumber: room.config.roomNumber,
+        date: dateStr,
+        currentStatus: timelineData?.status || 'available',
+        currentGuest: timelineData?.guestName || 'none',
+        draggedGuest: draggedReservation.guestName
+      });
+
       if (timelineData?.status === 'occupied' || timelineData?.status === 'reserved') {
+        console.log('❌ Room occupancy conflict!', {
+          status: timelineData.status,
+          occupiedBy: timelineData.guestName || 'another guest'
+        });
         setConflictIndicators(new Map([[cellId, {
           reason: `Room is ${timelineData.status} by ${timelineData.guestName || 'another guest'}`
         }]]));
@@ -877,6 +1046,38 @@ const TapeChartView: React.FC = () => {
     setContextMenu(prev => ({ ...prev, visible: false }));
   };
 
+  // Booking Details Modal Handlers
+  const handleCellDoubleClick = (timelineData: any, roomNumber: string) => {
+    if (timelineData?.bookingId) {
+      console.log('🔍 Opening booking details modal for:', {
+        bookingId: timelineData.bookingId,
+        roomNumber,
+        guestName: timelineData.guestName
+      });
+      setBookingDetailsModal({
+        isOpen: true,
+        bookingId: timelineData.bookingId,
+        roomNumber
+      });
+    } else {
+      toast.info('No booking assigned to this room/date');
+    }
+  };
+
+  const closeBookingDetailsModal = () => {
+    setBookingDetailsModal({
+      isOpen: false,
+      bookingId: null,
+      roomNumber: null
+    });
+  };
+
+  const handleBookingUpdate = () => {
+    // Refresh the tape chart data after booking update
+    fetchChartData();
+    setRefreshTrigger(prev => prev + 1);
+  };
+
   // Enhanced drag & drop helper functions
   const generateRoomSuggestions = async (reservation: DraggedReservation) => {
     try {
@@ -1034,6 +1235,7 @@ const TapeChartView: React.FC = () => {
         onDragLeave={(e) => handleDragLeave(e, cellId)}
         onDrop={(e) => handleDrop(e, room.room?._id || room.config.roomId, format(date, 'yyyy-MM-dd'), room.config.roomNumber)}
         onClick={() => handleRoomSelect(room.config._id)}
+        onDoubleClick={() => handleCellDoubleClick(timelineData, room.config.roomNumber)}
         onContextMenu={(e) => handleRightClick(e, {
           roomId: room.config._id,
           roomNumber: room.config.roomNumber,
@@ -1064,7 +1266,7 @@ const TapeChartView: React.FC = () => {
         )}
 
         {/* Room type mismatch indicator */}
-        {hasConflict && conflict?.reason?.includes('Room type mismatch') && (
+        {hasConflict && conflict?.reason?.includes('Room type mismatch') && dragState.isDragging && (
           <div className="absolute inset-0 flex items-center justify-center bg-orange-100 bg-opacity-75 border-2 border-dashed border-orange-400">
             <div className="bg-orange-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1 shadow-lg">
               <AlertTriangle className="w-3 h-3" />
@@ -1074,7 +1276,7 @@ const TapeChartView: React.FC = () => {
         )}
 
         {/* Date mismatch indicator */}
-        {hasConflict && conflict?.reason?.includes('Date mismatch') && (
+        {hasConflict && conflict?.reason?.includes('Date mismatch') && dragState.isDragging && (
           <div className="absolute inset-0 flex items-center justify-center bg-red-100 bg-opacity-75 border-2 border-dashed border-red-400">
             <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1 shadow-lg">
               <CalendarIcon className="w-3 h-3" />
@@ -1084,7 +1286,7 @@ const TapeChartView: React.FC = () => {
         )}
 
         {/* Room occupied indicator */}
-        {hasConflict && conflict?.reason?.includes('occupied') && (
+        {hasConflict && conflict?.reason?.includes('occupied') && dragState.isDragging && (
           <div className="absolute inset-0 flex items-center justify-center bg-red-100 bg-opacity-75 border-2 border-dashed border-red-400">
             <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1 shadow-lg">
               <X className="w-3 h-3" />
@@ -1112,8 +1314,8 @@ const TapeChartView: React.FC = () => {
           </div>
         )}
 
-        {/* Conflict indicator */}
-        {isDragOver && hasConflict && (
+        {/* Conflict indicator - only show during active drag operations */}
+        {isDragOver && hasConflict && dragState.isDragging && (
           <div className="absolute inset-0 flex items-center justify-center bg-red-100 bg-opacity-90 border-2 border-dashed border-red-400">
             <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1411,7 +1613,9 @@ const TapeChartView: React.FC = () => {
                 {/* Compact View Selector */}
                 <Select value={selectedView} onValueChange={setSelectedView}>
                   <SelectTrigger className="w-32 h-8 text-xs">
-                    <SelectValue placeholder="View" />
+                    <SelectValue placeholder="Select View">
+                      {views.find(v => v._id === selectedView)?.viewName || 'Weekly View'}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {views.map(view => (
@@ -1493,25 +1697,34 @@ const TapeChartView: React.FC = () => {
                   </Button>
 
                   <Button
-                    variant="outline"
+                    variant={showFilters ? "default" : "outline"}
                     size="sm"
                     onClick={() => setShowFilters(!showFilters)}
-                    className="h-8 px-2 text-xs"
-                    title="Show filters"
+                    className={`h-8 px-2 text-xs ${
+                      showFilters
+                        ? 'bg-blue-500 hover:bg-blue-600 text-white border-blue-500'
+                        : 'hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300'
+                    }`}
+                    title={showFilters ? "Hide filters" : "Show filters"}
                   >
-                    <Filter className="w-3 h-3" />
+                    <Filter className={`w-3 h-3 ${showFilters ? 'text-white' : 'text-gray-600'}`} />
                   </Button>
 
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => {
+                      console.log('🔄 Manual refresh triggered');
+                      setLoading(true);
                       fetchChartData();
+                      setRefreshTrigger(prev => prev + 1);
+                      toast.success('Tape chart refreshed successfully');
                     }}
                     title="Refresh tape chart data"
-                    className="h-8 px-2 text-xs"
+                    className="h-8 px-2 text-xs hover:bg-green-50 hover:text-green-600 hover:border-green-300"
+                    disabled={loading}
                   >
-                    <RefreshCw className="w-3 h-3" />
+                    <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin text-green-600' : 'text-gray-600'}`} />
                   </Button>
 
                   {/* Undo button for drag operations */}
@@ -1594,32 +1807,41 @@ const TapeChartView: React.FC = () => {
             </div>
             
             {/* Ultra-Compact Chart Summary */}
-            {chartData?.summary && (
+            {displayData?.summary && (
               <div className="pt-1 space-y-1">
-                {/* Ultra-compact stats row */}
+                {/* Ultra-compact stats row with filter indicator */}
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-xs font-medium text-gray-600">Room Overview</div>
+                  {(filters.roomTypes.length > 0 || filters.statuses.length > 0 || filters.floors.length > 0 || filters.buildings.length > 0) && (
+                    <div className="flex items-center gap-1">
+                      <Filter className="w-3 h-3 text-blue-500" />
+                      <span className="text-xs text-blue-600 font-medium">Filtered</span>
+                    </div>
+                  )}
+                </div>
                 <div className="grid grid-cols-6 gap-1 text-xs">
                   <div className="bg-gray-50 rounded-md p-2 text-center">
-                    <div className="text-lg font-bold text-gray-800">{chartData.summary.totalRooms}</div>
+                    <div className="text-lg font-bold text-gray-800">{displayData.summary.totalRooms}</div>
                     <div className="text-xs text-gray-600">Total</div>
                   </div>
                   <div className="bg-red-50 rounded-md p-2 text-center">
-                    <div className="text-lg font-bold text-red-800">{chartData.summary.occupiedRooms}</div>
+                    <div className="text-lg font-bold text-red-800">{displayData.summary.occupiedRooms}</div>
                     <div className="text-xs text-red-600">Occupied</div>
                   </div>
                   <div className="bg-green-50 rounded-md p-2 text-center">
-                    <div className="text-lg font-bold text-green-800">{chartData.summary.availableRooms}</div>
+                    <div className="text-lg font-bold text-green-800">{displayData.summary.availableRooms}</div>
                     <div className="text-xs text-green-600">Available</div>
                   </div>
                   <div className="bg-amber-50 rounded-md p-2 text-center">
-                    <div className="text-lg font-bold text-amber-800">{chartData.summary.reservedRooms}</div>
+                    <div className="text-lg font-bold text-amber-800">{displayData.summary.reservedRooms}</div>
                     <div className="text-xs text-amber-600">Reserved</div>
                   </div>
                   <div className="bg-purple-50 rounded-md p-2 text-center">
-                    <div className="text-lg font-bold text-purple-800">{chartData.summary.maintenanceRooms}</div>
+                    <div className="text-lg font-bold text-purple-800">{displayData.summary.maintenanceRooms}</div>
                     <div className="text-xs text-purple-600">Maintenance</div>
                   </div>
                   <div className="bg-blue-50 rounded-md p-2 text-center">
-                    <div className="text-lg font-bold text-blue-800">{chartData.summary.occupancyRate.toFixed(1)}%</div>
+                    <div className="text-lg font-bold text-blue-800">{displayData.summary.occupancyRate.toFixed(1)}%</div>
                     <div className="text-xs text-blue-600">Occupancy</div>
                   </div>
                 </div>
@@ -1630,7 +1852,7 @@ const TapeChartView: React.FC = () => {
                   <div className="flex-1 bg-gray-200 rounded-full h-2 overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-green-500 to-red-500 transition-all duration-500 ease-out"
-                      style={{ width: `${chartData.summary.occupancyRate}%` }}
+                      style={{ width: `${displayData.summary.occupancyRate}%` }}
                     />
                   </div>
                   <span className="text-xs text-gray-500 w-8">100%</span>
@@ -1640,7 +1862,214 @@ const TapeChartView: React.FC = () => {
             )}
           </CardHeader>
         </Card>
-        
+
+        {/* Advanced Filter Panel with Animation */}
+        {showFilters && (
+          <Card className="shadow-sm border border-blue-200 bg-blue-50 animate-in slide-in-from-top-2 duration-300">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-blue-800 flex items-center gap-2">
+                  <Filter className="w-4 h-4" />
+                  Advanced Filters
+                  <Badge variant="secondary" className="ml-2 text-xs">
+                    {(filters.roomTypes.length + filters.statuses.length + filters.floors.length + filters.buildings.length) || 'None'} Active
+                  </Badge>
+                </h3>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      // Reset all filters
+                      setFilters({
+                        floors: [],
+                        roomTypes: [],
+                        statuses: [],
+                        buildings: [],
+                        wings: []
+                      });
+                      toast.success('All filters cleared');
+                    }}
+                    className="h-6 px-2 text-xs text-blue-600 hover:text-blue-800"
+                    disabled={filters.roomTypes.length === 0 && filters.statuses.length === 0 && filters.floors.length === 0 && filters.buildings.length === 0}
+                  >
+                    <X className="w-3 h-3 mr-1" />
+                    Clear All
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowFilters(false)}
+                    className="h-6 px-2 text-xs text-gray-600 hover:text-gray-800"
+                  >
+                    <ChevronUp className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-5 gap-3">
+                {/* Room Types Filter */}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 mb-1 block">Room Type</label>
+                  <Select
+                    value={filters.roomTypes.length > 0 ? filters.roomTypes[0] : ''}
+                    onValueChange={(value) => {
+                      if (value === 'all') {
+                        setFilters(prev => ({ ...prev, roomTypes: [] }));
+                      } else {
+                        setFilters(prev => ({ ...prev, roomTypes: [value] }));
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-7 text-xs">
+                      <SelectValue placeholder="All Types" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Types</SelectItem>
+                      <SelectItem value="single">Single</SelectItem>
+                      <SelectItem value="double">Double</SelectItem>
+                      <SelectItem value="suite">Suite</SelectItem>
+                      <SelectItem value="deluxe">Deluxe</SelectItem>
+                      <SelectItem value="presidential">Presidential</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Room Status Filter */}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 mb-1 block">Status</label>
+                  <Select
+                    value={filters.statuses.length > 0 ? filters.statuses[0] : ''}
+                    onValueChange={(value) => {
+                      if (value === 'all') {
+                        setFilters(prev => ({ ...prev, statuses: [] }));
+                      } else {
+                        setFilters(prev => ({ ...prev, statuses: [value] }));
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-7 text-xs">
+                      <SelectValue placeholder="All Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="available">🟢 Available</SelectItem>
+                      <SelectItem value="occupied">🔴 Occupied</SelectItem>
+                      <SelectItem value="reserved">🟡 Reserved</SelectItem>
+                      <SelectItem value="maintenance">🔧 Maintenance</SelectItem>
+                      <SelectItem value="dirty">🧹 Dirty</SelectItem>
+                      <SelectItem value="clean">✨ Clean</SelectItem>
+                      <SelectItem value="out_of_order">❌ Out of Order</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Floor Filter */}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 mb-1 block">Floor</label>
+                  <Select
+                    value={filters.floors.length > 0 ? filters.floors[0].toString() : ''}
+                    onValueChange={(value) => {
+                      if (value === 'all') {
+                        setFilters(prev => ({ ...prev, floors: [] }));
+                      } else {
+                        setFilters(prev => ({ ...prev, floors: [parseInt(value)] }));
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-7 text-xs">
+                      <SelectValue placeholder="All Floors" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Floors</SelectItem>
+                      <SelectItem value="1">Floor 1</SelectItem>
+                      <SelectItem value="2">Floor 2</SelectItem>
+                      <SelectItem value="3">Floor 3</SelectItem>
+                      <SelectItem value="4">Floor 4</SelectItem>
+                      <SelectItem value="5">Floor 5</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Building Filter */}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 mb-1 block">Building</label>
+                  <Select
+                    value={filters.buildings.length > 0 ? filters.buildings[0] : ''}
+                    onValueChange={(value) => {
+                      if (value === 'all') {
+                        setFilters(prev => ({ ...prev, buildings: [] }));
+                      } else {
+                        setFilters(prev => ({ ...prev, buildings: [value] }));
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-7 text-xs">
+                      <SelectValue placeholder="All Buildings" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Buildings</SelectItem>
+                      <SelectItem value="main">Main Building</SelectItem>
+                      <SelectItem value="east">East Wing</SelectItem>
+                      <SelectItem value="west">West Wing</SelectItem>
+                      <SelectItem value="tower">Tower Block</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Quick Action Filters */}
+                <div>
+                  <label className="text-xs font-medium text-gray-700 mb-1 block">Quick Filter</label>
+                  <div className="flex gap-1">
+                    <Button
+                      variant={filters.statuses.includes('available') ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setFilters(prev => ({
+                          ...prev,
+                          statuses: prev.statuses.includes('available') ? [] : ['available']
+                        }));
+                      }}
+                      className="h-7 px-2 text-xs"
+                      title="Show only available rooms"
+                    >
+                      🟢
+                    </Button>
+                    <Button
+                      variant={filters.statuses.includes('occupied') ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setFilters(prev => ({
+                          ...prev,
+                          statuses: prev.statuses.includes('occupied') ? [] : ['occupied']
+                        }));
+                      }}
+                      className="h-7 px-2 text-xs"
+                      title="Show only occupied rooms"
+                    >
+                      🔴
+                    </Button>
+                    <Button
+                      variant={filters.statuses.includes('maintenance') ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setFilters(prev => ({
+                          ...prev,
+                          statuses: prev.statuses.includes('maintenance') ? [] : ['maintenance']
+                        }));
+                      }}
+                      className="h-7 px-2 text-xs"
+                      title="Show only maintenance rooms"
+                    >
+                      🔧
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Main chart */}
         <Card className="flex-1 overflow-hidden">
           <CardContent className="p-0 h-full">
@@ -1882,6 +2311,15 @@ const TapeChartView: React.FC = () => {
         
         {/* Notification System */}
         <NotificationSystem position="top-right" soundEnabled={true} />
+
+        {/* Booking Details Modal */}
+        <BookingDetailsModal
+          isOpen={bookingDetailsModal.isOpen}
+          onClose={closeBookingDetailsModal}
+          bookingId={bookingDetailsModal.bookingId}
+          roomNumber={bookingDetailsModal.roomNumber}
+          onBookingUpdate={handleBookingUpdate}
+        />
       </div>
     </TooltipProvider>
   );

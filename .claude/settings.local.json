@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(MONGO_URI=\"mongodb+srv://mukulraj756:Zk8q2W4uDCaUWRh3@cluster0.thahvbk.mongodb.net/hotel-management?retryWrites=true&w=majority&appName=Cluster0\" node check-bookings.mjs)"
+      "Bash(MONGO_URI=\"mongodb+srv://mukulraj756:Zk8q2W4uDCaUWRh3@cluster0.thahvbk.mongodb.net/hotel-management?retryWrites=true&w=majority&appName=Cluster0\" node check-occupancy.mjs)",
+      "Bash(MONGO_URI=\"mongodb+srv://mukulraj756:Zk8q2W4uDCaUWRh3@cluster0.thahvbk.mongodb.net/hotel-management?retryWrites=true&w=majority&appName=Cluster0\" node test-dashboard-api.mjs)",
+      "Bash(MONGO_URI=\"mongodb+srv://mukulraj756:Zk8q2W4uDCaUWRh3@cluster0.thahvbk.mongodb.net/hotel-management?retryWrites=true&w=majority&appName=Cluster0\" node test-multi-booking-system.mjs)",
+      "Bash(move:*)",
+      "Bash(npm install:*)",
+      "Read(//c/Users/Mukul raj/OneDrive/Pictures/Screenshots/**)"
     ],
     "deny": [],
     "ask": []

@@ -785,6 +785,148 @@ export const schemas = {
       'any.required': 'Rollback reason is required',
       'string.max': 'Reason cannot exceed 500 characters'
     })
+  }),
+
+  // Waitlist validation schemas
+  createWaitlistEntry: Joi.object({
+    hotelId: Joi.string().optional(), // Optional since it can come from req.user
+    guestId: Joi.string().required().messages({
+      'string.empty': 'Guest ID is required',
+      'any.required': 'Guest ID is required'
+    }),
+    guestInfo: Joi.object({
+      name: Joi.string().required().trim().max(100).messages({
+        'string.empty': 'Guest name is required',
+        'string.max': 'Guest name cannot exceed 100 characters',
+        'any.required': 'Guest name is required'
+      }),
+      email: Joi.string().email().required().messages({
+        'string.email': 'Please provide a valid email address',
+        'any.required': 'Guest email is required'
+      }),
+      phone: Joi.string().required().pattern(/^\+?[\d\s-()]+$/).messages({
+        'string.pattern.base': 'Please provide a valid phone number',
+        'any.required': 'Guest phone is required'
+      }),
+      tier: Joi.string().valid('regular', 'vip', 'svip', 'corporate', 'diamond').default('regular').messages({
+        'any.only': 'Guest tier must be one of: regular, vip, svip, corporate, diamond'
+      })
+    }).required().messages({
+      'any.required': 'Guest information is required'
+    }),
+    requestedRoomType: Joi.string().required().trim().max(100).messages({
+      'string.empty': 'Requested room type is required',
+      'string.max': 'Room type cannot exceed 100 characters',
+      'any.required': 'Requested room type is required'
+    }),
+    checkInDate: Joi.date().iso().min('now').required().messages({
+      'date.min': 'Check-in date must be in the future',
+      'any.required': 'Check-in date is required'
+    }),
+    checkOutDate: Joi.date().iso().greater(Joi.ref('checkInDate')).required().messages({
+      'date.greater': 'Check-out date must be after check-in date',
+      'any.required': 'Check-out date is required'
+    }),
+    partySize: Joi.number().integer().min(1).max(20).required().messages({
+      'number.min': 'Party size must be at least 1',
+      'number.max': 'Party size cannot exceed 20',
+      'any.required': 'Party size is required'
+    }),
+    maxPrice: Joi.number().min(0).required().messages({
+      'number.min': 'Maximum price cannot be negative',
+      'any.required': 'Maximum price is required'
+    }),
+    urgency: Joi.string().valid('low', 'medium', 'high', 'urgent').default('medium').messages({
+      'any.only': 'Urgency must be one of: low, medium, high, urgent'
+    }),
+    preferences: Joi.array().items(Joi.string().trim().max(100)).max(10).optional().messages({
+      'string.max': 'Each preference cannot exceed 100 characters',
+      'array.max': 'Maximum 10 preferences allowed'
+    }),
+    specialRequests: Joi.array().items(Joi.string().trim().max(200)).max(5).optional().messages({
+      'string.max': 'Each special request cannot exceed 200 characters',
+      'array.max': 'Maximum 5 special requests allowed'
+    }),
+    autoNotify: Joi.boolean().default(true),
+    source: Joi.string().valid('web', 'phone', 'email', 'walk_in', 'api').default('web').messages({
+      'any.only': 'Source must be one of: web, phone, email, walk_in, api'
+    })
+  }),
+
+  updateWaitlistEntry: Joi.object({
+    status: Joi.string().valid('waiting', 'matched', 'contacted', 'confirmed', 'declined', 'expired', 'cancelled').optional().messages({
+      'any.only': 'Status must be one of: waiting, matched, contacted, confirmed, declined, expired, cancelled'
+    }),
+    notes: Joi.string().max(500).optional().messages({
+      'string.max': 'Notes cannot exceed 500 characters'
+    }),
+    reason: Joi.string().max(500).optional().messages({
+      'string.max': 'Reason cannot exceed 500 characters'
+    }),
+    urgency: Joi.string().valid('low', 'medium', 'high', 'urgent').optional().messages({
+      'any.only': 'Urgency must be one of: low, medium, high, urgent'
+    }),
+    maxPrice: Joi.number().min(0).optional().messages({
+      'number.min': 'Maximum price cannot be negative'
+    }),
+    preferences: Joi.array().items(Joi.string().trim().max(100)).max(10).optional().messages({
+      'string.max': 'Each preference cannot exceed 100 characters',
+      'array.max': 'Maximum 10 preferences allowed'
+    }),
+    specialRequests: Joi.array().items(Joi.string().trim().max(200)).max(5).optional().messages({
+      'string.max': 'Each special request cannot exceed 200 characters',
+      'array.max': 'Maximum 5 special requests allowed'
+    }),
+    autoNotify: Joi.boolean().optional()
+  }),
+
+  addContactHistory: Joi.object({
+    method: Joi.string().valid('email', 'phone', 'sms', 'in_person').required().messages({
+      'any.only': 'Contact method must be one of: email, phone, sms, in_person',
+      'any.required': 'Contact method is required'
+    }),
+    status: Joi.string().valid('attempted', 'successful', 'failed', 'no_response').required().messages({
+      'any.only': 'Contact status must be one of: attempted, successful, failed, no_response',
+      'any.required': 'Contact status is required'
+    }),
+    notes: Joi.string().max(500).optional().messages({
+      'string.max': 'Notes cannot exceed 500 characters'
+    })
+  }),
+
+  handleMatchAction: Joi.object({
+    action: Joi.string().valid('confirm', 'decline', 'contact').required().messages({
+      'any.only': 'Action must be one of: confirm, decline, contact',
+      'any.required': 'Action is required'
+    }),
+    notes: Joi.string().max(500).optional().messages({
+      'string.max': 'Notes cannot exceed 500 characters'
+    })
+  }),
+
+  findMatchCandidates: Joi.object({
+    roomType: Joi.string().trim().max(100).optional().messages({
+      'string.max': 'Room type cannot exceed 100 characters'
+    }),
+    checkInDate: Joi.date().iso().optional(),
+    checkOutDate: Joi.date().iso().when('checkInDate', {
+      is: Joi.exist(),
+      then: Joi.date().iso().greater(Joi.ref('checkInDate')).required(),
+      otherwise: Joi.date().iso().optional()
+    }).messages({
+      'date.greater': 'Check-out date must be after check-in date'
+    }),
+    maxPrice: Joi.number().min(0).optional().messages({
+      'number.min': 'Maximum price cannot be negative'
+    }),
+    partySize: Joi.number().integer().min(1).max(20).optional().messages({
+      'number.min': 'Party size must be at least 1',
+      'number.max': 'Party size cannot exceed 20'
+    }),
+    minimumMatchScore: Joi.number().min(0).max(100).default(50).messages({
+      'number.min': 'Minimum match score cannot be negative',
+      'number.max': 'Minimum match score cannot exceed 100'
+    })
   })
 };
 
@@ -835,3 +977,33 @@ export const validateIdArray = (fieldName) => {
     next();
   };
 };
+
+/**
+ * Validate waitlist entry creation
+ */
+export const validateWaitlistEntry = validate(schemas.createWaitlistEntry);
+
+/**
+ * Validate waitlist entry update
+ */
+export const validateWaitlistUpdate = validate(schemas.updateWaitlistEntry);
+
+/**
+ * Validate contact history addition
+ */
+export const validateContactHistory = validate(schemas.addContactHistory);
+
+/**
+ * Validate match action handling
+ */
+export const validateMatchAction = validate(schemas.handleMatchAction);
+
+/**
+ * Validate match candidate search
+ */
+export const validateMatchCandidates = validate(schemas.findMatchCandidates);
+
+/**
+ * Validate waitlist ID specifically
+ */
+export const validateWaitlistId = validateObjectId('id');

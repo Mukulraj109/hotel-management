@@ -165,6 +165,7 @@ import inventoryAutomationRoutes from './routes/inventoryAutomation.js';
 import housekeepingAutomationRoutes from './routes/housekeepingAutomation.js';
 import bookingConversationRoutes from './routes/bookingConversations.js';
 import waitingListRoutes from './routes/waitingList.js';
+import waitlistRoutes from './routes/waitlist.js';
 import workflowRoutes from './routes/workflow.js';
 import departmentBudgetRoutes from './routes/departmentBudget.js';
 import vendorRoutes from './routes/vendors.js';
@@ -521,6 +522,7 @@ app.use('/api/v1/assignment-rules', assignmentRulesRoutes);
 // Advanced Reservations route moved after basic routes for stability
 // app.use('/api/v1/advanced-reservations', advancedReservationsRoutes);
 app.use('/api/v1/waiting-list', waitingListRoutes);
+app.use('/api/v1/waitlist', waitlistRoutes);
 app.use('/api/v1/billing-sessions', billingSessionRoutes);
 app.use('/api/v1/pos/reports', posReportsRoutes);
 app.use('/api/v1/guest-lookup', guestLookupRoutes);
