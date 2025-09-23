@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calendar } from '@/components/ui/calendar';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -15,7 +15,7 @@ import {
   User, Clock, Bed, IndianRupee, AlertTriangle, CheckCircle,
   MoreHorizontal, Move, Copy, Trash2, Bell, Phone, Mail,
   Zap, Star, Crown, UserCheck, UserX, Coffee, Wifi, Users,
-  UserPlus, Building2, Plane, Heart, Baby, RefreshCw
+  UserPlus, Building2, Plane, Heart, Baby, RefreshCw, Check, X
 } from 'lucide-react';
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, formatISO } from 'date-fns';
 import tapeChartService, { TapeChartData, TapeChartView as TapeChartViewType } from '@/services/tapeChartService';
@@ -119,15 +119,23 @@ const TapeChartView: React.FC = () => {
   });
   const [conflictIndicators, setConflictIndicators] = useState<Map<string, ConflictIndicator>>(new Map());
   const [roomSuggestions, setRoomSuggestions] = useState<Map<string, any[]>>(new Map());
+
+  // Performance optimization states
+  const [hoverTimer, setHoverTimer] = useState<NodeJS.Timeout | null>(null);
+  const [dragOverCache, setDragOverCache] = useState<Map<string, boolean>>(new Map());
+
   const [showFilters, setShowFilters] = useState(false);
   const [compactView, setCompactView] = useState(false);
   const [showGuestNames, setShowGuestNames] = useState(true);
   const [showRates, setShowRates] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [isReservationSidebarCollapsed, setIsReservationSidebarCollapsed] = useState(false);
   const [isMenuCollapsed, setIsMenuCollapsed] = useState(false);
   
   // Refresh trigger for sidebar
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [lastAssignedCell, setLastAssignedCell] = useState<string | null>(null);
+  const [recentlyUpdatedCells, setRecentlyUpdatedCells] = useState<Set<string>>(new Set());
   
   // Filters
   const [filters, setFilters] = useState({
@@ -143,8 +151,12 @@ const TapeChartView: React.FC = () => {
     x: number;
     y: number;
     roomId: string;
+    roomNumber: string;
+    roomType: string;
+    floor: number;
+    currentStatus: string;
     visible: boolean;
-  }>({ x: 0, y: 0, roomId: '', visible: false });
+  }>({ x: 0, y: 0, roomId: '', roomNumber: '', roomType: '', floor: 0, currentStatus: '', visible: false });
 
   // Block creation mode
   const [blockCreationMode, setBlockCreationMode] = useState(false);
@@ -318,10 +330,23 @@ const TapeChartView: React.FC = () => {
     }
   }, [selectedView, startDate, endDate]);
 
+  // Set up drag drop manager refresh callback for real-time updates
+  useEffect(() => {
+    dragDropManager.setRefreshCallback(() => {
+      console.log('🔄 DragDropManager triggered refresh');
+      fetchChartData();
+      setRefreshTrigger(prev => prev + 1);
+    });
+
+    return () => {
+      dragDropManager.setRefreshCallback(() => {});
+    };
+  }, []);
+
   // Auto-refresh every 30 seconds to keep data updated
   useEffect(() => {
     if (!selectedView) return;
-    
+
     const interval = setInterval(() => {
       console.log('🔄 Auto-refreshing tape chart data...');
       fetchChartData();
@@ -523,23 +548,21 @@ const TapeChartView: React.FC = () => {
   };
 
   const handleDragOver = async (e: React.DragEvent, cellId: string) => {
-    console.log('🔄🔄 DRAG OVER - Cell:', cellId);
-    console.log('🔄🔄 DRAG OVER - isDragging:', dragState.isDragging);
-    console.log('🔄🔄 DRAG OVER - draggedItems count:', dragState.draggedItems?.length || 0);
-
     e.preventDefault();
 
     if (!dragState.isDragging || dragState.draggedItems.length === 0) {
-      console.log('🔄🔄 DRAG OVER - No active drag state, returning');
       return;
     }
 
-    const [roomNumber, dateStr] = cellId.split('-');
+    // Split cellId properly: "702-2025-09-23" -> roomNumber: "702", dateStr: "2025-09-23"
+    const splitParts = cellId.split('-');
+    const roomNumber = splitParts[0];
+    const dateStr = splitParts.slice(1).join('-'); // Join back "2025-09-23"
     const room = chartData?.rooms?.find(r => r.config.roomNumber === roomNumber);
 
     if (!room) return;
 
-    // Create drop target
+    // Create drop target first
     const dropTarget: DropTarget = {
       roomId: room.room?._id || room.config.roomId,
       roomNumber: room.config.roomNumber,
@@ -547,42 +570,67 @@ const TapeChartView: React.FC = () => {
       isAvailable: true
     };
 
-    // Check for conflicts
-    const reservation = dragState.draggedItems[0];
-    const conflictCheck = await dragDropManager.checkRoomAvailability(
-      dropTarget.roomId,
-      dropTarget.date,
-      reservation
-    );
-
-    if (!conflictCheck.isAvailable) {
-      e.dataTransfer.dropEffect = 'none';
-      setConflictIndicators(prev => {
-        const newMap = new Map(prev);
-        newMap.set(cellId, {
-          roomId: dropTarget.roomId,
-          date: dropTarget.date,
-          conflictType: conflictCheck.conflictReason?.includes('locked') ? 'locked' : 'occupied',
-          message: conflictCheck.conflictReason || 'Conflict detected',
-          suggestions: conflictCheck.suggestions || []
-        });
-        return newMap;
-      });
-    } else {
-      e.dataTransfer.dropEffect = 'move';
-      // Clear any previous conflict for this cell
-      setConflictIndicators(prev => {
-        const newMap = new Map(prev);
-        newMap.delete(cellId);
-        return newMap;
-      });
-    }
-
-    setDragOverCell(cellId);
+    // Register drop zone immediately to prevent "No drop target registered" errors
     dragDropManager.registerDropZone(cellId, dropTarget);
+    setDragOverCell(cellId);
+
+    // Enhanced visual feedback and validation
+    const draggedReservation = dragState.draggedItems[0];
+    if (draggedReservation) {
+      // Check room type compatibility
+      const draggedRoomType = draggedReservation.roomType?.toLowerCase();
+      const targetRoomType = room.room?.type?.toLowerCase() || room.config.roomType?.toLowerCase();
+
+      if (draggedRoomType && targetRoomType && draggedRoomType !== targetRoomType) {
+        setConflictIndicators(new Map([[cellId, {
+          reason: `Room type mismatch: Guest booked ${draggedReservation.roomType} but this is ${room.room?.type || room.config.roomType}`
+        }]]));
+        e.dataTransfer.dropEffect = 'none';
+        return;
+      }
+
+      // Check date compatibility
+      const targetDate = parseISO(dateStr);
+      const checkInDate = parseISO(draggedReservation.checkIn);
+      const checkOutDate = parseISO(draggedReservation.checkOut);
+
+      // Normalize dates for comparison
+      targetDate.setHours(0, 0, 0, 0);
+      checkInDate.setHours(0, 0, 0, 0);
+      checkOutDate.setHours(0, 0, 0, 0);
+
+      if (targetDate < checkInDate || targetDate >= checkOutDate) {
+        setConflictIndicators(new Map([[cellId, {
+          reason: `Date mismatch: Cannot assign guest to ${targetDate.toDateString()}. Booking is only valid from ${checkInDate.toDateString()} to ${new Date(checkOutDate.getTime() - 1).toDateString()}`
+        }]]));
+        e.dataTransfer.dropEffect = 'none';
+        return;
+      }
+
+      // Check if room is already occupied for this date
+      const timelineData = room.timeline.find((t: any) => t.date === dateStr);
+
+      if (timelineData?.status === 'occupied' || timelineData?.status === 'reserved') {
+        setConflictIndicators(new Map([[cellId, {
+          reason: `Room is ${timelineData.status} by ${timelineData.guestName || 'another guest'}`
+        }]]));
+        e.dataTransfer.dropEffect = 'none';
+        return;
+      }
+
+      // Clear conflicts and add positive feedback
+      setConflictIndicators(new Map());
+      e.dataTransfer.dropEffect = 'move';
+    }
   };
 
   const handleDragLeave = (e: React.DragEvent, cellId?: string) => {
+    // Performance optimization: clear hover timer on leave
+    if (hoverTimer) {
+      clearTimeout(hoverTimer);
+      setHoverTimer(null);
+    }
+
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const x = e.clientX;
     const y = e.clientY;
@@ -684,6 +732,46 @@ const TapeChartView: React.FC = () => {
 
       if (result.success) {
         console.log('✅✅ DROP - Assignment successful, refreshing data');
+
+        // Clear all drag states immediately to prevent UI issues
+        setDragOverCell(null);
+        setConflictIndicators(new Map());
+        setRoomSuggestions(new Map());
+        setDragState({
+          isDragging: false,
+          draggedItems: [],
+          dragPreview: null,
+          operationId: null
+        });
+
+        // Force clear any lingering drag over states and classes
+        const dragOverElements = document.querySelectorAll('[data-drag-over="true"]');
+        dragOverElements.forEach(el => {
+          el.removeAttribute('data-drag-over');
+          el.classList.remove('drag-over', 'drag-hover');
+        });
+
+        // Force a React re-render to clear any lingering drag indicators
+        setTimeout(() => {
+          setDragOverCell(null);
+        }, 0);
+
+        // Track cells that were updated for immediate UI feedback
+        const cellId = `${roomNumber}-${date}`;
+        setRecentlyUpdatedCells(prev => new Set(prev).add(cellId));
+
+        // Set success animation
+        setLastAssignedCell(cellId);
+        setTimeout(() => {
+          setLastAssignedCell(null);
+          // Clear the recently updated tracking after data refresh is complete
+          setRecentlyUpdatedCells(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(cellId);
+            return newSet;
+          });
+        }, 3000); // Extended time to ensure data refresh
+
         fetchChartData();
         setRefreshTrigger(prev => prev + 1);
       } else {
@@ -693,7 +781,46 @@ const TapeChartView: React.FC = () => {
     } catch (err: any) {
       console.error('❌❌ DROP - Assignment error:', err);
       console.error('❌❌ DROP - Error details:', err.response?.data);
-      toast.error(err.response?.data?.message || err.message || 'Failed to move reservation');
+
+      // Enhanced error handling with specific user guidance
+      let errorMessage = 'Failed to move reservation';
+      let errorType = 'error';
+
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+
+        // Categorize errors for better UX
+        if (errorMessage.includes('Room type mismatch')) {
+          errorType = 'warning';
+          errorMessage += '\n\n💡 Tip: Check that the room type matches the booking requirement.';
+        } else if (errorMessage.includes('Date mismatch')) {
+          errorType = 'warning';
+          errorMessage += '\n\n📅 Tip: Guests can only be assigned to dates within their booking period.';
+        } else if (errorMessage.includes('not active') || errorMessage.includes('maintenance')) {
+          errorType = 'warning';
+          errorMessage += '\n\n🔧 This room may need maintenance attention.';
+        } else if (errorMessage.includes('conflict') || errorMessage.includes('occupied')) {
+          errorType = 'warning';
+          errorMessage += '\n\n📅 Try selecting a different date or room.';
+        }
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+
+      // Network error handling
+      if (!navigator.onLine) {
+        errorMessage = '🌐 No internet connection. Please check your connection and try again.';
+        errorType = 'error';
+      } else if (err.code === 'NETWORK_ERROR') {
+        errorMessage = '🔄 Network error. Please try again in a moment.';
+        errorType = 'warning';
+      }
+
+      if (errorType === 'warning') {
+        toast.warning(errorMessage);
+      } else {
+        toast.error(errorMessage);
+      }
     } finally {
       console.log('🎯🎯 DROP - Ending drag operation');
       endDragOperation();
@@ -710,12 +837,22 @@ const TapeChartView: React.FC = () => {
     setSelectedRooms(newSelection);
   };
 
-  const handleRightClick = (e: React.MouseEvent, roomId: string) => {
+  const handleRightClick = (e: React.MouseEvent, roomData: {
+    roomId: string;
+    roomNumber: string;
+    roomType: string;
+    floor: number;
+    currentStatus: string;
+  }) => {
     e.preventDefault();
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
-      roomId,
+      roomId: roomData.roomId,
+      roomNumber: roomData.roomNumber,
+      roomType: roomData.roomType,
+      floor: roomData.floor,
+      currentStatus: roomData.currentStatus,
       visible: true
     });
   };
@@ -758,17 +895,40 @@ const TapeChartView: React.FC = () => {
   };
 
   const endDragOperation = () => {
+    console.log('🧹 Cleaning up drag operation state...');
+
+    // Clear drag drop manager state
     dragDropManager.endDragOperation();
+
+    // Force clear all UI states
     setDragState({
       isDragging: false,
       draggedItems: [],
       dragPreview: null,
       operationId: null
     });
+
     setDraggedItem(null);
     setDragOverCell(null);
     setConflictIndicators(new Map());
     setRoomSuggestions(new Map());
+
+    // Remove any remaining drag preview elements
+    const dragPreviews = document.querySelectorAll('.drag-preview');
+    dragPreviews.forEach(element => {
+      if (element.parentNode) {
+        element.parentNode.removeChild(element);
+      }
+    });
+
+    // Force clear any drag over styling or attributes
+    const allCells = document.querySelectorAll('[data-cell-id]');
+    allCells.forEach(cell => {
+      cell.classList.remove('drag-over', 'drag-hover');
+      cell.removeAttribute('data-drag-over');
+    });
+
+    console.log('🧹 Drag operation cleanup complete');
   };
 
   // Cleanup drag state on component unmount or when drag ends unexpectedly
@@ -786,6 +946,10 @@ const TapeChartView: React.FC = () => {
     return () => {
       document.removeEventListener('dragend', handleDragEnd);
       document.removeEventListener('mouseup', handleDragEnd);
+      // Clean up hover timer
+      if (hoverTimer) {
+        clearTimeout(hoverTimer);
+      }
       dragDropManager.cleanup();
     };
   }, [dragState.isDragging]);
@@ -855,21 +1019,28 @@ const TapeChartView: React.FC = () => {
       <div
         key={cellId}
         className={`
-          relative min-h-[${compactView ? '32px' : '48px'}] border border-gray-200
+          relative min-h-[${compactView ? '28px' : '40px'}] border border-gray-200/60
           ${getProfitabilityRoomColor(timelineData, status)}
-          ${isDragOver && !hasConflict ? 'ring-2 ring-blue-500 bg-blue-50 border-blue-400' : ''}
-          ${isDragOver && hasConflict ? 'ring-2 ring-red-500 bg-red-50 border-red-400' : ''}
-          ${isRecommended ? 'ring-1 ring-green-400 bg-green-50' : ''}
-          ${isToday ? 'ring-1 ring-blue-300' : ''}
-          ${isWeekend ? 'bg-opacity-60' : ''}
-          transition-all duration-150 cursor-pointer hover:shadow-sm
-          ${dragState.isDragging ? 'hover:ring-2 hover:ring-blue-300' : ''}
+          ${isDragOver && !hasConflict ? 'ring-2 ring-blue-400 bg-blue-50/80 border-blue-300 scale-[1.01]' : ''}
+          ${isDragOver && hasConflict ? 'ring-2 ring-red-400 bg-red-50/80 border-red-300' : ''}
+          ${isRecommended ? 'ring-1 ring-green-400 bg-green-50/60' : ''}
+          ${isToday ? 'ring-1 ring-blue-300 bg-blue-50/30' : ''}
+          ${isWeekend ? 'bg-opacity-50' : ''}
+          transition-all duration-150 ease-out cursor-pointer hover:shadow-sm hover:border-gray-300
+          ${dragState.isDragging ? 'hover:ring-1 hover:ring-blue-300' : ''}
+          transform-gpu will-change-transform rounded-sm
         `}
         onDragOver={(e) => handleDragOver(e, cellId)}
         onDragLeave={(e) => handleDragLeave(e, cellId)}
         onDrop={(e) => handleDrop(e, room.room?._id || room.config.roomId, format(date, 'yyyy-MM-dd'), room.config.roomNumber)}
         onClick={() => handleRoomSelect(room.config._id)}
-        onContextMenu={(e) => handleRightClick(e, room.config._id)}
+        onContextMenu={(e) => handleRightClick(e, {
+          roomId: room.config._id,
+          roomNumber: room.config.roomNumber,
+          roomType: room.config.roomType,
+          floor: room.config.floor,
+          currentStatus: room.currentStatus
+        })}
       >
         {/* Status indicator */}
         <div className={`absolute top-0 left-0 w-1 h-full ${getStatusColor(status).replace('bg-', 'bg-').replace('-50', '-500')}`} />
@@ -883,13 +1054,60 @@ const TapeChartView: React.FC = () => {
         {getNotificationBadge(getRoomNotifications(room.config.roomNumber, timelineData))}
         
         {/* Enhanced drag drop indicators */}
-        {isDragOver && !hasConflict && (
-          <div className="absolute inset-0 flex items-center justify-center bg-blue-100 bg-opacity-75 border-2 border-dashed border-blue-400">
-            <div className="bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
+        {isDragOver && !hasConflict && !recentlyUpdatedCells.has(cellId) && dragState.isDragging && (
+          <div className="absolute inset-0 flex items-center justify-center bg-green-100 bg-opacity-75 border-2 border-dashed border-green-400 animate-pulse">
+            <div className="bg-green-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1 shadow-lg">
+              <Check className="w-3 h-3" />
               Drop to assign
+            </div>
+          </div>
+        )}
+
+        {/* Room type mismatch indicator */}
+        {hasConflict && conflict?.reason?.includes('Room type mismatch') && (
+          <div className="absolute inset-0 flex items-center justify-center bg-orange-100 bg-opacity-75 border-2 border-dashed border-orange-400">
+            <div className="bg-orange-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1 shadow-lg">
+              <AlertTriangle className="w-3 h-3" />
+              Wrong type
+            </div>
+          </div>
+        )}
+
+        {/* Date mismatch indicator */}
+        {hasConflict && conflict?.reason?.includes('Date mismatch') && (
+          <div className="absolute inset-0 flex items-center justify-center bg-red-100 bg-opacity-75 border-2 border-dashed border-red-400">
+            <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1 shadow-lg">
+              <CalendarIcon className="w-3 h-3" />
+              Wrong date
+            </div>
+          </div>
+        )}
+
+        {/* Room occupied indicator */}
+        {hasConflict && conflict?.reason?.includes('occupied') && (
+          <div className="absolute inset-0 flex items-center justify-center bg-red-100 bg-opacity-75 border-2 border-dashed border-red-400">
+            <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1 shadow-lg">
+              <X className="w-3 h-3" />
+              Occupied
+            </div>
+          </div>
+        )}
+
+
+        {/* Room suggestion highlight */}
+        {isRecommended && !isDragOver && (
+          <div className="absolute inset-0 ring-2 ring-blue-400 ring-opacity-50 bg-blue-50 bg-opacity-30 animate-pulse">
+            <div className="absolute top-1 right-1 bg-blue-500 text-white rounded-full p-1">
+              <Star className="w-3 h-3" />
+            </div>
+          </div>
+        )}
+
+        {/* Assignment success animation */}
+        {cellId === lastAssignedCell && (
+          <div className="absolute inset-0 bg-green-400 bg-opacity-50 animate-ping">
+            <div className="absolute inset-0 flex items-center justify-center">
+              <CheckCircle className="w-8 h-8 text-green-600" />
             </div>
           </div>
         )}
@@ -919,7 +1137,14 @@ const TapeChartView: React.FC = () => {
         
         {/* Content */}
         <div className="p-1 pl-5 text-xs">
-          {showGuestNames && guestName && timelineData?.bookingId && (
+          {/* Show updating message for recently assigned cells */}
+          {recentlyUpdatedCells.has(cellId) && (
+            <div className="space-y-1 text-center text-blue-600 font-medium animate-pulse">
+              <div>Updating...</div>
+            </div>
+          )}
+
+          {showGuestNames && guestName && timelineData?.bookingId && !recentlyUpdatedCells.has(cellId) && (
             <div
               className="space-y-1 cursor-move hover:bg-blue-50 rounded p-1 -m-1 transition-colors duration-150"
               draggable={true}
@@ -968,7 +1193,7 @@ const TapeChartView: React.FC = () => {
                   e.preventDefault();
                 }
               }}
-              title={`Drag to move ${guestName} to another room`}
+              title={recentlyUpdatedCells.has(cellId) ? "Updating room assignment..." : `Drag to move ${guestName} to another room`}
             >
               <div className="font-medium truncate flex items-center gap-1">
                 {getGenderIcon(timelineData?.gender)}
@@ -1037,29 +1262,28 @@ const TapeChartView: React.FC = () => {
       <div key={room.config._id} className="flex min-w-fit border-b border-gray-200">
         {/* Room header */}
         <div className={`
-          sticky left-0 z-10 bg-white border-r border-gray-300 p-2
-          min-w-[150px] flex flex-col justify-center
-          ${isSelected ? 'bg-blue-50 border-blue-200' : ''}
+          sticky left-0 z-10 bg-white border-r border-gray-200/60 p-1.5
+          min-w-[120px] flex flex-col justify-center
+          ${isSelected ? 'bg-blue-50/80 border-blue-200' : ''}
         `}>
           <div className="flex items-center justify-between">
-            <div>
-              <div className="font-medium text-sm">{room.config.roomNumber}</div>
-              <div className="text-xs text-gray-500">{room.config.roomType}</div>
-              <div className="text-xs text-gray-400">Floor {room.config.floor}</div>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-xs truncate">{room.config.roomNumber}</div>
+              <div className="text-xs text-gray-500 truncate">{room.config.roomType}</div>
+              <div className="text-xs text-gray-400">F{room.config.floor}</div>
             </div>
-            
-            <div className="flex flex-col items-center gap-1">
-              <div className={`w-3 h-3 rounded-full ${getStatusColor(room.currentStatus).replace('bg-', 'bg-').replace('-100', '-500')}`} />
-              <Badge variant="outline" className="text-xs px-1">
-                {room.currentStatus}
-              </Badge>
+
+            <div className="flex flex-col items-center gap-0.5 ml-1">
+              <div className={`w-2 h-2 rounded-full ${getStatusColor(room.currentStatus).replace('bg-', 'bg-').replace('-100', '-500')}`} />
+              <div className="text-xs text-gray-500 capitalize px-1 py-0.5 bg-gray-50 rounded text-center leading-none">
+                {room.currentStatus.replace('_', ' ')}
+              </div>
             </div>
           </div>
-          
           {room.room?.amenities?.length > 0 && (
-            <div className="flex gap-1 mt-1 flex-wrap">
-              {room.room.amenities.includes('wifi') && <Wifi className="w-3 h-3 text-gray-400" />}
-              {room.room.amenities.includes('coffee') && <Coffee className="w-3 h-3 text-gray-400" />}
+            <div className="flex gap-1 mt-0.5 justify-center">
+              {room.room.amenities.includes('wifi') && <Wifi className="w-2 h-2 text-gray-400" />}
+              {room.room.amenities.includes('coffee') && <Coffee className="w-2 h-2 text-gray-400" />}
             </div>
           )}
         </div>
@@ -1115,83 +1339,99 @@ const TapeChartView: React.FC = () => {
         )}
         
         {/* Main content */}
-        <div className="flex-1 p-4 space-y-4 flex flex-col min-w-fit">
-        {/* Header */}
-        <Card className="flex-none">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Bed className="w-5 h-5" />
-                  Interactive Tape Chart
-                  {selectedRooms.size > 0 && (
-                    <Badge variant="secondary">
-                      {selectedRooms.size} room{selectedRooms.size !== 1 ? 's' : ''} selected
-                    </Badge>
-                  )}
-                </CardTitle>
+        <div className="flex-1 p-1 space-y-2 flex flex-col min-w-fit">
+        {/* Modern Compact Header */}
+        <Card className="flex-none shadow-sm">
+          <CardHeader className="pb-1 pt-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
+                    <Bed className="w-4 h-4 text-white" />
+                  </div>
+                  <div>
+                    <h1 className="text-lg font-bold text-gray-900">Tape Chart</h1>
+                    <p className="text-xs text-gray-500">Room assignments & availability</p>
+                  </div>
+                </div>
+                {selectedRooms.size > 0 && (
+                  <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
+                    {selectedRooms.size} selected
+                  </Badge>
+                )}
               </div>
-              
-              {/* Global Search */}
-              <div className="flex-1 max-w-md mx-8">
+
+              {/* Compact Global Search */}
+              <div className="flex-1 max-w-sm mx-4">
                 <GlobalSearch
                   onResultSelect={(result) => {
                     console.log('Selected:', result);
-                    // Handle navigation to selected result
                   }}
-                  placeholder="Search reservations, guests, rooms..."
+                  placeholder="Search guests, rooms..."
                 />
               </div>
             </div>
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
+            {/* Compact Controls Row */}
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+              <div className="flex items-center gap-3">
                 {/* Batch operation controls */}
                 {dragDropManager.getSelectionCount() > 1 && (
-                  <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-200 rounded-lg">
-                    <Users className="w-4 h-4 text-amber-600" />
-                    <span className="text-sm font-medium text-amber-700">
-                      {dragDropManager.getSelectionCount()} selected for batch assignment
+                  <div className="flex items-center gap-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded-md">
+                    <Users className="w-3 h-3 text-amber-600" />
+                    <span className="text-xs font-medium text-amber-700">
+                      {dragDropManager.getSelectionCount()} selected
                     </span>
                     <Button
-                      variant="outline"
+                      variant="ghost"
                       size="sm"
                       onClick={() => {
                         dragDropManager.clearSelection();
                         setRefreshTrigger(prev => prev + 1);
                       }}
-                      className="h-6 px-2 text-xs border-amber-300 text-amber-700 hover:bg-amber-100"
+                      className="h-5 px-1 text-xs text-amber-700 hover:bg-amber-100"
                     >
-                      Clear
+                      ×
                     </Button>
                   </div>
                 )}
 
+                {/* Drag operation status */}
+                {dragState.isDragging && (
+                  <div className="flex items-center gap-2 px-2 py-1 bg-blue-50 rounded-md border border-blue-200">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                    <span className="text-xs text-blue-700 font-medium">
+                      Moving {dragState.draggedItems.length} guest{dragState.draggedItems.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                )}
               </div>
-              
+
               <div className="flex items-center gap-2">
+                {/* Compact View Selector */}
                 <Select value={selectedView} onValueChange={setSelectedView}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue placeholder="Select view" />
+                  <SelectTrigger className="w-32 h-8 text-xs">
+                    <SelectValue placeholder="View" />
                   </SelectTrigger>
                   <SelectContent>
                     {views.map(view => (
-                      <SelectItem key={view._id} value={view._id}>
+                      <SelectItem key={view._id} value={view._id} className="text-xs">
                         {view.viewName}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                
+
+                {/* Compact Date Range */}
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="gap-1">
-                      <CalendarIcon className="w-4 h-4" />
+                    <Button variant="outline" size="sm" className="gap-1 h-8 px-2 text-xs">
+                      <CalendarIcon className="w-3 h-3" />
                       {format(startDate, 'MMM dd')} - {format(endDate, 'MMM dd')}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="end">
-                    <div className="p-3 space-y-3">
+                    <div className="p-2 space-y-2">
                       <div className="flex gap-2">
                         <Button size="sm" variant="outline" onClick={() => {
                           const newStart = subDays(startDate, 7);
@@ -1212,12 +1452,12 @@ const TapeChartView: React.FC = () => {
                           const newStart = addDays(startDate, 7);
                           const newEnd = addDays(endDate, 7);
                           setStartDate(newStart);
-                          setEndDate(newEnd);
+                          setEndDate(addDays(endDate, 7));
                         }}>
                           Next Week
                         </Button>
                       </div>
-                      <Calendar
+                      <CalendarComponent
                         mode="range"
                         selected={dateRange}
                         onSelect={(range) => {
@@ -1229,43 +1469,49 @@ const TapeChartView: React.FC = () => {
                     </div>
                   </PopoverContent>
                 </Popover>
-                
+
+                {/* Compact Quick Actions */}
                 <div className="flex items-center gap-1">
                   <Button
                     variant={showSidebar ? "default" : "outline"}
                     size="sm"
                     onClick={() => setShowSidebar(!showSidebar)}
+                    className="h-8 px-2 text-xs"
+                    title="Toggle reservations sidebar"
                   >
-                    <Users className="w-4 h-4 mr-1" />
-                    Sidebar
+                    <Users className="w-3 h-3" />
                   </Button>
-                  
+
                   <Button
                     variant={compactView ? "default" : "outline"}
                     size="sm"
                     onClick={() => setCompactView(!compactView)}
+                    className="h-8 px-2 text-xs"
+                    title="Toggle compact view"
                   >
-                    Compact
+                    <Maximize2 className="w-3 h-3" />
                   </Button>
-                  
+
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setShowFilters(!showFilters)}
+                    className="h-8 px-2 text-xs"
+                    title="Show filters"
                   >
-                    <Filter className="w-4 h-4" />
+                    <Filter className="w-3 h-3" />
                   </Button>
-                  
+
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => {
-                      console.log('🔄 Manual refresh triggered');
                       fetchChartData();
                     }}
                     title="Refresh tape chart data"
+                    className="h-8 px-2 text-xs"
                   >
-                    <RefreshCw className="w-4 h-4" />
+                    <RefreshCw className="w-3 h-3" />
                   </Button>
 
                   {/* Undo button for drag operations */}
@@ -1275,22 +1521,12 @@ const TapeChartView: React.FC = () => {
                       size="sm"
                       onClick={() => dragDropManager.undoLastOperation()}
                       title="Undo last operation"
-                      className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                      className="h-8 px-2 text-xs text-orange-600 border-orange-300 hover:bg-orange-50"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
                       </svg>
                     </Button>
-                  )}
-
-                  {/* Drag operation status */}
-                  {dragState.isDragging && (
-                    <div className="flex items-center gap-2 px-3 py-1 bg-blue-100 rounded-lg border border-blue-200">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                      <span className="text-sm text-blue-700 font-medium">
-                        Dragging {dragState.draggedItems.length} reservation{dragState.draggedItems.length !== 1 ? 's' : ''}
-                      </span>
-                    </div>
                   )}
 
                   {/* Block creation controls */}
@@ -1357,48 +1593,48 @@ const TapeChartView: React.FC = () => {
               </div>
             </div>
             
-            {/* Enhanced Chart summary */}
+            {/* Ultra-Compact Chart Summary */}
             {chartData?.summary && (
-              <div className="pt-3 space-y-3">
-                {/* Main stats row */}
-                <div className="grid grid-cols-6 gap-4 text-sm">
-                  <div className="bg-gray-50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-gray-800">{chartData.summary.totalRooms}</div>
-                    <div className="text-xs text-gray-600">Total Rooms</div>
+              <div className="pt-1 space-y-1">
+                {/* Ultra-compact stats row */}
+                <div className="grid grid-cols-6 gap-1 text-xs">
+                  <div className="bg-gray-50 rounded-md p-2 text-center">
+                    <div className="text-lg font-bold text-gray-800">{chartData.summary.totalRooms}</div>
+                    <div className="text-xs text-gray-600">Total</div>
                   </div>
-                  <div className="bg-red-50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-red-800">{chartData.summary.occupiedRooms}</div>
+                  <div className="bg-red-50 rounded-md p-2 text-center">
+                    <div className="text-lg font-bold text-red-800">{chartData.summary.occupiedRooms}</div>
                     <div className="text-xs text-red-600">Occupied</div>
                   </div>
-                  <div className="bg-green-50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-green-800">{chartData.summary.availableRooms}</div>
+                  <div className="bg-green-50 rounded-md p-2 text-center">
+                    <div className="text-lg font-bold text-green-800">{chartData.summary.availableRooms}</div>
                     <div className="text-xs text-green-600">Available</div>
                   </div>
-                  <div className="bg-amber-50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-amber-800">{chartData.summary.reservedRooms}</div>
+                  <div className="bg-amber-50 rounded-md p-2 text-center">
+                    <div className="text-lg font-bold text-amber-800">{chartData.summary.reservedRooms}</div>
                     <div className="text-xs text-amber-600">Reserved</div>
                   </div>
-                  <div className="bg-purple-50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-purple-800">{chartData.summary.maintenanceRooms}</div>
+                  <div className="bg-purple-50 rounded-md p-2 text-center">
+                    <div className="text-lg font-bold text-purple-800">{chartData.summary.maintenanceRooms}</div>
                     <div className="text-xs text-purple-600">Maintenance</div>
                   </div>
-                  <div className="bg-blue-50 rounded-lg p-3 text-center">
-                    <div className="text-2xl font-bold text-blue-800">{chartData.summary.occupancyRate.toFixed(1)}%</div>
+                  <div className="bg-blue-50 rounded-md p-2 text-center">
+                    <div className="text-lg font-bold text-blue-800">{chartData.summary.occupancyRate.toFixed(1)}%</div>
                     <div className="text-xs text-blue-600">Occupancy</div>
                   </div>
                 </div>
 
-                {/* Occupancy progress bar */}
-                <div className="bg-gray-200 rounded-full h-3 overflow-hidden">
-                  <div 
-                    className="h-full bg-gradient-to-r from-green-500 to-red-500 transition-all duration-500 ease-out"
-                    style={{ width: `${chartData.summary.occupancyRate}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-xs text-gray-500">
-                  <span>0%</span>
-                  <span>Target: 85%</span>
-                  <span>100%</span>
+                {/* Compact occupancy progress bar */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 w-8">0%</span>
+                  <div className="flex-1 bg-gray-200 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-green-500 to-red-500 transition-all duration-500 ease-out"
+                      style={{ width: `${chartData.summary.occupancyRate}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-gray-500 w-8">100%</span>
+                  <span className="text-xs text-blue-600 font-medium ml-2">Target: 85%</span>
                 </div>
               </div>
             )}
@@ -1413,7 +1649,7 @@ const TapeChartView: React.FC = () => {
                 {/* Date header */}
                 <div className="sticky top-0 z-20 bg-white border-b border-gray-300">
                   <div className="flex min-w-fit">
-                  <div className="sticky left-0 z-30 bg-gray-50 border-r border-gray-300 min-w-[150px] p-3">
+                  <div className="sticky left-0 z-30 bg-gray-50 border-r border-gray-300 min-w-[150px] p-2">
                     <div className="font-medium">Room</div>
                   </div>
                   {getDatesInRange.map(date => {
@@ -1424,15 +1660,15 @@ const TapeChartView: React.FC = () => {
                       <div
                         key={format(date, 'yyyy-MM-dd')}
                         className={`
-                          min-w-[120px] p-2 border-r border-gray-200 text-center
-                          ${isWeekend ? 'bg-gray-50' : 'bg-white'}
-                          ${isToday ? 'bg-blue-50 border-blue-200' : ''}
+                          min-w-[100px] p-1.5 border-r border-gray-200/60 text-center
+                          ${isWeekend ? 'bg-gray-50/80' : 'bg-white'}
+                          ${isToday ? 'bg-blue-50/80 border-blue-200' : ''}
                         `}
                       >
-                        <div className="font-medium text-sm">
+                        <div className={`font-medium text-xs ${isToday ? 'text-blue-600' : 'text-gray-700'}`}>
                           {format(date, 'EEE')}
                         </div>
-                        <div className={`text-xs ${isToday ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>
+                        <div className={`text-xs ${isToday ? 'text-blue-500 font-medium' : 'text-gray-500'}`}>
                           {format(date, 'MMM dd')}
                         </div>
                       </div>
@@ -1462,104 +1698,180 @@ const TapeChartView: React.FC = () => {
           </CardContent>
         </Card>
         
-        {/* Enhanced Context Menu */}
+        {/* Enhanced Scrollable Context Menu */}
         {contextMenu.visible && (
           <div
-            className="fixed z-50 bg-white rounded-md shadow-xl border border-gray-200 py-1 min-w-[200px]"
+            className="fixed z-50 bg-white rounded-xl shadow-2xl border border-gray-200 min-w-[280px] max-w-[320px] backdrop-blur-sm max-h-[80vh] overflow-hidden"
             style={{
-              left: contextMenu.x,
-              top: contextMenu.y
+              left: Math.min(contextMenu.x, window.innerWidth - 320),
+              top: Math.min(contextMenu.y, window.innerHeight - Math.min(600, window.innerHeight * 0.8))
             }}
           >
-            <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b">
-              Room {contextMenu.roomId}
+            {/* Scrollable Content Container */}
+            <div className="max-h-[75vh] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+            {/* Modern Room Header with Close Button */}
+            <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-xl sticky top-0 z-10">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-gray-900 text-sm">Room {contextMenu.roomNumber}</h3>
+                  <p className="text-xs text-gray-600 capitalize">{contextMenu.roomType} • Floor {contextMenu.floor}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-2 h-2 rounded-full ${
+                      contextMenu.currentStatus === 'available' ? 'bg-green-500' :
+                      contextMenu.currentStatus === 'occupied' ? 'bg-red-500' :
+                      contextMenu.currentStatus === 'maintenance' ? 'bg-yellow-500' :
+                      contextMenu.currentStatus === 'dirty' ? 'bg-orange-500' :
+                      'bg-gray-400'
+                    }`}></div>
+                    <span className="text-xs font-medium text-gray-700 capitalize bg-white px-2 py-1 rounded-full border">
+                      {contextMenu.currentStatus.replace('_', ' ')}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleCloseContextMenu}
+                    className="p-1 hover:bg-white hover:bg-opacity-50 rounded-full transition-colors"
+                    title="Close menu"
+                  >
+                    <X className="w-4 h-4 text-gray-500" />
+                  </button>
+                </div>
+              </div>
             </div>
             
-            {/* Quick Actions Section */}
-            <div className="py-1 border-b">
-              <div className="px-3 py-1 text-xs font-medium text-gray-400 uppercase tracking-wide">Quick Actions</div>
-              <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50">
-                <UserPlus className="mr-2 h-4 w-4 text-blue-600" />
-                Check In Guest
-              </button>
-              <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50">
-                <UserX className="mr-2 h-4 w-4 text-red-600" />
-                Check Out Guest
-              </button>
-              <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50">
-                <Calendar className="mr-2 h-4 w-4 text-green-600" />
-                New Reservation
-              </button>
-              <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50">
-                <Copy className="mr-2 h-4 w-4 text-orange-600" />
-                Duplicate Booking
-              </button>
+            {/* Compact Quick Actions Section */}
+            <div className="py-2 border-b border-gray-100">
+              <div className="px-4 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Quick Actions</div>
+              <div className="space-y-1 px-2">
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center mr-3">
+                    <UserPlus className="h-3 w-3 text-blue-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Check In Guest</span>
+                </button>
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-red-50 hover:border-red-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-red-100 rounded-md flex items-center justify-center mr-3">
+                    <UserX className="h-3 w-3 text-red-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Check Out Guest</span>
+                </button>
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-green-50 hover:border-green-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-green-100 rounded-md flex items-center justify-center mr-3">
+                    <CalendarIcon className="h-3 w-3 text-green-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">New Reservation</span>
+                </button>
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-orange-50 hover:border-orange-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-orange-100 rounded-md flex items-center justify-center mr-3">
+                    <Copy className="h-3 w-3 text-orange-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Duplicate Booking</span>
+                </button>
+              </div>
             </div>
 
-            {/* Housekeeping Section */}
-            <div className="py-1 border-b">
-              <div className="px-3 py-1 text-xs font-medium text-gray-400 uppercase tracking-wide">Housekeeping</div>
-              <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50" 
-                      onClick={() => handleStatusChange(contextMenu.roomId, 'clean')}>
-                <CheckCircle className="mr-2 h-4 w-4 text-green-600" />
-                Mark Clean
-              </button>
-              <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
-                      onClick={() => handleStatusChange(contextMenu.roomId, 'dirty')}>
-                <AlertTriangle className="mr-2 h-4 w-4 text-yellow-600" />
-                Mark Dirty
-              </button>
-              <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50">
-                <Settings className="mr-2 h-4 w-4 text-blue-600" />
-                Inspect Required
-              </button>
-              <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
-                      onClick={() => handleStatusChange(contextMenu.roomId, 'maintenance')}>
-                <Zap className="mr-2 h-4 w-4 text-red-600" />
-                Maintenance
-              </button>
+            {/* Modern Housekeeping Section */}
+            <div className="py-2">
+              <div className="px-4 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Housekeeping</div>
+              <div className="space-y-1 px-2">
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-green-50 hover:border-green-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => handleStatusChange(contextMenu.roomId, 'clean')}
+                >
+                  <div className="w-6 h-6 bg-green-100 rounded-md flex items-center justify-center mr-3">
+                    <CheckCircle className="h-3 w-3 text-green-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Mark Clean</span>
+                </button>
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-yellow-50 hover:border-yellow-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => handleStatusChange(contextMenu.roomId, 'dirty')}
+                >
+                  <div className="w-6 h-6 bg-yellow-100 rounded-md flex items-center justify-center mr-3">
+                    <AlertTriangle className="h-3 w-3 text-yellow-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Mark Dirty</span>
+                </button>
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center mr-3">
+                    <Settings className="h-3 w-3 text-blue-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Inspect Required</span>
+                </button>
+                <button
+                  className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-red-50 hover:border-red-200 rounded-lg transition-all duration-200 border border-transparent"
+                  onClick={() => handleStatusChange(contextMenu.roomId, 'maintenance')}
+                >
+                  <div className="w-6 h-6 bg-red-100 rounded-md flex items-center justify-center mr-3">
+                    <Zap className="h-3 w-3 text-red-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Maintenance</span>
+                </button>
+              </div>
             </div>
 
-            {/* Guest Services Section */}
-            <div className="py-1 border-b">
-              <div className="px-3 py-1 text-xs font-medium text-gray-400 uppercase tracking-wide">Guest Services</div>
-              <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50">
-                <Phone className="mr-2 h-4 w-4 text-blue-600" />
-                Call Guest
-              </button>
-              <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50">
-                <Mail className="mr-2 h-4 w-4 text-green-600" />
-                Send Message
-              </button>
-              <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50">
-                <Coffee className="mr-2 h-4 w-4 text-orange-600" />
-                Room Service
-              </button>
-              <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50">
-                <Star className="mr-2 h-4 w-4 text-yellow-600" />
-                VIP Services
-              </button>
+            {/* Compact Guest Services Section */}
+            <div className="py-2 border-b border-gray-100">
+              <div className="px-4 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Guest Services</div>
+              <div className="space-y-1 px-2">
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center mr-3">
+                    <Phone className="h-3 w-3 text-blue-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Call Guest</span>
+                </button>
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-green-50 hover:border-green-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-green-100 rounded-md flex items-center justify-center mr-3">
+                    <Mail className="h-3 w-3 text-green-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Send Message</span>
+                </button>
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-orange-50 hover:border-orange-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-orange-100 rounded-md flex items-center justify-center mr-3">
+                    <Coffee className="h-3 w-3 text-orange-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Room Service</span>
+                </button>
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-yellow-50 hover:border-yellow-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-yellow-100 rounded-md flex items-center justify-center mr-3">
+                    <Star className="h-3 w-3 text-yellow-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">VIP Services</span>
+                </button>
+              </div>
             </div>
 
-            {/* Management Section */}
-            <div className="py-1">
-              <div className="px-3 py-1 text-xs font-medium text-gray-400 uppercase tracking-wide">Management</div>
-              <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50">
-                <Move className="mr-2 h-4 w-4 text-purple-600" />
-                Move Guest
-              </button>
-              <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50">
-                <IndianRupee className="mr-2 h-4 w-4 text-green-600" />
-                Billing Details
-              </button>
-              <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50">
-                <Users className="mr-2 h-4 w-4 text-indigo-600" />
-                Group Management
-              </button>
-              <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-red-50 text-red-600">
-                <Trash2 className="mr-2 h-4 w-4" />
-                Cancel Booking
-              </button>
+            {/* Compact Management Section */}
+            <div className="py-2">
+              <div className="px-4 py-1 text-xs font-semibold text-gray-500 uppercase tracking-wider">Management</div>
+              <div className="space-y-1 px-2">
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-purple-50 hover:border-purple-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-purple-100 rounded-md flex items-center justify-center mr-3">
+                    <Move className="h-3 w-3 text-purple-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Move Guest</span>
+                </button>
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-green-50 hover:border-green-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-green-100 rounded-md flex items-center justify-center mr-3">
+                    <IndianRupee className="h-3 w-3 text-green-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Billing Details</span>
+                </button>
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-indigo-50 hover:border-indigo-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-indigo-100 rounded-md flex items-center justify-center mr-3">
+                    <Users className="h-3 w-3 text-indigo-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Group Management</span>
+                </button>
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-red-50 hover:border-red-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-red-100 rounded-md flex items-center justify-center mr-3">
+                    <Trash2 className="h-3 w-3 text-red-600" />
+                  </div>
+                  <span className="text-sm text-red-600">Cancel Booking</span>
+                </button>
+              </div>
+            </div>
             </div>
           </div>
         )}

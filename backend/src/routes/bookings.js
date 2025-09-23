@@ -921,10 +921,78 @@ router.post('/change-room-by-guest',
       };
     }
 
-    // Find the room to get its rate
+    // Find the room to get its rate and validate room type
     const Room = mongoose.model('Room');
     const room = await Room.findById(newRoomId);
-    const roomRate = room?.price || booking.totalAmount / booking.nights || 100; // Use room price or calculate from booking
+
+    if (!room) {
+      throw new ApplicationError(`Room not found: ${newRoomNumber}`, 404);
+    }
+
+    console.log('🚀 BACKEND DEBUG - Room details:', {
+      roomNumber: room.roomNumber,
+      roomType: room.roomType,
+      price: room.price,
+      isActive: room.isActive
+    });
+
+    console.log('🚀 BACKEND DEBUG - Booking room type:', booking.roomType);
+
+    // Validate room type compatibility
+    if (booking.roomType && room.roomType) {
+      const bookingRoomType = booking.roomType.toLowerCase();
+      const actualRoomType = room.roomType.toLowerCase();
+
+      // Check if room types match (allow some flexibility for similar types)
+      const isCompatible =
+        bookingRoomType === actualRoomType ||
+        (bookingRoomType === 'deluxe' && actualRoomType === 'deluxe') ||
+        (bookingRoomType === 'suite' && actualRoomType === 'suite') ||
+        (bookingRoomType === 'single' && actualRoomType === 'single') ||
+        (bookingRoomType === 'double' && actualRoomType === 'double');
+
+      if (!isCompatible) {
+        console.log('🚀 BACKEND DEBUG - Room type mismatch!');
+        throw new ApplicationError(
+          `Room type mismatch: Booking requires ${booking.roomType} but room ${newRoomNumber} is ${room.roomType}`,
+          400
+        );
+      }
+    }
+
+    // Validate that the target date is within the booking's check-in/check-out period
+    const { newCheckInDate } = req.body;
+    if (newCheckInDate) {
+      const targetDate = new Date(newCheckInDate);
+      const bookingCheckIn = new Date(booking.checkIn);
+      const bookingCheckOut = new Date(booking.checkOut);
+
+      // Normalize dates to compare only the date part
+      targetDate.setHours(0, 0, 0, 0);
+      bookingCheckIn.setHours(0, 0, 0, 0);
+      bookingCheckOut.setHours(0, 0, 0, 0);
+
+      console.log('🚀 BACKEND DEBUG - Date validation:', {
+        targetDate: targetDate.toISOString(),
+        bookingCheckIn: bookingCheckIn.toISOString(),
+        bookingCheckOut: bookingCheckOut.toISOString()
+      });
+
+      // Check if target date is within the booking period (inclusive of check-in, exclusive of check-out)
+      if (targetDate < bookingCheckIn || targetDate >= bookingCheckOut) {
+        throw new ApplicationError(
+          `Date mismatch: Cannot assign guest to ${targetDate.toDateString()}. Booking is only valid from ${bookingCheckIn.toDateString()} to ${new Date(bookingCheckOut.getTime() - 1).toDateString()}`,
+          400
+        );
+      }
+    }
+
+    // Check if room is active and available
+    if (!room.isActive) {
+      throw new ApplicationError(`Room ${newRoomNumber} is not active`, 400);
+    }
+
+    const roomRate = room.price || booking.totalAmount / booking.nights || 100;
 
     // Handle bookings without rooms (new bookings) or with existing rooms
     if (booking.rooms.length > 0) {

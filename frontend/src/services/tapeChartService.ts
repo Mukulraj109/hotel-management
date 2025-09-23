@@ -424,6 +424,7 @@ class TapeChartService {
       checkOut: draggedItemData.checkOut,
       newRoomId: assignmentData.roomId,
       newRoomNumber: assignmentData.roomNumber,
+      newCheckInDate: assignmentData.newCheckInDate, // Pass the target date for validation
       reason: assignmentData.notes || 'Room assignment via tape chart drag & drop'
     };
 

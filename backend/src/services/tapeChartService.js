@@ -722,9 +722,18 @@ class TapeChartService {
         // Generate timeline for date range
         for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
           const dateStr = d.toISOString().split('T')[0];
-          const dayBooking = roomData.bookings.find(b => 
-            new Date(b.checkIn) <= d && new Date(b.checkOut) > d
-          );
+          const dayBooking = roomData.bookings.find(b => {
+            const bookingCheckIn = new Date(b.checkIn);
+            const bookingCheckOut = new Date(b.checkOut);
+
+            // Set times to handle date comparisons properly
+            bookingCheckIn.setHours(0, 0, 0, 0);
+            bookingCheckOut.setHours(23, 59, 59, 999);
+
+            // Include both check-in and check-out dates in the booking display
+            // For Sep 23-25 booking: show on Sep 23, 24, and 25
+            return bookingCheckIn <= d && bookingCheckOut >= d;
+          });
 
           const dayBlock = roomData.blocks.find(b =>
             new Date(b.startDate) <= d && new Date(b.endDate) >= d

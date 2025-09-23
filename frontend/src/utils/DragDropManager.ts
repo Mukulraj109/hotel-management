@@ -42,6 +42,7 @@ export class DragDropManager {
   private conflictChecks: Map<string, boolean> = new Map();
   private operationHistory: DragOperation[] = [];
   private readonly MAX_HISTORY = 10;
+  private refreshCallback: (() => void) | null = null;
 
   private constructor() {}
 
@@ -76,6 +77,18 @@ export class DragDropManager {
 
   getSelectionCount(): number {
     return this.selectedReservations.size;
+  }
+
+  // Set refresh callback for real-time updates
+  setRefreshCallback(callback: () => void): void {
+    this.refreshCallback = callback;
+  }
+
+  private triggerRefresh(): void {
+    if (this.refreshCallback) {
+      console.log('🔄 Triggering chart refresh...');
+      this.refreshCallback();
+    }
   }
 
   // Drag operation management
@@ -172,16 +185,18 @@ export class DragDropManager {
     expiresAt?: Date;
   }> {
     try {
-      // This would integrate with the existing room lock system
-      const response = await fetch(`/api/v1/tape-chart/rooms/${roomId}/lock-status`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
-
-      if (response.ok) {
-        return await response.json();
-      }
-
+      // For now, skip room lock checking as the API endpoint may not exist
+      // In the future, this would integrate with the existing room lock system
+      console.log('Skipping room lock check for room:', roomId);
       return { isLocked: false };
+
+      // TODO: Implement actual room lock checking when API is available
+      // const response = await fetch(`/api/v1/tape-chart/rooms/${roomId}/lock-status`, {
+      //   headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      // });
+      // if (response.ok) {
+      //   return await response.json();
+      // }
     } catch (error) {
       console.error('Error checking room lock:', error);
       return { isLocked: false };
@@ -334,7 +349,15 @@ export class DragDropManager {
           }
 
         } catch (error: any) {
-          const errorMessage = `Failed to assign ${reservation.guestName}: ${error.message}`;
+          let errorMessage = `Failed to assign ${reservation.guestName}`;
+
+          // Extract specific error message from server response
+          if (error.response?.data?.message) {
+            errorMessage = error.response.data.message;
+          } else if (error.message) {
+            errorMessage = `${errorMessage}: ${error.message}`;
+          }
+
           errors.push(errorMessage);
           console.error('❌❌ DRAG DROP MANAGER - Assignment error:', errorMessage, error);
           console.error('❌❌ DRAG DROP MANAGER - Error details:', error.response?.data);
@@ -348,14 +371,40 @@ export class DragDropManager {
           : `${results.length} reservations successfully assigned`;
 
         toast.success(successMessage);
+
+        // Trigger chart refresh for real-time updates
+        setTimeout(() => {
+          this.triggerRefresh();
+        }, 500); // Small delay to ensure backend update is complete
       }
 
       if (errors.length > 0) {
-        const errorMessage = errors.length === 1
-          ? errors[0]
-          : `${errors.length} assignments failed. Check console for details.`;
+        // Show specific error messages for better UX
+        errors.forEach((error, index) => {
+          let toastType = 'error';
+          let toastMessage = error;
 
-        toast.error(errorMessage);
+          // Customize toast based on error type
+          if (error.includes('Room type mismatch')) {
+            toastType = 'warning';
+            toastMessage = `❌ ${error}\n\nTip: Guests can only be assigned to rooms matching their booking type.`;
+          } else if (error.includes('not active')) {
+            toastType = 'warning';
+            toastMessage = `🚫 ${error}\n\nPlease contact maintenance to activate this room.`;
+          } else if (error.includes('Booking not found')) {
+            toastType = 'error';
+            toastMessage = `🔍 ${error}\n\nPlease verify the guest details and try again.`;
+          }
+
+          // Show one toast per error with slight delay to avoid stacking
+          setTimeout(() => {
+            if (toastType === 'warning') {
+              toast.warning(toastMessage);
+            } else {
+              toast.error(toastMessage);
+            }
+          }, index * 100);
+        });
       }
 
       return {

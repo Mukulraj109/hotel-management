@@ -1,13 +1,15 @@
 import React from 'react';
-import { Bell, User, Settings, Menu } from 'lucide-react';
+import { Bell, User, Settings, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 
 interface AdminHeaderProps {
   onMenuClick?: () => void;
+  onSidebarToggle?: () => void;
+  isSidebarCollapsed?: boolean;
 }
 
-export default function AdminHeader({ onMenuClick }: AdminHeaderProps) {
+export default function AdminHeader({ onMenuClick, onSidebarToggle, isSidebarCollapsed }: AdminHeaderProps) {
   const { user, logout } = useAuth();
 
   return (
@@ -21,7 +23,20 @@ export default function AdminHeader({ onMenuClick }: AdminHeaderProps) {
           >
             <Menu className="h-5 w-5" />
           </button>
-          
+
+          {/* Desktop sidebar toggle button */}
+          <button
+            onClick={onSidebarToggle}
+            className="hidden lg:block p-2 rounded-md text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+            title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {isSidebarCollapsed ? (
+              <PanelLeftOpen className="h-5 w-5" />
+            ) : (
+              <PanelLeftClose className="h-5 w-5" />
+            )}
+          </button>
+
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
             {user?.role === 'admin' ? 'Admin Dashboard' : 'Staff Dashboard'}
           </h1>
