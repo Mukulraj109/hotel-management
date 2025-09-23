@@ -25,8 +25,12 @@ export default function GuestHeader({ onMenuToggle }: GuestHeaderProps) {
           </button>
           
           <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-900">
-            <span className="hidden sm:inline">THE PENTOUZ Portal</span>
-            <span className="sm:hidden">PENTOUZ</span>
+            <span className="hidden sm:inline">
+              {user?.role === 'travel_agent' ? 'THE PENTOUZ Travel Agent Portal' : 'THE PENTOUZ Portal'}
+            </span>
+            <span className="sm:hidden">
+              {user?.role === 'travel_agent' ? 'TA Portal' : 'PENTOUZ'}
+            </span>
           </h1>
         </div>
         
@@ -41,7 +45,9 @@ export default function GuestHeader({ onMenuToggle }: GuestHeaderProps) {
           <div className="hidden sm:flex items-center space-x-3">
             <div className="text-right">
               <p className="text-sm font-medium text-gray-900">{user?.name}</p>
-              <p className="text-xs text-gray-500">{user?.loyalty?.tier} Member</p>
+              <p className="text-xs text-gray-500">
+                {user?.role === 'travel_agent' ? 'Travel Agent' : `${user?.loyalty?.tier} Member`}
+              </p>
             </div>
           </div>
           

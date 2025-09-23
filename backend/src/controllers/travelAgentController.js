@@ -4,6 +4,9 @@ import TravelAgentBooking from '../models/TravelAgentBooking.js';
 import User from '../models/User.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import exportService from '../services/exportService.js';
+import analyticsService from '../services/analyticsService.js';
+import emailNotificationService from '../services/emailNotificationService.js';
 
 /**
  * @swagger
@@ -589,4 +592,395 @@ export const validateAgentCode = catchAsync(async (req, res) => {
       commissionRate: travelAgent.commissionStructure.defaultRate
     }
   });
+});
+
+/**
+ * @swagger
+ * /api/v1/travel-agents/export/bookings:
+ *   post:
+ *     summary: Export bookings data to Excel or CSV
+ *     tags: [TravelAgents]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               format:
+ *                 type: string
+ *                 enum: [excel, csv]
+ *                 default: excel
+ *               filters:
+ *                 type: object
+ *                 properties:
+ *                   startDate:
+ *                     type: string
+ *                     format: date
+ *                   endDate:
+ *                     type: string
+ *                     format: date
+ *                   status:
+ *                     type: string
+ *                   hotelId:
+ *                     type: string
+ *     responses:
+ *       200:
+ *         description: Export file created successfully
+ */
+export const exportBookings = catchAsync(async (req, res) => {
+  const { format = 'excel', filters = {} } = req.body;
+
+  // If user is a travel agent, only allow exporting their own data
+  let travelAgentId = null;
+  if (req.user.role === 'travel_agent') {
+    const travelAgent = await TravelAgent.findOne({ userId: req.user._id });
+    if (!travelAgent) {
+      throw new ApplicationError('Travel agent profile not found', 404);
+    }
+    travelAgentId = travelAgent._id;
+  }
+
+  let result;
+  if (format === 'csv') {
+    result = await exportService.exportBookingsToCSV(filters, travelAgentId);
+  } else {
+    result = await exportService.exportBookingsToExcel(filters, travelAgentId);
+  }
+
+  res.json({
+    success: true,
+    message: 'Export completed successfully',
+    data: {
+      filename: result.filename,
+      recordCount: result.recordCount,
+      fileSize: result.fileSize,
+      downloadUrl: `/api/v1/travel-agents/download/${result.filename}`
+    }
+  });
+});
+
+/**
+ * @swagger
+ * /api/v1/travel-agents/export/commission-report:
+ *   post:
+ *     summary: Generate commission report
+ *     tags: [TravelAgents]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               filters:
+ *                 type: object
+ *                 properties:
+ *                   startDate:
+ *                     type: string
+ *                     format: date
+ *                   endDate:
+ *                     type: string
+ *                     format: date
+ *                   travelAgentId:
+ *                     type: string
+ *                   status:
+ *                     type: string
+ *                     default: confirmed
+ *     responses:
+ *       200:
+ *         description: Commission report generated successfully
+ */
+export const generateCommissionReport = catchAsync(async (req, res) => {
+  const { filters = {} } = req.body;
+
+  // If user is a travel agent, only allow generating report for themselves
+  if (req.user.role === 'travel_agent') {
+    const travelAgent = await TravelAgent.findOne({ userId: req.user._id });
+    if (!travelAgent) {
+      throw new ApplicationError('Travel agent profile not found', 404);
+    }
+    filters.travelAgentId = travelAgent._id;
+  }
+
+  const result = await exportService.generateCommissionReport(filters);
+
+  res.json({
+    success: true,
+    message: 'Commission report generated successfully',
+    data: {
+      filename: result.filename,
+      summary: result.summary,
+      fileSize: result.fileSize,
+      downloadUrl: `/api/v1/travel-agents/download/${result.filename}`
+    }
+  });
+});
+
+/**
+ * @swagger
+ * /api/v1/travel-agents/export/batch:
+ *   post:
+ *     summary: Create batch export with multiple formats
+ *     tags: [TravelAgents]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               formats:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   enum: [excel, csv, commission]
+ *               filters:
+ *                 type: object
+ *               includeInvoices:
+ *                 type: boolean
+ *                 default: false
+ *     responses:
+ *       200:
+ *         description: Batch export created successfully
+ */
+export const createBatchExport = catchAsync(async (req, res) => {
+  const { formats = ['excel'], filters = {}, includeInvoices = false } = req.body;
+
+  // If user is a travel agent, only allow exporting their own data
+  if (req.user.role === 'travel_agent') {
+    const travelAgent = await TravelAgent.findOne({ userId: req.user._id });
+    if (!travelAgent) {
+      throw new ApplicationError('Travel agent profile not found', 404);
+    }
+    filters.travelAgentId = travelAgent._id;
+  }
+
+  const exportOptions = {
+    formats,
+    filters,
+    includeInvoices: includeInvoices && req.user.role !== 'travel_agent' // Only admins can include invoices
+  };
+
+  const result = await exportService.createBatchExport(exportOptions);
+
+  res.json({
+    success: true,
+    message: 'Batch export created successfully',
+    data: {
+      filename: result.filename,
+      exports: result.exports,
+      totalFiles: result.totalFiles,
+      fileSize: result.fileSize,
+      downloadUrl: `/api/v1/travel-agents/download/${result.filename}`
+    }
+  });
+});
+
+/**
+ * @swagger
+ * /api/v1/travel-agents/analytics/trends:
+ *   get:
+ *     summary: Get booking trends analytics
+ *     tags: [TravelAgents]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: granularity
+ *         schema:
+ *           type: string
+ *           enum: [day, week, month, quarter]
+ *           default: month
+ *     responses:
+ *       200:
+ *         description: Booking trends analytics
+ */
+export const getBookingTrends = catchAsync(async (req, res) => {
+  const { startDate, endDate, granularity = 'month' } = req.query;
+
+  const filters = { granularity };
+  if (startDate) filters.startDate = startDate;
+  if (endDate) filters.endDate = endDate;
+
+  // If user is a travel agent, only show their own data
+  if (req.user.role === 'travel_agent') {
+    const travelAgent = await TravelAgent.findOne({ userId: req.user._id });
+    if (!travelAgent) {
+      throw new ApplicationError('Travel agent profile not found', 404);
+    }
+    filters.travelAgentId = travelAgent._id;
+  }
+
+  const analytics = await analyticsService.analyzeBookingTrends(filters);
+
+  res.json({
+    success: true,
+    data: analytics
+  });
+});
+
+/**
+ * @swagger
+ * /api/v1/travel-agents/analytics/forecast:
+ *   get:
+ *     summary: Get revenue forecast
+ *     tags: [TravelAgents]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: periodsAhead
+ *         schema:
+ *           type: integer
+ *           default: 6
+ *       - in: query
+ *         name: granularity
+ *         schema:
+ *           type: string
+ *           enum: [day, week, month, quarter]
+ *           default: month
+ *     responses:
+ *       200:
+ *         description: Revenue forecast
+ */
+export const getRevenueForecast = catchAsync(async (req, res) => {
+  const { periodsAhead = 6, granularity = 'month' } = req.query;
+
+  const filters = { granularity };
+
+  // If user is a travel agent, only show their own forecast
+  if (req.user.role === 'travel_agent') {
+    const travelAgent = await TravelAgent.findOne({ userId: req.user._id });
+    if (!travelAgent) {
+      throw new ApplicationError('Travel agent profile not found', 404);
+    }
+    filters.travelAgentId = travelAgent._id;
+  }
+
+  const forecast = await analyticsService.forecastRevenue(filters, parseInt(periodsAhead));
+
+  res.json({
+    success: true,
+    data: forecast
+  });
+});
+
+/**
+ * @swagger
+ * /api/v1/travel-agents/analytics/performance:
+ *   get:
+ *     summary: Get performance metrics
+ *     tags: [TravelAgents]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *     responses:
+ *       200:
+ *         description: Performance metrics
+ */
+export const getPerformanceMetrics = catchAsync(async (req, res) => {
+  const { startDate, endDate } = req.query;
+
+  const filters = {};
+  if (startDate) filters.startDate = startDate;
+  if (endDate) filters.endDate = endDate;
+
+  // If user is a travel agent, only show their own metrics
+  if (req.user.role === 'travel_agent') {
+    const travelAgent = await TravelAgent.findOne({ userId: req.user._id });
+    if (!travelAgent) {
+      throw new ApplicationError('Travel agent profile not found', 404);
+    }
+    filters.travelAgentId = travelAgent._id;
+  }
+
+  const metrics = await analyticsService.calculatePerformanceMetrics(filters);
+
+  res.json({
+    success: true,
+    data: metrics
+  });
+});
+
+/**
+ * @swagger
+ * /api/v1/travel-agents/download/{filename}:
+ *   get:
+ *     summary: Download exported file
+ *     tags: [TravelAgents]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: filename
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: File download
+ */
+export const downloadFile = catchAsync(async (req, res) => {
+  const { filename } = req.params;
+  const fs = await import('fs');
+  const path = await import('path');
+
+  const filepath = path.join(process.cwd(), 'exports', filename);
+
+  // Check if file exists
+  if (!fs.existsSync(filepath)) {
+    throw new ApplicationError('File not found', 404);
+  }
+
+  // Set appropriate headers
+  const ext = path.extname(filename).toLowerCase();
+  let contentType = 'application/octet-stream';
+
+  switch (ext) {
+    case '.xlsx':
+      contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      break;
+    case '.csv':
+      contentType = 'text/csv';
+      break;
+    case '.zip':
+      contentType = 'application/zip';
+      break;
+    case '.html':
+      contentType = 'text/html';
+      break;
+  }
+
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+  const fileStream = fs.createReadStream(filepath);
+  fileStream.pipe(res);
 });

@@ -828,17 +828,18 @@ router.post('/change-room',
   })
 );
 
-// Change room by finding booking via guest details (for drag & drop in tape chart)
-router.post('/change-room-by-guest', 
-  authenticate, 
+// Change room by finding booking via guest details or booking ID (for drag & drop in tape chart)
+router.post('/change-room-by-guest',
+  authenticate,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     console.log('🚀 BACKEND DEBUG - Request body:', req.body);
     console.log('🚀 BACKEND DEBUG - User info:', req.user);
-    
-    const { guestName, checkIn, checkOut, newRoomId, newRoomNumber, reason } = req.body;
-    
+
+    const { bookingId, guestName, checkIn, checkOut, newRoomId, newRoomNumber, reason } = req.body;
+
     console.log('🚀 BACKEND DEBUG - Extracted data:', {
+      bookingId,
       guestName,
       checkIn,
       checkOut,
@@ -846,41 +847,67 @@ router.post('/change-room-by-guest',
       newRoomNumber,
       reason
     });
-    
-    // Find booking by guest name and dates
-    // First, find the user by name
-    const user = await User.findOne({ 
-      name: { $regex: new RegExp(guestName, 'i') } 
-    });
-    
-    if (!user) {
-      console.log('🚀 BACKEND DEBUG - No user found with name:', guestName);
-      throw new ApplicationError(`Guest not found: ${guestName}`, 404);
-    }
-    
-    console.log('🚀 BACKEND DEBUG - Found user:', user.name, user._id);
-    
-    // Then find the booking by userId and dates
-    const searchQuery = {
-      userId: user._id,
-      checkIn: new Date(checkIn),
-      checkOut: new Date(checkOut)
-    };
-    
-    console.log('🚀 BACKEND DEBUG - Search query:', searchQuery);
-    
-    const booking = await Booking.findOne(searchQuery);
-    
-    console.log('🚀 BACKEND DEBUG - Found booking:', booking);
-    
-    if (!booking) {
-      console.log('🚀 BACKEND DEBUG - No booking found for search query');
-      throw new ApplicationError(`Booking not found for ${guestName} (${checkIn} to ${checkOut})`, 404);
+
+    let booking;
+
+    // First try to find by bookingId if provided
+    if (bookingId) {
+      console.log('🚀 BACKEND DEBUG - Searching by booking ID:', bookingId);
+      booking = await Booking.findById(bookingId);
     }
 
+    // If not found by ID, search by guest name and dates
+    if (!booking && guestName) {
+      console.log('🚀 BACKEND DEBUG - Searching by guest name and dates');
+
+      // Find the user by name
+      const user = await User.findOne({
+        name: { $regex: new RegExp(guestName, 'i') }
+      });
+
+      if (user) {
+        console.log('🚀 BACKEND DEBUG - Found user:', user.name, user._id);
+
+        // Create flexible date range to handle timezone issues
+        const checkInDate = new Date(checkIn);
+        const checkOutDate = new Date(checkOut);
+        checkInDate.setHours(0, 0, 0, 0);
+        checkOutDate.setHours(23, 59, 59, 999);
+
+        // Search with date range
+        const searchQuery = {
+          userId: user._id,
+          checkIn: {
+            $gte: new Date(checkInDate.getTime() - 24 * 60 * 60 * 1000), // 1 day before
+            $lte: new Date(checkInDate.getTime() + 24 * 60 * 60 * 1000)  // 1 day after
+          },
+          checkOut: {
+            $gte: new Date(checkOutDate.getTime() - 24 * 60 * 60 * 1000), // 1 day before
+            $lte: new Date(checkOutDate.getTime() + 24 * 60 * 60 * 1000)  // 1 day after
+          }
+        };
+
+        console.log('🚀 BACKEND DEBUG - Search query:', searchQuery);
+        booking = await Booking.findOne(searchQuery);
+      } else {
+        console.log('🚀 BACKEND DEBUG - No user found with name:', guestName);
+      }
+    }
+
+    if (!booking) {
+      console.log('🚀 BACKEND DEBUG - No booking found');
+      throw new ApplicationError(`Booking not found for ${guestName || bookingId}`, 404);
+    }
+
+    console.log('🚀 BACKEND DEBUG - Found booking:', booking._id);
     console.log('🚀 BACKEND DEBUG - Booking rooms:', booking.rooms);
     console.log('🚀 BACKEND DEBUG - Booking rooms length:', booking.rooms?.length);
     console.log('🚀 BACKEND DEBUG - Booking status:', booking.status);
+
+    // Ensure rooms array exists
+    if (!booking.rooms) {
+      booking.rooms = [];
+    }
 
     // Check if booking is cancelled and reactivate it if needed
     if (booking.status === 'cancelled') {
@@ -894,34 +921,44 @@ router.post('/change-room-by-guest',
       };
     }
 
+    // Find the room to get its rate
+    const Room = mongoose.model('Room');
+    const room = await Room.findById(newRoomId);
+    const roomRate = room?.price || booking.totalAmount / booking.nights || 100; // Use room price or calculate from booking
+
     // Handle bookings without rooms (new bookings) or with existing rooms
-    if (booking.rooms && booking.rooms.length > 0) {
+    if (booking.rooms.length > 0) {
       // Update existing room
       console.log('🚀 BACKEND DEBUG - Updating existing room from:', booking.rooms[0].roomId, 'to:', newRoomId);
       booking.rooms[0].roomId = new mongoose.Types.ObjectId(newRoomId);
+      booking.rooms[0].rate = roomRate;
     } else {
       // Add new room to booking
       console.log('🚀 BACKEND DEBUG - Adding new room to booking:', newRoomId);
-      booking.rooms = [{
+      booking.rooms.push({
         roomId: new mongoose.Types.ObjectId(newRoomId),
-        rate: 0 // Will be updated when room is confirmed
-      }];
+        rate: roomRate
+      });
     }
 
     // Add a note about the room assignment/change
     if (!booking.notes) booking.notes = [];
     booking.notes.push(`Room assigned/changed to ${newRoomNumber} on ${new Date().toISOString()} by ${req.user.name}. Reason: ${reason}`);
-    
+
     console.log('🚀 BACKEND DEBUG - Saving booking with updated room...');
     await booking.save();
-    
+
     console.log('🚀 BACKEND DEBUG - Booking saved successfully');
-    
+
+    // Populate the updated booking with user and room details
+    await booking.populate('userId', 'name email');
+    await booking.populate('rooms.roomId', 'roomNumber roomType');
+
     res.json({
       success: true,
       data: {
         booking,
-        message: `${guestName}'s room assigned to ${newRoomNumber} successfully`
+        message: `${guestName || 'Booking'}'s room assigned to ${newRoomNumber} successfully`
       }
     });
   })

@@ -20,7 +20,8 @@ import {
   CreditCard,
   CheckSquare,
   ShoppingBag,
-  AlertTriangle
+  AlertTriangle,
+  FileText
 } from 'lucide-react';
 
 const navigation = [
@@ -37,6 +38,7 @@ const navigation = [
   { name: 'Room Status', href: '/staff/rooms', icon: Users },
   { name: 'Inventory', href: '/staff/inventory', icon: Package },
   { name: 'Checkout Inventory', href: '/staff/checkout-inventory', icon: CreditCard },
+  { name: 'Documents', href: '/staff/documents', icon: FileText },
   { name: 'Reports', href: '/staff/reports', icon: BarChart3 },
 ];
 

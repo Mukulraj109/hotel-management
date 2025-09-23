@@ -81,6 +81,7 @@ import dashboardUpdatesRoutes from './routes/dashboardUpdates.js'; // Temporaril
 import corporateRoutes from './routes/corporate.js'; // Temporarily disabled
 import roomInventoryRoutes from './routes/roomInventory.js'; // Temporarily disabled
 import photoUploadRoutes from './routes/photoUpload.js'; // Temporarily disabled
+import documentUploadRoutes from './routes/documentUpload.js';
 import staffTaskRoutes from './routes/staffTasks.js'; // Temporarily disabled
 import checkoutInventoryRoutes from './routes/checkoutInventory.js'; // Temporarily disabled
 import dailyRoutineCheckRoutes from './routes/dailyRoutineCheck.js'; // Temporarily disabled
@@ -480,6 +481,7 @@ app.use('/api/v1/admin/travel-dashboard', adminTravelDashboardRoutes);
 app.use('/api/v1/dashboard-updates', dashboardUpdatesRoutes);
 app.use('/api/v1/room-inventory', roomInventoryRoutes);
 app.use('/api/v1/photos', photoUploadRoutes);
+app.use('/api/v1/documents', documentUploadRoutes);
 app.use('/api/v1/staff-tasks', staffTaskRoutes);
 app.use('/api/v1/checkout-inventory', checkoutInventoryRoutes);
 app.use('/api/v1/daily-routine-check', dailyRoutineCheckRoutes);

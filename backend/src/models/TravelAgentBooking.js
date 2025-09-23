@@ -414,6 +414,13 @@ const travelAgentBookingSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  confirmationNumber: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true,
+    uppercase: true
   }
 }, {
   timestamps: true,
@@ -529,7 +536,7 @@ travelAgentBookingSchema.methods.getRevenueSummary = function() {
 // Static methods
 travelAgentBookingSchema.statics.getAgentPerformance = function(travelAgentId, startDate, endDate) {
   const matchStage = {
-    travelAgentId: mongoose.Types.ObjectId(travelAgentId),
+    travelAgentId: new mongoose.Types.ObjectId(travelAgentId),
     isActive: true
   };
 
@@ -566,7 +573,7 @@ travelAgentBookingSchema.statics.getMonthlyRevenue = function(travelAgentId, yea
   return this.aggregate([
     {
       $match: {
-        travelAgentId: mongoose.Types.ObjectId(travelAgentId),
+        travelAgentId: new mongoose.Types.ObjectId(travelAgentId),
         createdAt: {
           $gte: new Date(year, 0, 1),
           $lt: new Date(year + 1, 0, 1)
@@ -595,7 +602,7 @@ travelAgentBookingSchema.statics.getPendingCommissions = function(hotelId) {
   };
 
   if (hotelId) {
-    matchStage.hotelId = mongoose.Types.ObjectId(hotelId);
+    matchStage.hotelId = new mongoose.Types.ObjectId(hotelId);
   }
 
   return this.find(matchStage)

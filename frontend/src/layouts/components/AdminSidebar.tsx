@@ -39,7 +39,8 @@ import {
   ShoppingBag,
   MessageSquare,
   CheckSquare,
-  Receipt
+  Receipt,
+  Plane
 } from 'lucide-react';
 
 const navigation = [
@@ -51,7 +52,10 @@ const navigation = [
   { name: 'Room Type Allotments', href: '/admin/room-allotments', icon: Target },
   { name: 'Bookings', href: '/admin/bookings', icon: Calendar },
   { name: 'Corporate', href: '/admin/corporate', icon: Users },
+  { name: 'Travel Agents', href: '/admin/travel-dashboard', icon: Plane },
   { name: 'Staff Management', href: '/admin/staff', icon: UserCheck },
+  { name: 'Document Verification', href: '/admin/documents', icon: FileText },
+  { name: 'Document Analytics', href: '/admin/documents/analytics', icon: BarChart3 },
 { name: 'Financial (INR)', href: '/admin/financial', icon: IndianRupee },
   { name: 'Billing & Payments', href: '/admin/billing', icon: CreditCard },
   { name: 'POS System', href: '/admin/pos', icon: ShoppingCart },

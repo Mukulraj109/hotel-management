@@ -8,11 +8,28 @@ import {
   getTravelAgentPerformance,
   getMyTravelAgentProfile,
   getMyBookings,
-  validateAgentCode
+  validateAgentCode,
+  exportBookings,
+  generateCommissionReport,
+  createBatchExport,
+  getBookingTrends,
+  getRevenueForecast,
+  getPerformanceMetrics,
+  downloadFile
 } from '../controllers/travelAgentController.js';
+import {
+  createMultiBooking,
+  getMultiBookingById,
+  updateMultiBookingStatus,
+  calculateBulkPricing,
+  rollbackFailedBookings,
+  getAgentMultiBookings,
+  getMultiBookingAnalytics
+} from '../controllers/multiBookingController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { validate } from '../middleware/validation.js';
+import { validate, schemas } from '../middleware/validation.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
 import Joi from 'joi';
 
 const router = express.Router();
@@ -113,11 +130,11 @@ const updateStatusSchema = Joi.object({
   reason: Joi.string().max(500)
 });
 
-// Apply authentication to all routes
-router.use(authenticate);
-
 // Public route for agent code validation (no auth required)
 router.get('/validate-code/:code', validateAgentCode);
+
+// Apply authentication to all other routes
+router.use(authenticate);
 
 // Travel agent specific routes
 router.get('/me', getMyTravelAgentProfile);
@@ -155,6 +172,128 @@ router.patch('/:id/status',
 router.get('/:id/performance',
   authorize('admin', 'manager', 'staff', 'travel_agent'),
   getTravelAgentPerformance
+);
+
+// Multi-booking routes
+router.post('/multi-booking',
+  authorize('admin', 'manager', 'travel_agent'),
+  (req, res, next) => {
+    // Custom validation for multi-booking
+    const { error } = schemas.createMultiBooking.validate(req.body);
+    
+    if (error) {
+      // For travel agents, don't require travelAgentId in request body
+      if (req.user.role === 'travel_agent') {
+        const filteredErrors = error.details.filter(detail => 
+          !detail.path.includes('travelAgentId')
+        );
+        if (filteredErrors.length > 0) {
+          const message = filteredErrors.map(detail => detail.message).join(', ');
+          return next(new ApplicationError(message, 400));
+        }
+      } else {
+        // For admin/manager, require travelAgentId
+        const message = error.details.map(detail => detail.message).join(', ');
+        return next(new ApplicationError(message, 400));
+      }
+    }
+    
+    next();
+  },
+  createMultiBooking
+);
+
+router.get('/multi-booking',
+  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  getAgentMultiBookings
+);
+
+router.get('/multi-booking/analytics',
+  authorize('admin', 'manager', 'staff'),
+  getMultiBookingAnalytics
+);
+
+router.post('/multi-booking/calculate-pricing',
+  authorize('admin', 'manager', 'travel_agent'),
+  (req, res, next) => {
+    // Custom validation for bulk pricing calculation
+    const { error } = schemas.calculateBulkPricing.validate(req.body);
+    
+    if (error) {
+      // For travel agents, don't require travelAgentId in request body
+      if (req.user.role === 'travel_agent') {
+        const filteredErrors = error.details.filter(detail => 
+          !detail.path.includes('travelAgentId')
+        );
+        if (filteredErrors.length > 0) {
+          const message = filteredErrors.map(detail => detail.message).join(', ');
+          return next(new ApplicationError(message, 400));
+        }
+      } else {
+        // For admin/manager, require travelAgentId
+        const message = error.details.map(detail => detail.message).join(', ');
+        return next(new ApplicationError(message, 400));
+      }
+    }
+    
+    next();
+  },
+  calculateBulkPricing
+);
+
+router.get('/multi-booking/:id',
+  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  getMultiBookingById
+);
+
+router.patch('/multi-booking/:id/status',
+  authorize('admin', 'manager'),
+  validate(schemas.updateMultiBookingStatus),
+  updateMultiBookingStatus
+);
+
+router.post('/multi-booking/:id/rollback',
+  authorize('admin', 'manager'),
+  validate(schemas.rollbackMultiBooking),
+  rollbackFailedBookings
+);
+
+// Export routes
+router.post('/export/bookings',
+  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  exportBookings
+);
+
+router.post('/export/commission-report',
+  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  generateCommissionReport
+);
+
+router.post('/export/batch',
+  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  createBatchExport
+);
+
+// Analytics routes
+router.get('/analytics/trends',
+  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  getBookingTrends
+);
+
+router.get('/analytics/forecast',
+  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  getRevenueForecast
+);
+
+router.get('/analytics/performance',
+  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  getPerformanceMetrics
+);
+
+// Download route
+router.get('/download/:filename',
+  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  downloadFile
 );
 
 export default router;

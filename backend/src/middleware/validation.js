@@ -683,6 +683,108 @@ export const schemas = {
       then: Joi.string().required(),
       otherwise: Joi.string().optional()
     })
+  }),
+
+  // Multi-booking validation schemas
+  createMultiBooking: Joi.object({
+    travelAgentId: Joi.string().optional().messages({
+      'string.empty': 'Travel agent ID is required'
+    }),
+    hotelId: Joi.string().required().messages({
+      'string.empty': 'Hotel ID is required',
+      'any.required': 'Hotel ID is required'
+    }),
+    groupDetails: Joi.object({
+      groupName: Joi.string().required().min(2).max(200).messages({
+        'string.empty': 'Group name is required',
+        'string.min': 'Group name must be at least 2 characters',
+        'string.max': 'Group name cannot exceed 200 characters',
+        'any.required': 'Group name is required'
+      }),
+      primaryContact: Joi.object({
+        name: Joi.string().required().max(100),
+        email: Joi.string().email().required(),
+        phone: Joi.string().required().pattern(/^\+?[\d\s-()]+$/)
+      }).required(),
+      totalGuests: Joi.number().integer().min(1).required(),
+      checkIn: Joi.date().iso().required(),
+      checkOut: Joi.date().iso().greater(Joi.ref('checkIn')).required(),
+      nights: Joi.number().integer().min(1).required()
+    }).required(),
+    bookings: Joi.array().items(Joi.object({
+      roomTypeId: Joi.string().required(),
+      quantity: Joi.number().integer().min(1).required(),
+      ratePerNight: Joi.number().min(0).required(),
+      specialRate: Joi.number().min(0).optional(),
+      guestDetails: Joi.object({
+        primaryGuest: Joi.object({
+          name: Joi.string().required().max(100),
+          email: Joi.string().email().required(),
+          phone: Joi.string().required()
+        }).required(),
+        adults: Joi.number().integer().min(1).required(),
+        children: Joi.number().integer().min(0).default(0)
+      }).required()
+    })).min(1).required().messages({
+      'array.min': 'At least one booking is required',
+      'any.required': 'Bookings array is required'
+    }),
+    paymentDetails: Joi.object({
+      method: Joi.string().valid('credit_card', 'bank_transfer', 'cash', 'cheque', 'agent_credit', 'credit', 'deposit').required(),
+      status: Joi.string().valid('pending', 'paid', 'partial', 'failed', 'refunded').default('pending')
+    }).required(),
+    specialConditions: Joi.object({
+      bulkCheckIn: Joi.boolean().default(false),
+      groupActivities: Joi.array().items(Joi.string()).optional(),
+      specialRequests: Joi.string().max(2000).allow('').optional(),
+      priorityHandling: Joi.boolean().default(false)
+    }).optional(),
+    metadata: Joi.object({
+      source: Joi.string().valid('web', 'api', 'phone', 'email').default('api'),
+      bookingChannel: Joi.string().optional(),
+      corporateAccount: Joi.string().optional(),
+      eventType: Joi.string().valid('conference', 'wedding', 'tour_group', 'corporate_event', 'other').default('other'),
+      referenceNumber: Joi.string().optional(),
+      season: Joi.string().valid('peak', 'high', 'low', 'off', 'regular').default('regular')
+    }).optional(),
+    notes: Joi.string().max(3000).optional()
+  }),
+
+  calculateBulkPricing: Joi.object({
+    bookings: Joi.array().items(Joi.object({
+      roomTypeId: Joi.string().required(),
+      quantity: Joi.number().integer().min(1).required(),
+      ratePerNight: Joi.number().min(0).optional(),
+      specialRate: Joi.number().min(0).optional(),
+      basePrice: Joi.number().min(0).optional(),
+      nights: Joi.number().integer().min(1).default(1)
+    })).min(1).required().messages({
+      'array.min': 'At least one booking is required',
+      'any.required': 'Bookings array is required'
+    }),
+    travelAgentId: Joi.string().optional().messages({
+      'string.empty': 'Travel agent ID is required'
+    }),
+    hotelId: Joi.string().optional(),
+    applyBulkDiscount: Joi.boolean().default(true)
+  }),
+
+  updateMultiBookingStatus: Joi.object({
+    status: Joi.string().valid('pending', 'confirmed', 'failed', 'partially_booked', 'cancelled').required().messages({
+      'any.only': 'Status must be one of: pending, confirmed, failed, partially_booked, cancelled',
+      'any.required': 'Status is required'
+    }),
+    reason: Joi.string().max(500).optional().messages({
+      'string.max': 'Reason cannot exceed 500 characters'
+    })
+  }),
+
+  rollbackMultiBooking: Joi.object({
+    reason: Joi.string().required().max(500).messages({
+      'string.empty': 'Rollback reason is required',
+      'any.required': 'Rollback reason is required',
+      'string.max': 'Reason cannot exceed 500 characters'
+    })
   })
 };
 

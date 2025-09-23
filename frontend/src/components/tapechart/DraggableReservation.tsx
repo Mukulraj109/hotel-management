@@ -89,14 +89,33 @@ const DraggableReservation: React.FC<DraggableReservationProps> = ({
   };
 
   const handleDragStart = (e: React.DragEvent) => {
+    console.log('🚀🚀 DRAG START FROM SIDEBAR - Guest:', reservation.guestName);
+    console.log('🚀🚀 DRAG START - Full reservation data:', reservation);
+    console.log('🚀🚀 DRAG START - Reservation ID:', reservation.id);
+    console.log('🚀🚀 DRAG START - Assigned Room:', reservation.assignedRoom);
+    console.log('🚀🚀 DRAG START - Status:', reservation.status);
+    console.log('🚀🚀 DRAG START - Room Type:', reservation.roomType);
+    console.log('🚀🚀 DRAG START - Check-in:', reservation.checkIn);
+    console.log('🚀🚀 DRAG START - Check-out:', reservation.checkOut);
+
     if (isSelected || dragDropManager.getSelectionCount() > 0) {
+      console.log('🚀🚀 DRAG START - Multi-selection mode detected');
       // If this reservation is part of a selection, include all selected items
       if (!isSelected) {
+        console.log('🚀🚀 DRAG START - Adding to selection');
         dragDropManager.addToSelection(reservation.id);
         setIsSelected(true);
       }
+    } else {
+      console.log('🚀🚀 DRAG START - Single item drag');
     }
-    onDragStart(e, reservation);
+
+    if (onDragStart) {
+      console.log('🚀🚀 DRAG START - Calling onDragStart callback');
+      onDragStart(e, reservation);
+    } else {
+      console.error('❌❌ DRAG START - No onDragStart callback provided!');
+    }
   };
 
   return (

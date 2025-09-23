@@ -290,6 +290,11 @@ export class DragDropManager {
       lockRoom?: boolean;
     } = {}
   ): Promise<{ success: boolean; results: any[]; errors: string[] }> {
+    console.log('🔧🔧 DRAG DROP MANAGER - executeAssignment called');
+    console.log('🔧🔧 DRAG DROP MANAGER - Reservations:', reservations);
+    console.log('🔧🔧 DRAG DROP MANAGER - Target:', target);
+    console.log('🔧🔧 DRAG DROP MANAGER - Options:', options);
+
     const results: any[] = [];
     const errors: string[] = [];
 
@@ -300,8 +305,11 @@ export class DragDropManager {
       }
 
       // Process each reservation
+      console.log('🔧🔧 DRAG DROP MANAGER - Processing', reservations.length, 'reservations');
       for (const reservation of reservations) {
         try {
+          console.log('🔧🔧 DRAG DROP MANAGER - Processing reservation:', reservation.guestName);
+
           const assignmentData = {
             roomId: target.roomId,
             roomNumber: target.roomNumber,
@@ -311,19 +319,25 @@ export class DragDropManager {
             moveReason: options.moveReason || 'Staff reassignment via tape chart'
           };
 
+          console.log('🔧🔧 DRAG DROP MANAGER - Assignment data:', assignmentData);
+          console.log('🔧🔧 DRAG DROP MANAGER - Calling tapeChartService.assignRoom');
+
           const result = await tapeChartService.assignRoom(reservation, assignmentData);
           results.push(result);
 
-          console.log(`✅ Successfully assigned ${reservation.guestName} to room ${target.roomNumber}`);
+          console.log(`✅✅ DRAG DROP MANAGER - Successfully assigned ${reservation.guestName} to room ${target.roomNumber}`);
+          console.log('✅✅ DRAG DROP MANAGER - Assignment result:', result);
 
           if (options.sendNotification) {
+            console.log('🔧🔧 DRAG DROP MANAGER - Sending notification');
             await this.sendAssignmentNotification(reservation, target);
           }
 
         } catch (error: any) {
           const errorMessage = `Failed to assign ${reservation.guestName}: ${error.message}`;
           errors.push(errorMessage);
-          console.error(errorMessage, error);
+          console.error('❌❌ DRAG DROP MANAGER - Assignment error:', errorMessage, error);
+          console.error('❌❌ DRAG DROP MANAGER - Error details:', error.response?.data);
         }
       }
 

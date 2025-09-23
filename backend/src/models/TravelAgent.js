@@ -149,13 +149,11 @@ const travelAgentSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.ObjectId,
     ref: 'User',
-    required: [true, 'User ID is required'],
-    unique: true
+    required: [true, 'User ID is required']
   },
   agentCode: {
     type: String,
     required: [true, 'Agent code is required'],
-    unique: true,
     uppercase: true,
     trim: true,
     minlength: [3, 'Agent code must be at least 3 characters'],
@@ -352,8 +350,8 @@ const travelAgentSchema = new mongoose.Schema({
 });
 
 // Indexes for performance
-travelAgentSchema.index({ agentCode: 1 });
-travelAgentSchema.index({ userId: 1 });
+travelAgentSchema.index({ agentCode: 1 }, { unique: true });
+travelAgentSchema.index({ userId: 1 }, { unique: true });
 travelAgentSchema.index({ status: 1 });
 travelAgentSchema.index({ hotelId: 1 });
 travelAgentSchema.index({ isActive: 1 });

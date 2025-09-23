@@ -42,6 +42,7 @@ import DigitalKeysDashboard from './pages/guest/DigitalKeysDashboard';
 import MeetUpRequestsDashboard from './pages/guest/MeetUpRequestsDashboard';
 import GuestBillingHistory from './pages/guest/GuestBillingHistory';
 import GuestFeedback from './pages/guest/GuestFeedback';
+import GuestDocuments from './pages/guest/GuestDocuments';
 
 // Admin Pages
 import AdminLogin from './pages/admin/AdminLogin';
@@ -98,6 +99,14 @@ import AdminMeetUpManagement from './pages/admin/AdminMeetUpManagement';
 import AdminInventoryRequests from './pages/admin/AdminInventoryRequests';
 import AdminServiceRequests from './pages/admin/AdminServiceRequests';
 import AdminCheckoutInventoryManagement from './pages/admin/AdminCheckoutInventoryManagement';
+import AdminTravelDashboard from './pages/admin/AdminTravelDashboard';
+import AdminDocumentVerification from './pages/admin/AdminDocumentVerification';
+import AdminDocumentAnalytics from './pages/admin/AdminDocumentAnalytics';
+import TravelAgentDashboard from './pages/travel-agent/TravelAgentDashboard';
+import BookingCreate from './pages/travel-agent/BookingCreate';
+import ViewRates from './pages/travel-agent/ViewRates';
+import ProfileEdit from './pages/travel-agent/ProfileEdit';
+import MultiBooking from './pages/travel-agent/MultiBooking';
 
 // Staff Pages
 import StaffDashboard from './pages/staff/StaffDashboard';
@@ -115,11 +124,13 @@ import StaffAlertCenter from './pages/staff/StaffAlertCenter';
 import StaffMeetUpSupervision from './pages/staff/StaffMeetUpSupervision';
 import CheckoutInventory from './pages/staff/CheckoutInventory';
 import DailyRoutineCheck from './pages/staff/DailyRoutineCheck';
+import StaffDocuments from './pages/staff/StaffDocuments';
 import { DailyInventoryCheckForm } from './components/staff/DailyInventoryCheckForm';
 
 // Layout Components
 import PublicLayout from './layouts/PublicLayout';
 import GuestLayout from './layouts/GuestLayout';
+import TravelAgentLayout from './layouts/TravelAgentLayout';
 import AdminLayout from './layouts/AdminLayout';
 import StaffLayout from './layouts/StaffLayout';
 
@@ -180,6 +191,7 @@ function App() {
             <Route path="profile" element={<GuestProfile />} />
                         <Route path="requests" element={<GuestRequests />} />
             <Route path="inventory-requests" element={<InventoryRequests />} />
+            <Route path="documents" element={<GuestDocuments />} />
             <Route path="feedback" element={<GuestFeedback />} />
             <Route path="mobile-app" element={<ContactlessGuestApp />} />
           </Route>
@@ -244,6 +256,25 @@ function App() {
                 <Route path="services" element={<AdminServiceManagement />} />
                 <Route path="digital-keys" element={<AdminDigitalKeyManagement />} />
                 <Route path="meet-up-management" element={<AdminMeetUpManagement />} />
+                <Route path="documents" element={<AdminDocumentVerification />} />
+                <Route path="documents/analytics" element={<AdminDocumentAnalytics />} />
+                <Route path="travel-dashboard" element={<AdminTravelDashboard />} />
+              </Route>
+
+              {/* Travel Agent Routes */}
+              <Route path="/travel-agent" element={
+                <ProtectedRoute allowedRoles={['travel_agent']}>
+                  <TravelAgentLayout />
+                </ProtectedRoute>
+              }>
+                <Route index element={<TravelAgentDashboard />} />
+                <Route path="dashboard" element={<TravelAgentDashboard />} />
+                <Route path="bookings" element={<TravelAgentDashboard />} />
+                <Route path="booking/new" element={<BookingCreate />} />
+                <Route path="new-booking" element={<BookingCreate />} />
+                <Route path="multi-booking" element={<MultiBooking />} />
+                <Route path="rates" element={<ViewRates />} />
+                <Route path="profile/edit" element={<ProfileEdit />} />
               </Route>
 
               {/* Staff Routes */}
@@ -267,6 +298,7 @@ function App() {
                                                   <Route path="inventory" element={<StaffInventory />} />
                 <Route path="daily-routine-check" element={<DailyRoutineCheck />} />
                 <Route path="checkout-inventory" element={<CheckoutInventory />} />
+                <Route path="documents" element={<StaffDocuments />} />
                 <Route path="reports" element={<StaffReports />} />
               </Route>
 

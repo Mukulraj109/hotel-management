@@ -433,21 +433,57 @@ const TapeChartView: React.FC = () => {
     );
   };
 
-  const handleDragStart = (e: React.DragEvent, reservation: DraggedReservation) => {
-    setDraggedItem(reservation);
+  const handleDragStart = (e: React.DragEvent, reservation: any) => {
+    console.log('📋📋 TAPE CHART - handleDragStart called');
+    console.log('📋📋 TAPE CHART - Reservation data received:', reservation);
+    console.log('📋📋 TAPE CHART - Reservation type check - is DraggedReservation?', reservation.hasOwnProperty('_id'));
+
+    // Transform reservation to DraggedReservation if needed
+    let draggedReservation: DraggedReservation;
+
+    if (reservation.hasOwnProperty('_id') && typeof reservation._id === 'string') {
+      // This is already a DraggedReservation from timeline cell
+      console.log('📋📋 TAPE CHART - Using existing DraggedReservation from timeline');
+      draggedReservation = reservation;
+    } else {
+      // Transform from Reservation (sidebar) to DraggedReservation format
+      console.log('📋📋 TAPE CHART - Converting Reservation to DraggedReservation');
+      draggedReservation = {
+        id: reservation.id,
+        _id: reservation._id || reservation.id,
+        bookingNumber: reservation.bookingNumber || reservation.id.slice(-6),
+        guestName: reservation.guestName,
+        roomType: reservation.roomType,
+        checkIn: reservation.checkIn,
+        checkOut: reservation.checkOut,
+        status: reservation.status,
+        vipStatus: reservation.vipStatus || 'none',
+        totalAmount: reservation.totalAmount || (reservation.rate || 0),
+        paymentStatus: reservation.paymentStatus || 'pending',
+        adults: reservation.adults || 2,
+        children: reservation.children || 0,
+        nights: reservation.nights || 1,
+        specialRequests: reservation.specialRequests || []
+      };
+      console.log('📋📋 TAPE CHART - Converted reservation:', draggedReservation);
+    }
+
+    setDraggedItem(draggedReservation);
     e.dataTransfer.effectAllowed = 'move';
 
     // Get selected reservations for batch operations
     const selectedIds = dragDropManager.getSelectedReservations();
     let draggedReservations: DraggedReservation[];
 
-    if (selectedIds.length > 0 && selectedIds.includes(reservation.id)) {
+    if (selectedIds.length > 0 && selectedIds.includes(draggedReservation.id)) {
       // If the dragged reservation is part of a selection, drag all selected
-      draggedReservations = [reservation]; // Start with the clicked one
+      draggedReservations = [draggedReservation]; // Start with the clicked one
       // TODO: Add other selected reservations from the sidebar data
+      console.log('📋📋 TAPE CHART - Multi-selection drag with', selectedIds.length, 'items');
     } else {
       // Single reservation drag
-      draggedReservations = [reservation];
+      draggedReservations = [draggedReservation];
+      console.log('📋📋 TAPE CHART - Single reservation drag');
     }
 
     // Determine operation type based on selection
@@ -480,15 +516,23 @@ const TapeChartView: React.FC = () => {
     setConflictIndicators(new Map());
 
     // Generate room suggestions for the dragged reservation
-    generateRoomSuggestions(reservation);
+    generateRoomSuggestions(draggedReservation);
 
-    console.log(`🚀 Drag started: ${operationType} with ${draggedReservations.length} reservation(s)`);
+    console.log(`📋📋 TAPE CHART - Drag started: ${operationType} with ${draggedReservations.length} reservation(s)`);
+    console.log('📋📋 TAPE CHART - Final dragged reservations:', draggedReservations);
   };
 
   const handleDragOver = async (e: React.DragEvent, cellId: string) => {
+    console.log('🔄🔄 DRAG OVER - Cell:', cellId);
+    console.log('🔄🔄 DRAG OVER - isDragging:', dragState.isDragging);
+    console.log('🔄🔄 DRAG OVER - draggedItems count:', dragState.draggedItems?.length || 0);
+
     e.preventDefault();
 
-    if (!dragState.isDragging || dragState.draggedItems.length === 0) return;
+    if (!dragState.isDragging || dragState.draggedItems.length === 0) {
+      console.log('🔄🔄 DRAG OVER - No active drag state, returning');
+      return;
+    }
 
     const [roomNumber, dateStr] = cellId.split('-');
     const room = chartData?.rooms?.find(r => r.config.roomNumber === roomNumber);
@@ -559,18 +603,31 @@ const TapeChartView: React.FC = () => {
   };
 
   const handleDrop = async (e: React.DragEvent, roomId: string, date: string, roomNumber?: string) => {
+    console.log('🎯🎯 DROP EVENT TRIGGERED!');
+    console.log('🎯🎯 DROP - Room ID:', roomId);
+    console.log('🎯🎯 DROP - Room Number:', roomNumber);
+    console.log('🎯🎯 DROP - Date:', date);
+    console.log('🎯🎯 DROP - Current drag state:', dragState);
+    console.log('🎯🎯 DROP - Dragged items count:', dragState.draggedItems?.length || 0);
+
     e.preventDefault();
 
     if (!dragState.isDragging || dragState.draggedItems.length === 0) {
-      console.log('No drag operation in progress');
+      console.log('❌❌ DROP - No drag operation in progress or no items');
+      console.log('❌❌ DROP - isDragging:', dragState.isDragging);
+      console.log('❌❌ DROP - draggedItems length:', dragState.draggedItems?.length);
       return;
     }
 
     const cellId = `${roomNumber || roomId}-${date}`;
+    console.log('🎯🎯 DROP - Generated cell ID:', cellId);
+
     const dropTarget = dragDropManager.getDropZone(cellId);
+    console.log('🎯🎯 DROP - Found drop target:', dropTarget);
 
     if (!dropTarget) {
-      console.log('No drop target registered for cell:', cellId);
+      console.log('❌❌ DROP - No drop target registered for cell:', cellId);
+      console.log('❌❌ DROP - Available drop zones:', dragDropManager);
       return;
     }
 
@@ -593,16 +650,25 @@ const TapeChartView: React.FC = () => {
       ? `${dragState.draggedItems[0].guestName}'s reservation`
       : `${dragState.draggedItems.length} reservations`;
 
+    console.log('🎯🎯 DROP - Showing confirmation dialog for:', reservationsText);
+
     const confirmed = window.confirm(
       `Move ${reservationsText} to room ${roomNumber || roomId} for ${date}?`
     );
 
+    console.log('🎯🎯 DROP - User confirmation result:', confirmed);
+
     if (!confirmed) {
+      console.log('❌❌ DROP - User cancelled, ending drag operation');
       endDragOperation();
       return;
     }
 
     try {
+      console.log('🎯🎯 DROP - Starting assignment execution');
+      console.log('🎯🎯 DROP - Dragged items:', dragState.draggedItems);
+      console.log('🎯🎯 DROP - Drop target:', dropTarget);
+
       const result = await dragDropManager.executeAssignment(
         dragState.draggedItems,
         dropTarget,
@@ -614,15 +680,22 @@ const TapeChartView: React.FC = () => {
         }
       );
 
+      console.log('🎯🎯 DROP - Assignment execution result:', result);
+
       if (result.success) {
+        console.log('✅✅ DROP - Assignment successful, refreshing data');
         fetchChartData();
         setRefreshTrigger(prev => prev + 1);
+      } else {
+        console.log('❌❌ DROP - Assignment failed:', result.errors);
       }
 
     } catch (err: any) {
-      console.error('Enhanced room assignment error:', err);
+      console.error('❌❌ DROP - Assignment error:', err);
+      console.error('❌❌ DROP - Error details:', err.response?.data);
       toast.error(err.response?.data?.message || err.message || 'Failed to move reservation');
     } finally {
+      console.log('🎯🎯 DROP - Ending drag operation');
       endDragOperation();
     }
   };
@@ -846,13 +919,65 @@ const TapeChartView: React.FC = () => {
         
         {/* Content */}
         <div className="p-1 pl-5 text-xs">
-          {showGuestNames && guestName && (
-            <div className="space-y-1">
+          {showGuestNames && guestName && timelineData?.bookingId && (
+            <div
+              className="space-y-1 cursor-move hover:bg-blue-50 rounded p-1 -m-1 transition-colors duration-150"
+              draggable={true}
+              onDragStart={async (e) => {
+                try {
+                  // Find the actual booking data from the room.bookings array
+                  const actualBooking = room.bookings?.find((booking: any) =>
+                    booking._id.toString() === timelineData.bookingId.toString()
+                  );
+
+                  console.log('🚀 Found actual booking for drag:', actualBooking);
+                  console.log('🚀 Room bookings available:', room.bookings?.length || 0);
+
+                  if (!actualBooking) {
+                    console.error('❌ No booking found with ID:', timelineData.bookingId);
+                    toast.error('Booking data not found. Cannot move reservation.');
+                    e.preventDefault();
+                    return;
+                  }
+
+                  // Create proper draggable reservation data from actual booking
+                  const draggedReservation: DraggedReservation = {
+                    id: actualBooking._id.toString(),
+                    _id: actualBooking._id.toString(),
+                    bookingNumber: actualBooking.bookingNumber || actualBooking._id.toString().slice(-6),
+                    guestName: actualBooking.userId?.name || guestName,
+                    roomType: room.config.roomType || 'Standard',
+                    checkIn: actualBooking.checkIn,
+                    checkOut: actualBooking.checkOut,
+                    status: actualBooking.status,
+                    vipStatus: timelineData.vipStatus || 'none',
+                    totalAmount: actualBooking.totalAmount || 0,
+                    paymentStatus: actualBooking.paymentStatus || 'pending',
+                    adults: actualBooking.guestDetails?.adults || 2,
+                    children: actualBooking.guestDetails?.children || 0,
+                    nights: actualBooking.nights || 1,
+                    specialRequests: actualBooking.specialRequests || []
+                  };
+
+                  console.log('🚀 Starting drag from timeline cell with complete data:', draggedReservation);
+                  handleDragStart(e, draggedReservation);
+
+                } catch (error) {
+                  console.error('❌ Error preparing drag data:', error);
+                  toast.error('Failed to prepare booking data for move');
+                  e.preventDefault();
+                }
+              }}
+              title={`Drag to move ${guestName} to another room`}
+            >
               <div className="font-medium truncate flex items-center gap-1">
                 {getGenderIcon(timelineData?.gender)}
                 {getVipIcon(timelineData?.vipStatus)}
                 {getBookingTypeIcon(timelineData?.bookingType)}
-                {guestName}
+                <span className="select-none">{guestName}</span>
+                <svg className="w-3 h-3 text-gray-400 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                </svg>
               </div>
               <div className="flex items-center justify-between">
                 {getPreferenceIcons(timelineData?.preferences)}
@@ -863,6 +988,13 @@ const TapeChartView: React.FC = () => {
                   {timelineData.bookingType.replace('_', ' ')}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Show room status when no guest */}
+          {(!guestName || !timelineData?.bookingId) && (
+            <div className="text-gray-500 capitalize text-center py-2">
+              {status.replace('_', ' ')}
             </div>
           )}
           

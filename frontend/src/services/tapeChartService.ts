@@ -415,22 +415,24 @@ class TapeChartService {
   }) {
     console.log('🚀 TAPE CHART SERVICE DEBUG - Dragged item data:', draggedItemData);
     console.log('🚀 TAPE CHART SERVICE DEBUG - Assignment data:', assignmentData);
-    
+
     const requestPayload = {
+      // Include booking ID if available for more reliable lookup
+      bookingId: draggedItemData._id || draggedItemData.id || draggedItemData.bookingId,
       guestName: draggedItemData.guestName,
       checkIn: draggedItemData.checkIn,
       checkOut: draggedItemData.checkOut,
       newRoomId: assignmentData.roomId,
       newRoomNumber: assignmentData.roomNumber,
-      reason: assignmentData.notes || 'Room change via tape chart'
+      reason: assignmentData.notes || 'Room assignment via tape chart drag & drop'
     };
-    
+
     console.log('🚀 TAPE CHART SERVICE DEBUG - Request payload:', requestPayload);
     console.log('🚀 TAPE CHART SERVICE DEBUG - API endpoint: /bookings/change-room-by-guest');
-    
+
     // Always use the change-room-by-guest endpoint which handles room assignments properly
     const response = await apiClient.post('/bookings/change-room-by-guest', requestPayload);
-    
+
     console.log('🚀 TAPE CHART SERVICE DEBUG - Response:', response);
     return response.data.data || response.data;
   }
