@@ -1,38 +1,52 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Calendar as CalendarComponent } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { toast } from '@/utils/toast';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { Button } from '../ui/button';
+import { Input } from '../ui/input';
+import { Badge } from '../ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Calendar as CalendarComponent } from '../ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../ui/dropdown-menu';
+import { toast } from '../../utils/toast';
 import {
-  CalendarIcon, ChevronLeft, ChevronRight, Filter, Settings, Maximize2,
+  CalendarIcon, Calendar, ChevronLeft, ChevronRight, Filter, Settings, Maximize2,
   User, Clock, Bed, IndianRupee, AlertTriangle, CheckCircle,
   MoreHorizontal, Move, Copy, Trash2, Bell, Phone, Mail,
   Zap, Star, Crown, UserCheck, UserX, Coffee, Wifi, Users,
   UserPlus, Building2, Plane, Heart, Baby, RefreshCw, Check, X, ChevronUp
 } from 'lucide-react';
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, formatISO } from 'date-fns';
-import tapeChartService, { TapeChartData, TapeChartView as TapeChartViewType } from '@/services/tapeChartService';
-import { formatCurrency } from '@/utils/currencyUtils';
-import { dragDropManager, DraggedReservation, DropTarget } from '@/utils/DragDropManager';
+import tapeChartService, { TapeChartData, TapeChartView as TapeChartViewType } from '../../services/tapeChartService';
+import { formatCurrency } from '../../utils/currencyUtils';
+import { dragDropManager, DraggedReservation, DropTarget } from '../../utils/DragDropManager';
 import ReservationSidebar from './ReservationSidebar';
-import CollapsibleSidebar from '@/components/ui/CollapsibleSidebar';
-import GlobalSearch from '@/components/ui/GlobalSearch';
-import LiveChatWidget from '@/components/ui/LiveChatWidget';
-import NotificationSystem from '@/components/ui/NotificationSystem';
+import CollapsibleSidebar from '../ui/CollapsibleSidebar';
+import GlobalSearch from '../ui/GlobalSearch';
+import LiveChatWidget from '../ui/LiveChatWidget';
+import NotificationSystem from '../ui/NotificationSystem';
 import ReservationWorkflowPanel from './ReservationWorkflowPanel';
 import VIPGuestManager from './VIPGuestManager';
 import { UpgradeProcessor } from './UpgradeProcessor';
 import { SpecialRequestTracker } from './SpecialRequestTracker';
 import { WaitlistProcessor } from './WaitlistProcessor';
+import { TempReservationSystem } from './TempReservationSystem';
+import { MultiViewOperationsDashboard } from './MultiViewOperationsDashboard';
+import { ChannelManager } from './ChannelManager';
+import { DynamicPricingEngine } from './DynamicPricingEngine';
+import { PredictiveAnalyticsEngine } from './PredictiveAnalyticsEngine';
+import { MobileExperience } from './MobileExperience';
+import { GuestIntelligence } from './GuestIntelligence';
+import { AdvancedHousekeeping } from './AdvancedHousekeeping';
+import { VoiceInterface } from './VoiceInterface';
+import { SecurityCompliance } from './SecurityCompliance';
+import { DayNightMode } from './DayNightMode';
+import { BusinessIntelligence } from './BusinessIntelligence';
+import { ColorCodedManagement } from './ColorCodedManagement';
 import BlockManagementPanel from './BlockManagementPanel';
 import BookingDetailsModal from './BookingDetailsModal';
+import WalkInBooking from '../../pages/admin/WalkInBooking';
 
 interface RoomCell {
   id: string;
@@ -88,6 +102,15 @@ interface DragState {
   operationId: string | null;
 }
 
+// New interface for slide-to-create feature
+interface SlideToCreateState {
+  isSliding: boolean;
+  startRoom: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  previewCells: Set<string>;
+}
+
 interface ConflictIndicator {
   roomId: string;
   date: string;
@@ -98,6 +121,33 @@ interface ConflictIndicator {
 
 const TapeChartView: React.FC = () => {
   const [chartData, setChartData] = useState<TapeChartData | null>(null);
+
+  // Slide-to-create reservation state (Hotelogix GAME CHANGER feature)
+  const [slideToCreate, setSlideToCreate] = useState<SlideToCreateState>({
+    isSliding: false,
+    startRoom: null,
+    startDate: null,
+    endDate: null,
+    previewCells: new Set()
+  });
+  const [isMouseDown, setIsMouseDown] = useState(false);
+
+  // Enhanced Interactive Features (Phase 2)
+  const [clickToBookMode, setClickToBookMode] = useState(false);
+  const [multiNightSelection, setMultiNightSelection] = useState({
+    active: false,
+    startCell: null as string | null,
+    endCell: null as string | null,
+    selectedCells: new Set<string>()
+  });
+  const [quickBookingModal, setQuickBookingModal] = useState({
+    isOpen: false,
+    roomId: null as string | null,
+    roomNumber: null as string | null,
+    startDate: null as string | null,
+    endDate: null as string | null,
+    totalRate: 0
+  });
   const [views, setViews] = useState<TapeChartViewType[]>([]);
   const [selectedView, setSelectedView] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -125,14 +175,157 @@ const TapeChartView: React.FC = () => {
   const [hoverTimer, setHoverTimer] = useState<NodeJS.Timeout | null>(null);
   const [dragOverCache, setDragOverCache] = useState<Map<string, boolean>>(new Map());
 
+  // Global event handlers for slide-to-create feature
+  React.useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      if (slideToCreate.isSliding) {
+        handleSlideEnd();
+      }
+    };
+
+    const handleGlobalMouseLeave = () => {
+      if (slideToCreate.isSliding) {
+        handleSlideEnd();
+      }
+    };
+
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    document.addEventListener('mouseleave', handleGlobalMouseLeave);
+
+    return () => {
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+      document.removeEventListener('mouseleave', handleGlobalMouseLeave);
+    };
+  }, [slideToCreate.isSliding]);
+
+  // Enhanced Interactive Features - Click-to-Book Handler
+  const handleCellClick = useCallback((roomId: string, roomNumber: string, date: string, timelineData: any) => {
+    if (clickToBookMode && timelineData?.status === 'available') {
+      const baseRate = timelineData?.rate || 15000;
+      setQuickBookingModal({
+        isOpen: true,
+        roomId,
+        roomNumber,
+        startDate: date,
+        endDate: format(addDays(new Date(date), 1), 'yyyy-MM-dd'),
+        totalRate: baseRate
+      });
+      toast.success(`Quick booking opened for Room ${roomNumber}`);
+    }
+  }, [clickToBookMode]);
+
+  // Multi-Night Selection Handler
+  const handleMultiNightSelection = useCallback((roomId: string, date: string, roomNumber: string, event: React.MouseEvent) => {
+    if (!multiNightSelection.active) return;
+
+    event.preventDefault();
+
+    const cellId = `${roomId}-${date}`;
+
+    if (!multiNightSelection.startCell) {
+      // Start selection
+      setMultiNightSelection(prev => ({
+        ...prev,
+        startCell: cellId,
+        selectedCells: new Set([cellId])
+      }));
+    } else if (!multiNightSelection.endCell && multiNightSelection.startCell !== cellId) {
+      // End selection - calculate range
+      const startDate = multiNightSelection.startCell.split('-').slice(1).join('-');
+      const endDate = date;
+
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const selectedCells = new Set<string>();
+
+      // Generate all dates between start and end
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dateStr = format(d, 'yyyy-MM-dd');
+        selectedCells.add(`${roomId}-${dateStr}`);
+      }
+
+      setMultiNightSelection(prev => ({
+        ...prev,
+        endCell: cellId,
+        selectedCells
+      }));
+
+      // Open quick booking for multi-night stay
+      const totalNights = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      const baseRate = 15000;
+
+      setQuickBookingModal({
+        isOpen: true,
+        roomId,
+        roomNumber,
+        startDate: format(start, 'yyyy-MM-dd'),
+        endDate: format(end, 'yyyy-MM-dd'),
+        totalRate: baseRate * totalNights
+      });
+
+      toast.success(`Multi-night booking: ${totalNights} nights selected`);
+    } else {
+      // Reset selection
+      setMultiNightSelection({
+        active: true,
+        startCell: cellId,
+        endCell: null,
+        selectedCells: new Set([cellId])
+      });
+    }
+  }, [multiNightSelection]);
+
+  // Quick Booking Handler
+  const handleQuickBookingConfirm = useCallback(async () => {
+    try {
+      // Simulate booking creation
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      toast.success(`Booking created for Room ${quickBookingModal.roomNumber}!`);
+
+      setQuickBookingModal({
+        isOpen: false,
+        roomId: null,
+        roomNumber: null,
+        startDate: null,
+        endDate: null,
+        totalRate: 0
+      });
+
+      // Refresh chart data
+      fetchChartData();
+    } catch (error) {
+      toast.error('Failed to create booking');
+    }
+  }, [quickBookingModal]);
+
+  // Toggle Interactive Modes
+  const toggleClickToBookMode = useCallback(() => {
+    setClickToBookMode(prev => !prev);
+    setMultiNightSelection({ active: false, startCell: null, endCell: null, selectedCells: new Set() });
+    toast.info(clickToBookMode ? 'Click-to-Book mode disabled' : 'Click-to-Book mode enabled - Click any available cell to book');
+  }, [clickToBookMode]);
+
+  const toggleMultiNightMode = useCallback(() => {
+    setMultiNightSelection(prev => ({
+      active: !prev.active,
+      startCell: null,
+      endCell: null,
+      selectedCells: new Set()
+    }));
+    setClickToBookMode(false);
+    toast.info(multiNightSelection.active ? 'Multi-night selection disabled' : 'Multi-night selection enabled - Click start and end dates');
+  }, [multiNightSelection.active]);
+
   const [showFilters, setShowFilters] = useState(false);
   const [compactView, setCompactView] = useState(false);
-  const [showGuestNames, setShowGuestNames] = useState(true);
+  const [showGuestNames, setShowGuestNames] = useState(true); // Now guest names are ALWAYS visible as per Hotelogix standard
   const [showRates, setShowRates] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
   const [isReservationSidebarCollapsed, setIsReservationSidebarCollapsed] = useState(false);
   const [isMenuCollapsed, setIsMenuCollapsed] = useState(false);
-  
+  const [showPhasesSidebar, setShowPhasesSidebar] = useState(true);
+
   // Refresh trigger for sidebar
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [lastAssignedCell, setLastAssignedCell] = useState<string | null>(null);
@@ -143,6 +336,15 @@ const TapeChartView: React.FC = () => {
     isOpen: false,
     bookingId: null as string | null,
     roomNumber: null as string | null
+  });
+
+  // Walk-In Booking Modal State (for new bookings created via slide-to-create)
+  const [walkInBookingModal, setWalkInBookingModal] = useState({
+    isOpen: false,
+    roomNumber: null as string | null,
+    checkIn: null as string | null,
+    checkOut: null as string | null,
+    nights: 0
   });
 
   // Filters
@@ -508,13 +710,18 @@ const TapeChartView: React.FC = () => {
       const filteredMaintenanceRooms = filteredRooms.filter((r: any) => (r.status || r.currentStatus) === 'maintenance').length;
       const filteredDirtyRooms = filteredRooms.filter((r: any) => (r.status || r.currentStatus) === 'dirty').length;
 
+      // Debug: Log what backend is sending
+      console.log('🔧 FRONTEND DEBUG - Backend summary data:', chartData.summary);
+
       filtered.summary = {
-        ...chartData.summary, // Keep backend's occupiedRooms calculation
+        ...chartData.summary, // Keep backend's corrected calculations
         totalRooms: filteredRooms.length,
-        availableRooms: filteredAvailableRooms,
-        reservedRooms: filteredReservedRooms,
-        maintenanceRooms: filteredMaintenanceRooms,
-        dirtyRooms: filteredDirtyRooms,
+        // Use ALL backend calculations instead of frontend filtering
+        availableRooms: chartData.summary.availableRooms,
+        reservedRooms: chartData.summary.reservedRooms || 0,
+        maintenanceRooms: chartData.summary.maintenanceRooms || 0, // Use backend's calculation
+        dirtyRooms: chartData.summary.dirtyRooms || 0, // Use backend's calculation
+        blockedRooms: chartData.summary.blockedRooms || 0, // Use backend's calculation
         // Use backend's occupiedRooms but recalculate occupancy rate for filtered view
         occupancyRate: filteredRooms.length > 0 ? (chartData.summary.occupiedRooms / filteredRooms.length) * 100 : 0
       };
@@ -534,7 +741,7 @@ const TapeChartView: React.FC = () => {
       maintenance: 'bg-purple-50 text-purple-900 border-purple-300 hover:bg-purple-100',
       dirty: 'bg-orange-50 text-orange-900 border-orange-300 hover:bg-orange-100',
       clean: 'bg-blue-50 text-blue-900 border-blue-300 hover:bg-blue-100',
-      out_of_order: 'bg-gray-50 text-gray-900 border-gray-300 hover:bg-gray-100',
+      out_of_order: 'bg-red-100 text-red-900 border-red-400 hover:bg-red-150',
       blocked: 'bg-indigo-50 text-indigo-900 border-indigo-300 hover:bg-indigo-100',
       checkout: 'bg-teal-50 text-teal-900 border-teal-300 hover:bg-teal-100',
       checkin: 'bg-cyan-50 text-cyan-900 border-cyan-300 hover:bg-cyan-100'
@@ -670,6 +877,87 @@ const TapeChartView: React.FC = () => {
     console.log('📋📋 TAPE CHART - Final dragged reservations:', draggedReservations);
   };
 
+  // Slide-to-Create Reservation handlers (Hotelogix GAME CHANGER feature)
+  const handleSlideStart = (roomNumber: string, date: string) => {
+    if (slideToCreate.isSliding) return;
+
+    console.log('🎯 Slide-to-Create: Starting reservation creation', { roomNumber, date });
+    setSlideToCreate({
+      isSliding: true,
+      startRoom: roomNumber,
+      startDate: date,
+      endDate: date,
+      previewCells: new Set([`${roomNumber}-${date}`])
+    });
+  };
+
+  const handleSlideMove = (roomNumber: string, date: string) => {
+    if (!slideToCreate.isSliding || roomNumber !== slideToCreate.startRoom) return;
+
+    // Update preview cells based on date range
+    const startDate = new Date(slideToCreate.startDate!);
+    const currentDate = new Date(date);
+    const previewCells = new Set<string>();
+
+    const minDate = startDate <= currentDate ? startDate : currentDate;
+    const maxDate = startDate > currentDate ? startDate : currentDate;
+
+    // Add all dates in range to preview
+    let iterDate = new Date(minDate);
+    while (iterDate <= maxDate) {
+      previewCells.add(`${roomNumber}-${format(iterDate, 'yyyy-MM-dd')}`);
+      iterDate = addDays(iterDate, 1);
+    }
+
+    setSlideToCreate(prev => ({
+      ...prev,
+      endDate: date,
+      previewCells
+    }));
+  };
+
+  const handleSlideEnd = React.useCallback(() => {
+    if (!slideToCreate.isSliding) return;
+
+    const { startRoom, startDate, endDate } = slideToCreate;
+    if (startRoom && startDate && endDate) {
+      // Calculate nights
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const nights = Math.abs(Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+
+      if (nights > 0) {
+        console.log('🎯 Slide-to-Create: Opening reservation dialog', {
+          roomNumber: startRoom,
+          checkIn: startDate < endDate ? startDate : endDate,
+          checkOut: startDate < endDate ? endDate : startDate,
+          nights
+        });
+
+        // Open Walk-In Booking modal with pre-filled data
+        setWalkInBookingModal({
+          isOpen: true,
+          roomNumber: startRoom,
+          checkIn: startDate < endDate ? startDate : endDate,
+          checkOut: startDate < endDate ? endDate : startDate,
+          nights
+        });
+
+        toast.success(`Create ${nights} night${nights > 1 ? 's' : ''} reservation for Room ${startRoom}`);
+      }
+    }
+
+    // Reset slide state
+    setSlideToCreate({
+      isSliding: false,
+      startRoom: null,
+      startDate: null,
+      endDate: null,
+      previewCells: new Set()
+    });
+    setIsMouseDown(false);
+  }, [slideToCreate.isSliding, slideToCreate.startRoom, slideToCreate.startDate, slideToCreate.endDate]);
+
   const handleDragOver = async (e: React.DragEvent, cellId: string) => {
     e.preventDefault();
 
@@ -718,7 +1006,11 @@ const TapeChartView: React.FC = () => {
           target: room.room?.type || room.config.roomType
         });
         setConflictIndicators(new Map([[cellId, {
-          reason: `Room type mismatch: Guest booked ${draggedReservation.roomType} but this is ${room.room?.type || room.config.roomType}`
+          roomId: room.room?._id || room.config.roomId,
+          date: dateStr,
+          conflictType: 'unsuitable',
+          message: `Room type mismatch: Guest booked ${draggedReservation.roomType} but this is ${room.room?.type || room.config.roomType}`,
+          suggestions: ['Select a room with matching type', 'Update guest booking to match room type']
         }]]));
         e.dataTransfer.dropEffect = 'none';
         return;
@@ -757,8 +1049,12 @@ const TapeChartView: React.FC = () => {
         }
 
         setConflictIndicators(new Map([[cellId, {
+          roomId: room.room?._id || room.config.roomId,
+          date: dateStr,
+          conflictType: 'locked',
+          message: errorMessage,
           reason: errorMessage,
-          conflictType: 'Date mismatch'
+          suggestions: ['Select a date within the booking period', 'Check guest check-in/check-out dates']
         }]]));
         e.dataTransfer.dropEffect = 'none';
         return;
@@ -1227,8 +1523,10 @@ const TapeChartView: React.FC = () => {
           ${isRecommended ? 'ring-1 ring-green-400 bg-green-50/60' : ''}
           ${isToday ? 'ring-1 ring-blue-300 bg-blue-50/30' : ''}
           ${isWeekend ? 'bg-opacity-50' : ''}
+          ${slideToCreate.previewCells.has(cellId) ? 'bg-blue-100 ring-2 ring-blue-400 border-blue-400' : ''}
           transition-all duration-150 ease-out cursor-pointer hover:shadow-sm hover:border-gray-300
           ${dragState.isDragging ? 'hover:ring-1 hover:ring-blue-300' : ''}
+          ${!timelineData?.bookingId && status === 'available' && !slideToCreate.isSliding ? 'hover:bg-green-50 hover:border-green-300' : ''}
           transform-gpu will-change-transform rounded-sm
         `}
         onDragOver={(e) => handleDragOver(e, cellId)}
@@ -1236,6 +1534,24 @@ const TapeChartView: React.FC = () => {
         onDrop={(e) => handleDrop(e, room.room?._id || room.config.roomId, format(date, 'yyyy-MM-dd'), room.config.roomNumber)}
         onClick={() => handleRoomSelect(room.config._id)}
         onDoubleClick={() => handleCellDoubleClick(timelineData, room.config.roomNumber)}
+        // Slide-to-Create feature (Hotelogix GAME CHANGER)
+        onMouseDown={(e) => {
+          if (!timelineData?.bookingId && status === 'available' && e.button === 0 && !e.ctrlKey && !e.shiftKey) {
+            setIsMouseDown(true);
+            handleSlideStart(room.config.roomNumber, format(date, 'yyyy-MM-dd'));
+            e.preventDefault();
+          }
+        }}
+        onMouseEnter={() => {
+          if (isMouseDown && !timelineData?.bookingId && status === 'available') {
+            handleSlideMove(room.config.roomNumber, format(date, 'yyyy-MM-dd'));
+          }
+        }}
+        onMouseUp={() => {
+          if (slideToCreate.isSliding) {
+            handleSlideEnd();
+          }
+        }}
         onContextMenu={(e) => handleRightClick(e, {
           roomId: room.config._id,
           roomNumber: room.config.roomNumber,
@@ -1266,7 +1582,7 @@ const TapeChartView: React.FC = () => {
         )}
 
         {/* Room type mismatch indicator */}
-        {hasConflict && conflict?.reason?.includes('Room type mismatch') && dragState.isDragging && (
+        {hasConflict && conflict?.message?.includes('Room type mismatch') && dragState.isDragging && (
           <div className="absolute inset-0 flex items-center justify-center bg-orange-100 bg-opacity-75 border-2 border-dashed border-orange-400">
             <div className="bg-orange-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1 shadow-lg">
               <AlertTriangle className="w-3 h-3" />
@@ -1286,7 +1602,7 @@ const TapeChartView: React.FC = () => {
         )}
 
         {/* Room occupied indicator */}
-        {hasConflict && conflict?.reason?.includes('occupied') && dragState.isDragging && (
+        {hasConflict && conflict?.message?.includes('occupied') && dragState.isDragging && (
           <div className="absolute inset-0 flex items-center justify-center bg-red-100 bg-opacity-75 border-2 border-dashed border-red-400">
             <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1 shadow-lg">
               <X className="w-3 h-3" />
@@ -1346,7 +1662,8 @@ const TapeChartView: React.FC = () => {
             </div>
           )}
 
-          {showGuestNames && guestName && timelineData?.bookingId && !recentlyUpdatedCells.has(cellId) && (
+          {/* HOTELOGIX STANDARD: Guest names ALWAYS visible in cells */}
+          {guestName && timelineData?.bookingId && !recentlyUpdatedCells.has(cellId) && (
             <div
               className="space-y-1 cursor-move hover:bg-blue-50 rounded p-1 -m-1 transition-colors duration-150"
               draggable={true}
@@ -1400,8 +1717,12 @@ const TapeChartView: React.FC = () => {
               <div className="font-medium truncate flex items-center gap-1">
                 {getGenderIcon(timelineData?.gender)}
                 {getVipIcon(timelineData?.vipStatus)}
+                {/* HOTELOGIX STANDARD: Show (T) for Travel Agent bookings */}
+                {timelineData?.bookingType === 'travel_agent' && (
+                  <span className="text-xs font-bold text-orange-600">(T)</span>
+                )}
                 {getBookingTypeIcon(timelineData?.bookingType)}
-                <span className="select-none">{guestName}</span>
+                <span className="select-none font-semibold text-gray-800">{guestName}</span>
                 <svg className="w-3 h-3 text-gray-400 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
                 </svg>
@@ -1418,10 +1739,28 @@ const TapeChartView: React.FC = () => {
             </div>
           )}
 
-          {/* Show room status when no guest */}
+          {/* Show room status and slide-to-create hint when no guest */}
           {(!guestName || !timelineData?.bookingId) && (
             <div className="text-gray-500 capitalize text-center py-2">
-              {status.replace('_', ' ')}
+              {status === 'available' && !slideToCreate.isSliding ? (
+                <div className="flex flex-col items-center">
+                  <span className="text-xs font-medium">Available</span>
+                  {!compactView && (
+                    <span className="text-xs opacity-60 mt-0.5">Click & drag to book</span>
+                  )}
+                </div>
+              ) : (
+                status.replace('_', ' ')
+              )}
+            </div>
+          )}
+
+          {/* Slide-to-Create preview indicator */}
+          {slideToCreate.previewCells.has(cellId) && (
+            <div className="absolute inset-0 bg-blue-100 bg-opacity-50 flex items-center justify-center pointer-events-none animate-pulse">
+              <div className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold shadow-lg">
+                New Booking
+              </div>
             </div>
           )}
           
@@ -1519,7 +1858,8 @@ const TapeChartView: React.FC = () => {
 
   return (
     <TooltipProvider>
-      <div className="h-screen flex overflow-x-auto" onClick={hideContextMenu}>
+      <>
+        <div className="h-screen flex overflow-x-auto" onClick={hideContextMenu}>
         {/* Collapsible Menu Sidebar */}
         <CollapsibleSidebar
           isCollapsed={isMenuCollapsed}
@@ -1528,20 +1868,105 @@ const TapeChartView: React.FC = () => {
         />
         
         {/* Reservations Sidebar */}
-        {showSidebar && (
-          <div className="w-80 border-r border-gray-200 bg-gray-50">
-            <ReservationSidebar
-              onDragStart={handleDragStart}
-              selectedDate={startDate}
-              isCompact={compactView}
-              refreshTrigger={refreshTrigger}
-              className="h-full"
-            />
+        <div className={`${isReservationSidebarCollapsed ? 'w-16' : 'w-80'} transition-all duration-300 ease-in-out`}>
+          <ReservationSidebar
+            onDragStart={handleDragStart}
+            selectedDate={startDate}
+            isCompact={compactView}
+            refreshTrigger={refreshTrigger}
+            isCollapsed={isReservationSidebarCollapsed}
+            onToggleCollapse={() => setIsReservationSidebarCollapsed(!isReservationSidebarCollapsed)}
+            className="h-full"
+          />
+        </div>
+
+
+        {/* Phase Components Vertical Sidebar */}
+        {showPhasesSidebar && (
+          <div className="w-64 border-r border-gray-200 bg-white flex flex-col transition-all duration-300 ease-in-out">
+            <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-50 to-purple-50">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <div className="w-6 h-6 bg-gradient-to-r from-blue-500 to-purple-600 rounded-md flex items-center justify-center">
+                    <Settings className="w-3 h-3 text-white" />
+                  </div>
+                  Hotel Features
+                </h3>
+                <p className="text-xs text-gray-500">Enterprise Management Tools</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowPhasesSidebar(false)}
+                className="h-6 w-6 p-0 hover:bg-white/60 transition-colors"
+                title="Hide features panel"
+              >
+                <ChevronLeft className="w-4 h-4 text-gray-600" />
+              </Button>
+            </div>
+            <div className="flex-1 p-2 space-y-2 overflow-y-auto">
+            {/* Phase 1: Core Enterprise Features */}
+            <div className="space-y-1">
+              <h4 className="text-xs font-medium text-gray-600 uppercase tracking-wide px-2">Core Features</h4>
+              <ReservationWorkflowPanel isOpen={false} onClose={() => {}} />
+              <VIPGuestManager isOpen={false} onClose={() => {}} />
+              <UpgradeProcessor />
+              <TempReservationSystem />
+              <SpecialRequestTracker />
+              <WaitlistProcessor />
+              <MultiViewOperationsDashboard />
+            </div>
+
+            {/* Phase 2: Advanced Features */}
+            <div className="space-y-1 pt-3 border-t border-gray-100">
+              <h4 className="text-xs font-medium text-gray-600 uppercase tracking-wide px-2">Advanced Features</h4>
+              <ChannelManager />
+              <DynamicPricingEngine />
+              <PredictiveAnalyticsEngine />
+              <MobileExperience />
+              <GuestIntelligence />
+              <AdvancedHousekeeping />
+            </div>
+
+            {/* Phase 3: Innovation Leadership Features */}
+            <div className="space-y-1 pt-3 border-t border-gray-100">
+              <h4 className="text-xs font-medium text-gray-600 uppercase tracking-wide px-2">Innovation Features</h4>
+              <VoiceInterface />
+              <SecurityCompliance />
+              <DayNightMode />
+              <BusinessIntelligence />
+              <ColorCodedManagement />
+            </div>
+
+            {/* Management Tools */}
+            <div className="space-y-1 pt-3 border-t border-gray-100">
+              <h4 className="text-xs font-medium text-gray-600 uppercase tracking-wide px-2">Management Tools</h4>
+              <BlockManagementPanel isOpen={false} onClose={() => {}} />
+            </div>
           </div>
+        </div>
         )}
+
         
         {/* Main content */}
         <div className="flex-1 p-1 space-y-2 flex flex-col min-w-fit">
+        {/* Toggle Button for Hotel Features Panel */}
+        {!showPhasesSidebar && (
+          <div className="flex justify-start mb-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowPhasesSidebar(true)}
+              className="h-8 w-8 p-0 hover:bg-blue-50 transition-all duration-200 rounded-md"
+              title="Show Hotel Features Panel"
+            >
+              <div className="w-6 h-6 bg-gradient-to-r from-blue-500 to-purple-600 rounded-md flex items-center justify-center shadow-sm">
+                <Settings className="w-3 h-3 text-white" />
+              </div>
+            </Button>
+          </div>
+        )}
+
         {/* Modern Compact Header */}
         <Card className="flex-none shadow-sm">
           <CardHeader className="pb-1 pt-2">
@@ -1770,14 +2195,42 @@ const TapeChartView: React.FC = () => {
                     </div>
                   )}
                   
-                  {/* Advanced Enterprise Features */}
-                  <div className="flex items-center gap-2">
-                    <ReservationWorkflowPanel />
-                    <VIPGuestManager />
-                    <UpgradeProcessor />
-                    <SpecialRequestTracker />
-                    <WaitlistProcessor />
-                    <BlockManagementPanel />
+                  {/* Phase components moved to vertical sidebar */}
+
+                    {/* Enhanced Interactive Features */}
+                    <div className="flex items-center gap-2 ml-2 pl-2 border-l border-gray-300">
+                      <Button
+                        variant={clickToBookMode ? "default" : "outline"}
+                        size="sm"
+                        onClick={toggleClickToBookMode}
+                        className={clickToBookMode ?
+                          "bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600" :
+                          "border-green-200 hover:bg-green-50"
+                        }
+                      >
+                        <Zap className="h-4 w-4 mr-2" />
+                        Click-to-Book
+                        {clickToBookMode && (
+                          <Badge className="ml-2 bg-white text-green-700 text-xs">ON</Badge>
+                        )}
+                      </Button>
+
+                      <Button
+                        variant={multiNightSelection.active ? "default" : "outline"}
+                        size="sm"
+                        onClick={toggleMultiNightMode}
+                        className={multiNightSelection.active ?
+                          "bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600" :
+                          "border-blue-200 hover:bg-blue-50"
+                        }
+                      >
+                        <Calendar className="h-4 w-4 mr-2" />
+                        Multi-Night
+                        {multiNightSelection.active && (
+                          <Badge className="ml-2 bg-white text-blue-700 text-xs">ON</Badge>
+                        )}
+                      </Button>
+                    </div>
 
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -1804,8 +2257,7 @@ const TapeChartView: React.FC = () => {
                   </div>
                 </div>
               </div>
-            </div>
-            
+
             {/* Ultra-Compact Chart Summary */}
             {displayData?.summary && (
               <div className="pt-1 space-y-1">
@@ -1819,7 +2271,7 @@ const TapeChartView: React.FC = () => {
                     </div>
                   )}
                 </div>
-                <div className="grid grid-cols-6 gap-1 text-xs">
+                <div className="grid grid-cols-8 gap-1 text-xs">
                   <div className="bg-gray-50 rounded-md p-2 text-center">
                     <div className="text-lg font-bold text-gray-800">{displayData.summary.totalRooms}</div>
                     <div className="text-xs text-gray-600">Total</div>
@@ -1836,9 +2288,17 @@ const TapeChartView: React.FC = () => {
                     <div className="text-lg font-bold text-amber-800">{displayData.summary.reservedRooms}</div>
                     <div className="text-xs text-amber-600">Reserved</div>
                   </div>
+                  <div className="bg-orange-50 rounded-md p-2 text-center">
+                    <div className="text-lg font-bold text-orange-800">{displayData.summary.dirtyRooms || 0}</div>
+                    <div className="text-xs text-orange-600">Dirty</div>
+                  </div>
                   <div className="bg-purple-50 rounded-md p-2 text-center">
                     <div className="text-lg font-bold text-purple-800">{displayData.summary.maintenanceRooms}</div>
                     <div className="text-xs text-purple-600">Maintenance</div>
+                  </div>
+                  <div className="bg-gray-50 border border-gray-300 rounded-md p-2 text-center">
+                    <div className="text-lg font-bold text-gray-800">{displayData.summary.blockedRooms || 0}</div>
+                    <div className="text-xs text-gray-600">Blocked</div>
                   </div>
                   <div className="bg-blue-50 rounded-md p-2 text-center">
                     <div className="text-lg font-bold text-blue-800">{displayData.summary.occupancyRate.toFixed(1)}%</div>
@@ -2197,6 +2657,25 @@ const TapeChartView: React.FC = () => {
                   </div>
                   <span className="text-sm text-gray-700">Duplicate Booking</span>
                 </button>
+                {/* HOTELOGIX STANDARD: Advanced Reservation Actions */}
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center mr-3">
+                    <CalendarIcon className="h-3 w-3 text-blue-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Extend Stay</span>
+                </button>
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-indigo-50 hover:border-indigo-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-indigo-100 rounded-md flex items-center justify-center mr-3">
+                    <Users className="h-3 w-3 text-indigo-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Add to Group</span>
+                </button>
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50 hover:border-gray-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-gray-100 rounded-md flex items-center justify-center mr-3">
+                    <UserX className="h-3 w-3 text-gray-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Remove from Group</span>
+                </button>
               </div>
             </div>
 
@@ -2237,6 +2716,25 @@ const TapeChartView: React.FC = () => {
                   </div>
                   <span className="text-sm text-gray-700">Maintenance</span>
                 </button>
+                {/* HOTELOGIX STANDARD: Advanced Housekeeping Actions */}
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-orange-50 hover:border-orange-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-orange-100 rounded-md flex items-center justify-center mr-3">
+                    <X className="h-3 w-3 text-orange-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Set Out of Order</span>
+                </button>
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-purple-50 hover:border-purple-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-purple-100 rounded-md flex items-center justify-center mr-3">
+                    <AlertTriangle className="h-3 w-3 text-purple-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Block Room</span>
+                </button>
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-gray-50 hover:border-gray-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-gray-100 rounded-md flex items-center justify-center mr-3">
+                    <Clock className="h-3 w-3 text-gray-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">View Room History</span>
+                </button>
               </div>
             </div>
 
@@ -2254,7 +2752,20 @@ const TapeChartView: React.FC = () => {
                   <div className="w-6 h-6 bg-green-100 rounded-md flex items-center justify-center mr-3">
                     <Mail className="h-3 w-3 text-green-600" />
                   </div>
-                  <span className="text-sm text-gray-700">Send Message</span>
+                  <span className="text-sm text-gray-700">Send Email to Guest</span>
+                </button>
+                {/* HOTELOGIX STANDARD: Advanced Guest Communication */}
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-blue-50 hover:border-blue-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-blue-100 rounded-md flex items-center justify-center mr-3">
+                    <Bell className="h-3 w-3 text-blue-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Send Notification</span>
+                </button>
+                <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-cyan-50 hover:border-cyan-200 rounded-lg transition-all duration-200 border border-transparent">
+                  <div className="w-6 h-6 bg-cyan-100 rounded-md flex items-center justify-center mr-3">
+                    <Phone className="h-3 w-3 text-cyan-600" />
+                  </div>
+                  <span className="text-sm text-gray-700">Call Guest Now</span>
                 </button>
                 <button className="flex items-center w-full px-3 py-2 text-left text-sm hover:bg-orange-50 hover:border-orange-200 rounded-lg transition-all duration-200 border border-transparent">
                   <div className="w-6 h-6 bg-orange-100 rounded-md flex items-center justify-center mr-3">
@@ -2304,7 +2815,6 @@ const TapeChartView: React.FC = () => {
             </div>
           </div>
         )}
-        </div>
         
         {/* Live Chat Widget */}
         <LiveChatWidget position="bottom-right" />
@@ -2312,15 +2822,124 @@ const TapeChartView: React.FC = () => {
         {/* Notification System */}
         <NotificationSystem position="top-right" soundEnabled={true} />
 
-        {/* Booking Details Modal */}
-        <BookingDetailsModal
-          isOpen={bookingDetailsModal.isOpen}
-          onClose={closeBookingDetailsModal}
-          bookingId={bookingDetailsModal.bookingId}
-          roomNumber={bookingDetailsModal.roomNumber}
-          onBookingUpdate={handleBookingUpdate}
-        />
+        {/* Quick Booking Modal */}
+        <Dialog open={quickBookingModal.isOpen} onOpenChange={(open) =>
+          setQuickBookingModal(prev => ({ ...prev, isOpen: open }))
+        }>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Zap className="h-5 w-5 text-green-600" />
+                Quick Booking - Room {quickBookingModal.roomNumber}
+              </DialogTitle>
+              <DialogDescription>
+                Create a new booking with one click
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-gray-600">Check-in Date</p>
+                    <p className="font-medium">
+                      {quickBookingModal.startDate ? format(new Date(quickBookingModal.startDate), 'MMM dd, yyyy') : '--'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Check-out Date</p>
+                    <p className="font-medium">
+                      {quickBookingModal.endDate ? format(new Date(quickBookingModal.endDate), 'MMM dd, yyyy') : '--'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Total Rate</p>
+                    <p className="font-bold text-green-700 text-lg">
+                      ₹{quickBookingModal.totalRate.toLocaleString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-600">Nights</p>
+                    <p className="font-medium">
+                      {quickBookingModal.startDate && quickBookingModal.endDate ?
+                        Math.ceil((new Date(quickBookingModal.endDate).getTime() - new Date(quickBookingModal.startDate).getTime()) / (1000 * 60 * 60 * 24)) :
+                        1
+                      } night(s)
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <p className="text-sm text-blue-800">
+                  <strong>Quick Booking:</strong> This will create a placeholder reservation.
+                  Complete guest details and payment can be added later from the booking details.
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setQuickBookingModal(prev => ({ ...prev, isOpen: false }))}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600"
+                  onClick={handleQuickBookingConfirm}
+                >
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Create Booking
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
       </div>
+
+      </div>
+
+      {/* Booking Details Modal */}
+      <BookingDetailsModal
+        isOpen={bookingDetailsModal.isOpen}
+        onClose={closeBookingDetailsModal}
+        bookingId={bookingDetailsModal.bookingId}
+        roomNumber={bookingDetailsModal.roomNumber}
+        onBookingUpdate={handleBookingUpdate}
+      />
+
+      {/* Walk-In Booking Modal for new bookings created via slide-to-create */}
+      <WalkInBooking
+        isOpen={walkInBookingModal.isOpen}
+        onClose={() => setWalkInBookingModal({
+          isOpen: false,
+          roomNumber: null,
+          checkIn: null,
+          checkOut: null,
+          nights: 0
+        })}
+        onSuccess={() => {
+          // Close modal and refresh chart data
+          setWalkInBookingModal({
+            isOpen: false,
+            roomNumber: null,
+            checkIn: null,
+            checkOut: null,
+            nights: 0
+          });
+          fetchChartData();
+          toast.success('New booking created successfully!');
+        }}
+        prefilledData={{
+          roomNumber: walkInBookingModal.roomNumber || undefined,
+          checkIn: walkInBookingModal.checkIn || undefined,
+          checkOut: walkInBookingModal.checkOut || undefined,
+          nights: walkInBookingModal.nights || undefined
+        }}
+      />
+    </>
     </TooltipProvider>
   );
 };

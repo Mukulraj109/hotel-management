@@ -589,12 +589,10 @@ class TapeChartService {
   // Generate Tape Chart Data
   async generateTapeChartData(viewId, dateRange) {
     try {
-      console.log('Generating tape chart data for view:', viewId, 'dateRange:', dateRange);
       const view = await TapeChartView.findById(viewId);
       if (!view) {
         throw new Error('Tape chart view not found');
       }
-      console.log('Found view:', view.viewName);
 
       const startDate = new Date(dateRange.startDate);
       const endDate = new Date(dateRange.endDate);
@@ -607,9 +605,7 @@ class TapeChartService {
 
       // If no room configurations exist, create them from existing rooms
       if (!roomConfigs || roomConfigs.length === 0) {
-        console.log('🔧 No room configurations found, creating from existing rooms...');
         const rooms = await Room.find({ isActive: true }).sort({ roomNumber: 1 });
-        console.log(`🔧 Found ${rooms.length} active rooms in database`);
         roomConfigs = [];
 
         for (const room of rooms) {
@@ -636,9 +632,7 @@ class TapeChartService {
           };
           roomConfigs.push(config);
         }
-        console.log(`🔧 Created ${roomConfigs.length} room configurations from database rooms`);
       } else {
-        console.log(`🔧 Using existing ${roomConfigs.length} room configurations`);
       }
 
       // Get ALL bookings for the date range (don't filter by status in database)
@@ -652,7 +646,7 @@ class TapeChartService {
           },
           {
             checkIn: { $lt: startDate },
-            checkOut: { $gt: endDate }
+            checkOut: { $gte: endDate }
           }
         ]
       })
@@ -687,6 +681,7 @@ class TapeChartService {
           availableRooms: 0,
           reservedRooms: 0,
           maintenanceRooms: 0,
+          dirtyRooms: 0,
           blockedRooms: 0,
           occupancyRate: 0
         }
@@ -781,17 +776,18 @@ class TapeChartService {
         // Check if room has current booking to override status
         let finalStatus = mappedStatus;
         const now = new Date();
-        
-        
+        const todayStart = new Date();
+        todayStart.setUTCHours(0, 0, 0, 0);
+
         const hasCurrentBooking = roomBookings.some(booking => {
           const checkIn = new Date(booking.checkIn);
           const checkOut = new Date(booking.checkOut);
-          
+
           // A booking is current if:
           // 1. It has an ACTIVE status (not checked_out or cancelled) - PRIORITY
-          // 2. It's within the current date range (checkIn <= now < checkOut)
+          // 2. It's within the current date range (checkIn <= now AND checkOut >= start of today)
           const hasActiveStatus = ['confirmed', 'checked_in', 'pending', 'modified'].includes(booking.status);
-          const isWithinDateRange = checkIn <= now && checkOut > now;
+          const isWithinDateRange = checkIn <= now && checkOut >= todayStart; // Use start of day like Admin Dashboard
           
           // If status is checked_out or cancelled, it's never current regardless of dates
           // This handles manual checkouts even before the scheduled checkout time
@@ -810,10 +806,8 @@ class TapeChartService {
         
         if (hasCurrentBooking) {
           finalStatus = 'occupied';
-        } else {
         }
-        
-        
+
         switch (finalStatus) {
           case 'occupied':
             chartData.summary.occupiedRooms++;
@@ -829,16 +823,38 @@ class TapeChartService {
             chartData.summary.maintenanceRooms++;
             break;
           case 'dirty':
-            // Count dirty rooms as maintenance for summary
-            chartData.summary.maintenanceRooms++;
+            chartData.summary.dirtyRooms++;
             break;
         }
       }
 
+      // Recalculate available rooms based on corrected occupied count
+      const calculatedAvailable = chartData.summary.totalRooms -
+                                  chartData.summary.occupiedRooms -
+                                  chartData.summary.reservedRooms -
+                                  chartData.summary.maintenanceRooms -
+                                  chartData.summary.dirtyRooms -
+                                  chartData.summary.blockedRooms;
+
+      // Override the available count with calculated value
+      chartData.summary.availableRooms = Math.max(0, calculatedAvailable);
+
+
+      // Debug: Log final summary data being sent to frontend
+      console.log('🔧 BACKEND DEBUG - Final summary data:', {
+        totalRooms: chartData.summary.totalRooms,
+        occupiedRooms: chartData.summary.occupiedRooms,
+        availableRooms: chartData.summary.availableRooms,
+        reservedRooms: chartData.summary.reservedRooms,
+        maintenanceRooms: chartData.summary.maintenanceRooms,
+        dirtyRooms: chartData.summary.dirtyRooms,
+        blockedRooms: chartData.summary.blockedRooms
+      });
+
       // Calculate occupancy rate
       const availableForOccupancy = chartData.summary.totalRooms - chartData.summary.maintenanceRooms;
       if (availableForOccupancy > 0) {
-        chartData.summary.occupancyRate = 
+        chartData.summary.occupancyRate =
           ((chartData.summary.occupiedRooms + chartData.summary.reservedRooms) / availableForOccupancy) * 100;
       }
 
@@ -931,7 +947,7 @@ class TapeChartService {
         $or: [
           {
             checkIn: { $lt: criteria.checkOut },
-            checkOut: { $gt: criteria.checkIn }
+            checkOut: { $gte: criteria.checkIn }
           }
         ],
         status: { $in: ['confirmed', 'checked_in'] }
@@ -1592,8 +1608,8 @@ class TapeChartService {
     const dayOfWeek = date.getDay();
     const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
     
-    const dayBookings = allBookings.filter(b => 
-      new Date(b.checkIn) <= date && new Date(b.checkOut) > date
+    const dayBookings = allBookings.filter(b =>
+      new Date(b.checkIn) <= date && new Date(b.checkOut) >= date  // Include bookings checking out today
     );
     
     const occupancyRate = dayBookings.length / 100; // Assuming 100 rooms
@@ -1652,8 +1668,25 @@ class TapeChartService {
       const startOfDay = new Date(today.setHours(0, 0, 0, 0));
       const endOfDay = new Date(today.setHours(23, 59, 59, 999));
 
-      // Get all rooms for the hotel
-      const rooms = await Room.find({ hotelId, isActive: true });
+      // Get all rooms with real-time status (like Room Management)
+      const roomsResult = await Room.getRoomsWithRealTimeStatus(hotelId, { limit: 1000 });
+      const rooms = roomsResult.rooms;
+
+      // Debug: Check if we're getting the same data as Room Management
+      console.log('🔧 TAPECHART DEBUG - Hotel ID:', hotelId);
+      console.log('🔧 TAPECHART DEBUG - Total rooms from getRoomsWithRealTimeStatus:', rooms.length);
+
+      // Debug: Check housekeeping tasks directly
+      const Housekeeping = mongoose.model('Housekeeping');
+      const housekeepingTasks = await Housekeeping.find({
+        roomId: { $in: rooms.map(r => r._id) },
+        status: { $in: ['pending', 'in_progress'] }
+      }).select('roomId status');
+      console.log('🔧 TAPECHART DEBUG - Housekeeping tasks found:', housekeepingTasks.length);
+      housekeepingTasks.forEach(task => {
+        const room = rooms.find(r => r._id.toString() === task.roomId.toString());
+        console.log(`🔧 HOUSEKEEPING TASK: Room ${room?.roomNumber || task.roomId} - Status: ${task.status}`);
+      });
 
       // Get today's bookings
       const bookings = await Booking.find({
@@ -1664,38 +1697,46 @@ class TapeChartService {
         ]
       }).populate('rooms.roomId');
 
-      // Calculate room statistics
+      // Calculate room statistics using computedStatus (real-time status)
       const totalRooms = rooms.length;
+
       const roomsByStatus = rooms.reduce((acc, room) => {
-        acc[room.status] = (acc[room.status] || 0) + 1;
+        const status = room.computedStatus || room.status;
+        acc[status] = (acc[status] || 0) + 1;
         return acc;
       }, {});
 
-      console.log('🔧 Room status breakdown:', roomsByStatus);
+      // Debug: Log room statuses to see what we're getting
+      console.log('🔧 BACKEND DEBUG - roomsByStatus:', roomsByStatus);
+      rooms.forEach(room => {
+        if (room.status === 'dirty' || room.computedStatus === 'dirty') {
+          console.log(`🔧 DIRTY ROOM FOUND: ${room.roomNumber} - status: ${room.status}, computedStatus: ${room.computedStatus}`);
+        }
+      });
 
-      // Map database statuses to tape chart statuses
-      const occupiedRooms = roomsByStatus.occupied || 0;
+
+      // Calculate occupied rooms from active bookings (like Admin Dashboard)
+      const now = new Date();
+      // Reset today to UTC start of day for consistent comparison
+      const todayUTC = new Date();
+      todayUTC.setUTCHours(0, 0, 0, 0);
+
+      const occupiedRooms = bookings.filter(booking => {
+        return ['confirmed', 'checked_in'].includes(booking.status) &&
+               new Date(booking.checkIn) <= now &&
+               new Date(booking.checkOut) >= todayUTC; // Use >= like Admin Dashboard fix
+      }).length;
       const availableRooms = roomsByStatus.vacant || 0;
       const maintenanceRooms = (roomsByStatus.maintenance || 0) + (roomsByStatus.out_of_order || 0);
       const dirtyRooms = roomsByStatus.dirty || 0;
       const blockedRooms = roomsByStatus.blocked || 0;
 
-      // Calculate reserved rooms from active bookings
-      const now = new Date();
+      // Reserved rooms are future bookings (checkIn > todayUTC)
       const reservedRooms = bookings.filter(booking => {
         return ['confirmed', 'checked_in'].includes(booking.status) &&
-               new Date(booking.checkIn) <= now &&
-               new Date(booking.checkOut) > now;
+               new Date(booking.checkIn) > todayUTC;
       }).length;
 
-      console.log('🔧 Dashboard calculations:', {
-        totalRooms,
-        availableRooms,
-        occupiedRooms,
-        reservedRooms,
-        maintenanceRooms,
-        dirtyRooms
-      });
 
       const actualOccupiedRooms = Math.max(occupiedRooms, reservedRooms);
       const occupancyRate = totalRooms > 0 ? (actualOccupiedRooms / totalRooms) * 100 : 0;
@@ -1861,7 +1902,7 @@ class TapeChartService {
       const todayBookings = await Booking.find({
         hotelId: new mongoose.Types.ObjectId(hotelId),
         checkIn: { $lte: date },
-        checkOut: { $gt: date },
+        checkOut: { $gte: date },
         status: { $in: ['confirmed', 'checked_in'] }
       }).populate('rooms.roomId', 'type');
 
@@ -1917,7 +1958,7 @@ class TapeChartService {
       const bookings = await Booking.find({
         hotelId: new mongoose.Types.ObjectId(hotelId),
         checkIn: { $lte: endDate },
-        checkOut: { $gt: startDate },
+        checkOut: { $gte: startDate },
         status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
       });
 
@@ -1950,7 +1991,7 @@ class TapeChartService {
       const occupiedRooms = await Booking.countDocuments({
         hotelId: new mongoose.Types.ObjectId(hotelId),
         checkIn: { $lte: endDate },
-        checkOut: { $gt: startDate },
+        checkOut: { $gte: startDate },  // Include bookings checking out on start date
         status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
       });
 

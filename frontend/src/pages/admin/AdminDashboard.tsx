@@ -241,7 +241,7 @@ export default function AdminDashboard() {
         >
           <MetricCard
             title="Occupancy Rate"
-            value={kpis.data?.data?.averageOccupancy || 0}
+            value={occupancyQuery.data?.data?.overallMetrics?.occupancyRate || 0}
             type="percentage"
             trend={{
               value: kpis.data?.data?.occupancyGrowth || 0,
@@ -414,13 +414,10 @@ export default function AdminDashboard() {
                 }
                 floors[floor].push({
                   roomNumber: room.roomNumber,
-                  status: room.status === 'occupied' ? 'occupied' : 
-                         room.status === 'vacant' ? 'vacant_clean' :
-                         room.status === 'dirty' ? 'vacant_dirty' :
-                         room.status === 'maintenance' ? 'maintenance' :
-                         room.status === 'out_of_order' ? 'out_of_order' : 'vacant_clean',
-                  color: room.status === 'occupied' ? '#ef4444' : 
+                  status: room.status,
+                  color: room.status === 'occupied' ? '#ef4444' :
                          room.status === 'vacant' ? '#10b981' :
+                         room.status === 'reserved' ? '#8b5cf6' :
                          room.status === 'dirty' ? '#f59e0b' :
                          room.status === 'maintenance' ? '#f97316' :
                          room.status === 'out_of_order' ? '#6b7280' : '#10b981'

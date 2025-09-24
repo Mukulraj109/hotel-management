@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
-import { ArrowUpIcon, StarIcon, CreditCardIcon, TrendingUpIcon, CheckIcon, XIcon, RefreshCwIcon, SparklesIcon, DollarSignIcon, TrophyIcon, SettingsIcon } from 'lucide-react';
+import { ArrowUpIcon, StarIcon, CreditCardIcon, TrendingUpIcon, CheckIcon, XIcon, RefreshCwIcon, Home, DollarSignIcon, TrophyIcon, SettingsIcon } from 'lucide-react';
 import { ReservationWorkflowEngine } from '@/utils/ReservationWorkflowEngine';
 import upgradeService, { UpgradeSuggestion, UpgradeAnalytics } from '@/services/upgradeService';
 import { toast } from '@/utils/toast';
@@ -223,9 +223,7 @@ export const UpgradeProcessor: React.FC = () => {
           className="gap-2 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 hover:from-blue-100 hover:to-indigo-100 hover:border-blue-300 text-blue-700 hover:text-blue-800 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg"
         >
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-gradient-to-r from-blue-100 to-indigo-100 rounded-md">
-              <SparklesIcon className="h-4 w-4 text-blue-600" />
-            </div>
+            <Home className="h-4 w-4 text-blue-600" />
             <span className="font-medium">Upgrade Processor</span>
           </div>
         </Button>
@@ -235,7 +233,7 @@ export const UpgradeProcessor: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-                <SparklesIcon className="h-8 w-8 text-white" />
+                <Home className="h-8 w-8 text-white" />
               </div>
               <div>
                 <DialogTitle className="text-2xl font-bold text-white mb-1">
@@ -260,7 +258,7 @@ export const UpgradeProcessor: React.FC = () => {
                 value="suggestions"
                 className="data-[state=active]:bg-white data-[state=active]:text-blue-600 data-[state=active]:shadow-sm transition-all duration-200 rounded-md"
               >
-                <SparklesIcon className="h-4 w-4 mr-2" />
+                <Home className="h-4 w-4 mr-2" />
                 Upgrade Suggestions
               </TabsTrigger>
               <TabsTrigger
@@ -303,7 +301,7 @@ export const UpgradeProcessor: React.FC = () => {
                 </select>
               </div>
               <div className="flex items-center gap-2 text-sm font-medium text-slate-700 bg-white/60 backdrop-blur-sm px-4 py-2 rounded-lg shadow-sm">
-                <SparklesIcon className="h-4 w-4 text-blue-500" />
+                <Home className="h-4 w-4 text-blue-500" />
                 {upgrades.length} suggestions found
               </div>
             </div>
@@ -463,7 +461,7 @@ export const UpgradeProcessor: React.FC = () => {
               <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200 shadow-lg hover:shadow-xl transition-all duration-300">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm font-semibold text-blue-700 flex items-center gap-2">
-                    <SparklesIcon className="h-4 w-4" />
+                    <Home className="h-4 w-4" />
                     Total Suggestions
                   </CardTitle>
                 </CardHeader>

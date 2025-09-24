@@ -383,10 +383,11 @@ roomSchema.statics.getRoomsWithRealTimeStatus = async function(hotelId, options 
   
   if (!rooms.length) return { rooms: [], total: 0 };
   
-  // Get current date
+  // Get current date in UTC to match booking dates
   const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0); // Start of today in UTC
+  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000); // Start of tomorrow in UTC
   
   // Find all current bookings that affect these rooms
   const currentBookings = await Booking.find({
@@ -426,8 +427,12 @@ roomSchema.statics.getRoomsWithRealTimeStatus = async function(hotelId, options 
       if (booking.status === 'checked_in') {
         computedStatus = 'occupied';
       } else if (booking.status === 'confirmed') {
-        if (checkIn <= today) {
-          computedStatus = 'occupied'; // Should be checked in
+        // Compare dates at UTC level to avoid timezone issues
+        const checkInUTC = new Date(checkIn.getTime());
+        checkInUTC.setUTCHours(0, 0, 0, 0);
+
+        if (checkInUTC.getTime() <= today.getTime()) {
+          computedStatus = 'occupied'; // Should be checked in (today or past)
         } else {
           computedStatus = 'reserved'; // Reserved for future
         }
@@ -443,12 +448,51 @@ roomSchema.statics.getRoomsWithRealTimeStatus = async function(hotelId, options 
     });
   });
   
-  // Add computed status to each room
+  // Get maintenance and housekeeping tasks to determine computed status
+  const MaintenanceTask = mongoose.model('MaintenanceTask');
+  const Housekeeping = mongoose.model('Housekeeping');
+
+  // Get all pending maintenance tasks for these rooms
+  const maintenanceTasks = await MaintenanceTask.find({
+    roomId: { $in: rooms.map(r => r._id) },
+    status: { $in: ['pending', 'in_progress', 'assigned'] }
+  }).select('roomId status');
+
+  // Get all pending housekeeping/cleaning tasks for these rooms
+  const housekeepingTasks = await Housekeeping.find({
+    roomId: { $in: rooms.map(r => r._id) },
+    status: { $in: ['pending', 'in_progress'] }
+  }).select('roomId status');
+
+  // Create maps for quick lookup
+  const maintenanceMap = new Map();
+  maintenanceTasks.forEach(task => {
+    maintenanceMap.set(task.roomId.toString(), true);
+  });
+
+  const housekeepingMap = new Map();
+  housekeepingTasks.forEach(task => {
+    housekeepingMap.set(task.roomId.toString(), true);
+  });
+
+  // Add computed status to each room with task-based overrides
   const roomsWithStatus = rooms.map(room => {
     const roomObj = room.toObject();
-    const occupancy = roomOccupancyMap.get(room._id.toString());
-    
-    if (occupancy) {
+    const roomId = room._id.toString();
+    const occupancy = roomOccupancyMap.get(roomId);
+
+    // Determine computed status based on priority:
+    // 1. Maintenance tasks (highest priority)
+    // 2. Housekeeping/cleaning tasks
+    // 3. Booking status (occupied/reserved)
+    // 4. Base room status (out_of_order)
+    // 5. Default to vacant
+
+    if (maintenanceMap.has(roomId)) {
+      roomObj.computedStatus = 'maintenance';
+    } else if (housekeepingMap.has(roomId)) {
+      roomObj.computedStatus = 'dirty';
+    } else if (occupancy) {
       roomObj.computedStatus = occupancy.status;
       roomObj.currentBooking = {
         bookingId: occupancy.bookingId,
@@ -456,11 +500,12 @@ roomSchema.statics.getRoomsWithRealTimeStatus = async function(hotelId, options 
         checkOut: occupancy.checkOut,
         status: occupancy.bookingStatus
       };
+    } else if (room.status === 'out_of_order') {
+      roomObj.computedStatus = 'out_of_order';
     } else {
-      // Check if room has any other status (maintenance, dirty, etc.)
-      roomObj.computedStatus = room.status === 'vacant' ? 'vacant' : room.status;
+      roomObj.computedStatus = 'vacant';
     }
-    
+
     return roomObj;
   });
   

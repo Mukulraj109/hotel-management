@@ -12,7 +12,7 @@ import { useAuth } from '@/context/AuthContext';
 import { guestServiceRequestService, GuestServiceRequest, ServiceStatsResponse, StaffMember } from '@/services/guestServiceRequestService';
 import { toast } from 'react-hot-toast';
 import {
-  ClipboardListIcon,
+  Users,
   AlertCircleIcon,
   CheckCircleIcon,
   ClockIcon,
@@ -233,9 +233,7 @@ export const SpecialRequestTracker: React.FC = () => {
           className="gap-2 bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-700 hover:text-gray-800 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg"
         >
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-gray-100 rounded-md">
-              <ClipboardListIcon className="h-4 w-4 text-gray-600" />
-            </div>
+            <Users className="h-4 w-4 text-gray-600" />
             <span className="font-medium">Special Requests</span>
           </div>
         </Button>
@@ -245,7 +243,7 @@ export const SpecialRequestTracker: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-                <ClipboardListIcon className="h-8 w-8 text-white" />
+                <Users className="h-8 w-8 text-white" />
               </div>
               <div>
                 <DialogTitle className="text-2xl font-bold text-white mb-1">

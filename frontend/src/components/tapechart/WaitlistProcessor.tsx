@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  ListIcon,
+  BarChart3,
   UserCheckIcon,
   ClockIcon,
   TrendingUpIcon,
@@ -200,7 +200,7 @@ export const WaitlistProcessor: React.FC = () => {
       case 'expired':
         return <AlertCircleIcon className="h-4 w-4" />;
       default:
-        return <ListIcon className="h-4 w-4" />;
+        return <BarChart3 className="h-4 w-4" />;
     }
   };
 
@@ -258,9 +258,7 @@ export const WaitlistProcessor: React.FC = () => {
           className="gap-2 bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-700 hover:text-gray-800 transition-all duration-200 shadow-sm hover:shadow-md rounded-lg"
         >
           <div className="flex items-center gap-2">
-            <div className="p-1 bg-gray-100 rounded-md">
-              <ListIcon className="h-4 w-4 text-gray-600" />
-            </div>
+            <BarChart3 className="h-4 w-4 text-gray-600" />
             <span className="font-medium">Waitlist Processor</span>
           </div>
         </Button>
@@ -270,7 +268,7 @@ export const WaitlistProcessor: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-                <ListIcon className="h-8 w-8 text-white" />
+                <BarChart3 className="h-8 w-8 text-white" />
               </div>
               <div>
                 <DialogTitle className="text-2xl font-bold text-white mb-1">
