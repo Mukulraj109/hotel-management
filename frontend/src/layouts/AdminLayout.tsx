@@ -17,19 +17,15 @@ export default function AdminLayout() {
         onSidebarToggle={() => setDesktopSidebarCollapsed(!desktopSidebarCollapsed)}
         isSidebarCollapsed={desktopSidebarCollapsed}
       />
-      <div className="flex flex-1">
+      <div className="flex flex-1 relative">
         <AdminSidebar
           isOpen={mobileSidebarOpen}
           isCollapsed={desktopSidebarCollapsed}
           onClose={() => setMobileSidebarOpen(false)}
           onToggle={() => setDesktopSidebarCollapsed(!desktopSidebarCollapsed)}
         />
-        <main className={`flex-1 min-w-0 transition-all duration-300 ease-in-out ${
-          desktopSidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64'
-        }`}>
-          <div className="p-4 sm:p-6">
-            <Outlet />
-          </div>
+        <main className="flex-1 min-w-0 transition-all duration-300 ease-in-out p-4 sm:p-6">
+          <Outlet />
         </main>
       </div>
     </div>

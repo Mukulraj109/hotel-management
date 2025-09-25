@@ -191,4 +191,23 @@ export const apiManagementApi = {
   getAPIDocumentation: () => api.get('/api-management/documentation'),
 };
 
+// Generic API request function used by hooks
+export const apiRequest = async (url: string, options?: {
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  body?: string;
+  headers?: Record<string, string>;
+}) => {
+  const { method = 'GET', body, headers } = options || {};
+
+  const config = {
+    method,
+    url,
+    ...(body && { data: JSON.parse(body) }),
+    ...(headers && { headers: { ...api.defaults.headers.common, ...headers } })
+  };
+
+  const response = await api.request(config);
+  return response.data;
+};
+
 export { api };

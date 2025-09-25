@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import NotificationAutomationService from '../services/notificationAutomationService.js';
 
 /**
  * @swagger
@@ -522,5 +523,78 @@ roomSchema.statics.getRoomsWithRealTimeStatus = async function(hotelId, options 
     }
   };
 };
+
+// NOTIFICATION AUTOMATION HOOKS
+roomSchema.post('save', async function(doc) {
+  try {
+    // Only trigger notifications for status changes
+    if (doc.isModified('status')) {
+      const statusNotifications = {
+        'out_of_order': {
+          type: 'room_out_of_order',
+          priority: 'urgent',
+          reason: doc.maintenanceNotes || 'Maintenance required'
+        },
+        'dirty': {
+          type: 'room_checkout_dirty',
+          priority: 'medium'
+        },
+        'vacant': {
+          type: 'room_ready',
+          priority: 'medium'
+        },
+        'maintenance': {
+          type: 'room_needs_cleaning',
+          priority: 'medium'
+        }
+      };
+
+      const notification = statusNotifications[doc.status];
+      if (notification) {
+        await NotificationAutomationService.triggerNotification(
+          notification.type,
+          {
+            roomNumber: doc.roomNumber,
+            roomId: doc._id,
+            status: doc.status,
+            floor: doc.floor,
+            type: doc.type,
+            reason: notification.reason || 'Status change'
+          },
+          'auto',
+          notification.priority,
+          doc.hotelId
+        );
+      }
+
+      // Special notification for room back in service
+      if (this.original && this.original.status === 'out_of_order' && doc.status === 'vacant') {
+        await NotificationAutomationService.triggerNotification(
+          'room_back_in_service',
+          {
+            roomNumber: doc.roomNumber,
+            roomId: doc._id,
+            previousStatus: 'out_of_order',
+            newStatus: 'vacant'
+          },
+          'auto',
+          'high',
+          doc.hotelId
+        );
+      }
+    }
+
+  } catch (error) {
+    console.error('Error in Room notification hook:', error);
+  }
+});
+
+// Store original values before save for comparison
+roomSchema.pre('save', function(next) {
+  if (!this.isNew) {
+    this.original = this.toObject();
+  }
+  next();
+});
 
 export default mongoose.model('Room', roomSchema);

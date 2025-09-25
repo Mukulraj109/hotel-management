@@ -9,7 +9,19 @@
       "Bash(npm run build:*)",
       "Read(//c/Users/Mukul raj/OneDrive/Pictures/Screenshots/**)",
       "Bash(timeout:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(npm start)",
+      "Bash(npm install)",
+      "Bash(npm run test:backend:*)",
+      "Bash(npx jest:*)",
+      "Bash(redis-cli:*)",
+      "Bash(findstr:*)",
+      "Bash(powershell:*)",
+      "Bash(wsl:*)",
+      "Bash(dir:*)",
+      "Bash(docker:*)",
+      "Bash(npx web-push:*)",
+      "Bash(npm install:*)"
     ],
     "deny": [],
     "ask": []

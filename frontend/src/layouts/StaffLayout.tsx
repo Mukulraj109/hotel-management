@@ -3,6 +3,9 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { staffAlertService } from '../services/staffAlertService';
+import { useNotifications, useNotificationStream } from '../hooks/useNotifications';
+import NotificationDropdown from '../components/notifications/NotificationDropdown';
+import SettingsDropdown from '../components/settings/SettingsDropdown';
 import {
   ClipboardCheck,
   Users,
@@ -47,6 +50,11 @@ export default function StaffLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Connect to notification stream
+  useNotificationStream();
 
   // Fetch alert summary for notification bell
   const { data: alertSummary } = useQuery({
@@ -168,24 +176,21 @@ export default function StaffLayout() {
             </div>
             <div className="ml-4 flex items-center md:ml-6 space-x-3">
 
-              {/* Alert Notifications */}
-              <button
-                onClick={() => navigate('/staff/alerts')}
-                className="relative bg-white p-1 rounded-full text-gray-400 hover:text-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                title={`${alertSummary?.totalUnacknowledged || 0} unread alerts`}
-              >
-                <Bell className="h-6 w-6" />
-                {alertSummary?.totalUnacknowledged > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center font-medium">
-                    {alertSummary.totalUnacknowledged > 99 ? '99+' : alertSummary.totalUnacknowledged}
-                  </span>
-                )}
-                {alertSummary?.criticalCount > 0 && (
-                  <span className="absolute -top-1 -left-1 text-red-600">
-                    <AlertTriangle className="h-3 w-3" />
-                  </span>
-                )}
-              </button>
+              {/* Notification Dropdown */}
+              <div className="relative">
+                <NotificationDropdown
+                  isOpen={isNotificationOpen}
+                  onToggle={() => setIsNotificationOpen(!isNotificationOpen)}
+                />
+              </div>
+
+              {/* Settings Dropdown */}
+              <div className="relative">
+                <SettingsDropdown
+                  isOpen={isSettingsOpen}
+                  onToggle={() => setIsSettingsOpen(!isSettingsOpen)}
+                />
+              </div>
 
               {/* User menu */}
               <div className="flex items-center space-x-3">

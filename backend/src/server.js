@@ -26,6 +26,7 @@ import logger from './utils/logger.js';
 import websocketService from './services/websocketService.js';
 import inventoryScheduler from './services/inventoryScheduler.js';
 import reorderJob from './jobs/reorderJob.js';
+import NotificationScheduler from './services/notificationScheduler.js';
 // import pricingScheduler from './schedulers/pricingScheduler.js'; // Temporarily disabled - requires tensorflow
 import {
     applyEventMiddleware
@@ -70,6 +71,9 @@ import hotelServicesRoutes from './routes/hotelServices.js'; // Temporarily disa
 import adminHotelServicesRoutes from './routes/adminHotelServices.js';
 import staffServicesRoutes from './routes/staffServices.js';
 import notificationRoutes from './routes/notifications.js'; // Temporarily disabled
+import userPreferencesRoutes from './routes/userPreferences.js';
+import hotelSettingsRoutes from './routes/hotelSettings.js';
+import settingsRoutes from './routes/settings.js';
 import digitalKeyRoutes from './routes/digitalKeys.js'; // Temporarily disabled
 import staffAlertsRoutes from './routes/staffAlerts.js';
 import staffMeetUpRoutes from './routes/staffMeetUp.js';
@@ -474,6 +478,9 @@ app.use('/api/v1/hotel-services', hotelServicesRoutes);
 app.use('/api/v1/admin/hotel-services', adminHotelServicesRoutes);
 app.use('/api/v1/staff/services', staffServicesRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
+app.use('/api/v1/user-preferences', userPreferencesRoutes);
+app.use('/api/v1/hotel-settings', hotelSettingsRoutes);
+app.use('/api/v1', settingsRoutes); // Settings routes with various endpoints
 app.use('/api/v1/digital-keys', digitalKeyRoutes);
 app.use('/api/v1/meet-up-requests', meetUpRequestRoutes);
 app.use('/api/v1/meetup-resources', meetUpResourceRoutes);
@@ -625,19 +632,24 @@ const server = app.listen(PORT, async () => {
     logger.info('✅ Server startup completed successfully');
 
     // Initialize services after server starts
-    /*  // TEMPORARILY DISABLED FOR TESTING
+    // RE-ENABLED FOR NOTIFICATION AUTOMATION
     try {
         logger.info('🔄 Starting post-server services initialization...');
 
-        // Initialize WebSocket server - TEMPORARILY COMMENTED
+        // Initialize WebSocket server for real-time notifications
         logger.info('🔄 Initializing WebSocket server...');
-        // websocketService.initialize(server);
-        logger.info('✅ WebSocket server initialized (SKIPPED)');
+        websocketService.initialize(server);
+        logger.info('✅ WebSocket server initialized');
 
         // Start inventory scheduler - TEMPORARILY COMMENTED
         logger.info('🔄 Starting inventory scheduler...');
         inventoryScheduler.start();
         logger.info('✅ Inventory scheduler started');
+
+        // Initialize notification scheduler for hotel management automation
+        logger.info('🔄 Initializing notification scheduler...');
+        NotificationScheduler.initializeScheduledJobs();
+        logger.info('✅ Notification scheduler initialized');
 
         // Start reorder job
         logger.info('🔄 Starting reorder job...');
@@ -710,7 +722,7 @@ const server = app.listen(PORT, async () => {
         logger.error('Failed to start services:', error);
         process.exit(1);
     }
-    */
+    // END OF POST-SERVER SERVICES INITIALIZATION
 });
 
 // Graceful shutdown - TEMPORARILY COMMENTED

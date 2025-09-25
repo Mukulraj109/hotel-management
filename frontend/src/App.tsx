@@ -43,6 +43,9 @@ import MeetUpRequestsDashboard from './pages/guest/MeetUpRequestsDashboard';
 import GuestBillingHistory from './pages/guest/GuestBillingHistory';
 import GuestFeedback from './pages/guest/GuestFeedback';
 import GuestDocuments from './pages/guest/GuestDocuments';
+import ProfileSettings from './pages/guest/ProfileSettings';
+import PreferencesSettings from './pages/guest/PreferencesSettings';
+import PrivacySettings from './pages/guest/PrivacySettings';
 
 // Admin Pages
 import AdminLogin from './pages/admin/AdminLogin';
@@ -88,6 +91,7 @@ import GSTManagement from './components/admin/GSTManagement';
 import CorporateUserRegistration from './components/admin/CorporateUserRegistration';
 import { InventoryTemplateManagement } from './components/admin/InventoryTemplateManagement';
 import AIDashboard from './components/analytics/AIDashboard';
+import { NotificationAnalyticsDashboard } from './components/analytics/NotificationAnalyticsDashboard';
 import OverbookingConfiguration from './components/admin/OverbookingConfiguration';
 import AdminWebSettings from './pages/admin/AdminWebSettings';
 import AdminBookingFormBuilder from './pages/admin/AdminBookingFormBuilder';
@@ -102,15 +106,18 @@ import AdminCheckoutInventoryManagement from './pages/admin/AdminCheckoutInvento
 import AdminTravelDashboard from './pages/admin/AdminTravelDashboard';
 import AdminDocumentVerification from './pages/admin/AdminDocumentVerification';
 import AdminDocumentAnalytics from './pages/admin/AdminDocumentAnalytics';
+import AdminNotifications from './pages/admin/AdminNotifications';
 import TravelAgentDashboard from './pages/travel-agent/TravelAgentDashboard';
+import TravelAgentNotifications from './pages/travel-agent/TravelAgentNotifications';
 import BookingCreate from './pages/travel-agent/BookingCreate';
 import ViewRates from './pages/travel-agent/ViewRates';
 import ProfileEdit from './pages/travel-agent/ProfileEdit';
 import MultiBooking from './pages/travel-agent/MultiBooking';
+import TravelAgentSettings from './pages/travel-agent/TravelAgentSettings';
 
 // Staff Pages
 import StaffDashboard from './pages/staff/StaffDashboard';
-
+import StaffNotifications from './pages/staff/StaffNotifications';
 import StaffHousekeeping from './pages/staff/StaffHousekeeping';
 import StaffMaintenance from './pages/staff/StaffMaintenance';
 import StaffGuestServices from './pages/staff/StaffGuestServices';
@@ -193,6 +200,9 @@ function App() {
             <Route path="inventory-requests" element={<InventoryRequests />} />
             <Route path="documents" element={<GuestDocuments />} />
             <Route path="feedback" element={<GuestFeedback />} />
+            <Route path="settings/profile" element={<ProfileSettings />} />
+            <Route path="settings/preferences" element={<PreferencesSettings />} />
+            <Route path="settings/privacy" element={<PrivacySettings />} />
             <Route path="mobile-app" element={<ContactlessGuestApp />} />
           </Route>
 
@@ -258,6 +268,8 @@ function App() {
                 <Route path="meet-up-management" element={<AdminMeetUpManagement />} />
                 <Route path="documents" element={<AdminDocumentVerification />} />
                 <Route path="documents/analytics" element={<AdminDocumentAnalytics />} />
+                <Route path="notifications" element={<AdminNotifications />} />
+                <Route path="notification-analytics" element={<NotificationAnalyticsDashboard />} />
                 <Route path="travel-dashboard" element={<AdminTravelDashboard />} />
               </Route>
 
@@ -269,12 +281,14 @@ function App() {
               }>
                 <Route index element={<TravelAgentDashboard />} />
                 <Route path="dashboard" element={<TravelAgentDashboard />} />
+                <Route path="notifications" element={<TravelAgentNotifications />} />
                 <Route path="bookings" element={<TravelAgentDashboard />} />
                 <Route path="booking/new" element={<BookingCreate />} />
                 <Route path="new-booking" element={<BookingCreate />} />
                 <Route path="multi-booking" element={<MultiBooking />} />
                 <Route path="rates" element={<ViewRates />} />
                 <Route path="profile/edit" element={<ProfileEdit />} />
+                <Route path="settings" element={<TravelAgentSettings />} />
               </Route>
 
               {/* Staff Routes */}
@@ -284,6 +298,7 @@ function App() {
                 </ProtectedRoute>
               }>
                 <Route index element={<StaffDashboard />} />
+                <Route path="notifications" element={<StaffNotifications />} />
                 <Route path="alerts" element={<StaffAlertCenter />} />
                 <Route path="meetup-supervision" element={<StaffMeetUpSupervision />} />
                 <Route path="inventory-check/:roomId" element={<DailyInventoryCheckForm />} />

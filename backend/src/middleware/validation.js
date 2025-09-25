@@ -171,6 +171,13 @@ export const schemas = {
                 }),
                 type: Joi.string().valid('booking_confirmation', 'booking_reminder', 'booking_cancellation', 'payment_success', 'payment_failed', 'loyalty_points', 'service_booking', 'service_reminder', 'promotional', 'system_alert', 'welcome', 'check_in', 'check_out', 'review_request', 'special_offer').optional()
               }),
+
+              deleteNotifications: Joi.object({
+                notificationIds: Joi.array().items(Joi.string().required()).min(1).required().messages({
+                  'array.min': 'At least one notification ID is required',
+                  'any.required': 'Notification IDs are required'
+                })
+              }),
               generateDigitalKey: Joi.object({
                 bookingId: Joi.string().required().messages({
                   'string.empty': 'Booking ID is required',
@@ -1007,3 +1014,25 @@ export const validateMatchCandidates = validate(schemas.findMatchCandidates);
  * Validate waitlist ID specifically
  */
 export const validateWaitlistId = validateObjectId('id');
+
+/**
+ * Validate analytics request query parameters
+ */
+export const validateAnalyticsRequest = (req, res, next) => {
+  const schema = Joi.object({
+    timeRange: Joi.number().integer().min(1).max(365).optional(),
+    limit: Joi.number().integer().min(1).max(1000).optional(),
+    channel: Joi.string().valid('in_app', 'browser', 'email', 'sms', 'push').optional(),
+    category: Joi.string().optional(),
+    format: Joi.string().valid('json', 'csv').optional()
+  });
+
+  const { error } = schema.validate(req.query);
+
+  if (error) {
+    const message = error.details.map(detail => detail.message).join(', ');
+    return next(new ApplicationError(message, 400));
+  }
+
+  next();
+};

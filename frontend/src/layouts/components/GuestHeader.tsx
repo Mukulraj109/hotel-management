@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { Bell, User, Menu } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/button';
+import { useNotifications, useNotificationStream } from '../../hooks/useNotifications';
+import NotificationDropdown from '../../components/notifications/NotificationDropdown';
+import SettingsDropdown from '../../components/settings/SettingsDropdown';
 
 interface GuestHeaderProps {
   onMenuToggle?: () => void;
@@ -9,6 +12,11 @@ interface GuestHeaderProps {
 
 export default function GuestHeader({ onMenuToggle }: GuestHeaderProps) {
   const { user, logout } = useAuth();
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Connect to notification stream
+  useNotificationStream();
 
 
   return (
@@ -35,13 +43,22 @@ export default function GuestHeader({ onMenuToggle }: GuestHeaderProps) {
         </div>
         
         <div className="flex items-center space-x-2 sm:space-x-4">
-          {/* Static Notification Bell */}
+          {/* Notification Dropdown */}
           <div className="relative">
-            <button className="relative p-2 rounded-md text-gray-500 hover:bg-gray-100 transition-colors">
-              <Bell className="h-5 w-5" />
-            </button>
+            <NotificationDropdown
+              isOpen={isNotificationOpen}
+              onToggle={() => setIsNotificationOpen(!isNotificationOpen)}
+            />
           </div>
-          
+
+          {/* Settings Dropdown */}
+          <div className="relative">
+            <SettingsDropdown
+              isOpen={isSettingsOpen}
+              onToggle={() => setIsSettingsOpen(!isSettingsOpen)}
+            />
+          </div>
+
           <div className="hidden sm:flex items-center space-x-3">
             <div className="text-right">
               <p className="text-sm font-medium text-gray-900">{user?.name}</p>
