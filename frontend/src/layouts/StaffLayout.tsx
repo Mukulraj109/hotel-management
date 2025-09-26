@@ -24,11 +24,13 @@ import {
   CheckSquare,
   ShoppingBag,
   AlertTriangle,
-  FileText
+  FileText,
+  CalendarDays
 } from 'lucide-react';
 
 const navigation = [
   { name: 'Dashboard', href: '/staff', icon: Home },
+  { name: 'Upcoming Arrivals', href: '/staff/upcoming-bookings', icon: CalendarDays },
   { name: 'Alert Center', href: '/staff/alerts', icon: Bell },
   { name: 'Daily Routine Check', href: '/staff/daily-routine-check', icon: CheckSquare },
   { name: 'Meet-Up Supervision', href: '/staff/meetup-supervision', icon: Users2 },

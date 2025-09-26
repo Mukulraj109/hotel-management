@@ -92,10 +92,6 @@ const userSettingsSchema = new mongoose.Schema({
         type: Boolean,
         default: true
       },
-      sms: {
-        type: Boolean,
-        default: false
-      },
       push: {
         type: Boolean,
         default: true

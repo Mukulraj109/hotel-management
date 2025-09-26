@@ -98,6 +98,28 @@ router.put('/users/notification-preferences', catchAsync(async (req, res, next) 
   });
 }));
 
+// GET /api/v1/users/display-preferences - Get display preferences
+router.get('/users/display-preferences', catchAsync(async (req, res, next) => {
+  const userId = req.user._id;
+  const preferences = await UserPreference.getOrCreateForUser(userId);
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      preferences: preferences.display || {
+        theme: 'light',
+        sidebarCollapsed: false,
+        compactView: false,
+        highContrastMode: false,
+        language: 'English',
+        currency: 'Indian Rupee (₹)',
+        dateFormat: 'DD/MM/YYYY',
+        timeFormat: '24 Hour'
+      }
+    }
+  });
+}));
+
 // PUT /api/v1/users/display-preferences - Update display preferences
 router.put('/users/display-preferences', catchAsync(async (req, res, next) => {
   const userId = req.user._id;

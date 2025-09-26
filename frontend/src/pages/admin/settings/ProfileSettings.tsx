@@ -26,10 +26,10 @@ interface ProfileFormData {
 }
 
 interface ProfileSettingsProps {
-  onSettingsChange: (hasChanges: boolean) => void;
+  onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function ProfileSettings({ onSettingsChange }: ProfileSettingsProps) {
+export default function ProfileSettings({ onSettingsChange }: ProfileSettingsProps = {}) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -53,7 +53,9 @@ export default function ProfileSettings({ onSettingsChange }: ProfileSettingsPro
 
   // Watch for form changes
   useEffect(() => {
-    onSettingsChange(isDirty);
+    if (onSettingsChange) {
+      onSettingsChange(isDirty);
+    }
   }, [isDirty, onSettingsChange]);
 
   // Timezones list
@@ -81,7 +83,8 @@ export default function ProfileSettings({ onSettingsChange }: ProfileSettingsPro
   // Save profile mutation
   const saveProfileMutation = useMutation({
     mutationFn: async (data: ProfileFormData) => {
-      // Mock API call - replace with actual API endpoint
+      console.log('Saving profile data:', data);
+
       const response = await fetch('/api/v1/users/profile', {
         method: 'PUT',
         headers: {
@@ -91,16 +94,21 @@ export default function ProfileSettings({ onSettingsChange }: ProfileSettingsPro
         body: JSON.stringify(data)
       });
 
+      const responseData = await response.json();
+      console.log('Server response:', responseData);
+
       if (!response.ok) {
-        throw new Error('Failed to update profile');
+        throw new Error(responseData.message || 'Failed to update profile');
       }
 
-      return response.json();
+      return responseData;
     },
     onSuccess: () => {
       toast.success('Profile updated successfully');
       queryClient.invalidateQueries({ queryKey: ['user'] });
-      onSettingsChange(false);
+      if (onSettingsChange) {
+        onSettingsChange(false);
+      }
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update profile');
@@ -108,18 +116,70 @@ export default function ProfileSettings({ onSettingsChange }: ProfileSettingsPro
   });
 
   const onSubmit = (data: ProfileFormData) => {
+    console.log('Form submitted with data:', data);
     saveProfileMutation.mutate(data);
   };
 
-  const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
+      // Check file size
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error('File size must be less than 2MB');
+        return;
+      }
+
+      // Show preview
       const reader = new FileReader();
       reader.onloadend = () => {
         setAvatarPreview(reader.result as string);
-        setValue('avatar', reader.result as string, { shouldDirty: true });
       };
       reader.readAsDataURL(file);
+
+      // Upload file
+      const formData = new FormData();
+      formData.append('avatar', file);
+
+      try {
+        const response = await fetch('/api/v1/upload/avatar', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: formData
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to upload avatar');
+        }
+
+        const data = await response.json();
+        setValue('avatar', data.data.avatarUrl, { shouldDirty: true });
+
+        // Update the user context and localStorage immediately
+        queryClient.setQueryData(['user'], (oldData: any) => {
+          if (oldData && oldData.user) {
+            const updatedUser = {
+              ...oldData.user,
+              avatar: data.data.avatarUrl
+            };
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+            return {
+              ...oldData,
+              user: updatedUser
+            };
+          }
+          return oldData;
+        });
+
+        // Also refresh the user data from server to ensure consistency
+        queryClient.invalidateQueries({ queryKey: ['user'] });
+
+        toast.success('Avatar uploaded successfully');
+      } catch (error) {
+        toast.error('Failed to upload avatar');
+        console.error('Avatar upload error:', error);
+      }
     }
   };
 
@@ -144,7 +204,7 @@ export default function ProfileSettings({ onSettingsChange }: ProfileSettingsPro
               <div className="h-20 w-20 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
                 {avatarPreview || user?.avatar ? (
                   <img
-                    src={avatarPreview || user?.avatar}
+                    src={avatarPreview || (user?.avatar?.startsWith('/') ? `${window.location.origin}${user.avatar}` : user?.avatar)}
                     alt="Avatar"
                     className="h-full w-full object-cover"
                   />

@@ -55,16 +55,18 @@ interface IntegrationFormData {
 }
 
 interface IntegrationSettingsProps {
-  onSettingsChange: (hasChanges: boolean) => void;
+  onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function IntegrationSettings({ onSettingsChange }: IntegrationSettingsProps) {
+export default function IntegrationSettings({ onSettingsChange }: IntegrationSettingsProps = {}) {
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+  const [isLoading, setIsLoading] = useState(true);
 
   const {
     register,
     handleSubmit,
     watch,
+    reset,
     formState: { isDirty }
   } = useForm<IntegrationFormData>({
     defaultValues: {
@@ -107,9 +109,40 @@ export default function IntegrationSettings({ onSettingsChange }: IntegrationSet
 
   const watchedValues = watch();
 
+  // Load existing integration settings on mount
+  useEffect(() => {
+    const loadIntegrationSettings = async () => {
+      try {
+        setIsLoading(true);
+        const response = await fetch('/api/v1/integrations/settings', {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          reset(data.data);
+        } else {
+          console.warn('Failed to load integration settings, using defaults');
+        }
+      } catch (error) {
+        console.error('Error loading integration settings:', error);
+        toast.error('Failed to load integration settings');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadIntegrationSettings();
+  }, [reset]);
+
   // Watch for form changes
   useEffect(() => {
-    onSettingsChange(isDirty);
+    if (onSettingsChange) {
+      onSettingsChange(isDirty);
+    }
   }, [isDirty, onSettingsChange]);
 
   // Save integration settings mutation
@@ -133,7 +166,9 @@ export default function IntegrationSettings({ onSettingsChange }: IntegrationSet
     },
     onSuccess: () => {
       toast.success('Integration settings updated successfully');
-      onSettingsChange(false);
+      if (onSettingsChange) {
+        onSettingsChange(false);
+      }
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update integration settings');
@@ -178,6 +213,19 @@ export default function IntegrationSettings({ onSettingsChange }: IntegrationSet
       </div>
     </div>
   );
+
+  if (isLoading) {
+    return (
+      <div className="p-6">
+        <div className="max-w-4xl">
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            <span className="ml-2 text-gray-600">Loading integration settings...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">

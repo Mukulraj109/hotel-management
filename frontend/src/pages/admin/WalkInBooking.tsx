@@ -384,11 +384,27 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
         toast.success('Guest account created successfully');
       } catch (userError) {
         console.error('Error creating user:', userError);
-        
+        console.error('User error status:', userError.response?.status);
+        console.error('User error message:', userError.response?.data?.message);
+        console.error('Full error:', userError.response?.data);
+
         // Check if user already exists
-        if (userError.response?.status === 400 && userError.response?.data?.message?.includes('already exists')) {
-          toast.error(`User with email ${guestForm.email} already exists. Please use a different email.`);
-          return;
+        if (userError.response?.status === 409 && userError.response?.data?.message?.includes('already exists')) {
+          // User exists, fetch the existing user using search
+          try {
+            const existingUsersResponse = await adminService.getUsers({ search: guestForm.email });
+            const existingUser = existingUsersResponse.data.users.find(user => user.email === guestForm.email);
+            if (existingUser) {
+              userId = existingUser._id;
+              toast.info(`Using existing guest account for ${guestForm.email}`);
+            } else {
+              toast.error('User exists but could not retrieve details. Please try again.');
+              return;
+            }
+          } catch (fetchError) {
+            toast.error('Could not retrieve existing user details. Please try again.');
+            return;
+          }
         } else if (userError.response?.status === 400) {
           toast.error(`User creation failed: ${userError.response?.data?.message || 'Invalid user data'}`);
           return;
@@ -399,6 +415,14 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
       }
 
       // Create booking
+      console.log('🔍 Creating booking with userId:', userId);
+      console.log('🔍 Payment details:', {
+        paymentMethod: bookingForm.paymentMethod,
+        advanceAmount: bookingForm.advanceAmount,
+        totalAmount: calculateTotalAmount(),
+        paymentStatus: bookingForm.advanceAmount >= calculateTotalAmount() ? 'paid' : (bookingForm.advanceAmount > 0 ? 'partially_paid' : 'pending')
+      });
+
       try {
                  const bookingData = {
            hotelId: bookingForm.hotelId,
@@ -409,8 +433,15 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
            guestDetails: bookingForm.guestDetails,
            totalAmount: calculateTotalAmount(),
            currency: bookingForm.currency,
-           paymentStatus: bookingForm.paymentStatus,
-           status: 'confirmed' as const
+           paymentStatus: bookingForm.advanceAmount >= calculateTotalAmount() ? 'paid' : (bookingForm.advanceAmount > 0 ? 'partially_paid' : 'pending'),
+           status: 'confirmed' as const,
+           // Include payment information
+           paymentMethod: bookingForm.paymentMethod,
+           advanceAmount: bookingForm.advanceAmount,
+           paymentReference: '', // Can be extended later for card/UPI references
+           paymentNotes: bookingForm.advanceAmount > 0 ? `Walk-in payment: ${formatCurrency(bookingForm.advanceAmount, bookingForm.currency)} via ${bookingForm.paymentMethod}` : '',
+           // Required idempotency key
+           idempotencyKey: `walkin-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
          };
 
         await adminService.createBooking(bookingData);
@@ -441,7 +472,11 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
         }, 1500);
       } catch (bookingError) {
         console.error('Error creating booking:', bookingError);
-        
+        console.error('Booking error status:', bookingError.response?.status);
+        console.error('Booking error message:', bookingError.response?.data?.message);
+        console.error('Full booking error:', bookingError.response?.data);
+        console.error('Booking data that failed:', typeof bookingData !== 'undefined' ? bookingData : 'bookingData not available');
+
         if (bookingError.response?.status === 400) {
           toast.error(`Booking failed: ${bookingError.response?.data?.message || 'Invalid booking data'}`);
         } else if (bookingError.response?.status === 409) {

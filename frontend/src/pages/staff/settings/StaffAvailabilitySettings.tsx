@@ -23,10 +23,10 @@ interface StaffAvailabilityFormData {
 }
 
 interface StaffAvailabilitySettingsProps {
-  onSettingsChange: (hasChanges: boolean) => void;
+  onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAvailabilitySettingsProps) {
+export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAvailabilitySettingsProps = {}) {
   const {
     register,
     handleSubmit,
@@ -46,7 +46,9 @@ export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAva
 
   // Watch for form changes
   useEffect(() => {
-    onSettingsChange(isDirty);
+    if (onSettingsChange) {
+      onSettingsChange(isDirty);
+    }
   }, [isDirty, onSettingsChange]);
 
   // Save availability settings mutation
@@ -69,7 +71,9 @@ export default function StaffAvailabilitySettings({ onSettingsChange }: StaffAva
     },
     onSuccess: () => {
       toast.success('Availability settings updated successfully');
-      onSettingsChange(false);
+      if (onSettingsChange) {
+        onSettingsChange(false);
+      }
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update availability settings');

@@ -187,9 +187,80 @@ maintenanceRequestSchema.post('save', async function(doc) {
       );
     }
 
+    // Phase 6: Equipment failure pattern detection
+    if (this.isNew && doc.issueType) {
+      try {
+        const last30Days = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+        // Count similar failures in the last 30 days
+        const similarFailures = await mongoose.model('MaintenanceRequest').countDocuments({
+          hotelId: doc.hotelId,
+          issueType: doc.issueType,
+          createdAt: { $gte: last30Days },
+          _id: { $ne: doc._id } // Exclude current request
+        });
+
+        // If we have 3 or more similar failures, trigger pattern alert
+        if (similarFailures >= 3) {
+          // Get all similar requests for detailed analysis
+          const recentRequests = await mongoose.model('MaintenanceRequest').find({
+            hotelId: doc.hotelId,
+            issueType: doc.issueType,
+            createdAt: { $gte: last30Days }
+          }).select('roomId priority actualCost estimatedCost createdAt').populate('roomId', 'roomNumber');
+
+          const urgentCount = recentRequests.filter(req => req.priority === 'urgent').length;
+          const avgCost = recentRequests.reduce((sum, req) => sum + (req.actualCost || req.estimatedCost || 0), 0) / recentRequests.length;
+          const totalCost = recentRequests.reduce((sum, req) => sum + (req.actualCost || req.estimatedCost || 0), 0);
+
+          const priority = urgentCount >= 2 ? 'urgent' : similarFailures >= 5 ? 'high' : 'medium';
+
+          await NotificationAutomationService.triggerNotification(
+            'equipment_failure_pattern',
+            {
+              equipmentType: doc.issueType,
+              failureCount: similarFailures + 1, // Include current request
+              timeFrame: '30 days',
+              failureRate: Math.round(((similarFailures + 1) / 30) * 100) / 100,
+              avgCost: Math.round(avgCost),
+              urgentFailures: urgentCount,
+              totalCost: Math.round(totalCost),
+              pattern: similarFailures >= 5 ? 'Critical pattern detected' : 'Concerning pattern detected',
+              affectedRooms: [...new Set(recentRequests.map(req => req.roomId?.roomNumber).filter(Boolean))],
+              recommendation: this.generateMaintenanceRecommendation(similarFailures + 1, urgentCount),
+              preventiveMaintenance: similarFailures >= 4,
+              currentRequestId: doc._id,
+              latestFailure: {
+                roomNumber,
+                description: doc.description,
+                priority: doc.priority
+              }
+            },
+            'auto',
+            priority,
+            doc.hotelId
+          );
+        }
+
+      } catch (error) {
+        console.error('Error in equipment failure pattern detection:', error);
+      }
+    }
+
   } catch (error) {
     console.error('Error in MaintenanceRequest notification hook:', error);
   }
 });
+
+// Helper method to generate maintenance recommendations based on failure patterns
+maintenanceRequestSchema.methods.generateMaintenanceRecommendation = function(failureCount, urgentCount) {
+  if (failureCount >= 5) {
+    return `Consider replacing all ${this.issueType} equipment - high failure rate indicates end of life`;
+  } else if (urgentCount >= 2) {
+    return `Schedule immediate inspection of all ${this.issueType} equipment across the hotel`;
+  } else {
+    return `Implement preventive maintenance schedule for ${this.issueType} equipment`;
+  }
+};
 
 export default mongoose.model('MaintenanceRequest', maintenanceRequestSchema);

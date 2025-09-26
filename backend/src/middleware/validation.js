@@ -63,12 +63,17 @@ export const schemas = {
     }),
     totalAmount: Joi.number().optional(), // Allow admin to specify total amount
     currency: Joi.string().optional(),
-    paymentStatus: Joi.string().valid('pending', 'paid').optional(),
+    paymentStatus: Joi.string().valid('pending', 'paid', 'partially_paid').optional(),
     status: Joi.string().valid('pending', 'confirmed', 'checked_in').optional(),
     idempotencyKey: Joi.string().required(),
     // Additional fields for room type bookings (optional metadata)
     roomType: Joi.string().valid('single', 'double', 'suite', 'deluxe').optional(),
     nights: Joi.number().min(1).optional(),
+    // Payment information for walk-in bookings
+    paymentMethod: Joi.string().valid('cash', 'card', 'upi', 'bank_transfer').optional(),
+    advanceAmount: Joi.number().min(0).optional(),
+    paymentReference: Joi.string().allow('').optional(),
+    paymentNotes: Joi.string().allow('').optional(),
     ratePerNight: Joi.number().min(0).optional(),
     guestName: Joi.string().optional(),
     guestEmail: Joi.string().email().optional(),

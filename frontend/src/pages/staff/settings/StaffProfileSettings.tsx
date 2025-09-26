@@ -25,10 +25,10 @@ interface StaffProfileFormData {
 }
 
 interface StaffProfileSettingsProps {
-  onSettingsChange: (hasChanges: boolean) => void;
+  onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function StaffProfileSettings({ onSettingsChange }: StaffProfileSettingsProps) {
+export default function StaffProfileSettings({ onSettingsChange }: StaffProfileSettingsProps = {}) {
   const { user } = useAuth();
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
@@ -51,7 +51,9 @@ export default function StaffProfileSettings({ onSettingsChange }: StaffProfileS
 
   // Watch for form changes
   useEffect(() => {
-    onSettingsChange(isDirty);
+    if (onSettingsChange) {
+      onSettingsChange(isDirty);
+    }
   }, [isDirty, onSettingsChange]);
 
   // Departments list
@@ -86,7 +88,9 @@ export default function StaffProfileSettings({ onSettingsChange }: StaffProfileS
     },
     onSuccess: () => {
       toast.success('Profile updated successfully');
-      onSettingsChange(false);
+      if (onSettingsChange) {
+        onSettingsChange(false);
+      }
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update profile');
@@ -97,15 +101,59 @@ export default function StaffProfileSettings({ onSettingsChange }: StaffProfileS
     saveProfileMutation.mutate(data);
   };
 
-  const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
+      // Check file size
+      if (file.size > 2 * 1024 * 1024) {
+        toast.error('File size must be less than 2MB');
+        return;
+      }
+
+      // Show preview
       const reader = new FileReader();
       reader.onloadend = () => {
         setAvatarPreview(reader.result as string);
-        setValue('avatar', reader.result as string, { shouldDirty: true });
       };
       reader.readAsDataURL(file);
+
+      // Upload file
+      const formData = new FormData();
+      formData.append('avatar', file);
+
+      try {
+        const response = await fetch('/api/v1/upload/avatar', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: formData
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to upload avatar');
+        }
+
+        const data = await response.json();
+        setValue('avatar', data.data.avatarUrl, { shouldDirty: true });
+
+        // Update localStorage immediately
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+          try {
+            const parsedUser = JSON.parse(storedUser);
+            const updatedUser = { ...parsedUser, avatar: data.data.avatarUrl };
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+          } catch (e) {
+            console.error('Failed to update stored user:', e);
+          }
+        }
+
+        toast.success('Avatar uploaded successfully');
+      } catch (error) {
+        toast.error('Failed to upload avatar');
+        console.error('Avatar upload error:', error);
+      }
     }
   };
 
@@ -130,7 +178,7 @@ export default function StaffProfileSettings({ onSettingsChange }: StaffProfileS
               <div className="h-20 w-20 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
                 {avatarPreview || user?.avatar ? (
                   <img
-                    src={avatarPreview || user?.avatar}
+                    src={avatarPreview || (user?.avatar?.startsWith('/') ? `${window.location.origin}${user.avatar}` : user?.avatar)}
                     alt="Avatar"
                     className="h-full w-full object-cover"
                   />

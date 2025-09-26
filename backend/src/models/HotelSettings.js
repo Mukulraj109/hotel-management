@@ -211,6 +211,7 @@ const hotelSettingsSchema = new mongoose.Schema({
       timeout: { type: Number, default: 60 }, // minutes
       maxConcurrentSessions: { type: Number, default: 5 }
     },
+    maxLoginAttempts: { type: Number, default: 5 }, // max failed login attempts before lockout
     ipRestrictions: [String], // Array of allowed IP addresses/ranges
     auditLog: { type: Boolean, default: true }
   },

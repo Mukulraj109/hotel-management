@@ -551,16 +551,71 @@ roomSchema.post('save', async function(doc) {
 
       const notification = statusNotifications[doc.status];
       if (notification) {
+        let notificationData = {
+          roomNumber: doc.roomNumber,
+          roomId: doc._id,
+          status: doc.status,
+          floor: doc.floor,
+          type: doc.type,
+          reason: notification.reason || 'Status change'
+        };
+
+        // Phase 6: Add revenue impact data for out-of-order rooms
+        if (doc.status === 'out_of_order') {
+          try {
+            const RoomType = mongoose.model('RoomType');
+            const roomType = await RoomType.findById(doc.roomTypeId).select('basePrice name');
+
+            const dailyRate = roomType?.basePrice || doc.currentRate || 100;
+            const outOfOrderSince = doc.outOfOrderSince || new Date();
+            const daysOutOfOrder = Math.floor((new Date() - outOfOrderSince) / (1000 * 60 * 60 * 24));
+
+            // Enhanced notification data with revenue impact
+            notificationData = {
+              ...notificationData,
+              dailyRate,
+              estimatedDailyLoss: dailyRate,
+              daysOutOfOrder: Math.max(daysOutOfOrder, 1),
+              totalRevenueLoss: dailyRate * Math.max(daysOutOfOrder, 1),
+              roomType: roomType?.name || 'Standard',
+              outOfOrderSince,
+              revenueImpact: true
+            };
+
+            // Also trigger specific revenue impact alert for high-value rooms
+            if (dailyRate > 200) {
+              await NotificationAutomationService.triggerNotification(
+                'revenue_impact_alert',
+                {
+                  roomNumber: doc.roomNumber,
+                  roomId: doc._id,
+                  outOfOrderRooms: 1,
+                  dailyRevenueLoss: dailyRate,
+                  roomDetails: [{
+                    roomNumber: doc.roomNumber,
+                    roomType: roomType?.name || 'Standard',
+                    dailyRate,
+                    daysOutOfOrder: Math.max(daysOutOfOrder, 1)
+                  }],
+                  totalRooms: await mongoose.model('Room').countDocuments({ hotelId: doc.hotelId }),
+                  highValueRoom: true,
+                  estimatedWeeklyLoss: dailyRate * 7,
+                  priority: 'high-value-room-impact'
+                },
+                'auto',
+                'high',
+                doc.hotelId
+              );
+            }
+
+          } catch (error) {
+            console.error('Error calculating revenue impact:', error);
+          }
+        }
+
         await NotificationAutomationService.triggerNotification(
           notification.type,
-          {
-            roomNumber: doc.roomNumber,
-            roomId: doc._id,
-            status: doc.status,
-            floor: doc.floor,
-            type: doc.type,
-            reason: notification.reason || 'Status change'
-          },
+          notificationData,
           'auto',
           notification.priority,
           doc.hotelId

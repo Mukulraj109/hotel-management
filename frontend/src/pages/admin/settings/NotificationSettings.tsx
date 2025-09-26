@@ -4,7 +4,6 @@ import { useMutation } from '@tanstack/react-query';
 import {
   Bell,
   Mail,
-  MessageSquare,
   Smartphone,
   Volume2,
   VolumeX,
@@ -19,18 +18,17 @@ interface NotificationFormData {
   channels: {
     inApp: boolean;
     email: boolean;
-    sms: boolean;
     push: boolean;
   };
   categories: {
-    systemAlerts: boolean;
-    bookingUpdates: boolean;
-    paymentNotifications: boolean;
+    bookings: boolean;
+    payments: boolean;
+    system: boolean;
+    maintenance: boolean;
+    workAssignments: boolean;
     guestRequests: boolean;
-    inventoryAlerts: boolean;
-    staffNotifications: boolean;
-    maintenanceAlerts: boolean;
-    securityNotifications: boolean;
+    scheduleChanges: boolean;
+    emergencyAlerts: boolean;
   };
   quietHours: {
     enabled: boolean;
@@ -39,14 +37,14 @@ interface NotificationFormData {
   };
   sound: boolean;
   desktop: boolean;
-  frequency: 'instant' | 'hourly' | 'daily';
+  vibration: boolean;
 }
 
 interface NotificationSettingsProps {
-  onSettingsChange: (hasChanges: boolean) => void;
+  onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function NotificationSettings({ onSettingsChange }: NotificationSettingsProps) {
+export default function NotificationSettings({ onSettingsChange }: NotificationSettingsProps = {}) {
   const {
     register,
     handleSubmit,
@@ -58,18 +56,17 @@ export default function NotificationSettings({ onSettingsChange }: NotificationS
       channels: {
         inApp: true,
         email: true,
-        sms: false,
         push: true
       },
       categories: {
-        systemAlerts: true,
-        bookingUpdates: true,
-        paymentNotifications: true,
+        bookings: true,
+        payments: true,
+        system: true,
+        maintenance: true,
+        workAssignments: true,
         guestRequests: true,
-        inventoryAlerts: true,
-        staffNotifications: true,
-        maintenanceAlerts: true,
-        securityNotifications: true
+        scheduleChanges: true,
+        emergencyAlerts: true
       },
       quietHours: {
         enabled: false,
@@ -78,28 +75,151 @@ export default function NotificationSettings({ onSettingsChange }: NotificationS
       },
       sound: true,
       desktop: true,
-      frequency: 'instant'
+      vibration: true
     }
   });
 
   const watchedValues = watch();
 
+  // Fetch current notification settings
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const response = await fetch('/api/v1/notifications/preferences', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const preferences = data.data.preferences;
+
+          // Update form with current settings from the actual API structure
+          setValue('channels.inApp', preferences.inApp?.enabled ?? true, { shouldDirty: false });
+          setValue('channels.email', preferences.email?.enabled ?? true, { shouldDirty: false });
+          setValue('channels.push', preferences.push?.enabled ?? true, { shouldDirty: false });
+
+          // Map notification types to our categories
+          setValue('categories.bookings', preferences.email?.types?.booking_confirmation ?? true, { shouldDirty: false });
+          setValue('categories.payments', preferences.email?.types?.payment_success ?? true, { shouldDirty: false });
+          setValue('categories.system', preferences.email?.types?.system_alert ?? true, { shouldDirty: false });
+          setValue('categories.maintenance', preferences.email?.types?.service_booking ?? true, { shouldDirty: false });
+          setValue('categories.workAssignments', preferences.inApp?.types?.booking_confirmation ?? true, { shouldDirty: false });
+          setValue('categories.guestRequests', preferences.email?.types?.service_booking ?? true, { shouldDirty: false });
+          setValue('categories.scheduleChanges', preferences.email?.types?.booking_reminder ?? true, { shouldDirty: false });
+          setValue('categories.emergencyAlerts', preferences.email?.types?.system_alert ?? true, { shouldDirty: false });
+
+          setValue('quietHours.enabled', preferences.email?.quietHours?.enabled ?? false, { shouldDirty: false });
+          setValue('quietHours.start', preferences.email?.quietHours?.start ?? '22:00', { shouldDirty: false });
+          setValue('quietHours.end', preferences.email?.quietHours?.end ?? '08:00', { shouldDirty: false });
+
+          setValue('sound', preferences.inApp?.sound ?? true, { shouldDirty: false });
+          setValue('desktop', true, { shouldDirty: false });
+          setValue('vibration', preferences.inApp?.vibration ?? true, { shouldDirty: false });
+        }
+      } catch (error) {
+        console.error('Failed to fetch notification settings:', error);
+      }
+    };
+
+    fetchSettings();
+  }, [setValue]);
+
   // Watch for form changes
   useEffect(() => {
-    onSettingsChange(isDirty);
+    if (onSettingsChange) {
+      onSettingsChange(isDirty);
+    }
   }, [isDirty, onSettingsChange]);
 
   // Save notification settings mutation
   const saveNotificationMutation = useMutation({
     mutationFn: async (data: NotificationFormData) => {
-      // Mock API call - replace with actual API endpoint
-      const response = await fetch('/api/v1/users/notification-preferences', {
+      // Transform the form data to match the backend API structure
+      const apiData = {
+        email: {
+          enabled: data.channels.email,
+          types: {
+            booking_confirmation: data.categories.bookings,
+            booking_reminder: data.categories.bookings,
+            booking_cancellation: data.categories.bookings,
+            payment_success: data.categories.payments,
+            payment_failed: data.categories.payments,
+            system_alert: data.categories.system,
+            loyalty_points: true,
+            service_booking: data.categories.guestRequests,
+            service_reminder: data.categories.guestRequests,
+            promotional: true,
+            welcome: true,
+            check_in: data.categories.bookings,
+            check_out: data.categories.bookings,
+            review_request: true,
+            special_offer: true
+          },
+          quietHours: {
+            enabled: data.quietHours.enabled,
+            start: data.quietHours.start,
+            end: data.quietHours.end
+          }
+        },
+        push: {
+          enabled: data.channels.push,
+          types: {
+            booking_confirmation: data.categories.bookings,
+            booking_reminder: data.categories.bookings,
+            payment_success: data.categories.payments,
+            loyalty_points: true,
+            system_alert: data.categories.system,
+            booking_cancellation: data.categories.bookings,
+            payment_failed: data.categories.payments,
+            service_booking: data.categories.guestRequests,
+            service_reminder: data.categories.guestRequests,
+            promotional: true,
+            welcome: true,
+            check_in: data.categories.bookings,
+            check_out: data.categories.bookings,
+            review_request: true,
+            special_offer: true
+          },
+          quietHours: {
+            enabled: data.quietHours.enabled,
+            start: data.quietHours.start,
+            end: data.quietHours.end
+          }
+        },
+        inApp: {
+          enabled: data.channels.inApp,
+          sound: data.sound,
+          vibration: data.vibration,
+          showBadge: true,
+          types: {
+            booking_confirmation: data.categories.bookings,
+            booking_reminder: data.categories.bookings,
+            loyalty_points: true,
+            system_alert: data.categories.system,
+            welcome: true,
+            booking_cancellation: data.categories.bookings,
+            payment_success: data.categories.payments,
+            payment_failed: data.categories.payments,
+            service_booking: data.categories.guestRequests,
+            service_reminder: data.categories.guestRequests,
+            promotional: true,
+            check_in: data.categories.bookings,
+            check_out: data.categories.bookings,
+            review_request: true,
+            special_offer: true
+          }
+        }
+      };
+
+      const response = await fetch('/api/v1/notifications/preferences', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify(apiData)
       });
 
       if (!response.ok) {
@@ -110,7 +230,23 @@ export default function NotificationSettings({ onSettingsChange }: NotificationS
     },
     onSuccess: () => {
       toast.success('Notification settings updated successfully');
-      onSettingsChange(false);
+
+      // Reset the form's dirty state without changing values
+      // This tells the form that the current values are now the "saved" state
+      const currentValues = watch();
+      Object.keys(currentValues).forEach(key => {
+        if (typeof currentValues[key] === 'object' && currentValues[key] !== null) {
+          Object.keys(currentValues[key]).forEach(subKey => {
+            setValue(`${key}.${subKey}`, currentValues[key][subKey], { shouldDirty: false });
+          });
+        } else {
+          setValue(key, currentValues[key], { shouldDirty: false });
+        }
+      });
+
+      if (onSettingsChange) {
+        onSettingsChange(false);
+      }
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update notification settings');
@@ -122,14 +258,14 @@ export default function NotificationSettings({ onSettingsChange }: NotificationS
   };
 
   const categoryLabels = {
-    systemAlerts: 'System Alerts',
-    bookingUpdates: 'Booking Updates',
-    paymentNotifications: 'Payment Notifications',
+    bookings: 'Booking Updates',
+    payments: 'Payment Notifications',
+    system: 'System Alerts',
+    maintenance: 'Maintenance Alerts',
+    workAssignments: 'Work Assignments',
     guestRequests: 'Guest Requests',
-    inventoryAlerts: 'Inventory Alerts',
-    staffNotifications: 'Staff Notifications',
-    maintenanceAlerts: 'Maintenance Alerts',
-    securityNotifications: 'Security Notifications'
+    scheduleChanges: 'Schedule Changes',
+    emergencyAlerts: 'Emergency Alerts'
   };
 
   return (
@@ -177,18 +313,6 @@ export default function NotificationSettings({ onSettingsChange }: NotificationS
                 </div>
               </label>
 
-              <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
-                <input
-                  {...register('channels.sms')}
-                  type="checkbox"
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <MessageSquare className="h-5 w-5 text-gray-600" />
-                <div className="flex-1">
-                  <p className="font-medium text-gray-900">SMS Notifications</p>
-                  <p className="text-sm text-gray-500">Receive notifications via text message</p>
-                </div>
-              </label>
 
               <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
                 <input
@@ -222,42 +346,6 @@ export default function NotificationSettings({ onSettingsChange }: NotificationS
             </div>
           </div>
 
-          {/* Notification Frequency */}
-          <div>
-            <h3 className="text-md font-medium text-gray-900 mb-4">Notification Frequency</h3>
-            <div className="space-y-3">
-              <label className="flex items-center space-x-3">
-                <input
-                  {...register('frequency')}
-                  type="radio"
-                  value="instant"
-                  className="text-blue-600 focus:ring-blue-500"
-                />
-                <span className="font-medium text-gray-900">Instant</span>
-                <span className="text-sm text-gray-500">Receive notifications immediately</span>
-              </label>
-              <label className="flex items-center space-x-3">
-                <input
-                  {...register('frequency')}
-                  type="radio"
-                  value="hourly"
-                  className="text-blue-600 focus:ring-blue-500"
-                />
-                <span className="font-medium text-gray-900">Hourly Digest</span>
-                <span className="text-sm text-gray-500">Receive a summary every hour</span>
-              </label>
-              <label className="flex items-center space-x-3">
-                <input
-                  {...register('frequency')}
-                  type="radio"
-                  value="daily"
-                  className="text-blue-600 focus:ring-blue-500"
-                />
-                <span className="font-medium text-gray-900">Daily Digest</span>
-                <span className="text-sm text-gray-500">Receive a daily summary</span>
-              </label>
-            </div>
-          </div>
 
           {/* Quiet Hours */}
           <div>
@@ -333,6 +421,19 @@ export default function NotificationSettings({ onSettingsChange }: NotificationS
                 <div className="flex-1">
                   <p className="font-medium text-gray-900">Desktop Notifications</p>
                   <p className="text-sm text-gray-500">Show desktop notifications when browser is minimized</p>
+                </div>
+              </label>
+
+              <label className="flex items-center space-x-3 p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                <input
+                  {...register('vibration')}
+                  type="checkbox"
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <Smartphone className="h-5 w-5 text-gray-600" />
+                <div className="flex-1">
+                  <p className="font-medium text-gray-900">Vibration</p>
+                  <p className="text-sm text-gray-500">Vibrate device for notifications (mobile only)</p>
                 </div>
               </label>
             </div>

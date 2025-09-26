@@ -322,6 +322,27 @@ const userSchema = new mongoose.Schema({
       default: Date.now
     }
   }],
+  // Additional fields for settings
+  avatar: {
+    type: String,
+    default: null
+  },
+  timezone: {
+    type: String,
+    default: 'Asia/Kolkata'
+  },
+  language: {
+    type: String,
+    default: 'en'
+  },
+  department: {
+    type: String,
+    default: null
+  },
+  employeeId: {
+    type: String,
+    default: null
+  },
   isActive: {
     type: Boolean,
     default: true

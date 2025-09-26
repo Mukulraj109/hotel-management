@@ -22,10 +22,10 @@ interface StaffDisplayFormData {
 }
 
 interface StaffDisplaySettingsProps {
-  onSettingsChange: (hasChanges: boolean) => void;
+  onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function StaffDisplaySettings({ onSettingsChange }: StaffDisplaySettingsProps) {
+export default function StaffDisplaySettings({ onSettingsChange }: StaffDisplaySettingsProps = {}) {
   const {
     register,
     handleSubmit,
@@ -45,7 +45,9 @@ export default function StaffDisplaySettings({ onSettingsChange }: StaffDisplayS
 
   // Watch for form changes
   useEffect(() => {
-    onSettingsChange(isDirty);
+    if (onSettingsChange) {
+      onSettingsChange(isDirty);
+    }
   }, [isDirty, onSettingsChange]);
 
   const languages = [
@@ -83,7 +85,9 @@ export default function StaffDisplaySettings({ onSettingsChange }: StaffDisplayS
     },
     onSuccess: () => {
       toast.success('Display settings updated successfully');
-      onSettingsChange(false);
+      if (onSettingsChange) {
+        onSettingsChange(false);
+      }
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update display settings');

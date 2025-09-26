@@ -356,6 +356,83 @@ dailyRoutineCheckSchema.post('save', async function(doc) {
       );
     }
 
+    // 5. Inventory tracking notifications
+    if (doc.isModified('items') && doc.items && doc.items.length > 0) {
+      for (const item of doc.items) {
+        // Check for damaged inventory
+        if (item.condition && item.condition === 'damaged') {
+          await NotificationAutomationService.triggerNotification(
+            'inventory_damaged',
+            {
+              roomNumber,
+              itemName: item.name,
+              itemId: item.inventoryItemId,
+              checkId: doc._id,
+              condition: item.condition,
+              notes: item.notes || 'Damaged during room check',
+              checkedBy: doc.checkedBy,
+              estimatedValue: item.unitPrice || 0
+            },
+            'auto',
+            'medium',
+            doc.hotelId
+          );
+        }
+
+        // Check for missing inventory (expected but not found)
+        if (item.expectedQuantity && item.actualQuantity < item.expectedQuantity) {
+          const missingQuantity = item.expectedQuantity - item.actualQuantity;
+          const totalValue = missingQuantity * (item.unitPrice || 0);
+
+          // Determine if theft is suspected (high-value items or large quantity missing)
+          const theftSuspected = totalValue > 100 || (item.unitPrice > 50 && missingQuantity >= 2);
+
+          if (theftSuspected) {
+            await NotificationAutomationService.triggerNotification(
+              'inventory_theft_suspected',
+              {
+                roomNumber,
+                itemName: item.name,
+                itemId: item.inventoryItemId,
+                checkId: doc._id,
+                expectedQuantity: item.expectedQuantity,
+                actualQuantity: item.actualQuantity,
+                missingQuantity,
+                unitValue: item.unitPrice || 0,
+                totalValue,
+                checkedBy: doc.checkedBy,
+                notes: item.notes || 'Significant inventory discrepancy detected',
+                suspicionLevel: totalValue > 500 ? 'High' : 'Medium'
+              },
+              'auto',
+              'urgent',
+              doc.hotelId
+            );
+          } else {
+            await NotificationAutomationService.triggerNotification(
+              'inventory_missing',
+              {
+                roomNumber,
+                itemName: item.name,
+                itemId: item.inventoryItemId,
+                checkId: doc._id,
+                expectedQuantity: item.expectedQuantity,
+                actualQuantity: item.actualQuantity,
+                missingQuantity,
+                unitValue: item.unitPrice || 0,
+                totalValue,
+                checkedBy: doc.checkedBy,
+                notes: item.notes || 'Inventory item not found during check'
+              },
+              'auto',
+              'high',
+              doc.hotelId
+            );
+          }
+        }
+      }
+    }
+
   } catch (error) {
     console.error('Error in DailyRoutineCheck notification hook:', error);
   }

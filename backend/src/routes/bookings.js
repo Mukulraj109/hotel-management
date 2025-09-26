@@ -38,6 +38,108 @@ router.get('/current-hotel', authenticate, catchAsync(async (req, res) => {
 
 /**
  * @swagger
+ * /bookings/upcoming:
+ *   get:
+ *     summary: Get upcoming bookings (arrivals within next 7-30 days)
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: days
+ *         schema:
+ *           type: integer
+ *           default: 7
+ *         description: Number of days to look ahead for upcoming arrivals
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 50
+ *     responses:
+ *       200:
+ *         description: List of upcoming bookings
+ */
+router.get('/upcoming', authenticate, catchAsync(async (req, res) => {
+  const {
+    days = 7,
+    page = 1,
+    limit = 50
+  } = req.query;
+
+  // Build query based on user role
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // Start of today
+
+  const query = {
+    status: { $in: ['confirmed', 'pending'] },
+    checkIn: {
+      $gte: today, // Today or later (from start of day)
+      $lte: new Date(Date.now() + parseInt(days) * 24 * 60 * 60 * 1000) // Within specified days
+    }
+  };
+
+  // Role-based filtering
+  if (req.user.role === 'guest') {
+    query.userId = req.user._id;
+  } else if (req.user.role === 'staff' && req.user.hotelId) {
+    query.hotelId = req.user.hotelId;
+  } else if (req.user.role === 'admin' && req.user.hotelId) {
+    query.hotelId = req.user.hotelId;
+  }
+  // Admin sees bookings for their hotel, or all if no hotelId
+
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+
+  const bookings = await Booking.find(query)
+    .populate('userId', 'name email phone')
+    .populate('rooms.roomId', 'roomNumber type baseRate currentRate')
+    .populate('hotelId', 'name address contact')
+    .populate('corporateBooking.corporateCompanyId', 'name gstNumber')
+    .sort({ checkIn: 1 }) // Sort by check-in date (ascending)
+    .skip(skip)
+    .limit(parseInt(limit));
+
+  const total = await Booking.countDocuments(query);
+
+  // Get quick stats for today and tomorrow
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const dayAfterTomorrow = new Date(tomorrow);
+  dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
+
+  const todayQuery = { ...query, checkIn: { $gte: today, $lt: tomorrow } };
+  const tomorrowQuery = { ...query, checkIn: { $gte: tomorrow, $lt: dayAfterTomorrow } };
+
+  const [todayCount, tomorrowCount] = await Promise.all([
+    Booking.countDocuments(todayQuery),
+    Booking.countDocuments(tomorrowQuery)
+  ]);
+
+  res.json({
+    status: 'success',
+    results: bookings.length,
+    stats: {
+      todayArrivals: todayCount,
+      tomorrowArrivals: tomorrowCount,
+      totalUpcoming: total
+    },
+    pagination: {
+      current: parseInt(page),
+      pages: Math.ceil(total / parseInt(limit)),
+      total
+    },
+    data: bookings
+  });
+}));
+
+/**
+ * @swagger
  * /bookings:
  *   get:
  *     summary: Get bookings
@@ -360,6 +462,8 @@ router.post('/',
   validate(schemas.createBooking),
   marketingSyncMiddleware('booking_created'),
   catchAsync(async (req, res) => {
+    console.log('🔍 DEBUG - Full request body:', JSON.stringify(req.body, null, 2));
+
     const {
       hotelId,
       userId,
@@ -372,8 +476,20 @@ router.post('/',
       paymentStatus,
       status,
       idempotencyKey,
-      roomType // Add roomType field for room-type bookings
+      roomType, // Add roomType field for room-type bookings
+      // Payment information for walk-in bookings
+      paymentMethod,
+      advanceAmount,
+      paymentReference,
+      paymentNotes
     } = req.body;
+
+    console.log('🔍 DEBUG - Extracted payment fields:', {
+      paymentMethod,
+      advanceAmount,
+      paymentReference,
+      paymentNotes
+    });
 
     const session = await mongoose.startSession();
     
@@ -475,6 +591,33 @@ router.post('/',
           : 0; // No calculated total for bookings without room allocation
 
         // Create booking - use admin-provided values when available
+        // Prepare payment details if payment information is provided
+        console.log('🔍 Payment Debug - paymentMethod:', paymentMethod);
+        console.log('🔍 Payment Debug - advanceAmount:', advanceAmount, typeof advanceAmount);
+        console.log('🔍 Payment Debug - condition check:', paymentMethod && advanceAmount > 0);
+
+        const paymentDetails = {};
+        const numericAdvanceAmount = Number(advanceAmount);
+
+        if (paymentMethod && numericAdvanceAmount > 0) {
+          console.log('✅ Payment Processing - Creating payment details');
+          paymentDetails.paymentMethods = [{
+            method: paymentMethod,
+            amount: numericAdvanceAmount,
+            reference: paymentReference || '',
+            processedBy: req.user._id,
+            processedAt: new Date(),
+            notes: paymentNotes || 'Walk-in booking payment'
+          }];
+          paymentDetails.totalPaid = numericAdvanceAmount;
+          paymentDetails.remainingAmount = Math.max(0, (totalAmount || calculatedTotal) - numericAdvanceAmount);
+          paymentDetails.collectedAt = new Date();
+          paymentDetails.collectedBy = req.user._id;
+          console.log('✅ Payment Details Created:', paymentDetails);
+        } else {
+          console.log('❌ Payment Skipped - Conditions not met');
+        }
+
         const booking = await Booking.create([{
           hotelId,
           userId: userId || req.user._id, // Use provided userId for admin bookings, fallback to current user
@@ -488,7 +631,8 @@ router.post('/',
           idempotencyKey,
           status: status || 'pending',
           paymentStatus: paymentStatus || 'pending',
-          roomType // Add roomType for room-type preference bookings
+          roomType, // Add roomType for room-type preference bookings
+          ...paymentDetails // Spread payment details if provided
         }], { session });
 
         // Create corresponding invoice for billing history
@@ -1523,6 +1667,752 @@ router.patch('/:id/check-out',
       data: {
         booking: updatedBooking,
         message: 'Guest checked out successfully'
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /bookings/{id}/extra-persons:
+ *   post:
+ *     summary: Add extra person to booking (Admin/Staff only)
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - type
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Person's name
+ *               type:
+ *                 type: string
+ *                 enum: [adult, child]
+ *                 description: Person type
+ *               age:
+ *                 type: number
+ *                 minimum: 0
+ *                 maximum: 120
+ *                 description: Age (required for children)
+ *               autoCalculateCharges:
+ *                 type: boolean
+ *                 default: true
+ *                 description: Whether to automatically calculate charges
+ *     responses:
+ *       200:
+ *         description: Extra person added successfully
+ *       400:
+ *         description: Invalid input data
+ *       403:
+ *         description: Access denied - admin/staff only
+ *       404:
+ *         description: Booking not found
+ */
+router.post('/:id/extra-persons',
+  authenticate,
+  authorize(['admin', 'staff']),
+  catchAsync(async (req, res) => {
+    const { id } = req.params;
+    const { name, type, age, autoCalculateCharges = true } = req.body;
+
+    // Find booking
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      throw new ApplicationError('Booking not found', 404);
+    }
+
+    // Check if booking belongs to user's hotel
+    if (booking.hotelId.toString() !== req.user.hotelId.toString()) {
+      throw new ApplicationError('Booking not found in your hotel', 404);
+    }
+
+    // User context for RBAC
+    const userContext = {
+      userId: req.user._id,
+      userName: req.user.name,
+      userRole: req.user.role
+    };
+
+    // Add extra person
+    const extraPerson = await booking.addExtraPerson({ name, type, age }, userContext);
+
+    // Auto-calculate charges if requested
+    if (autoCalculateCharges) {
+      await booking.calculateExtraPersonCharges();
+    }
+
+    // Save booking
+    await booking.save();
+
+    // Populate booking details for response
+    await booking.populate('userId', 'name email');
+    await booking.populate('rooms.roomId', 'roomNumber roomType');
+
+    res.json({
+      status: 'success',
+      data: {
+        extraPerson,
+        booking,
+        message: `${type} ${name} added to booking successfully`
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /bookings/{id}/extra-persons/{personId}:
+ *   delete:
+ *     summary: Remove extra person from booking (Admin/Staff only)
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *       - in: path
+ *         name: personId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Extra person ID
+ *     responses:
+ *       200:
+ *         description: Extra person removed successfully
+ *       403:
+ *         description: Access denied - admin/staff only
+ *       404:
+ *         description: Booking or person not found
+ */
+router.delete('/:id/extra-persons/:personId',
+  authenticate,
+  authorize(['admin', 'staff']),
+  catchAsync(async (req, res) => {
+    const { id, personId } = req.params;
+
+    // Find booking
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      throw new ApplicationError('Booking not found', 404);
+    }
+
+    // Check if booking belongs to user's hotel
+    if (booking.hotelId.toString() !== req.user.hotelId.toString()) {
+      throw new ApplicationError('Booking not found in your hotel', 404);
+    }
+
+    // User context for RBAC
+    const userContext = {
+      userId: req.user._id,
+      userName: req.user.name,
+      userRole: req.user.role
+    };
+
+    // Remove extra person
+    const removedPerson = await booking.removeExtraPerson(personId, userContext);
+
+    // Recalculate charges
+    await booking.calculateExtraPersonCharges();
+
+    // Save booking
+    await booking.save();
+
+    res.json({
+      status: 'success',
+      data: {
+        removedPerson,
+        message: `${removedPerson.type} ${removedPerson.name} removed from booking successfully`
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /bookings/{id}/extra-persons/calculate-charges:
+ *   post:
+ *     summary: Calculate charges for extra persons (Admin/Staff only)
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *     responses:
+ *       200:
+ *         description: Extra person charges calculated successfully
+ *       403:
+ *         description: Access denied - admin/staff only
+ *       404:
+ *         description: Booking not found
+ */
+router.post('/:id/extra-persons/calculate-charges',
+  authenticate,
+  authorize(['admin', 'staff']),
+  catchAsync(async (req, res) => {
+    const { id } = req.params;
+
+    // Find booking
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      throw new ApplicationError('Booking not found', 404);
+    }
+
+    // Check if booking belongs to user's hotel
+    if (booking.hotelId.toString() !== req.user.hotelId.toString()) {
+      throw new ApplicationError('Booking not found in your hotel', 404);
+    }
+
+    // Calculate charges
+    const chargeResult = await booking.calculateExtraPersonCharges();
+
+    // Save booking
+    await booking.save();
+
+    // Populate the updated booking to get complete data
+    await booking.populate([
+      { path: 'userId', select: 'name email phone' },
+      { path: 'rooms.roomId', select: 'roomNumber type baseRate' }
+    ]);
+
+    res.json({
+      status: 'success',
+      data: {
+        chargeBreakdown: chargeResult.chargeBreakdown,
+        totalExtraCharge: chargeResult.totalExtraCharge,
+        currency: chargeResult.currency,
+        updatedTotalAmount: booking.calculateTotalAmount(),
+        booking: booking, // Include the full updated booking
+        extraPersonCharges: booking.extraPersonCharges, // Include updated charges with payment status
+        message: 'Extra person charges calculated successfully'
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /bookings/{id}/extra-persons/payment:
+ *   post:
+ *     summary: Process multi-payment for extra person charges (Admin/Staff only)
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               paymentMethods:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     method:
+ *                       type: string
+ *                       enum: [cash, upi, stripe]
+ *                     amount:
+ *                       type: number
+ *                     reference:
+ *                       type: string
+ *                     notes:
+ *                       type: string
+ *               extraPersonCharges:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     personId:
+ *                       type: string
+ *                     amount:
+ *                       type: number
+ *                     description:
+ *                       type: string
+ *               totalAmount:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Payment processed successfully
+ *       403:
+ *         description: Access denied - admin/staff only
+ *       404:
+ *         description: Booking not found
+ */
+router.post('/:id/extra-persons/payment',
+  authenticate,
+  authorize(['admin', 'staff']),
+  catchAsync(async (req, res) => {
+    const { id } = req.params;
+    const { paymentMethods, extraPersonCharges, totalAmount } = req.body;
+
+    // Find booking
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      throw new ApplicationError('Booking not found', 404);
+    }
+
+    // Check if booking belongs to user's hotel
+    if (booking.hotelId.toString() !== req.user.hotelId.toString()) {
+      throw new ApplicationError('Booking not found in your hotel', 404);
+    }
+
+    // Validate payment methods
+    if (!Array.isArray(paymentMethods) || paymentMethods.length === 0) {
+      throw new ApplicationError('Payment methods are required', 400);
+    }
+
+    // Calculate total paid amount
+    const totalPaid = paymentMethods.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+
+    if (totalPaid <= 0) {
+      throw new ApplicationError('Total payment amount must be greater than 0', 400);
+    }
+
+    try {
+      // Process each payment method
+      const processedPayments = paymentMethods.map(payment => ({
+        method: payment.method,
+        amount: payment.amount,
+        reference: payment.reference || `${payment.method}-${Date.now()}`,
+        processedBy: req.user._id,
+        processedAt: new Date(),
+        notes: payment.notes || `${payment.method.toUpperCase()} payment for extra person charges`
+      }));
+
+      // Update booking with payment information
+      if (!booking.paymentMethods) {
+        booking.paymentMethods = [];
+      }
+
+      // Add the new payment methods
+      booking.paymentMethods.push(...processedPayments);
+
+      // Update total paid amount
+      const previousTotalPaid = booking.totalPaid || 0;
+      booking.totalPaid = previousTotalPaid + totalPaid;
+
+      // Update payment status
+      const bookingTotalAmount = booking.calculateTotalAmount();
+      if (booking.totalPaid >= bookingTotalAmount) {
+        booking.paymentStatus = 'paid';
+        booking.remainingAmount = 0;
+      } else if (booking.totalPaid > 0) {
+        booking.paymentStatus = 'partially_paid';
+        booking.remainingAmount = bookingTotalAmount - booking.totalPaid;
+      }
+
+      // Mark extra person charges as paid
+      if (booking.extraPersonCharges && booking.extraPersonCharges.length > 0) {
+        booking.extraPersonCharges.forEach(charge => {
+          // Find corresponding charge in the request
+          const requestCharge = extraPersonCharges.find(reqCharge =>
+            reqCharge.personId === charge.personId
+          );
+
+          if (requestCharge) {
+            charge.paidAmount = (charge.paidAmount || 0) + requestCharge.amount;
+            charge.isPaid = charge.paidAmount >= charge.totalCharge;
+            if (charge.isPaid && !charge.paidAt) {
+              charge.paidAt = new Date();
+            }
+          }
+        });
+      }
+
+      // Add payment record to history
+      if (!booking.paymentHistory) {
+        booking.paymentHistory = [];
+      }
+
+      booking.paymentHistory.push({
+        type: 'extra_person_charges',
+        amount: totalPaid,
+        paymentMethods: processedPayments,
+        processedBy: req.user._id,
+        processedAt: new Date(),
+        description: 'Payment for extra person charges',
+        extraPersonCharges: extraPersonCharges
+      });
+
+      // Save booking
+      await booking.save();
+
+      // Populate booking details for response
+      await booking.populate('userId', 'name email');
+      await booking.populate('rooms.roomId', 'roomNumber roomType');
+
+      res.json({
+        status: 'success',
+        data: {
+          booking,
+          paymentSummary: {
+            totalPaid,
+            paymentMethods: processedPayments,
+            updatedBookingTotal: bookingTotalAmount,
+            updatedTotalPaid: booking.totalPaid,
+            remainingAmount: booking.remainingAmount,
+            paymentStatus: booking.paymentStatus
+          },
+          message: 'Extra person charges payment processed successfully'
+        }
+      });
+
+    } catch (error) {
+      console.error('Error processing extra person charges payment:', error);
+      throw new ApplicationError('Failed to process payment', 500);
+    }
+  })
+);
+
+/**
+ * @swagger
+ * /bookings/{id}/settlement:
+ *   get:
+ *     summary: Get booking settlement details (Admin/Staff only)
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *     responses:
+ *       200:
+ *         description: Settlement details retrieved successfully
+ *       403:
+ *         description: Access denied - admin/staff only
+ *       404:
+ *         description: Booking not found
+ */
+router.get('/:id/settlement',
+  authenticate,
+  authorize(['admin', 'staff']),
+  catchAsync(async (req, res) => {
+    const { id } = req.params;
+
+    // Find booking
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      throw new ApplicationError('Booking not found', 404);
+    }
+
+    // Check if booking belongs to user's hotel
+    if (booking.hotelId.toString() !== req.user.hotelId.toString()) {
+      throw new ApplicationError('Booking not found in your hotel', 404);
+    }
+
+    // Calculate settlement if not exists
+    const settlement = booking.calculateSettlement();
+
+    res.json({
+      status: 'success',
+      data: {
+        settlement,
+        bookingDetails: {
+          bookingNumber: booking.bookingNumber,
+          guestName: booking.userId ? booking.userId.name : 'N/A',
+          checkIn: booking.checkIn,
+          checkOut: booking.checkOut,
+          status: booking.status
+        }
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /bookings/{id}/settlement/adjustment:
+ *   post:
+ *     summary: Add settlement adjustment (Admin/Staff only)
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - type
+ *               - amount
+ *               - description
+ *             properties:
+ *               type:
+ *                 type: string
+ *                 enum: [extra_person_charge, damage_charge, minibar_charge, service_charge, discount, refund, penalty, other]
+ *                 description: Type of adjustment
+ *               amount:
+ *                 type: number
+ *                 description: Adjustment amount (positive for charges, negative for credits)
+ *               description:
+ *                 type: string
+ *                 description: Detailed description of the adjustment
+ *     responses:
+ *       200:
+ *         description: Settlement adjustment added successfully
+ *       400:
+ *         description: Invalid adjustment data
+ *       403:
+ *         description: Access denied - admin/staff only
+ *       404:
+ *         description: Booking not found
+ */
+router.post('/:id/settlement/adjustment',
+  authenticate,
+  authorize(['admin', 'staff']),
+  catchAsync(async (req, res) => {
+    const { id } = req.params;
+    const { type, amount, description } = req.body;
+
+    // Validate input
+    if (!type || amount === undefined || !description) {
+      throw new ApplicationError('Type, amount, and description are required', 400);
+    }
+
+    // Find booking
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      throw new ApplicationError('Booking not found', 404);
+    }
+
+    // Check if booking belongs to user's hotel
+    if (booking.hotelId.toString() !== req.user.hotelId.toString()) {
+      throw new ApplicationError('Booking not found in your hotel', 404);
+    }
+
+    // User context for RBAC
+    const userContext = {
+      userId: req.user._id,
+      userName: req.user.name,
+      userRole: req.user.role
+    };
+
+    // Add settlement adjustment
+    const adjustment = booking.addSettlementAdjustment({ type, amount, description }, userContext);
+
+    // Save booking
+    await booking.save();
+
+    res.json({
+      status: 'success',
+      data: {
+        adjustment,
+        updatedSettlement: booking.settlementTracking,
+        message: 'Settlement adjustment added successfully'
+      }
+    });
+  })
+);
+
+
+/**
+ * @swagger
+ * /bookings/{id}/settlement/payment:
+ *   post:
+ *     summary: Process settlement payment (Admin/Staff only)
+ *     tags: [Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - paymentMethods
+ *               - amount
+ *             properties:
+ *               paymentMethods:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     method:
+ *                       type: string
+ *                       enum: [cash, upi, stripe, bank_transfer]
+ *                     amount:
+ *                       type: number
+ *                     reference:
+ *                       type: string
+ *                     notes:
+ *                       type: string
+ *               amount:
+ *                 type: number
+ *                 description: Total settlement amount
+ *     responses:
+ *       200:
+ *         description: Settlement payment processed successfully
+ *       400:
+ *         description: Invalid payment data
+ *       403:
+ *         description: Access denied - admin/staff only
+ *       404:
+ *         description: Booking not found
+ */
+router.post('/:id/settlement/payment',
+  authenticate,
+  authorize(['admin', 'staff']),
+  catchAsync(async (req, res) => {
+    const { paymentMethods, amount } = req.body;
+    const { id } = req.params;
+
+    // Find booking
+    const booking = await Booking.findById(id);
+    if (!booking) {
+      throw new ApplicationError('Booking not found', 404);
+    }
+
+    // Check if booking belongs to user's hotel
+    if (booking.hotelId.toString() !== req.user.hotelId.toString()) {
+      throw new ApplicationError('Booking not found in your hotel', 404);
+    }
+
+    // Validate payment methods
+    if (!paymentMethods || paymentMethods.length === 0) {
+      throw new ApplicationError('At least one payment method is required', 400);
+    }
+
+    const totalPaid = paymentMethods.reduce((sum, payment) => sum + payment.amount, 0);
+    if (Math.abs(totalPaid - amount) > 0.01) {
+      throw new ApplicationError('Payment amounts do not match total', 400);
+    }
+
+    // Process payments
+    const processedPayments = paymentMethods.map(payment => ({
+      method: payment.method,
+      amount: payment.amount,
+      reference: payment.reference || `${payment.method}-${Date.now()}`,
+      processedBy: req.user._id,
+      processedAt: new Date(),
+      notes: payment.notes || `Settlement payment via ${payment.method}`
+    }));
+
+    // Initialize settlement tracking if not exists
+    if (!booking.settlementTracking) {
+      booking.settlementTracking = {
+        status: 'pending',
+        finalAmount: 0,
+        outstandingBalance: 0,
+        refundAmount: 0,
+        adjustments: [],
+        settlementHistory: []
+      };
+    }
+
+    // Add payment to settlement history
+    booking.settlementTracking.settlementHistory.push({
+      action: 'payment_received',
+      amount: totalPaid,
+      paymentMethods: processedPayments,
+      processedBy: req.user._id,
+      processedAt: new Date(),
+      description: 'Settlement payment received',
+      reference: processedPayments.map(p => p.reference).join(', ')
+    });
+
+    // Update outstanding balance
+    const previousBalance = booking.settlementTracking.outstandingBalance || 0;
+    booking.settlementTracking.outstandingBalance = Math.max(0, previousBalance - totalPaid);
+
+    // Update settlement status
+    if (booking.settlementTracking.outstandingBalance === 0) {
+      booking.settlementTracking.status = 'completed';
+    } else {
+      booking.settlementTracking.status = 'partial';
+    }
+
+    // Add to booking payment history
+    if (!booking.paymentHistory) {
+      booking.paymentHistory = [];
+    }
+
+    booking.paymentHistory.push({
+      type: 'settlement',
+      amount: totalPaid,
+      paymentMethods: processedPayments,
+      processedBy: req.user._id,
+      processedAt: new Date(),
+      description: 'Settlement payment',
+      settlementDetails: {
+        previousBalance: previousBalance,
+        paidAmount: totalPaid,
+        remainingBalance: booking.settlementTracking.outstandingBalance
+      }
+    });
+
+    // Save booking
+    await booking.save();
+
+    // Populate booking details for response
+    await booking.populate([
+      { path: 'userId', select: 'name email phone' },
+      { path: 'rooms.roomId', select: 'roomNumber type' }
+    ]);
+
+    res.json({
+      status: 'success',
+      data: {
+        booking: booking,
+        settlementTracking: booking.settlementTracking,
+        paymentSummary: {
+          totalPaid: totalPaid,
+          previousBalance: previousBalance,
+          remainingBalance: booking.settlementTracking.outstandingBalance,
+          paymentMethods: processedPayments
+        },
+        message: 'Settlement payment processed successfully'
       }
     });
   })

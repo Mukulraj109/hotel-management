@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, X, Bell, Mail, Smartphone, MessageSquare, Volume2, VolumeX, Moon, Sun, Check } from 'lucide-react';
+import { Settings, X, Bell, Mail, Smartphone, Volume2, VolumeX, Moon, Sun, Check } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../services/api';
@@ -8,7 +8,6 @@ interface NotificationPreferences {
   channels: {
     inApp: boolean;
     email: boolean;
-    sms: boolean;
     push: boolean;
   };
   categories: {
@@ -74,7 +73,6 @@ export const QuickNotificationSettings: React.FC<QuickNotificationSettingsProps>
     channels: {
       inApp: true,
       email: true,
-      sms: false,
       push: true
     },
     categories: {
@@ -165,14 +163,12 @@ export const QuickNotificationSettings: React.FC<QuickNotificationSettingsProps>
   const channelIcons = {
     inApp: Bell,
     email: Mail,
-    sms: MessageSquare,
     push: Smartphone
   };
 
   const channelLabels = {
     inApp: 'In-App',
     email: 'Email',
-    sms: 'SMS',
     push: 'Push'
   };
 

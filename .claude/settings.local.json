@@ -21,7 +21,12 @@
       "Bash(dir:*)",
       "Bash(docker:*)",
       "Bash(npx web-push:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(netstat:*)",
+      "Bash(npm run type-check:*)",
+      "Bash(npx tsc:*)",
+      "Bash(set:*)",
+      "Bash(del reactivate-admin.js)"
     ],
     "deny": [],
     "ask": []

@@ -452,16 +452,35 @@ router.get('/preferences', catchAsync(async (req, res, next) => {
   });
 }));
 
-// GET /api/v1/notifications/types - Get available notification types
+// GET /api/v1/notifications/types - Get available notification types for user's role
 router.get('/types', catchAsync(async (req, res, next) => {
-  const notificationTypes = [
-    {
-      type: 'booking_confirmation',
-      label: 'Booking Confirmation',
-      description: 'Notifications when your booking is confirmed',
-      category: 'booking',
-      defaultEnabled: true
-    },
+  // Import notification categories
+  const { getNotificationsForRole, getCategoriesForRole } = await import('../config/notificationCategories.js');
+
+  const userRole = req.user.role;
+  const roleNotifications = getNotificationsForRole(userRole);
+  const categories = getCategoriesForRole(userRole);
+
+  const notificationTypes = Object.entries(roleNotifications).map(([type, config]) => ({
+    type,
+    label: config.description,
+    description: config.description,
+    category: config.category,
+    priority: config.priority,
+    channels: config.channels,
+    defaultEnabled: true
+  }));
+
+  // If no role-specific types, fall back to generic types
+  if (notificationTypes.length === 0) {
+    const fallbackTypes = [
+      {
+        type: 'booking_confirmation',
+        label: 'Booking Confirmation',
+        description: 'Notifications when your booking is confirmed',
+        category: 'booking',
+        defaultEnabled: true
+      },
     {
       type: 'booking_reminder',
       label: 'Booking Reminder',
@@ -560,34 +579,45 @@ router.get('/types', catchAsync(async (req, res, next) => {
       category: 'promotional',
       defaultEnabled: true
     }
-  ];
-  
+    ];
+
+    res.status(200).json({
+      status: 'success',
+      data: {
+        notificationTypes: fallbackTypes,
+        categories: []
+      }
+    });
+    return;
+  }
+
   res.status(200).json({
     status: 'success',
-    data: { notificationTypes }
+    data: {
+      notificationTypes,
+      categories,
+      role: userRole,
+      totalTypes: notificationTypes.length
+    }
   });
 }));
 
-// GET /api/v1/notifications/channels - Get available notification channels
+// GET /api/v1/notifications/channels - Get available notification channels with role-based defaults
 router.get('/channels', catchAsync(async (req, res, next) => {
+  // Import notification categories for priority levels
+  const { priorityLevels } = await import('../config/notificationCategories.js');
+
   const channels = [
     {
-      id: 'email',
-      name: 'Email',
-      description: 'Receive notifications via email',
-      icon: 'mail',
+      id: 'in_app',
+      name: 'In-App',
+      description: 'Receive notifications within the application',
+      icon: 'smartphone',
       defaultEnabled: true,
-      supportsQuietHours: true,
-      supportsFrequency: true
-    },
-    {
-      id: 'sms',
-      name: 'SMS',
-      description: 'Receive notifications via text message',
-      icon: 'message-circle',
-      defaultEnabled: false,
-      supportsQuietHours: true,
-      supportsFrequency: false
+      supportsQuietHours: false,
+      supportsFrequency: false,
+      instantDelivery: true,
+      supportedPriorities: ['urgent', 'high', 'medium', 'low']
     },
     {
       id: 'push',
@@ -596,22 +626,62 @@ router.get('/channels', catchAsync(async (req, res, next) => {
       icon: 'bell',
       defaultEnabled: true,
       supportsQuietHours: true,
-      supportsFrequency: false
+      supportsFrequency: false,
+      instantDelivery: true,
+      supportedPriorities: ['urgent', 'high', 'medium']
     },
     {
-      id: 'in_app',
-      name: 'In-App',
-      description: 'Receive notifications within the app',
-      icon: 'smartphone',
+      id: 'email',
+      name: 'Email',
+      description: 'Receive notifications via email',
+      icon: 'mail',
       defaultEnabled: true,
-      supportsQuietHours: false,
-      supportsFrequency: false
+      supportsQuietHours: true,
+      supportsFrequency: true,
+      instantDelivery: false,
+      supportedPriorities: ['urgent', 'high', 'medium', 'low']
+    },
+    {
+      id: 'sms',
+      name: 'SMS',
+      description: 'Receive notifications via text message',
+      icon: 'message-circle',
+      defaultEnabled: false,
+      supportsQuietHours: true,
+      supportsFrequency: false,
+      instantDelivery: true,
+      supportedPriorities: ['urgent', 'high'],
+      requiresPhoneNumber: true
     }
   ];
-  
+
+  // Add role-specific channel recommendations
+  const roleChannelRecommendations = {
+    admin: ['in_app', 'email', 'sms'],
+    manager: ['in_app', 'email', 'sms'],
+    staff: ['in_app', 'push'],
+    housekeeping: ['in_app', 'push'],
+    maintenance: ['in_app', 'push', 'sms'],
+    guest: ['in_app', 'email', 'push']
+  };
+
+  const userRole = req.user.role;
+  const recommendedChannels = roleChannelRecommendations[userRole] || ['in_app', 'email'];
+
+  // Enhance channels with role-specific recommendations
+  const enhancedChannels = channels.map(channel => ({
+    ...channel,
+    recommended: recommendedChannels.includes(channel.id)
+  }));
+
   res.status(200).json({
     status: 'success',
-    data: { channels }
+    data: {
+      channels: enhancedChannels,
+      priorityLevels,
+      roleRecommendations: recommendedChannels,
+      role: userRole
+    }
   });
 }));
 
@@ -772,40 +842,205 @@ router.post('/test', validate(schemas.sendTestNotification), catchAsync(async (r
   });
 }));
 
-// GET /api/v1/notifications/stream - Server-sent events for real-time notifications
-router.get('/stream', (req, res) => {
-  // Set headers for SSE
+// POST /api/v1/notifications/subscribe - Subscribe to notification types
+router.post('/subscribe', catchAsync(async (req, res, next) => {
+  const userId = req.user._id;
+  const { subscriptions } = req.body;
+
+  if (!subscriptions || typeof subscriptions !== 'object') {
+    throw new ApplicationError('Subscriptions object is required', 400);
+  }
+
+  // Get or create preferences
+  const preferences = await NotificationPreference.getOrCreate(userId, req.user.hotelId);
+
+  // Update subscription settings
+  Object.keys(subscriptions).forEach(channel => {
+    if (preferences[channel]) {
+      Object.assign(preferences[channel], subscriptions[channel]);
+    }
+  });
+
+  await preferences.save();
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Subscriptions updated successfully',
+    data: { preferences }
+  });
+}));
+
+// GET /api/v1/notifications/stream - Enhanced Server-sent events for real-time notifications (PLAN 1)
+router.get('/stream', authenticate, (req, res) => {
+  const userId = req.user._id.toString();
+  const userRole = req.user.role;
+
+  console.log(`[SSE] New connection from user ${userId} (${userRole})`);
+
+  // Set headers for SSE with enhanced configuration
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
     'Connection': 'keep-alive',
-    'X-Accel-Buffering': 'no' // Disable Nginx buffering
+    'Access-Control-Allow-Origin': req.headers.origin || '*',
+    'Access-Control-Allow-Credentials': 'true',
+    'X-Accel-Buffering': 'no', // Disable Nginx buffering
+    'X-Content-Type-Options': 'nosniff'
   });
 
-  // Send initial connection message
-  res.write(`data: ${JSON.stringify({ type: 'connection', message: 'Connected to notification stream' })}\n\n`);
+  // Send initial connection event
+  res.write(`event: connection\n`);
+  res.write(`data: ${JSON.stringify({
+    type: 'connection',
+    message: `Connected to notification stream`,
+    userId,
+    role: userRole,
+    timestamp: new Date().toISOString()
+  })}\n\n`);
 
-  // Heartbeat to keep connection alive
+  // Enhanced heartbeat with timestamp
   const heartbeat = setInterval(() => {
-    res.write(':heartbeat\n\n');
-  }, 30000);
+    res.write(`:heartbeat ${Date.now()}\n\n`);
+  }, 30000); // Every 30 seconds
 
-  // Store connection for sending notifications
-  const userId = req.user._id.toString();
+  // Connection health check
+  let lastPing = Date.now();
+  const healthCheck = setInterval(() => {
+    const timeSinceLastPing = Date.now() - lastPing;
+    if (timeSinceLastPing > 120000) { // 2 minutes without activity
+      console.log(`[SSE] Connection timeout for user ${userId}`);
+      cleanup();
+    }
+    lastPing = Date.now();
+  }, 60000); // Check every minute
 
-  // Listen for notifications for this user
+  // Enhanced notification handler with event types
   const notificationHandler = (notification) => {
-    res.write(`data: ${JSON.stringify(notification)}\n\n`);
+    try {
+      // Determine event type based on notification
+      let eventType = 'notification:new';
+
+      if (notification.type === 'notification_read') {
+        eventType = 'notification:read';
+      } else if (notification.type === 'notification_deleted') {
+        eventType = 'notification:deleted';
+      }
+
+      // Send as custom event type
+      res.write(`event: ${eventType}\n`);
+      res.write(`id: ${notification.id || Date.now()}\n`);
+      res.write(`data: ${JSON.stringify({
+        ...notification,
+        timestamp: new Date().toISOString(),
+        eventType
+      })}\n\n`);
+
+      console.log(`[SSE] Sent ${eventType} to user ${userId}:`, notification.type);
+    } catch (error) {
+      console.error(`[SSE] Error sending notification to user ${userId}:`, error);
+    }
   };
 
+  // Listen for user-specific notifications
   notificationEmitter.on(`user:${userId}`, notificationHandler);
 
-  // Handle client disconnect
-  req.on('close', () => {
-    clearInterval(heartbeat);
-    notificationEmitter.removeListener(`user:${userId}`, notificationHandler);
-    res.end();
+  // Listen for role-specific notifications (if user is admin/manager)
+  if (['admin', 'manager'].includes(userRole)) {
+    const roleHandler = (notification) => {
+      res.write(`event: notification:role\n`);
+      res.write(`data: ${JSON.stringify({
+        ...notification,
+        timestamp: new Date().toISOString(),
+        eventType: 'notification:role'
+      })}\n\n`);
+    };
+
+    notificationEmitter.on(`role:${userRole}`, roleHandler);
+
+    // Store role handler for cleanup
+    req.roleHandler = roleHandler;
+  }
+
+  // Listen for hotel-wide urgent notifications
+  const hotelId = req.user.hotelId?.toString();
+  if (hotelId) {
+    const urgentHandler = (notification) => {
+      if (notification.priority === 'urgent' || notification.priority === 'high') {
+        res.write(`event: notification:urgent\n`);
+        res.write(`data: ${JSON.stringify({
+          ...notification,
+          timestamp: new Date().toISOString(),
+          eventType: 'notification:urgent'
+        })}\n\n`);
+      }
+    };
+
+    notificationEmitter.on(`hotel:${hotelId}:urgent`, urgentHandler);
+    req.urgentHandler = urgentHandler;
+  }
+
+  // Connection cleanup function
+  const cleanup = () => {
+    console.log(`[SSE] Cleaning up connection for user ${userId}`);
+
+    try {
+      // Clear intervals
+      clearInterval(heartbeat);
+      clearInterval(healthCheck);
+
+      // Remove event listeners
+      notificationEmitter.removeListener(`user:${userId}`, notificationHandler);
+
+      if (req.roleHandler) {
+        notificationEmitter.removeListener(`role:${userRole}`, req.roleHandler);
+      }
+
+      if (req.urgentHandler && hotelId) {
+        notificationEmitter.removeListener(`hotel:${hotelId}:urgent`, req.urgentHandler);
+      }
+
+      // End response safely
+      if (!res.headersSent) {
+        res.end();
+      }
+    } catch (error) {
+      console.error(`[SSE] Error during cleanup for user ${userId}:`, error);
+    }
+  };
+
+  // Handle various disconnect scenarios
+  req.on('close', cleanup);
+  req.on('end', cleanup);
+  res.on('close', cleanup);
+  res.on('finish', cleanup);
+
+  // Handle connection errors
+  req.on('error', (error) => {
+    console.error(`[SSE] Request error for user ${userId}:`, error);
+    cleanup();
   });
+
+  res.on('error', (error) => {
+    console.error(`[SSE] Response error for user ${userId}:`, error);
+    cleanup();
+  });
+
+  // Send initial status update after 1 second
+  setTimeout(() => {
+    try {
+      res.write(`event: status\n`);
+      res.write(`data: ${JSON.stringify({
+        type: 'status',
+        message: 'SSE connection established and ready',
+        connectedUsers: notificationEmitter.listenerCount(`user:${userId}`),
+        timestamp: new Date().toISOString()
+      })}\n\n`);
+    } catch (error) {
+      console.error(`[SSE] Error sending initial status:`, error);
+    }
+  }, 1000);
+
+  console.log(`[SSE] Successfully established connection for user ${userId}`);
 });
 
 // DELETE /api/v1/notifications/bulk - Delete multiple notifications

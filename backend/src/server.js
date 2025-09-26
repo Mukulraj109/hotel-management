@@ -71,9 +71,13 @@ import hotelServicesRoutes from './routes/hotelServices.js'; // Temporarily disa
 import adminHotelServicesRoutes from './routes/adminHotelServices.js';
 import staffServicesRoutes from './routes/staffServices.js';
 import notificationRoutes from './routes/notifications.js'; // Temporarily disabled
+import settlementNotificationRoutes from './routes/settlementNotifications.js';
+import settlementNotificationService from './services/settlementNotificationService.js';
 import userPreferencesRoutes from './routes/userPreferences.js';
 import hotelSettingsRoutes from './routes/hotelSettings.js';
 import settingsRoutes from './routes/settings.js';
+import integrationsRoutes from './routes/integrations.js';
+import uploadRoutes from './routes/upload.js';
 import digitalKeyRoutes from './routes/digitalKeys.js'; // Temporarily disabled
 import staffAlertsRoutes from './routes/staffAlerts.js';
 import staffMeetUpRoutes from './routes/staffMeetUp.js';
@@ -185,6 +189,8 @@ import emailCampaignRoutes from './routes/emailCampaigns.js';
 import crmRoutes from './routes/crm.js';
 import segmentationRoutes from './routes/segmentation.js';
 import personalizationRoutes from './routes/personalization.js';
+import extraPersonPricingRoutes from './routes/extraPersonPricing.js';
+import settlementsRoutes from './routes/settlements.js';
 
 const app = express();
 
@@ -442,6 +448,8 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/rooms', roomRoutes);
 app.use('/api/v1/bookings/enhanced', enhancedBookingRoutes);
 app.use('/api/v1/bookings', bookingRoutes);
+app.use('/api/v1/extra-person-pricing', extraPersonPricingRoutes);
+app.use('/api/v1/settlements', settlementsRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/v1/housekeeping', housekeepingRoutes);
 app.use('/api/v1/inventory', inventoryRoutes);
@@ -478,9 +486,12 @@ app.use('/api/v1/hotel-services', hotelServicesRoutes);
 app.use('/api/v1/admin/hotel-services', adminHotelServicesRoutes);
 app.use('/api/v1/staff/services', staffServicesRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
+app.use('/api/v1/settlement-notifications', settlementNotificationRoutes);
 app.use('/api/v1/user-preferences', userPreferencesRoutes);
 app.use('/api/v1/hotel-settings', hotelSettingsRoutes);
 app.use('/api/v1', settingsRoutes); // Settings routes with various endpoints
+app.use('/api/v1/integrations', integrationsRoutes); // Integration settings routes
+app.use('/api/v1/upload', uploadRoutes); // Upload routes for avatars
 app.use('/api/v1/digital-keys', digitalKeyRoutes);
 app.use('/api/v1/meet-up-requests', meetUpRequestRoutes);
 app.use('/api/v1/meetup-resources', meetUpResourceRoutes);
@@ -650,6 +661,11 @@ const server = app.listen(PORT, async () => {
         logger.info('🔄 Initializing notification scheduler...');
         NotificationScheduler.initializeScheduledJobs();
         logger.info('✅ Notification scheduler initialized');
+
+        // Initialize settlement notification service
+        logger.info('🔄 Initializing settlement notification service...');
+        // Settlement notification service auto-starts with cron jobs
+        logger.info('✅ Settlement notification service initialized');
 
         // Start reorder job
         logger.info('🔄 Starting reorder job...');

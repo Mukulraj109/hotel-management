@@ -25,6 +25,7 @@ import { useNavigate } from 'react-router-dom';
 import { InventoryDashboardWidget } from '../../components/admin/InventoryDashboardWidget';
 import { InventoryNotifications } from '../../components/admin/InventoryNotifications';
 import { SupplyRequestDashboardWidget } from '../../components/admin/SupplyRequestDashboardWidget';
+import UpcomingArrivalsWidget from '../../components/admin/UpcomingArrivalsWidget';
 
 export default function AdminDashboard() {
   const { user } = useAuth();
@@ -467,6 +468,11 @@ export default function AdminDashboard() {
         hotelId={selectedHotelId}
         onNavigate={(path) => navigate(path)}
       />
+
+      {/* Upcoming Arrivals Widget */}
+      <div className="mb-8">
+        <UpcomingArrivalsWidget />
+      </div>
 
       {/* Inventory Notifications Section */}
       <div className="mb-8">

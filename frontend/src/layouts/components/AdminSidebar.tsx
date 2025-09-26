@@ -53,6 +53,7 @@ const navigation = [
   { name: 'Room Types', href: '/admin/room-types', icon: Layers },
   { name: 'Room Type Allotments', href: '/admin/room-allotments', icon: Target },
   { name: 'Bookings', href: '/admin/bookings', icon: Calendar },
+  { name: 'Upcoming Arrivals', href: '/admin/upcoming-bookings', icon: CalendarDays },
   { name: 'Corporate', href: '/admin/corporate', icon: Users },
   { name: 'Travel Agents', href: '/admin/travel-dashboard', icon: Plane },
   { name: 'Staff Management', href: '/admin/staff', icon: UserCheck },

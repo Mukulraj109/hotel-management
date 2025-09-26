@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from 'react-hot-toast';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import { apiErrorInterceptor } from './services/apiErrorInterceptor';
@@ -55,6 +56,7 @@ import AdminRooms from './pages/admin/AdminRooms';
 import RoomDetailsPage from './pages/admin/RoomDetailsPage';
 import RoomBookingsPage from './pages/admin/RoomBookingsPage';
 import AdminBookings from './pages/admin/AdminBookings';
+import AdminUpcomingBookings from './pages/admin/AdminUpcomingBookings';
 import AdminStaffManagement from './pages/admin/AdminStaffManagement';
 import AdminHousekeeping from './pages/admin/AdminHousekeeping';
 import AdminInventory from './pages/admin/AdminInventory';
@@ -115,8 +117,17 @@ import ProfileEdit from './pages/travel-agent/ProfileEdit';
 import MultiBooking from './pages/travel-agent/MultiBooking';
 import TravelAgentSettings from './pages/travel-agent/TravelAgentSettings';
 
+// Admin Settings Pages
+import AdminProfileSettings from './pages/admin/settings/ProfileSettings';
+import AdminNotificationSettings from './pages/admin/settings/NotificationSettings';
+import AdminDisplaySettings from './pages/admin/settings/DisplaySettings';
+import AdminHotelSettings from './pages/admin/settings/HotelSettings';
+import AdminSystemSettings from './pages/admin/settings/SystemSettings';
+import AdminIntegrationSettings from './pages/admin/settings/IntegrationSettings';
+
 // Staff Pages
 import StaffDashboard from './pages/staff/StaffDashboard';
+import StaffUpcomingBookings from './pages/staff/StaffUpcomingBookings';
 import StaffNotifications from './pages/staff/StaffNotifications';
 import StaffHousekeeping from './pages/staff/StaffHousekeeping';
 import StaffMaintenance from './pages/staff/StaffMaintenance';
@@ -133,6 +144,12 @@ import CheckoutInventory from './pages/staff/CheckoutInventory';
 import DailyRoutineCheck from './pages/staff/DailyRoutineCheck';
 import StaffDocuments from './pages/staff/StaffDocuments';
 import { DailyInventoryCheckForm } from './components/staff/DailyInventoryCheckForm';
+
+// Staff Settings Pages
+import StaffProfileSettings from './pages/staff/settings/StaffProfileSettings';
+import StaffNotificationSettings from './pages/staff/settings/StaffNotificationSettings';
+import StaffDisplaySettings from './pages/staff/settings/StaffDisplaySettings';
+import StaffAvailabilitySettings from './pages/staff/settings/StaffAvailabilitySettings';
 
 // Layout Components
 import PublicLayout from './layouts/PublicLayout';
@@ -155,8 +172,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <Router>
         <AuthProvider>
-          <ErrorBoundary>
-            <div className="min-h-screen bg-gray-50">
+          <ThemeProvider>
+            <ErrorBoundary>
+              <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
               <Routes>
               {/* Public Routes - Accessible to all users */}
               <Route path="/" element={<PublicLayout />}>
@@ -218,6 +236,7 @@ function App() {
                 <Route path="rooms/:roomId" element={<RoomDetailsPage />} />
                 <Route path="rooms/:roomId/bookings" element={<RoomBookingsPage />} />
                 <Route path="bookings" element={<AdminBookings />} />
+                <Route path="upcoming-bookings" element={<AdminUpcomingBookings />} />
                 <Route path="staff" element={<AdminStaffManagement />} />
                 <Route path="corporate" element={<AdminCorporateDashboard />} />
                 <Route path="corporate/credit" element={<CorporateCreditManagement />} />
@@ -271,6 +290,14 @@ function App() {
                 <Route path="notifications" element={<AdminNotifications />} />
                 <Route path="notification-analytics" element={<NotificationAnalyticsDashboard />} />
                 <Route path="travel-dashboard" element={<AdminTravelDashboard />} />
+
+                {/* Admin Settings Routes */}
+                <Route path="settings/profile" element={<AdminProfileSettings />} />
+                <Route path="settings/notifications" element={<AdminNotificationSettings />} />
+                <Route path="settings/display" element={<AdminDisplaySettings />} />
+                <Route path="settings/hotel" element={<AdminHotelSettings />} />
+                <Route path="settings/system" element={<AdminSystemSettings />} />
+                <Route path="settings/integrations" element={<AdminIntegrationSettings />} />
               </Route>
 
               {/* Travel Agent Routes */}
@@ -298,6 +325,7 @@ function App() {
                 </ProtectedRoute>
               }>
                 <Route index element={<StaffDashboard />} />
+                <Route path="upcoming-bookings" element={<StaffUpcomingBookings />} />
                 <Route path="notifications" element={<StaffNotifications />} />
                 <Route path="alerts" element={<StaffAlertCenter />} />
                 <Route path="meetup-supervision" element={<StaffMeetUpSupervision />} />
@@ -315,6 +343,12 @@ function App() {
                 <Route path="checkout-inventory" element={<CheckoutInventory />} />
                 <Route path="documents" element={<StaffDocuments />} />
                 <Route path="reports" element={<StaffReports />} />
+
+                {/* Staff Settings Routes */}
+                <Route path="settings/profile" element={<StaffProfileSettings />} />
+                <Route path="settings/notifications" element={<StaffNotificationSettings />} />
+                <Route path="settings/display" element={<StaffDisplaySettings />} />
+                <Route path="settings/availability" element={<StaffAvailabilitySettings />} />
               </Route>
 
                             {/* Catch all route */}
@@ -331,11 +365,12 @@ function App() {
               },
             }}
           />
-        </div>
-      </ErrorBoundary>
-    </AuthProvider>
-  </Router>
-</QueryClientProvider>
+              </div>
+            </ErrorBoundary>
+          </ThemeProvider>
+        </AuthProvider>
+      </Router>
+    </QueryClientProvider>
 );
 }
 

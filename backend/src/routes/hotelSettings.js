@@ -127,6 +127,41 @@ router.get('/', catchAsync(async (req, res, next) => {
   });
 }));
 
+// GET /api/v1/hotel-settings/backup - Create settings backup
+router.get('/backup', catchAsync(async (req, res, next) => {
+  const hotelId = req.user.hotelId;
+
+  if (!hotelId) {
+    return next(new ApplicationError('User not associated with any hotel', 400));
+  }
+
+  const settings = await HotelSettings.findOne({ hotelId });
+  if (!settings) {
+    return next(new ApplicationError('Hotel settings not found', 404));
+  }
+
+  // Remove sensitive data from backup
+  const backup = JSON.parse(JSON.stringify(settings));
+  delete backup._id;
+  delete backup.__v;
+
+  // Remove sensitive integration keys
+  if (backup.integrations) {
+    if (backup.integrations.payment?.stripe?.secretKey) delete backup.integrations.payment.stripe.secretKey;
+    if (backup.integrations.payment?.razorpay?.keySecret) delete backup.integrations.payment.razorpay.keySecret;
+  }
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      backup,
+      createdAt: new Date().toISOString(),
+      hotelId,
+      version: '1.0'
+    }
+  });
+}));
+
 // GET /api/v1/hotel-settings/:section - Get specific section
 router.get('/:section', catchAsync(async (req, res, next) => {
   const { section } = req.params;
@@ -136,7 +171,7 @@ router.get('/:section', catchAsync(async (req, res, next) => {
     return next(new ApplicationError('User not associated with any hotel', 400));
   }
 
-  const validSections = ['basicInfo', 'operations', 'policies', 'taxes', 'integrations', 'amenities', 'notifications', 'security'];
+  const validSections = ['basicInfo', 'operations', 'policies', 'taxes', 'integrations', 'amenities', 'notifications', 'security', 'maintenance'];
   if (!validSections.includes(section)) {
     return next(new ApplicationError('Invalid settings section', 400));
   }
@@ -269,6 +304,58 @@ router.put('/integrations', catchAsync(async (req, res, next) => {
   });
 }));
 
+// PUT /api/v1/hotel-settings/security - Update security settings
+router.put('/security', catchAsync(async (req, res, next) => {
+  const hotelId = req.user.hotelId;
+  if (!hotelId) {
+    return next(new ApplicationError('User not associated with any hotel', 400));
+  }
+
+  const securityData = {
+    requireTwoFactor: req.body.requireTwoFactor,
+    sessionSettings: req.body.sessionSettings,
+    passwordPolicy: req.body.passwordPolicy,
+    auditLog: req.body.auditLog !== undefined ? req.body.auditLog : true,
+    ipRestrictions: req.body.ipRestrictions || [],
+    maxLoginAttempts: req.body.maxLoginAttempts || 5 // Add max login attempts field
+  };
+
+  const settings = await HotelSettings.updateHotelSettings(hotelId, { security: securityData });
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Security settings updated successfully',
+    data: { security: settings.security }
+  });
+}));
+
+// PUT /api/v1/hotel-settings/maintenance - Update maintenance settings
+router.put('/maintenance', catchAsync(async (req, res, next) => {
+  const hotelId = req.user.hotelId;
+  if (!hotelId) {
+    return next(new ApplicationError('User not associated with any hotel', 400));
+  }
+
+  const maintenanceData = {
+    autoBackup: req.body.autoBackup !== undefined ? req.body.autoBackup : true,
+    backupSchedule: req.body.backupSchedule || 'daily',
+    backupRetention: req.body.backupRetention || 30,
+    maintenanceWindow: req.body.maintenanceWindow || {
+      start: '02:00',
+      end: '04:00',
+      timezone: 'Asia/Kolkata'
+    }
+  };
+
+  const settings = await HotelSettings.updateHotelSettings(hotelId, { maintenance: maintenanceData });
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Maintenance settings updated successfully',
+    data: { maintenance: settings.maintenance }
+  });
+}));
+
 // POST /api/v1/hotel-settings/integrations/test - Test integration connection
 router.post('/integrations/test', catchAsync(async (req, res, next) => {
   const { type, service } = req.body;
@@ -394,41 +481,6 @@ router.delete('/amenities/:amenityId', catchAsync(async (req, res, next) => {
   res.status(200).json({
     status: 'success',
     message: 'Amenity deleted successfully'
-  });
-}));
-
-// GET /api/v1/hotel-settings/backup - Create settings backup
-router.get('/backup', catchAsync(async (req, res, next) => {
-  const hotelId = req.user.hotelId;
-
-  if (!hotelId) {
-    return next(new ApplicationError('User not associated with any hotel', 400));
-  }
-
-  const settings = await HotelSettings.findOne({ hotelId });
-  if (!settings) {
-    return next(new ApplicationError('Hotel settings not found', 404));
-  }
-
-  // Remove sensitive data from backup
-  const backup = JSON.parse(JSON.stringify(settings));
-  delete backup._id;
-  delete backup.__v;
-
-  // Remove sensitive integration keys
-  if (backup.integrations) {
-    if (backup.integrations.payment?.stripe?.secretKey) delete backup.integrations.payment.stripe.secretKey;
-    if (backup.integrations.payment?.razorpay?.keySecret) delete backup.integrations.payment.razorpay.keySecret;
-  }
-
-  res.status(200).json({
-    status: 'success',
-    data: {
-      backup,
-      createdAt: new Date().toISOString(),
-      hotelId,
-      version: '1.0'
-    }
   });
 }));
 

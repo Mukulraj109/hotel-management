@@ -26,10 +26,10 @@ interface StaffNotificationFormData {
 }
 
 interface StaffNotificationSettingsProps {
-  onSettingsChange: (hasChanges: boolean) => void;
+  onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function StaffNotificationSettings({ onSettingsChange }: StaffNotificationSettingsProps) {
+export default function StaffNotificationSettings({ onSettingsChange }: StaffNotificationSettingsProps = {}) {
   const {
     register,
     handleSubmit,
@@ -52,7 +52,9 @@ export default function StaffNotificationSettings({ onSettingsChange }: StaffNot
 
   // Watch for form changes
   useEffect(() => {
-    onSettingsChange(isDirty);
+    if (onSettingsChange) {
+      onSettingsChange(isDirty);
+    }
   }, [isDirty, onSettingsChange]);
 
   // Save notification settings mutation
@@ -75,7 +77,9 @@ export default function StaffNotificationSettings({ onSettingsChange }: StaffNot
     },
     onSuccess: () => {
       toast.success('Notification settings updated successfully');
-      onSettingsChange(false);
+      if (onSettingsChange) {
+        onSettingsChange(false);
+      }
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to update notification settings');
