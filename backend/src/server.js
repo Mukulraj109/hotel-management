@@ -284,7 +284,7 @@ app.set('trust proxy', 1);
 // Security middleware
 app.use(helmet());
 app.use(cors({
-    origin: "*",
+    origin: "https://hotel-management-1-1lm3.onrender.com",
     credentials: true,
     optionsSuccessStatus: 200
 }));
