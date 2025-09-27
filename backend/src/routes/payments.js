@@ -2,6 +2,7 @@ import express from 'express';
 import Stripe from 'stripe';
 import Booking from '../models/Booking.js';
 import Payment from '../models/Payment.js';
+import POSOrder from '../models/POSOrder.js';
 import { authenticate } from '../middleware/auth.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -540,5 +541,93 @@ router.post('/refund',
     });
   })
 );
+
+// Food ordering payment methods
+
+// Process room charge payment for food orders
+router.post('/room-charge', authenticate, catchAsync(async (req, res) => {
+  const { orderId, amount, currency = 'INR', roomNumber, bookingId, items } = req.body;
+
+  if (!amount || !bookingId) {
+    throw new ApplicationError('Amount and booking ID are required', 400);
+  }
+
+  const booking = await Booking.findById(bookingId);
+  if (!booking) {
+    throw new ApplicationError('Booking not found', 404);
+  }
+
+  if (req.user.role === 'guest' && booking.userId.toString() !== req.user._id.toString()) {
+    throw new ApplicationError('Access denied', 403);
+  }
+
+  const reference = `RC-${Date.now()}`;
+  const paymentData = {
+    method: 'room_charge',
+    status: 'paid',
+    paymentDetails: { roomChargeReference: reference, roomNumber, bookingId }
+  };
+
+  if (orderId) {
+    const posOrder = await POSOrder.findById(orderId);
+    if (posOrder) {
+      posOrder.payment = paymentData;
+      await posOrder.save();
+    }
+  }
+
+  const serviceCharge = {
+    type: 'service_charge',
+    amount: parseFloat(amount),
+    description: `Room service order - ${items?.length || 0} items`,
+    appliedBy: {
+      userId: req.user._id,
+      userName: req.user.name,
+      userRole: req.user.role === 'guest' ? 'staff' : req.user.role
+    }
+  };
+
+  if (!booking.settlementTracking) booking.settlementTracking = { adjustments: [] };
+  if (!booking.settlementTracking.adjustments) booking.settlementTracking.adjustments = [];
+  booking.settlementTracking.adjustments.push(serviceCharge);
+  booking.totalAmount = (booking.totalAmount || 0) + parseFloat(amount);
+  await booking.save();
+
+  res.json({
+    success: true,
+    message: 'Amount added to room charges successfully',
+    data: { transactionId: reference, amount, currency, paymentMethod: 'room_charge', status: 'paid' }
+  });
+}));
+
+// Process cash on delivery for food orders
+router.post('/cash-on-delivery', authenticate, catchAsync(async (req, res) => {
+  const { orderId, amount, currency = 'INR', roomNumber } = req.body;
+
+  if (!amount) {
+    throw new ApplicationError('Amount is required', 400);
+  }
+
+  const reference = `COD_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+  const paymentData = {
+    method: 'cash',
+    status: 'pending',
+    paymentDetails: { reference, deliveryAddress: roomNumber ? `Room ${roomNumber}` : 'Guest location' }
+  };
+
+  if (orderId) {
+    const posOrder = await POSOrder.findById(orderId);
+    if (posOrder) {
+      posOrder.payment = paymentData;
+      await posOrder.save();
+    }
+  }
+
+  res.json({
+    success: true,
+    message: 'Cash on delivery order created successfully',
+    data: { transactionId: reference, amount: parseFloat(amount), currency, paymentMethod: 'cash', status: 'pending' }
+  });
+}));
 
 export default router;

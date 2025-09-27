@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Plus, Eye, DollarSign, Clock, AlertTriangle, CheckCircle, FileText, MessageCircle, TrendingUp, Calendar, Users, IndianRupee, CreditCard, Bell, Send, Zap } from 'lucide-react';
+import { Search, Filter, Plus, Eye, DollarSign, Clock, AlertTriangle, CheckCircle, FileText, MessageCircle, TrendingUp, Calendar, Users, IndianRupee, CreditCard, Bell, Send, Zap, ShoppingCart, Package, ArrowRight } from 'lucide-react';
 import { bookingEditingService } from '../../services/bookingEditingService';
 import { Modal } from '../ui/Modal';
 import { SettlementPayment } from '../payments/SettlementPayment';
+import { api } from '../../services/api';
 
 interface Settlement {
   _id: string;
@@ -83,6 +84,12 @@ export function SettlementManagement() {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isCommunicationModalOpen, setIsCommunicationModalOpen] = useState(false);
 
+  // POS Integration states
+  const [integrationReadyItems, setIntegrationReadyItems] = useState<any>(null);
+  const [showIntegrationPanel, setShowIntegrationPanel] = useState(false);
+  const [isIntegrating, setIsIntegrating] = useState(false);
+  const [integrationStats, setIntegrationStats] = useState<any>(null);
+
   // Form states
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('');
@@ -99,6 +106,8 @@ export function SettlementManagement() {
     fetchSettlements();
     fetchAnalytics();
     fetchOverdueSettlements();
+    fetchIntegrationReadyItems();
+    fetchIntegrationStats();
   }, [statusFilter, escalationFilter, currentPage]);
 
   const fetchSettlements = async () => {
@@ -136,6 +145,53 @@ export function SettlementManagement() {
       setOverdueSettlements(response.data.overdueSettlements);
     } catch (error: any) {
       console.error('Failed to fetch overdue settlements:', error);
+    }
+  };
+
+  const fetchIntegrationReadyItems = async () => {
+    try {
+      const response = await api.get('/api/v1/pos-settlements/ready-for-integration');
+      setIntegrationReadyItems(response.data.data);
+    } catch (error: any) {
+      console.error('Failed to fetch integration ready items:', error);
+    }
+  };
+
+  const fetchIntegrationStats = async () => {
+    try {
+      const response = await api.get('/api/v1/pos-settlements/integration-stats');
+      setIntegrationStats(response.data.data);
+    } catch (error: any) {
+      console.error('Failed to fetch integration stats:', error);
+    }
+  };
+
+  const handleBulkPOSIntegration = async () => {
+    if (!integrationReadyItems) return;
+
+    setIsIntegrating(true);
+    try {
+      const billingSessionIds = integrationReadyItems.billingSessions.items.map((item: any) => item.sessionId);
+      const checkoutInventoryIds = integrationReadyItems.checkoutInventories.items.map((item: any) => item.checkoutId);
+
+      const response = await api.post('/api/v1/pos-settlements/bulk-integrate', {
+        billingSessionIds,
+        checkoutInventoryIds
+      });
+
+      // Refresh all data
+      fetchSettlements();
+      fetchAnalytics();
+      fetchIntegrationReadyItems();
+      fetchIntegrationStats();
+
+      setShowIntegrationPanel(false);
+      alert(`Integration completed: ${response.data.data.summary.successCount} successful, ${response.data.data.summary.errorCount} failed`);
+    } catch (error: any) {
+      console.error('Bulk integration failed:', error);
+      alert('Bulk integration failed: ' + (error.response?.data?.message || 'Please try again'));
+    } finally {
+      setIsIntegrating(false);
     }
   };
 
@@ -237,6 +293,17 @@ export function SettlementManagement() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Settlement Management</h1>
           <p className="text-gray-600">Manage post-checkout settlements and outstanding balances</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {integrationReadyItems && integrationReadyItems.summary.totalItemsReady > 0 && (
+            <button
+              onClick={() => setShowIntegrationPanel(true)}
+              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Package className="w-4 h-4" />
+              POS Integration ({integrationReadyItems.summary.totalItemsReady})
+            </button>
+          )}
         </div>
       </div>
 
@@ -688,6 +755,107 @@ export function SettlementManagement() {
           }}
         />
       )}
+
+      {/* POS Integration Panel */}
+      <Modal
+        isOpen={showIntegrationPanel}
+        onClose={() => setShowIntegrationPanel(false)}
+        title="POS Settlement Integration"
+        size="lg"
+      >
+        <div className="space-y-6">
+          {integrationReadyItems && (
+            <>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-blue-900 mb-2">Integration Summary</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">{integrationReadyItems.billingSessions.count}</div>
+                    <div className="text-sm text-blue-700">POS Sessions</div>
+                    <div className="text-xs text-blue-600">₹{integrationReadyItems.summary.totalPOSAmount.toLocaleString()}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-600">{integrationReadyItems.checkoutInventories.count}</div>
+                    <div className="text-sm text-orange-700">Checkout Charges</div>
+                    <div className="text-xs text-orange-600">₹{integrationReadyItems.summary.totalCheckoutCharges.toLocaleString()}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">₹{(integrationReadyItems.summary.totalPOSAmount + integrationReadyItems.summary.totalCheckoutCharges).toLocaleString()}</div>
+                    <div className="text-sm text-green-700">Total Amount</div>
+                    <div className="text-xs text-green-600">{integrationReadyItems.summary.totalItemsReady} items</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* POS Sessions */}
+              {integrationReadyItems.billingSessions.count > 0 && (
+                <div>
+                  <h4 className="text-md font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <ShoppingCart className="w-4 h-4" />
+                    POS Billing Sessions ({integrationReadyItems.billingSessions.count})
+                  </h4>
+                  <div className="bg-gray-50 rounded-lg p-3 max-h-40 overflow-y-auto">
+                    {integrationReadyItems.billingSessions.items.map((session: any, index: number) => (
+                      <div key={session.sessionId} className="flex justify-between items-center py-2 border-b border-gray-200 last:border-b-0">
+                        <div>
+                          <span className="font-medium">{session.sessionId}</span>
+                          <span className="text-sm text-gray-600 ml-2">{session.guestName} - Room {session.roomNumber}</span>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-medium">₹{session.totalAmount.toLocaleString()}</div>
+                          <div className="text-xs text-gray-500">{session.itemsCount} items</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Checkout Inventories */}
+              {integrationReadyItems.checkoutInventories.count > 0 && (
+                <div>
+                  <h4 className="text-md font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                    <Package className="w-4 h-4" />
+                    Checkout Damage Charges ({integrationReadyItems.checkoutInventories.count})
+                  </h4>
+                  <div className="bg-gray-50 rounded-lg p-3 max-h-40 overflow-y-auto">
+                    {integrationReadyItems.checkoutInventories.items.map((checkout: any, index: number) => (
+                      <div key={checkout.checkoutId} className="flex justify-between items-center py-2 border-b border-gray-200 last:border-b-0">
+                        <div>
+                          <span className="font-medium">Checkout #{checkout.checkoutId.slice(-8)}</span>
+                          <span className="text-sm text-gray-600 ml-2">Room {checkout.roomId?.roomNumber}</span>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-medium">₹{checkout.totalAmount.toLocaleString()}</div>
+                          <div className="text-xs text-gray-500">{checkout.chargeableItemsCount} damage items</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-4 border-t">
+                <button
+                  onClick={() => setShowIntegrationPanel(false)}
+                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleBulkPOSIntegration}
+                  disabled={isIntegrating}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {isIntegrating && <Clock className="w-4 h-4 animate-spin" />}
+                  {isIntegrating ? 'Integrating...' : 'Integrate All to Settlements'}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

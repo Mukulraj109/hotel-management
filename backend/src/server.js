@@ -91,7 +91,7 @@ import roomInventoryRoutes from './routes/roomInventory.js'; // Temporarily disa
 import photoUploadRoutes from './routes/photoUpload.js'; // Temporarily disabled
 import documentUploadRoutes from './routes/documentUpload.js';
 import staffTaskRoutes from './routes/staffTasks.js'; // Temporarily disabled
-import checkoutInventoryRoutes from './routes/checkoutInventory.js'; // Temporarily disabled
+import checkoutInventoryRoutes from './routes/checkoutInventory.js'; // ENABLED - Route conflict fixed
 import dailyRoutineCheckRoutes from './routes/dailyRoutineCheck.js'; // Temporarily disabled
 import testCheckoutsRoutes from './routes/testCheckouts.js'; // Temporarily disabled
 import attractionsRoutes from './routes/attractions.js'; // Temporarily disabled
@@ -144,6 +144,7 @@ import blacklistRoutes from './routes/blacklist.js';
 import vipRoutes from './routes/vip.js';
 import customFieldRoutes from './routes/customFields.js';
 import userManagementRoutes from './routes/userManagement.js';
+import usersRoutes from './routes/users.js';
 import loginActivityRoutes from './routes/loginActivity.js';
 import userAnalyticsRoutes from './routes/userAnalytics.js';
 import seasonalPricingRoutes from './routes/seasonalPricing.js';
@@ -153,6 +154,7 @@ import bookingFormRoutes from './routes/bookingForm.js';
 import allotmentRoutes from './routes/allotment.js';
 import centralizedRatesRoutes from './routes/centralizedRates.js';
 import propertyGroupsRoutes from './routes/propertyGroups.js';
+import propertyRoomsRoutes from './routes/propertyRooms.js';
 import departmentRoutes from './routes/departments.js';
 import reasonRoutes from './routes/reasons.js';
 import paymentMethodRoutes from './routes/paymentMethods.js';
@@ -191,6 +193,7 @@ import segmentationRoutes from './routes/segmentation.js';
 import personalizationRoutes from './routes/personalization.js';
 import extraPersonPricingRoutes from './routes/extraPersonPricing.js';
 import settlementsRoutes from './routes/settlements.js';
+import posSettlementIntegrationRoutes from './routes/posSettlementIntegration.js';
 
 const app = express();
 
@@ -450,6 +453,7 @@ app.use('/api/v1/bookings/enhanced', enhancedBookingRoutes);
 app.use('/api/v1/bookings', bookingRoutes);
 app.use('/api/v1/extra-person-pricing', extraPersonPricingRoutes);
 app.use('/api/v1/settlements', settlementsRoutes);
+app.use('/api/v1/pos-settlements', posSettlementIntegrationRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/v1/housekeeping', housekeepingRoutes);
 app.use('/api/v1/inventory', inventoryRoutes);
@@ -489,7 +493,8 @@ app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/settlement-notifications', settlementNotificationRoutes);
 app.use('/api/v1/user-preferences', userPreferencesRoutes);
 app.use('/api/v1/hotel-settings', hotelSettingsRoutes);
-app.use('/api/v1', settingsRoutes); // Settings routes with various endpoints
+// CRITICAL: Move checkout-inventory and other specific routes BEFORE settings catch-all routes
+app.use('/api/v1/checkout-inventory', checkoutInventoryRoutes);
 app.use('/api/v1/integrations', integrationsRoutes); // Integration settings routes
 app.use('/api/v1/upload', uploadRoutes); // Upload routes for avatars
 app.use('/api/v1/digital-keys', digitalKeyRoutes);
@@ -502,7 +507,9 @@ app.use('/api/v1/room-inventory', roomInventoryRoutes);
 app.use('/api/v1/photos', photoUploadRoutes);
 app.use('/api/v1/documents', documentUploadRoutes);
 app.use('/api/v1/staff-tasks', staffTaskRoutes);
-app.use('/api/v1/checkout-inventory', checkoutInventoryRoutes);
+
+// IMPORTANT: Settings routes MUST come AFTER specific routes to avoid conflicts
+app.use('/api/v1/settings', settingsRoutes); // Settings routes with various endpoints
 app.use('/api/v1/daily-routine-check', dailyRoutineCheckRoutes);
 app.use('/api/v1/test', testCheckoutsRoutes);
 app.use('/api/v1/attractions', attractionsRoutes);
@@ -578,12 +585,14 @@ app.use('/api/v1/blacklist', blacklistRoutes);
 app.use('/api/v1/vip', vipRoutes);
 app.use('/api/v1/custom-fields', customFieldRoutes);
 app.use('/api/v1/user-management', userManagementRoutes);
+app.use('/api/v1/users', usersRoutes);
 app.use('/api/v1/login-activity', loginActivityRoutes);
 app.use('/api/v1/user-analytics', userAnalyticsRoutes);
 app.use('/api/v1/booking-forms', bookingFormRoutes);
 app.use('/api/v1/allotments', allotmentRoutes);
 app.use('/api/v1/centralized-rates', centralizedRatesRoutes);
 app.use('/api/v1/property-groups', propertyGroupsRoutes);
+app.use('/api/v1/property-rooms', propertyRoomsRoutes);
 app.use('/api/v1/departments', departmentRoutes);
 app.use('/api/v1/reasons', reasonRoutes);
 app.use('/api/v1/payment-methods', paymentMethodRoutes);

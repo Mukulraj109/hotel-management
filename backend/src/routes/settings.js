@@ -15,20 +15,38 @@ const router = express.Router();
 router.use(authenticate);
 
 // ========================================
-// NEW UNIFIED SETTINGS API
+// NEW UNIFIED SETTINGS API - SPECIFIC ROUTES ONLY
 // ========================================
 
-// Get all settings or specific category
+// Get all settings or specific category - SPECIFIC CATEGORIES ONLY
 router.get('/', settingsController.getSettings);
-router.get('/:category', settingsController.getSettings);
+router.get('/general', settingsController.getSettings);
+router.get('/security', settingsController.getSettings);
+router.get('/billing', settingsController.getSettings);
+router.get('/notifications', settingsController.getSettings);
+router.get('/integrations', settingsController.getSettings);
+router.get('/hotel-policies', settingsController.getSettings);
+router.get('/system', settingsController.getSettings);
 
-// Update settings (category or all)
+// Update settings (category or all) - SPECIFIC CATEGORIES ONLY
 router.put('/', settingsController.updateSettings);
-router.put('/:category', settingsController.updateSettings);
+router.put('/general', settingsController.updateSettings);
+router.put('/security', settingsController.updateSettings);
+router.put('/billing', settingsController.updateSettings);
+router.put('/notifications', settingsController.updateSettings);
+router.put('/integrations', settingsController.updateSettings);
+router.put('/hotel-policies', settingsController.updateSettings);
+router.put('/system', settingsController.updateSettings);
 
-// Reset settings to defaults
+// Reset settings to defaults - SPECIFIC CATEGORIES ONLY
 router.post('/reset', settingsController.resetSettings);
-router.post('/reset/:category', settingsController.resetSettings);
+router.post('/reset/general', settingsController.resetSettings);
+router.post('/reset/security', settingsController.resetSettings);
+router.post('/reset/billing', settingsController.resetSettings);
+router.post('/reset/notifications', settingsController.resetSettings);
+router.post('/reset/integrations', settingsController.resetSettings);
+router.post('/reset/hotel-policies', settingsController.resetSettings);
+router.post('/reset/system', settingsController.resetSettings);
 
 // Export/Import settings
 router.get('/export', settingsController.exportSettings);

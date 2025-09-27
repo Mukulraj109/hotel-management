@@ -1,4 +1,6 @@
 import mongoose from 'mongoose';
+import calculationValidationService from '../services/calculationValidationService.js';
+import financialRulesEngine from '../services/financialRulesEngine.js';
 
 /**
  * @swagger
@@ -449,10 +451,53 @@ const settlementSchema = new mongoose.Schema({
   lastUpdatedBy: {
     type: mongoose.Schema.ObjectId,
     ref: 'User'
+  },
+  // Calculation audit trail
+  calculationAuditLog: [{
+    timestamp: {
+      type: Date,
+      default: Date.now
+    },
+    type: {
+      type: String,
+      enum: ['auto_correction', 'manual_adjustment', 'payment_addition', 'validation_override'],
+      required: true
+    },
+    originalValues: mongoose.Schema.Types.Mixed,
+    corrections: mongoose.Schema.Types.Mixed,
+    reason: String,
+    performedBy: {
+      userId: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User'
+      },
+      userName: String,
+      userRole: String
+    },
+    metadata: mongoose.Schema.Types.Mixed
+  }],
+  // Validation metadata (private - not exposed to client)
+  _validationMetadata: {
+    lastValidated: Date,
+    validationResult: {
+      isValid: Boolean,
+      errorCount: Number,
+      warningCount: Number,
+      hasCorrections: Boolean
+    },
+    rulesEngineVersion: String,
+    calculationServiceVersion: String
   }
 }, {
   timestamps: true,
-  toJSON: { virtuals: true },
+  toJSON: {
+    virtuals: true,
+    transform: function(doc, ret) {
+      // Remove private validation metadata from JSON output
+      delete ret._validationMetadata;
+      return ret;
+    }
+  },
   toObject: { virtuals: true }
 });
 
@@ -473,57 +518,112 @@ settlementSchema.index({
   notes: 'text'
 });
 
-// Pre-save middleware
-settlementSchema.pre('save', function(next) {
-  // Generate settlement number if not exists
-  if (!this.settlementNumber) {
-    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    this.settlementNumber = `SET${date}${random}`;
-  }
-
-  // Calculate outstanding balance and refund amount
-  this.outstandingBalance = Math.max(0, this.finalAmount - this.totalPaid);
-  this.refundAmount = Math.max(0, this.totalPaid - this.finalAmount);
-
-  // Update status based on amounts
-  if (this.outstandingBalance === 0 && this.refundAmount === 0) {
-    this.status = 'completed';
-    if (!this.completedDate) {
-      this.completedDate = new Date();
+// Pre-save validation middleware
+settlementSchema.pre('save', async function(next) {
+  try {
+    // Store original values for audit trail
+    if (!this._validationMetadata) {
+      this._validationMetadata = {};
     }
-  } else if (this.outstandingBalance > 0) {
-    // Check if overdue
-    if (this.dueDate && new Date() > this.dueDate && this.status !== 'overdue') {
-      this.status = 'overdue';
-    } else if (this.totalPaid > 0) {
-      this.status = 'partial';
-    } else {
-      this.status = 'pending';
+
+    // Generate settlement number if not exists
+    if (!this.settlementNumber) {
+      const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+      this.settlementNumber = `SET${date}${random}`;
     }
-  } else if (this.refundAmount > 0) {
-    this.status = 'refunded';
-  }
 
-  // Calculate total paid from payments array
-  if (this.payments && this.payments.length > 0) {
-    this.totalPaid = this.payments
-      .filter(p => p.status === 'completed')
-      .reduce((total, payment) => total + payment.amount, 0);
-  }
-
-  // Set high value flag
-  this.flags.isHighValue = this.finalAmount > 50000; // > 50K INR
-
-  // Set next reminder due date
-  if (this.status === 'pending' || this.status === 'partial' || this.status === 'overdue') {
-    if (!this.nextReminderDue || this.nextReminderDue < new Date()) {
-      const reminderInterval = Math.pow(2, this.escalationLevel) * 24 * 60 * 60 * 1000; // Exponential backoff
-      this.nextReminderDue = new Date(Date.now() + reminderInterval);
+    // Calculate total paid from payments array FIRST (needed for other calculations)
+    if (this.payments && this.payments.length > 0) {
+      this.totalPaid = this.payments
+        .filter(p => p.status === 'completed')
+        .reduce((total, payment) => total + payment.amount, 0);
     }
-  }
 
-  next();
+    // Perform comprehensive calculation validation
+    const validationResult = calculationValidationService.validateSettlementCalculations(this);
+
+    // Store validation metadata for audit trail
+    this._validationMetadata = {
+      lastValidated: new Date(),
+      validationResult: {
+        isValid: validationResult.isValid,
+        errorCount: validationResult.errors.length,
+        warningCount: validationResult.warnings.length,
+        hasCorrections: Object.keys(validationResult.corrections).length > 0
+      }
+    };
+
+    // Apply corrections if there are calculation errors
+    if (validationResult.corrections && Object.keys(validationResult.corrections).length > 0) {
+      const hasChanges = calculationValidationService.applyCalculationCorrections(this, validationResult.corrections);
+
+      if (hasChanges) {
+        // Log corrections for audit trail
+        if (!this.calculationAuditLog) this.calculationAuditLog = [];
+        this.calculationAuditLog.push({
+          timestamp: new Date(),
+          type: 'auto_correction',
+          originalValues: validationResult.originalValues,
+          corrections: validationResult.corrections,
+          reason: 'Pre-save validation correction'
+        });
+      }
+    }
+
+    // Fail save if there are validation errors that couldn't be corrected
+    if (!validationResult.isValid && validationResult.errors.length > 0) {
+      const error = new Error(`Settlement validation failed: ${validationResult.errors.join(', ')}`);
+      error.name = 'ValidationError';
+      error.validationErrors = validationResult.errors;
+      error.validationWarnings = validationResult.warnings;
+      return next(error);
+    }
+
+    // Manually calculate outstanding balance and refund amount using precise arithmetic
+    this.outstandingBalance = Math.max(0, this.finalAmount - this.totalPaid);
+    this.refundAmount = Math.max(0, this.totalPaid - this.finalAmount);
+
+    // Update status based on amounts
+    if (this.outstandingBalance === 0 && this.refundAmount === 0) {
+      this.status = 'completed';
+      if (!this.completedDate) {
+        this.completedDate = new Date();
+      }
+    } else if (this.outstandingBalance > 0) {
+      // Check if overdue
+      if (this.dueDate && new Date() > this.dueDate && this.status !== 'overdue') {
+        this.status = 'overdue';
+      } else if (this.totalPaid > 0) {
+        this.status = 'partial';
+      } else {
+        this.status = 'pending';
+      }
+    } else if (this.refundAmount > 0) {
+      this.status = 'refunded';
+    }
+
+    // Set high value flag
+    this.flags.isHighValue = this.finalAmount > 50000; // > 50K INR
+
+    // Set next reminder due date
+    if (this.status === 'pending' || this.status === 'partial' || this.status === 'overdue') {
+      if (!this.nextReminderDue || this.nextReminderDue < new Date()) {
+        const reminderInterval = Math.pow(2, this.escalationLevel) * 24 * 60 * 60 * 1000; // Exponential backoff
+        this.nextReminderDue = new Date(Date.now() + reminderInterval);
+      }
+    }
+
+    // Log warnings if any (non-blocking)
+    if (validationResult.warnings && validationResult.warnings.length > 0) {
+      console.warn(`Settlement ${this.settlementNumber} validation warnings:`, validationResult.warnings);
+    }
+
+    next();
+  } catch (error) {
+    console.error('Settlement validation error:', error);
+    next(error);
+  }
 });
 
 // Virtual for days overdue
@@ -595,10 +695,28 @@ settlementSchema.statics.getAnalytics = async function(hotelId, dateRange = {}) 
   return await this.aggregate(pipeline);
 };
 
-// Instance method to add payment
+// Instance method to add payment with validation
 settlementSchema.methods.addPayment = function(paymentData, userContext) {
   if (!['admin', 'staff'].includes(userContext.userRole)) {
     throw new Error('Only admin and staff can add payments');
+  }
+
+  // Validate payment using financial rules engine
+  const paymentValidation = financialRulesEngine.validatePaymentProcessing(paymentData, this);
+
+  if (!paymentValidation.isValid) {
+    throw new Error(`Payment validation failed: ${paymentValidation.violations.join(', ')}`);
+  }
+
+  // Validate payment amount against settlement
+  const amountValidation = calculationValidationService.validatePaymentAmount(
+    this,
+    paymentData.amount,
+    paymentData.allowOverpayment || false
+  );
+
+  if (!amountValidation.isValid) {
+    throw new Error('Payment amount validation failed');
   }
 
   const payment = {
@@ -614,7 +732,37 @@ settlementSchema.methods.addPayment = function(paymentData, userContext) {
     status: paymentData.status || 'completed'
   };
 
+  // Store original values for audit trail
+  const originalValues = {
+    totalPaid: this.totalPaid,
+    outstandingBalance: this.outstandingBalance,
+    refundAmount: this.refundAmount,
+    status: this.status
+  };
+
   this.payments.push(payment);
+
+  // Add to calculation audit log
+  if (!this.calculationAuditLog) this.calculationAuditLog = [];
+  this.calculationAuditLog.push({
+    type: 'payment_addition',
+    originalValues,
+    corrections: {
+      paymentAdded: payment.amount,
+      paymentMethod: payment.method
+    },
+    reason: `Payment of ${payment.amount} ${this.currency} added via ${payment.method}`,
+    performedBy: {
+      userId: userContext.userId,
+      userName: userContext.userName,
+      userRole: userContext.userRole
+    },
+    metadata: {
+      paymentValidation: paymentValidation.warnings,
+      requiresApproval: paymentValidation.requiresApproval,
+      amountValidation
+    }
+  });
 
   // Add communication record
   this.communications.push({
@@ -706,6 +854,186 @@ settlementSchema.methods.resolveDispute = function(disputeId, resolution, userCo
   };
 
   return dispute;
+};
+
+// Instance method to validate calculations manually
+settlementSchema.methods.validateCalculations = function() {
+  return calculationValidationService.validateSettlementCalculations(this);
+};
+
+// Instance method to apply financial rules validation
+settlementSchema.methods.validateBusinessRules = function(booking = null) {
+  return financialRulesEngine.validateSettlementCreation(this, booking);
+};
+
+// Instance method to calculate late fees
+settlementSchema.methods.calculateLateFee = function(asOfDate = new Date()) {
+  return calculationValidationService.calculateLateFee(this, asOfDate);
+};
+
+// Instance method to add adjustment with validation
+settlementSchema.methods.addAdjustment = function(adjustmentData, userContext) {
+  if (!['admin', 'staff'].includes(userContext.userRole)) {
+    throw new Error('Only admin and staff can add adjustments');
+  }
+
+  // Validate adjustment using financial rules engine
+  const adjustmentValidation = financialRulesEngine.validateAdjustmentRules(adjustmentData, this);
+
+  if (!adjustmentValidation.isValid) {
+    throw new Error(`Adjustment validation failed: ${adjustmentValidation.violations.join(', ')}`);
+  }
+
+  // Store original values for audit trail
+  const originalValues = {
+    finalAmount: this.finalAmount,
+    outstandingBalance: this.outstandingBalance,
+    adjustmentsCount: this.adjustments?.length || 0
+  };
+
+  const adjustment = {
+    type: adjustmentData.type,
+    amount: adjustmentData.amount,
+    description: adjustmentData.description,
+    appliedBy: {
+      userId: userContext.userId,
+      userName: userContext.userName,
+      userRole: userContext.userRole
+    },
+    category: adjustmentData.category || 'services',
+    taxable: adjustmentData.taxable !== false, // Default to true
+    taxAmount: adjustmentData.taxAmount || 0,
+    attachments: adjustmentData.attachments || []
+  };
+
+  if (!this.adjustments) this.adjustments = [];
+  this.adjustments.push(adjustment);
+
+  // Update final amount
+  this.finalAmount = (this.finalAmount || 0) + adjustment.amount + adjustment.taxAmount;
+
+  // Add to calculation audit log
+  if (!this.calculationAuditLog) this.calculationAuditLog = [];
+  this.calculationAuditLog.push({
+    type: 'manual_adjustment',
+    originalValues,
+    corrections: {
+      adjustmentType: adjustment.type,
+      adjustmentAmount: adjustment.amount,
+      newFinalAmount: this.finalAmount
+    },
+    reason: adjustmentData.description,
+    performedBy: {
+      userId: userContext.userId,
+      userName: userContext.userName,
+      userRole: userContext.userRole
+    },
+    metadata: {
+      adjustmentValidation: adjustmentValidation.warnings,
+      requiresApproval: adjustmentValidation.requiresApproval
+    }
+  });
+
+  return adjustment;
+};
+
+// Instance method to get calculation audit trail
+settlementSchema.methods.getCalculationAuditTrail = function() {
+  return this.calculationAuditLog || [];
+};
+
+// Instance method to get validation status
+settlementSchema.methods.getValidationStatus = function() {
+  if (!this._validationMetadata) {
+    return {
+      isValid: false,
+      lastValidated: null,
+      message: 'Settlement not yet validated'
+    };
+  }
+
+  return {
+    isValid: this._validationMetadata.validationResult?.isValid || false,
+    lastValidated: this._validationMetadata.lastValidated,
+    errorCount: this._validationMetadata.validationResult?.errorCount || 0,
+    warningCount: this._validationMetadata.validationResult?.warningCount || 0,
+    hasCorrections: this._validationMetadata.validationResult?.hasCorrections || false
+  };
+};
+
+// Static method to find settlements with calculation errors
+settlementSchema.statics.findWithCalculationErrors = async function(hotelId) {
+  return await this.find({
+    hotelId,
+    '_validationMetadata.validationResult.isValid': false
+  }).select('settlementNumber finalAmount totalPaid outstandingBalance _validationMetadata');
+};
+
+// Static method to get calculation validation statistics
+settlementSchema.statics.getValidationStatistics = async function(hotelId, dateRange = {}) {
+  const matchStage = { hotelId };
+
+  if (dateRange.start || dateRange.end) {
+    matchStage.createdAt = {};
+    if (dateRange.start) matchStage.createdAt.$gte = new Date(dateRange.start);
+    if (dateRange.end) matchStage.createdAt.$lte = new Date(dateRange.end);
+  }
+
+  const pipeline = [
+    { $match: matchStage },
+    {
+      $group: {
+        _id: null,
+        totalSettlements: { $sum: 1 },
+        validSettlements: {
+          $sum: {
+            $cond: [{ $eq: ['$_validationMetadata.validationResult.isValid', true] }, 1, 0]
+          }
+        },
+        settlementsWithErrors: {
+          $sum: {
+            $cond: [{ $eq: ['$_validationMetadata.validationResult.isValid', false] }, 1, 0]
+          }
+        },
+        settlementsWithCorrections: {
+          $sum: {
+            $cond: [{ $eq: ['$_validationMetadata.validationResult.hasCorrections', true] }, 1, 0]
+          }
+        },
+        avgErrorCount: { $avg: '$_validationMetadata.validationResult.errorCount' },
+        avgWarningCount: { $avg: '$_validationMetadata.validationResult.warningCount' }
+      }
+    },
+    {
+      $project: {
+        _id: 0,
+        totalSettlements: 1,
+        validSettlements: 1,
+        settlementsWithErrors: 1,
+        settlementsWithCorrections: 1,
+        validationRate: {
+          $cond: [
+            { $eq: ['$totalSettlements', 0] },
+            0,
+            { $divide: ['$validSettlements', '$totalSettlements'] }
+          ]
+        },
+        avgErrorCount: { $round: ['$avgErrorCount', 2] },
+        avgWarningCount: { $round: ['$avgWarningCount', 2] }
+      }
+    }
+  ];
+
+  const result = await this.aggregate(pipeline);
+  return result[0] || {
+    totalSettlements: 0,
+    validSettlements: 0,
+    settlementsWithErrors: 0,
+    settlementsWithCorrections: 0,
+    validationRate: 0,
+    avgErrorCount: 0,
+    avgWarningCount: 0
+  };
 };
 
 export default mongoose.model('Settlement', settlementSchema);

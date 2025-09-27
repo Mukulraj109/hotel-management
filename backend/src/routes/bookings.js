@@ -399,7 +399,7 @@ router.get('/:id', authenticate, catchAsync(async (req, res) => {
   }
 
   // Check access permissions
-  if (req.user.role === 'guest' && booking.userId.toString() !== req.user._id.toString()) {
+  if (req.user.role === 'guest' && booking.userId._id.toString() !== req.user._id.toString()) {
     throw new ApplicationError('You do not have permission to view this booking', 403);
   }
 

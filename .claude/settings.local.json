@@ -26,7 +26,15 @@
       "Bash(npm run type-check:*)",
       "Bash(npx tsc:*)",
       "Bash(set:*)",
-      "Bash(del reactivate-admin.js)"
+      "Bash(del reactivate-admin.js)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_type",
+      "mcp__playwright__browser_wait_for",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_press_key",
+      "Bash(GUEST_TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4Y2QwMTQ0NDQxOWMxN2I1ZjZiNGM0NCIsInJvbGUiOiJndWVzdCIsImlhdCI6MTc1ODk1NzIzMCwiZXhwIjoxNzU5NTYyMDMwfQ.Py0xJngd-uFVKora81RkQDYg43uySUalw5els8SIWIA\")"
     ],
     "deny": [],
     "ask": []

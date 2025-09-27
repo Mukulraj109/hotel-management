@@ -4,6 +4,17 @@ import Booking from '../models/Booking.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import {
+  validateSettlementCreation,
+  validatePaymentAddition,
+  validateAdjustment,
+  validateSettlementQuery,
+  validateEscalation,
+  validateCommunication,
+  validateCalculationIntegrity,
+  logFinancialOperation,
+  handleValidationErrors
+} from '../middleware/settlementValidation.js';
 
 const router = express.Router();
 
@@ -56,6 +67,7 @@ const router = express.Router();
 router.get('/',
   authenticate,
   authorize(['admin', 'staff']),
+  validateSettlementQuery,
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
     const { status, escalationLevel, dueDate, limit = 50, offset = 0 } = req.query;
@@ -237,6 +249,8 @@ router.get('/analytics',
 router.post('/',
   authenticate,
   authorize(['admin', 'staff']),
+  validateSettlementCreation,
+  logFinancialOperation('settlement_creation'),
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
     const { bookingId, dueDate, notes, assignedTo } = req.body;
@@ -412,6 +426,9 @@ router.get('/:id',
 router.post('/:id/payment',
   authenticate,
   authorize(['admin', 'staff']),
+  validatePaymentAddition,
+  validateCalculationIntegrity,
+  logFinancialOperation('payment_addition'),
   catchAsync(async (req, res) => {
     const { id } = req.params;
     const hotelId = req.user.hotelId;
@@ -486,6 +503,8 @@ router.post('/:id/payment',
 router.post('/:id/escalate',
   authenticate,
   authorize(['admin', 'staff']),
+  validateEscalation,
+  logFinancialOperation('settlement_escalation'),
   catchAsync(async (req, res) => {
     const { id } = req.params;
     const hotelId = req.user.hotelId;
@@ -576,6 +595,8 @@ router.post('/:id/escalate',
 router.post('/:id/communication',
   authenticate,
   authorize(['admin', 'staff']),
+  validateCommunication,
+  logFinancialOperation('communication_addition'),
   catchAsync(async (req, res) => {
     const { id } = req.params;
     const hotelId = req.user.hotelId;
@@ -781,5 +802,254 @@ router.post('/:id/dispute/:disputeId/resolve',
     });
   })
 );
+
+/**
+ * @swagger
+ * /settlements/{id}/validate:
+ *   post:
+ *     summary: Validate settlement calculations (Admin/Staff only)
+ *     tags: [Settlements]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Settlement ID
+ *     responses:
+ *       200:
+ *         description: Validation completed
+ *       403:
+ *         description: Access denied - admin/staff only
+ *       404:
+ *         description: Settlement not found
+ */
+router.post('/:id/validate',
+  authenticate,
+  authorize(['admin', 'staff']),
+  logFinancialOperation('calculation_validation'),
+  catchAsync(async (req, res) => {
+    const { id } = req.params;
+    const hotelId = req.user.hotelId;
+
+    const settlement = await Settlement.findOne({ _id: id, hotelId });
+    if (!settlement) {
+      throw new ApplicationError('Settlement not found', 404);
+    }
+
+    // Perform comprehensive validation
+    const validationResult = settlement.validateCalculations();
+    const businessRulesResult = settlement.validateBusinessRules();
+
+    res.json({
+      status: 'success',
+      data: {
+        settlementNumber: settlement.settlementNumber,
+        calculationValidation: validationResult,
+        businessRulesValidation: businessRulesResult,
+        validationStatus: settlement.getValidationStatus(),
+        auditTrail: settlement.getCalculationAuditTrail()
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /settlements/{id}/adjustment:
+ *   post:
+ *     summary: Add adjustment to settlement (Admin/Staff only)
+ *     tags: [Settlements]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Settlement ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - type
+ *               - amount
+ *               - description
+ *             properties:
+ *               type:
+ *                 type: string
+ *                 enum: [extra_person_charge, damage_charge, minibar_charge, service_charge, discount, refund, penalty, cancellation_fee, other]
+ *               amount:
+ *                 type: number
+ *               description:
+ *                 type: string
+ *               category:
+ *                 type: string
+ *                 enum: [room_charge, food_beverage, amenities, services, damages, penalties, credits]
+ *               taxable:
+ *                 type: boolean
+ *               taxAmount:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Adjustment added successfully
+ *       400:
+ *         description: Invalid adjustment data
+ *       403:
+ *         description: Access denied - admin/staff only
+ *       404:
+ *         description: Settlement not found
+ */
+router.post('/:id/adjustment',
+  authenticate,
+  authorize(['admin', 'staff']),
+  validateAdjustment,
+  validateCalculationIntegrity,
+  logFinancialOperation('adjustment_addition'),
+  catchAsync(async (req, res) => {
+    const { id } = req.params;
+    const settlement = req.adjustmentValidation.settlement;
+
+    const userContext = {
+      userId: req.user._id,
+      userName: req.user.name,
+      userRole: req.user.role
+    };
+
+    const adjustment = settlement.addAdjustment(req.body, userContext);
+    settlement.lastUpdatedBy = req.user._id;
+
+    await settlement.save();
+
+    res.json({
+      status: 'success',
+      data: {
+        adjustment,
+        updatedSettlement: settlement,
+        requiresApproval: req.adjustmentValidation.requiresApproval,
+        message: 'Adjustment added successfully'
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /settlements/{id}/late-fee:
+ *   get:
+ *     summary: Calculate late fee for settlement (Admin/Staff only)
+ *     tags: [Settlements]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Settlement ID
+ *       - in: query
+ *         name: asOfDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Calculate late fee as of this date (defaults to today)
+ *     responses:
+ *       200:
+ *         description: Late fee calculated successfully
+ *       403:
+ *         description: Access denied - admin/staff only
+ *       404:
+ *         description: Settlement not found
+ */
+router.get('/:id/late-fee',
+  authenticate,
+  authorize(['admin', 'staff']),
+  catchAsync(async (req, res) => {
+    const { id } = req.params;
+    const hotelId = req.user.hotelId;
+    const { asOfDate } = req.query;
+
+    const settlement = await Settlement.findOne({ _id: id, hotelId });
+    if (!settlement) {
+      throw new ApplicationError('Settlement not found', 404);
+    }
+
+    const lateFeeCalculation = settlement.calculateLateFee(asOfDate ? new Date(asOfDate) : new Date());
+
+    res.json({
+      status: 'success',
+      data: {
+        settlementNumber: settlement.settlementNumber,
+        lateFeeCalculation,
+        outstandingBalance: settlement.outstandingBalance,
+        dueDate: settlement.dueDate,
+        currentDate: asOfDate || new Date()
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /settlements/validation-statistics:
+ *   get:
+ *     summary: Get calculation validation statistics (Admin only)
+ *     tags: [Settlements]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Start date for statistics
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: End date for statistics
+ *     responses:
+ *       200:
+ *         description: Validation statistics retrieved successfully
+ *       403:
+ *         description: Access denied - admin only
+ */
+router.get('/validation-statistics',
+  authenticate,
+  authorize(['admin']),
+  validateSettlementQuery,
+  catchAsync(async (req, res) => {
+    const hotelId = req.user.hotelId;
+    const { startDate, endDate } = req.query;
+
+    const dateRange = {};
+    if (startDate) dateRange.start = startDate;
+    if (endDate) dateRange.end = endDate;
+
+    const statistics = await Settlement.getValidationStatistics(hotelId, dateRange);
+    const settlementsWithErrors = await Settlement.findWithCalculationErrors(hotelId);
+
+    res.json({
+      status: 'success',
+      data: {
+        statistics,
+        settlementsWithErrors,
+        dateRange
+      }
+    });
+  })
+);
+
+// Add error handling middleware
+router.use(handleValidationErrors);
 
 export default router;
