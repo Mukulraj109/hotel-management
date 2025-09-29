@@ -837,6 +837,137 @@ const bookingSchema = new mongoose.Schema({
   automationResults: {
     type: mongoose.Schema.Types.Mixed,
     description: 'Results of automatic processing'
+  },
+  // Price adjustment tracking
+  originalAmount: {
+    type: Number,
+    description: 'Original booking amount before any adjustments'
+  },
+  priceAdjustments: [{
+    adjustmentId: {
+      type: String,
+      default: () => new mongoose.Types.ObjectId().toString()
+    },
+    adjustmentType: {
+      type: String,
+      enum: ['discount', 'surcharge', 'rate_change', 'promotion', 'manual_adjustment'],
+      required: true
+    },
+    amount: {
+      type: Number,
+      required: true,
+      description: 'Adjustment amount (positive for surcharges, negative for discounts)'
+    },
+    percentage: {
+      type: Number,
+      description: 'Percentage of adjustment if applicable'
+    },
+    reason: {
+      type: String,
+      required: true,
+      trim: true,
+      description: 'Reason for price adjustment'
+    },
+    adjustedBy: {
+      userId: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User',
+        required: true
+      },
+      userName: {
+        type: String,
+        required: true
+      },
+      userRole: {
+        type: String,
+        enum: ['admin', 'manager', 'staff'],
+        required: true
+      }
+    },
+    adjustedAt: {
+      type: Date,
+      default: Date.now
+    },
+    authorizedBy: {
+      userId: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User'
+      },
+      userName: String,
+      userRole: String,
+      authorizedAt: Date
+    },
+    discountCode: {
+      type: String,
+      trim: true,
+      description: 'Discount code used if applicable'
+    },
+    previousAmount: {
+      type: Number,
+      required: true,
+      description: 'Total amount before this adjustment'
+    },
+    newAmount: {
+      type: Number,
+      required: true,
+      description: 'Total amount after this adjustment'
+    },
+    isReversed: {
+      type: Boolean,
+      default: false
+    },
+    reversedAt: Date,
+    reversedBy: {
+      userId: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User'
+      },
+      userName: String
+    },
+    reverseReason: String
+  }],
+  discountAmount: {
+    type: Number,
+    default: 0,
+    description: 'Total discount amount applied'
+  },
+  surchargeAmount: {
+    type: Number,
+    default: 0,
+    description: 'Total surcharge amount applied'
+  },
+
+  // No-show tracking fields
+  noShowRecorded: {
+    type: Date,
+    description: 'When the booking was marked as no-show'
+  },
+  noShowReason: {
+    type: String,
+    maxlength: 500,
+    description: 'Reason for marking as no-show'
+  },
+  noShowMarkedBy: {
+    userId: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'User'
+    },
+    userName: String,
+    userRole: {
+      type: String,
+      enum: ['admin', 'staff', 'manager']
+    }
+  },
+  noShowChargeAmount: {
+    type: Number,
+    default: 0,
+    min: 0,
+    description: 'Amount charged for no-show penalty'
+  },
+  noShowChargeApplied: {
+    type: Boolean,
+    default: false,
+    description: 'Whether no-show charge has been applied'
   }
 }, {
   timestamps: true,
@@ -1501,6 +1632,138 @@ bookingSchema.methods.handleStatusSpecificActions = async function(newStatus, ol
   }
   
   return this;
+};
+
+// Price Adjustment Methods
+bookingSchema.methods.applyPriceAdjustment = function(adjustmentData, userContext) {
+  // Store original amount if this is the first adjustment
+  if (!this.originalAmount) {
+    this.originalAmount = this.totalAmount;
+  }
+
+  const previousAmount = this.totalAmount;
+  const adjustmentAmount = adjustmentData.amount;
+  const newAmount = previousAmount + adjustmentAmount;
+
+  // Validate adjustment
+  if (newAmount < 0) {
+    throw new Error('Adjustment would result in negative total amount');
+  }
+
+  // Create adjustment record
+  const adjustment = {
+    adjustmentType: adjustmentData.type || 'manual_adjustment',
+    amount: adjustmentAmount,
+    percentage: adjustmentData.percentage,
+    reason: adjustmentData.reason,
+    adjustedBy: {
+      userId: userContext.userId,
+      userName: userContext.userName,
+      userRole: userContext.userRole
+    },
+    discountCode: adjustmentData.discountCode,
+    previousAmount: previousAmount,
+    newAmount: newAmount
+  };
+
+  // Add authorization data if provided
+  if (adjustmentData.authorizedBy) {
+    adjustment.authorizedBy = {
+      userId: adjustmentData.authorizedBy.userId,
+      userName: adjustmentData.authorizedBy.userName,
+      userRole: adjustmentData.authorizedBy.userRole,
+      authorizedAt: new Date()
+    };
+  }
+
+  // Add to price adjustments array
+  this.priceAdjustments.push(adjustment);
+
+  // Update total amount
+  this.totalAmount = newAmount;
+
+  // Update discount/surcharge amounts
+  if (adjustmentAmount < 0) {
+    this.discountAmount = (this.discountAmount || 0) + Math.abs(adjustmentAmount);
+  } else {
+    this.surchargeAmount = (this.surchargeAmount || 0) + adjustmentAmount;
+  }
+
+  // Recalculate payment details
+  if (this.paymentDetails && this.paymentDetails.totalPaid) {
+    this.paymentDetails.remainingAmount = Math.max(0, this.totalAmount - this.paymentDetails.totalPaid);
+  }
+
+  return adjustment;
+};
+
+bookingSchema.methods.reversePriceAdjustment = function(adjustmentId, reverseReason, userContext) {
+  const adjustment = this.priceAdjustments.id(adjustmentId);
+  if (!adjustment) {
+    throw new Error('Price adjustment not found');
+  }
+
+  if (adjustment.isReversed) {
+    throw new Error('Price adjustment already reversed');
+  }
+
+  // Mark as reversed
+  adjustment.isReversed = true;
+  adjustment.reversedAt = new Date();
+  adjustment.reversedBy = {
+    userId: userContext.userId,
+    userName: userContext.userName
+  };
+  adjustment.reverseReason = reverseReason;
+
+  // Reverse the amount
+  this.totalAmount -= adjustment.amount;
+
+  // Update discount/surcharge amounts
+  if (adjustment.amount < 0) {
+    this.discountAmount = Math.max(0, (this.discountAmount || 0) - Math.abs(adjustment.amount));
+  } else {
+    this.surchargeAmount = Math.max(0, (this.surchargeAmount || 0) - adjustment.amount);
+  }
+
+  // Recalculate payment details
+  if (this.paymentDetails && this.paymentDetails.totalPaid) {
+    this.paymentDetails.remainingAmount = Math.max(0, this.totalAmount - this.paymentDetails.totalPaid);
+  }
+
+  return adjustment;
+};
+
+bookingSchema.methods.getTotalAdjustments = function() {
+  const activeAdjustments = this.priceAdjustments.filter(adj => !adj.isReversed);
+  return {
+    totalDiscount: this.discountAmount || 0,
+    totalSurcharge: this.surchargeAmount || 0,
+    netAdjustment: activeAdjustments.reduce((sum, adj) => sum + adj.amount, 0),
+    adjustmentCount: activeAdjustments.length,
+    originalAmount: this.originalAmount || this.totalAmount
+  };
+};
+
+bookingSchema.methods.canAdjustPrice = function(userRole, adjustmentAmount) {
+  const adjustmentLimits = {
+    staff: { maxDiscount: 500, maxSurcharge: 200 },
+    manager: { maxDiscount: 2000, maxSurcharge: 1000 },
+    admin: { maxDiscount: Infinity, maxSurcharge: Infinity }
+  };
+
+  const limits = adjustmentLimits[userRole];
+  if (!limits) return false;
+
+  if (adjustmentAmount < 0 && Math.abs(adjustmentAmount) > limits.maxDiscount) {
+    return false;
+  }
+
+  if (adjustmentAmount > 0 && adjustmentAmount > limits.maxSurcharge) {
+    return false;
+  }
+
+  return true;
 };
 
 // Method to handle OTA amendments with status management

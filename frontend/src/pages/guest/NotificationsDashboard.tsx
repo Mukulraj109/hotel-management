@@ -35,9 +35,9 @@ import {
   Smartphone
 } from 'lucide-react';
 import { notificationService, Notification, NotificationType, NotificationChannel, NotificationPreference } from '../../services/notificationService';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Card } from '../../components/ui/card';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { PushNotificationSetup } from '../../components/notifications/PushNotificationSetup';
 import { useRealTime } from '../../services/realTimeService';
@@ -58,6 +58,79 @@ export default function NotificationsDashboard() {
   const queryClient = useQueryClient();
   const { connectionState, connect, disconnect, on, off } = useRealTime();
 
+  // Mutations - Define these before useEffect that references them
+  const markAsReadMutation = useMutation({
+    mutationFn: notificationService.markAsRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries(['notifications']);
+      queryClient.invalidateQueries(['unreadCount']);
+      toast.success('Notification marked as read');
+    },
+    onError: (error) => {
+      toast.error('Failed to mark notification as read');
+    }
+  });
+
+  const markMultipleAsReadMutation = useMutation({
+    mutationFn: notificationService.markMultipleAsRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries(['notifications']);
+      queryClient.invalidateQueries(['unreadCount']);
+      setSelectedNotifications([]);
+      toast.success('Notifications marked as read');
+    },
+    onError: (error) => {
+      toast.error('Failed to mark notifications as read');
+    }
+  });
+
+  const markAllAsReadMutation = useMutation({
+    mutationFn: notificationService.markAllAsRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries(['notifications']);
+      queryClient.invalidateQueries(['unreadCount']);
+      toast.success('All notifications marked as read');
+    },
+    onError: (error) => {
+      toast.error('Failed to mark all notifications as read');
+    }
+  });
+
+  const deleteNotificationMutation = useMutation({
+    mutationFn: notificationService.deleteNotification,
+    onSuccess: () => {
+      queryClient.invalidateQueries(['notifications']);
+      queryClient.invalidateQueries(['unreadCount']);
+      toast.success('Notification deleted');
+    },
+    onError: (error) => {
+      toast.error('Failed to delete notification');
+    }
+  });
+
+  const updatePreferencesMutation = useMutation({
+    mutationFn: notificationService.updatePreferences,
+    onSuccess: () => {
+      queryClient.invalidateQueries(['notificationPreferences']);
+      toast.success('Preferences updated successfully');
+    },
+    onError: (error) => {
+      toast.error('Failed to update preferences');
+    }
+  });
+
+  const updateTypeSettingMutation = useMutation({
+    mutationFn: ({ channel, type, enabled }: { channel: string; type: string; enabled: boolean }) =>
+      notificationService.updateTypeSetting(channel, type, enabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['notificationPreferences']);
+      toast.success('Notification setting updated');
+    },
+    onError: (error) => {
+      toast.error('Failed to update notification setting');
+    }
+  });
+
   // Real-time WebSocket connection setup - FIXED: Don't disconnect singleton service
   useEffect(() => {
     connect().catch(error => {
@@ -76,7 +149,7 @@ export default function NotificationsDashboard() {
     const handleNewNotification = (data: any) => {
       console.log('New notification received:', data);
       const newNotification = data.notification;
-      
+
       // Add new notification to the cache
       queryClient.setQueryData(['notifications'], (oldData: any) => {
         if (!oldData) return oldData;
@@ -235,78 +308,6 @@ export default function NotificationsDashboard() {
     enabled: activeTab === 'preferences'
   });
 
-  // Mutations
-  const markAsReadMutation = useMutation({
-    mutationFn: notificationService.markAsRead,
-    onSuccess: () => {
-      queryClient.invalidateQueries(['notifications']);
-      queryClient.invalidateQueries(['unreadCount']);
-      toast.success('Notification marked as read');
-    },
-    onError: (error) => {
-      toast.error('Failed to mark notification as read');
-    }
-  });
-
-  const markMultipleAsReadMutation = useMutation({
-    mutationFn: notificationService.markMultipleAsRead,
-    onSuccess: () => {
-      queryClient.invalidateQueries(['notifications']);
-      queryClient.invalidateQueries(['unreadCount']);
-      setSelectedNotifications([]);
-      toast.success('Notifications marked as read');
-    },
-    onError: (error) => {
-      toast.error('Failed to mark notifications as read');
-    }
-  });
-
-  const markAllAsReadMutation = useMutation({
-    mutationFn: notificationService.markAllAsRead,
-    onSuccess: () => {
-      queryClient.invalidateQueries(['notifications']);
-      queryClient.invalidateQueries(['unreadCount']);
-      toast.success('All notifications marked as read');
-    },
-    onError: (error) => {
-      toast.error('Failed to mark all notifications as read');
-    }
-  });
-
-  const deleteNotificationMutation = useMutation({
-    mutationFn: notificationService.deleteNotification,
-    onSuccess: () => {
-      queryClient.invalidateQueries(['notifications']);
-      queryClient.invalidateQueries(['unreadCount']);
-      toast.success('Notification deleted');
-    },
-    onError: (error) => {
-      toast.error('Failed to delete notification');
-    }
-  });
-
-  const updatePreferencesMutation = useMutation({
-    mutationFn: notificationService.updatePreferences,
-    onSuccess: () => {
-      queryClient.invalidateQueries(['notificationPreferences']);
-      toast.success('Preferences updated successfully');
-    },
-    onError: (error) => {
-      toast.error('Failed to update preferences');
-    }
-  });
-
-  const updateTypeSettingMutation = useMutation({
-    mutationFn: ({ channel, type, enabled }: { channel: string; type: string; enabled: boolean }) =>
-      notificationService.updateTypeSetting(channel, type, enabled),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['notificationPreferences']);
-      toast.success('Notification setting updated');
-    },
-    onError: (error) => {
-      toast.error('Failed to update notification setting');
-    }
-  });
 
   // Handle filter changes
   const handleFilterChange = (key: string, value: string | boolean) => {

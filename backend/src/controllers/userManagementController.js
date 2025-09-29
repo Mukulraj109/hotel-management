@@ -670,10 +670,10 @@ export const getUserBillingDetails = catchAsync(async (req, res) => {
   });
 });
 
-// Update user profile (name, email, phone)
+// Update user profile (name, email, phone, guestType)
 export const updateUserProfile = catchAsync(async (req, res) => {
   const { userId } = req.params;
-  const { name, email, phone } = req.body;
+  const { name, email, phone, guestType } = req.body;
 
   // Check permissions
   if (req.user.role === 'guest' && req.user._id.toString() !== userId) {
@@ -708,6 +708,7 @@ export const updateUserProfile = catchAsync(async (req, res) => {
     user.email = email;
   }
   if (phone) user.phone = phone;
+  if (guestType) user.guestType = guestType;
 
   await user.save();
 

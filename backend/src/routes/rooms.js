@@ -487,4 +487,218 @@ router.delete('/:id',
   })
 );
 
+/**
+ * @swagger
+ * /rooms/{id}/pricing:
+ *   put:
+ *     summary: Update room pricing
+ *     tags: [Rooms]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Room ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               baseRate:
+ *                 type: number
+ *               currentRate:
+ *                 type: number
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Room pricing updated successfully
+ */
+router.put('/:id/pricing',
+  authenticate,
+  authorize(['admin', 'manager']),
+  catchAsync(async (req, res) => {
+    const { baseRate, currentRate, reason } = req.body;
+    const roomId = req.params.id;
+
+    const room = await Room.findById(roomId);
+    if (!room) {
+      throw new ApplicationError('Room not found', 404);
+    }
+
+    // Check permissions for hotel
+    if (req.user.role !== 'admin' && room.hotelId.toString() !== req.user.hotelId.toString()) {
+      throw new ApplicationError('Access denied', 403);
+    }
+
+    const oldBaseRate = room.baseRate;
+    const oldCurrentRate = room.currentRate;
+
+    // Update room rates
+    if (baseRate !== undefined) room.baseRate = baseRate;
+    if (currentRate !== undefined) room.currentRate = currentRate;
+
+    await room.save();
+
+    // Log the change (you could create a PriceHistory model if needed)
+    console.log(`Room ${room.roomNumber} pricing updated by ${req.user.name}: baseRate ${oldBaseRate}→${room.baseRate}, currentRate ${oldCurrentRate}→${room.currentRate}. Reason: ${reason}`);
+
+    res.json({
+      status: 'success',
+      data: {
+        room: {
+          _id: room._id,
+          roomNumber: room.roomNumber,
+          baseRate: room.baseRate,
+          currentRate: room.currentRate
+        },
+        message: 'Room pricing updated successfully'
+      }
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /rooms/{id}/price-history:
+ *   get:
+ *     summary: Get room price history
+ *     tags: [Rooms]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Room ID
+ *     responses:
+ *       200:
+ *         description: Room price history retrieved successfully
+ */
+router.get('/:id/price-history',
+  authenticate,
+  authorize(['admin', 'manager', 'staff']),
+  catchAsync(async (req, res) => {
+    const roomId = req.params.id;
+
+    const room = await Room.findById(roomId);
+    if (!room) {
+      throw new ApplicationError('Room not found', 404);
+    }
+
+    // Check permissions for hotel
+    if (req.user.role !== 'admin' && room.hotelId.toString() !== req.user.hotelId.toString()) {
+      throw new ApplicationError('Access denied', 403);
+    }
+
+    // For now, return empty history as we don't have a price history model yet
+    // In a full implementation, you'd query a PriceHistory collection
+    const mockHistory = [
+      {
+        date: new Date().toISOString(),
+        oldPrice: room.baseRate,
+        newPrice: room.currentRate,
+        changedBy: 'System',
+        reason: 'Initial rate'
+      }
+    ];
+
+    res.json({
+      status: 'success',
+      data: mockHistory
+    });
+  })
+);
+
+/**
+ * @swagger
+ * /rooms/bulk-price-update:
+ *   post:
+ *     summary: Bulk update room prices
+ *     tags: [Rooms]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               updates:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     roomId:
+ *                       type: string
+ *                     baseRate:
+ *                       type: number
+ *                     currentRate:
+ *                       type: number
+ *               reason:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Bulk price update completed
+ */
+router.post('/bulk-price-update',
+  authenticate,
+  authorize(['admin', 'manager']),
+  catchAsync(async (req, res) => {
+    const { updates, reason } = req.body;
+
+    if (!Array.isArray(updates) || updates.length === 0) {
+      throw new ApplicationError('Updates array is required', 400);
+    }
+
+    const results = {
+      updated: 0,
+      errors: []
+    };
+
+    for (const update of updates) {
+      try {
+        const { roomId, baseRate, currentRate } = update;
+
+        const room = await Room.findById(roomId);
+        if (!room) {
+          results.errors.push({ roomId, error: 'Room not found' });
+          continue;
+        }
+
+        // Check permissions for hotel
+        if (req.user.role !== 'admin' && room.hotelId.toString() !== req.user.hotelId.toString()) {
+          results.errors.push({ roomId, error: 'Access denied' });
+          continue;
+        }
+
+        if (baseRate !== undefined) room.baseRate = baseRate;
+        if (currentRate !== undefined) room.currentRate = currentRate;
+
+        await room.save();
+        results.updated++;
+
+      } catch (error) {
+        results.errors.push({ roomId: update.roomId, error: error.message });
+      }
+    }
+
+    res.json({
+      status: 'success',
+      data: {
+        ...results,
+        message: `Updated ${results.updated} rooms successfully`
+      }
+    });
+  })
+);
+
 export default router;

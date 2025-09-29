@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { 
   Calendar,
   Clock, 
@@ -16,9 +17,9 @@ import {
   Loader2
 } from 'lucide-react';
 import { hotelServicesService, ServiceBooking } from '../../services/hotelServicesService';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Card } from '../../components/ui/card';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import BackButton from '../../components/ui/BackButton';
 import { formatCurrency } from '../../utils/formatters';
@@ -31,8 +32,9 @@ const MyServiceBookings: React.FC = () => {
   const [cancellingBookingId, setCancellingBookingId] = useState<string | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [page, setPage] = useState(1);
-  
+
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // Fetch user bookings
   const { data: bookingsData, isLoading, error } = useQuery({
@@ -289,16 +291,25 @@ const MyServiceBookings: React.FC = () => {
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setSelectedBooking(booking)}
+                      onClick={() => navigate(`/app/services/bookings/confirmation/${booking._id}`)}
                     >
                       <Eye className="h-4 w-4 mr-1" />
                       Details
                     </Button>
-                    
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setSelectedBooking(booking)}
+                      className="text-gray-600 hover:text-gray-700"
+                    >
+                      Quick View
+                    </Button>
+
                     {canCancelBooking(booking) && (
                       <Button
                         variant="outline"

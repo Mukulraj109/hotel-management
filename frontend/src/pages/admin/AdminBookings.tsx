@@ -1,24 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { DataTable } from '../../components/dashboard/DataTable';
 import { StatusBadge } from '../../components/dashboard/StatusBadge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Modal } from '@/components/ui/Modal';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Modal } from '../../components/ui/Modal';
+import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
 import { adminService } from '../../services/adminService';
 import { AdminBooking, BookingFilters, BookingStats } from '../../types/admin';
 import { formatCurrency, formatNumber, getStatusColor } from '../../utils/dashboardUtils';
 import { format, parseISO } from 'date-fns';
 import WalkInBooking from './WalkInBooking';
 import PaymentCollectionModal from '../../components/admin/PaymentCollectionModal';
+import PriceAdjustmentModal from '../../components/admin/PriceAdjustmentModal';
+import NoShowModal from '../../components/admin/NoShowModal';
 import toast from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
-import { 
-  Calendar, 
-  Coins, 
-  Users, 
-  TrendingUp, 
+import {
+  Calendar,
+  Coins,
+  Users,
+  TrendingUp,
   Filter,
   Eye,
   Edit,
@@ -32,7 +34,9 @@ import {
   Home,
   User,
   UserPlus,
-  Building
+  Building,
+  DollarSign,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function AdminBookings() {
@@ -64,7 +68,15 @@ export default function AdminBookings() {
   const [selectedBookingForRoomAssignment, setSelectedBookingForRoomAssignment] = useState<AdminBooking | null>(null);
   const [availableRoomsForAssignment, setAvailableRoomsForAssignment] = useState<any[]>([]);
   const [selectedRoomNumbers, setSelectedRoomNumbers] = useState<{ [key: string]: string }>({});
-  
+
+  // Price adjustment modal state
+  const [showPriceAdjustmentModal, setShowPriceAdjustmentModal] = useState(false);
+  const [selectedBookingForPriceAdjustment, setSelectedBookingForPriceAdjustment] = useState<AdminBooking | null>(null);
+
+  // No-show modal state
+  const [showNoShowModal, setShowNoShowModal] = useState(false);
+  const [selectedBookingForNoShow, setSelectedBookingForNoShow] = useState<AdminBooking | null>(null);
+
   // Manual booking form state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showWalkInModal, setShowWalkInModal] = useState(false);
@@ -442,6 +454,42 @@ export default function AdminBookings() {
     }
   };
 
+  // Handle price adjustment
+  const handlePriceAdjustment = (booking: AdminBooking) => {
+    setSelectedBookingForPriceAdjustment(booking);
+    setShowPriceAdjustmentModal(true);
+  };
+
+  const handleNoShow = (booking: AdminBooking) => {
+    setSelectedBookingForNoShow(booking);
+    setShowNoShowModal(true);
+  };
+
+  const handleNoShowSuccess = async () => {
+    // Refresh bookings and stats after successful no-show marking
+    await fetchBookings();
+    await fetchStats();
+  };
+
+  // Handle price adjustment success
+  const handlePriceAdjustmentSuccess = async () => {
+    try {
+      await fetchBookings();
+      await fetchStats();
+
+      // Update the selected booking in the modal if it's the same booking
+      if (selectedBooking && selectedBookingForPriceAdjustment && selectedBooking._id === selectedBookingForPriceAdjustment._id) {
+        // Fetch updated booking data
+        const updatedBooking = bookings.find(b => b._id === selectedBooking._id);
+        if (updatedBooking) {
+          setSelectedBooking(updatedBooking);
+        }
+      }
+    } catch (error) {
+      console.error('Error refreshing booking data:', error);
+    }
+  };
+
   // Fetch available rooms
   const fetchAvailableRooms = async (hotelId: string, checkIn: string, checkOut: string) => {
     try {
@@ -635,6 +683,14 @@ export default function AdminBookings() {
           >
             <Eye className="h-4 w-4" />
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handlePriceAdjustment(row)}
+            title="Adjust Price"
+          >
+            <DollarSign className="h-4 w-4 text-green-600" />
+          </Button>
           {row.status === 'pending' && (
             <>
               <Button
@@ -656,13 +712,36 @@ export default function AdminBookings() {
             </>
           )}
           {row.status === 'confirmed' && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleStatusUpdate(row._id, 'checked_in')}
+                disabled={updating}
+                title="Check In"
+              >
+                <UserCheck className="h-4 w-4 text-blue-600" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => handleNoShow(row)}
+                disabled={updating}
+                title="Mark as No-Show"
+              >
+                <AlertTriangle className="h-4 w-4 text-orange-600" />
+              </Button>
+            </>
+          )}
+          {(row.status === 'pending') && (
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => handleStatusUpdate(row._id, 'checked_in')}
+              onClick={() => handleNoShow(row)}
               disabled={updating}
+              title="Mark as No-Show"
             >
-              <UserCheck className="h-4 w-4 text-blue-600" />
+              <AlertTriangle className="h-4 w-4 text-orange-600" />
             </Button>
           )}
           {row.status === 'checked_in' && (
@@ -1752,6 +1831,31 @@ export default function AdminBookings() {
           totalAmount={selectedBookingForPayment.totalAmount}
           currency={selectedBookingForPayment.currency}
           bookingNumber={selectedBookingForPayment.bookingNumber}
+        />
+      )}
+
+      {/* Price Adjustment Modal */}
+      {selectedBookingForPriceAdjustment && showPriceAdjustmentModal && (
+        <PriceAdjustmentModal
+          booking={selectedBookingForPriceAdjustment}
+          onClose={() => {
+            setShowPriceAdjustmentModal(false);
+            setSelectedBookingForPriceAdjustment(null);
+          }}
+          onSuccess={handlePriceAdjustmentSuccess}
+        />
+      )}
+
+      {/* No-Show Modal */}
+      {selectedBookingForNoShow && showNoShowModal && (
+        <NoShowModal
+          isOpen={showNoShowModal}
+          onClose={() => {
+            setShowNoShowModal(false);
+            setSelectedBookingForNoShow(null);
+          }}
+          booking={selectedBookingForNoShow}
+          onSuccess={handleNoShowSuccess}
         />
       )}
     </div>

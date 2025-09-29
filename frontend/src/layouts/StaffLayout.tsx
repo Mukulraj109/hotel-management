@@ -37,6 +37,8 @@ const navigation = [
   { name: 'Housekeeping', href: '/staff/housekeeping', icon: ClipboardCheck },
   { name: 'Maintenance', href: '/staff/maintenance', icon: Wrench },
   { name: 'Guest Services', href: '/staff/guest-services', icon: Users },
+  { name: 'Guest Management', href: '/staff/guest-management', icon: Users },
+  { name: 'Billing & Payments', href: '/staff/billing', icon: CreditCard },
   { name: 'Service Requests', href: '/staff/service-requests', icon: MessageSquare },
   { name: 'Supply Requests', href: '/staff/supply-requests', icon: Package },
   { name: 'Inventory Requests', href: '/staff/inventory-requests', icon: ShoppingBag },

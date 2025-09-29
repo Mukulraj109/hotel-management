@@ -134,7 +134,39 @@ const UserBillingForm: React.FC<UserBillingFormProps> = ({
         return;
       }
 
-      await api.put(`/users/${user?._id}/billing`, formData);
+      // Clean up the form data - remove empty strings to avoid validation errors
+      const cleanedFormData = {
+        ...formData,
+        panNumber: formData.panNumber?.trim() || undefined,
+        billingPhone: formData.billingPhone?.trim() || undefined,
+        billingEmail: formData.billingEmail?.trim() || undefined,
+        billingContactPerson: formData.billingContactPerson?.trim() || undefined,
+        gstNumber: formData.gstNumber?.trim() || undefined,
+        companyName: formData.companyName?.trim() || undefined,
+        billingAddress: {
+          street: formData.billingAddress?.street?.trim() || undefined,
+          city: formData.billingAddress?.city?.trim() || undefined,
+          state: formData.billingAddress?.state?.trim() || undefined,
+          postalCode: formData.billingAddress?.postalCode?.trim() || undefined,
+          country: formData.billingAddress?.country?.trim() || 'India'
+        }
+      };
+
+      // Remove undefined values to send only fields with actual data
+      const filteredData = Object.fromEntries(
+        Object.entries(cleanedFormData).filter(([_, value]) => {
+          if (value === undefined || value === null) return false;
+          if (typeof value === 'string' && value.length === 0) return false;
+          if (typeof value === 'object' && value !== null) {
+            // For billingAddress, check if it has any meaningful data
+            const hasData = Object.values(value).some(v => v && v.length > 0);
+            return hasData;
+          }
+          return true;
+        })
+      );
+
+      await api.put(`/users/${user?._id}/billing`, filteredData);
       toast.success('Billing details updated successfully');
       onSuccess();
       onClose();

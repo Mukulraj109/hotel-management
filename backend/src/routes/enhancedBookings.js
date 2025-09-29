@@ -380,4 +380,133 @@ router.get('/dashboard', authenticate, async (req, res) => {
   await enhancedBookingController.getBookingDashboard(req, res);
 });
 
+/**
+ * @swagger
+ * /bookings/enhanced/{id}/adjust-price:
+ *   post:
+ *     summary: Apply price adjustment to booking
+ *     tags: [Enhanced Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - amount
+ *               - reason
+ *             properties:
+ *               amount:
+ *                 type: number
+ *                 description: Adjustment amount (negative for discount, positive for surcharge)
+ *               type:
+ *                 type: string
+ *                 enum: [discount, surcharge, rate_change, promotion, manual_adjustment]
+ *                 default: manual_adjustment
+ *               reason:
+ *                 type: string
+ *                 description: Reason for price adjustment
+ *               percentage:
+ *                 type: number
+ *                 description: Percentage of adjustment if applicable
+ *               discountCode:
+ *                 type: string
+ *                 description: Discount code used if applicable
+ *     responses:
+ *       200:
+ *         description: Price adjustment applied successfully
+ *       400:
+ *         description: Invalid adjustment data
+ *       403:
+ *         description: Insufficient authorization for price adjustment
+ *       404:
+ *         description: Booking not found
+ */
+router.post('/:id/adjust-price', authenticate, authorize(['admin', 'manager', 'staff']), async (req, res) => {
+  await enhancedBookingController.adjustBookingPrice(req, res);
+});
+
+/**
+ * @swagger
+ * /bookings/enhanced/{id}/adjustments/{adjustmentId}/reverse:
+ *   post:
+ *     summary: Reverse a price adjustment
+ *     tags: [Enhanced Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *       - in: path
+ *         name: adjustmentId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Adjustment ID to reverse
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - reason
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 description: Reason for reversing the adjustment
+ *     responses:
+ *       200:
+ *         description: Price adjustment reversed successfully
+ *       400:
+ *         description: Invalid reversal request
+ *       403:
+ *         description: Only admins and managers can reverse adjustments
+ *       404:
+ *         description: Booking or adjustment not found
+ */
+router.post('/:id/adjustments/:adjustmentId/reverse', authenticate, authorize(['admin', 'manager']), async (req, res) => {
+  await enhancedBookingController.reversePriceAdjustment(req, res);
+});
+
+/**
+ * @swagger
+ * /bookings/enhanced/{id}/price-history:
+ *   get:
+ *     summary: Get price adjustment history for a booking
+ *     tags: [Enhanced Bookings]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Booking ID
+ *     responses:
+ *       200:
+ *         description: Price adjustment history retrieved successfully
+ *       403:
+ *         description: Access denied
+ *       404:
+ *         description: Booking not found
+ */
+router.get('/:id/price-history', authenticate, async (req, res) => {
+  await enhancedBookingController.getPriceAdjustmentHistory(req, res);
+});
+
 export default router;

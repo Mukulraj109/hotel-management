@@ -13,8 +13,8 @@ import {
 import { notificationService, Notification } from '../../services/notificationService';
 import { useRealTime } from '../../services/realTimeService';
 import { useAuth } from '../../context/AuthContext';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Card } from '../ui/card';
+import { Button } from '../ui/button';
 import { LoadingSpinner } from '../LoadingSpinner';
 import toast from 'react-hot-toast';
 
@@ -143,7 +143,7 @@ export default function NotificationDropdown({ isOpen, onToggle }: NotificationD
   };
 
   const handleViewAll = () => {
-    let notificationRoute = '/guest/notifications'; // Default fallback
+    let notificationRoute = '/app/notifications'; // Default fallback for guests
 
     if (user) {
       switch (user.role) {
@@ -158,7 +158,7 @@ export default function NotificationDropdown({ isOpen, onToggle }: NotificationD
           break;
         case 'guest':
         default:
-          notificationRoute = '/guest/notifications';
+          notificationRoute = '/app/notifications';
           break;
       }
     }

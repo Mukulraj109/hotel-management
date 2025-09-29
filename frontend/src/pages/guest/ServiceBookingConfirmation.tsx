@@ -15,8 +15,8 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { hotelServicesService } from '../../services/hotelServicesService';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Card } from '../../components/ui/card';
+import { Button } from '../../components/ui/button';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
@@ -72,8 +72,50 @@ const ServiceBookingConfirmation: React.FC = () => {
   };
 
   const handleDownloadReceipt = () => {
-    // This would typically generate a PDF receipt
-    toast.info('Receipt download feature coming soon!');
+    if (!booking) return;
+
+    const bookingDateTime = formatDateTime(booking.bookingDate);
+    const receiptContent = `
+THE PENTOUZ Hotel - Service Booking Receipt
+==========================================
+
+Booking ID: ${booking._id}
+Date Generated: ${new Date().toLocaleDateString()}
+
+Service Details:
+- Service: ${booking.serviceId.name}
+- Type: ${booking.serviceId.type}
+- Date: ${bookingDateTime.date}
+- Time: ${bookingDateTime.time}
+- Number of People: ${booking.numberOfPeople}
+
+Booking Information:
+- Status: ${booking.status}
+- Total Amount: ${formatCurrency(booking.totalAmount, booking.currency)}
+- Payment Status: ${booking.paymentStatus}
+- Booked On: ${new Date(booking.createdAt).toLocaleDateString()}
+
+${booking.specialRequests ? `Special Requests: ${booking.specialRequests}` : ''}
+
+Hotel Information:
+- Hotel: ${booking.hotelId.name}
+
+Thank you for choosing THE PENTOUZ Hotel!
+For any queries, please contact us.
+    `.trim();
+
+    // Create and download the receipt as a text file
+    const blob = new Blob([receiptContent], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `receipt-${booking._id}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    toast.success('Receipt downloaded successfully!');
   };
 
   const getTimeUntilBooking = (bookingDate: string) => {

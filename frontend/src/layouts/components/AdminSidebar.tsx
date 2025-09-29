@@ -42,7 +42,8 @@ import {
   Receipt,
   Plane,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  DollarSign
 } from 'lucide-react';
 
 const navigation = [
@@ -52,11 +53,13 @@ const navigation = [
   { name: 'Rooms', href: '/admin/rooms', icon: Bed },
   { name: 'Room Types', href: '/admin/room-types', icon: Layers },
   { name: 'Room Type Allotments', href: '/admin/room-allotments', icon: Target },
+  { name: 'Room Pricing', href: '/admin/room-pricing', icon: DollarSign },
   { name: 'Bookings', href: '/admin/bookings', icon: Calendar },
   { name: 'Upcoming Arrivals', href: '/admin/upcoming-bookings', icon: CalendarDays },
   { name: 'Corporate', href: '/admin/corporate', icon: Users },
   { name: 'Travel Agents', href: '/admin/travel-dashboard', icon: Plane },
   { name: 'Staff Management', href: '/admin/staff', icon: UserCheck },
+  { name: 'Guest Management', href: '/admin/guest-management', icon: Users },
   { name: 'Document Verification', href: '/admin/documents', icon: FileText },
   { name: 'Document Analytics', href: '/admin/documents/analytics', icon: BarChart3 },
 { name: 'Financial (INR)', href: '/admin/financial', icon: IndianRupee },

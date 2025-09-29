@@ -147,6 +147,8 @@ import userManagementRoutes from './routes/userManagement.js';
 import usersRoutes from './routes/users.js';
 import loginActivityRoutes from './routes/loginActivity.js';
 import userAnalyticsRoutes from './routes/userAnalytics.js';
+import serviceTypesRoutes from './routes/serviceTypes.js';
+import noShowRoutes from './routes/noShow.js';
 import seasonalPricingRoutes from './routes/seasonalPricing.js';
 import addOnServicesRoutes from './routes/addOnServices.js';
 import dayUseRoutes from './routes/dayUse.js';
@@ -284,7 +286,7 @@ app.set('trust proxy', 1);
 // Security middleware
 app.use(helmet());
 app.use(cors({
-    origin: "https://hotel-management-1-1lm3.onrender.com",
+    origin: "*",
     credentials: true,
     optionsSuccessStatus: 200
 }));
@@ -450,6 +452,7 @@ app.get('/health/metrics', async (req, res) => {
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/rooms', roomRoutes);
 app.use('/api/v1/bookings/enhanced', enhancedBookingRoutes);
+app.use('/api/v1/bookings', noShowRoutes);
 app.use('/api/v1/bookings', bookingRoutes);
 app.use('/api/v1/extra-person-pricing', extraPersonPricingRoutes);
 app.use('/api/v1/settlements', settlementsRoutes);
@@ -473,6 +476,7 @@ app.use('/api/v1/staff-meetups', staffMeetUpRoutes);
 app.use('/api/v1/daily-inventory-checks', dailyInventoryCheckRoutes);
 app.use('/api/v1/inventory-notifications', inventoryNotificationRoutes);
 app.use('/api/v1/guest-services', guestServiceRoutes);
+app.use('/api/v1/admin/service-types', serviceTypesRoutes);
 app.use('/api/v1/reviews', reviewRoutes);
 app.use('/api/v1/maintenance', maintenanceRoutes);
 app.use('/api/v1/incidents', incidentRoutes);

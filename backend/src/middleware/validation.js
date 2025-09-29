@@ -118,7 +118,7 @@ export const schemas = {
       'number.min': 'At least 1 person is required',
       'any.required': 'Number of people is required'
     }),
-    specialRequests: Joi.string().max(500).optional().messages({
+    specialRequests: Joi.string().allow('').max(500).optional().messages({
       'string.max': 'Special requests cannot exceed 500 characters'
     })
   }),

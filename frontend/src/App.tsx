@@ -39,6 +39,7 @@ import ServiceBookingPage from './pages/guest/ServiceBookingPage';
 import ServiceBookingConfirmation from './pages/guest/ServiceBookingConfirmation';
 import MyServiceBookings from './pages/guest/MyServiceBookings';
 import NotificationsDashboard from './pages/guest/NotificationsDashboard';
+import NotificationsTest from './pages/guest/NotificationsTest';
 import DigitalKeysDashboard from './pages/guest/DigitalKeysDashboard';
 import MeetUpRequestsDashboard from './pages/guest/MeetUpRequestsDashboard';
 import GuestBillingHistory from './pages/guest/GuestBillingHistory';
@@ -85,6 +86,7 @@ import AdminMeasurementUnits from './pages/admin/AdminMeasurementUnits';
 import AdminPOSAttributes from './pages/admin/AdminPOSAttributes';
 import AdminBillMessages from './pages/admin/AdminBillMessages';
 import AdminRoomTypes from './pages/admin/AdminRoomTypes';
+import AdminRoomPricing from './pages/admin/AdminRoomPricing';
 import AdminRoomTypeAllotments from './pages/admin/AdminRoomTypeAllotments';
 import AdminRoomAllotmentCreate from './pages/admin/AdminRoomAllotmentCreate';
 import AdminInventoryManagement from './pages/admin/AdminInventoryManagement';
@@ -109,6 +111,7 @@ import AdminTravelDashboard from './pages/admin/AdminTravelDashboard';
 import AdminDocumentVerification from './pages/admin/AdminDocumentVerification';
 import AdminDocumentAnalytics from './pages/admin/AdminDocumentAnalytics';
 import AdminNotifications from './pages/admin/AdminNotifications';
+import AdminGuestManagement from './pages/admin/AdminGuestManagement';
 import TravelAgentDashboard from './pages/travel-agent/TravelAgentDashboard';
 import TravelAgentNotifications from './pages/travel-agent/TravelAgentNotifications';
 import BookingCreate from './pages/travel-agent/BookingCreate';
@@ -144,6 +147,8 @@ import CheckoutInventory from './pages/staff/CheckoutInventory';
 import DailyRoutineCheck from './pages/staff/DailyRoutineCheck';
 import StaffDocuments from './pages/staff/StaffDocuments';
 import { DailyInventoryCheckForm } from './components/staff/DailyInventoryCheckForm';
+import StaffGuestManagement from './pages/staff/StaffGuestManagement';
+import StaffBilling from './pages/staff/StaffBilling';
 
 // Staff Settings Pages
 import StaffProfileSettings from './pages/staff/settings/StaffProfileSettings';
@@ -238,6 +243,7 @@ function App() {
                 <Route path="bookings" element={<AdminBookings />} />
                 <Route path="upcoming-bookings" element={<AdminUpcomingBookings />} />
                 <Route path="staff" element={<AdminStaffManagement />} />
+                <Route path="guest-management" element={<AdminGuestManagement />} />
                 <Route path="corporate" element={<AdminCorporateDashboard />} />
                 <Route path="corporate/credit" element={<CorporateCreditManagement />} />
                 <Route path="corporate/gst" element={<GSTManagement />} />
@@ -255,6 +261,7 @@ function App() {
                 <Route path="inventory-management" element={<AdminInventoryManagement />} />
                 <Route path="laundry" element={<AdminLaundryManagement />} />
                 <Route path="room-types" element={<AdminRoomTypes />} />
+                <Route path="room-pricing" element={<AdminRoomPricing />} />
                 <Route path="room-allotments/create" element={<AdminRoomAllotmentCreate />} />
                 <Route path="room-allotments" element={<AdminRoomTypeAllotments />} />
                 <Route path="reports" element={<AdminReports />} />
@@ -334,6 +341,8 @@ function App() {
                 <Route path="housekeeping" element={<StaffHousekeeping />} />
                 <Route path="maintenance" element={<StaffMaintenance />} />
                 <Route path="guest-services" element={<StaffGuestServices />} />
+                <Route path="guest-management" element={<StaffGuestManagement />} />
+                <Route path="billing" element={<StaffBilling />} />
                 <Route path="inventory-requests" element={<StaffInventoryRequests />} />
                 <Route path="service-requests" element={<StaffServiceRequests />} />
                 <Route path="supply-requests" element={<StaffSupplyRequests />} />

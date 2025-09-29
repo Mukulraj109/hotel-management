@@ -47,6 +47,9 @@ import { StatusBadge } from '../../components/dashboard/StatusBadge';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import GuestInventoryTracker from '../../components/admin/GuestInventoryTracker';
+import ServiceTypeManager from '../../components/admin/ServiceTypeManager';
+import ServiceAnalytics from '../../components/admin/ServiceAnalytics';
+import SLATracker from '../../components/admin/SLATracker';
 import { formatNumber } from '../../utils/dashboardUtils';
 import { formatCurrency } from '../../utils/currencyUtils';
 import toast from 'react-hot-toast';
@@ -888,7 +891,7 @@ export default function AdminGuestServices() {
         {/* Main Content Tabs */}
         <Tabs defaultValue="services" className="space-y-6">
           <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-1">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-5">
               <TabsTrigger value="services" className="flex items-center gap-2 text-sm font-medium">
                 <Bell className="h-4 w-4" />
                 Service Requests
@@ -896,6 +899,18 @@ export default function AdminGuestServices() {
               <TabsTrigger value="inventory" className="flex items-center gap-2 text-sm font-medium">
                 <Package className="h-4 w-4" />
                 Guest Inventory
+              </TabsTrigger>
+              <TabsTrigger value="management" className="flex items-center gap-2 text-sm font-medium">
+                <Settings className="h-4 w-4" />
+                Service Management
+              </TabsTrigger>
+              <TabsTrigger value="analytics" className="flex items-center gap-2 text-sm font-medium">
+                <BarChart3 className="h-4 w-4" />
+                Analytics
+              </TabsTrigger>
+              <TabsTrigger value="sla" className="flex items-center gap-2 text-sm font-medium">
+                <Target className="h-4 w-4" />
+                SLA Tracking
               </TabsTrigger>
             </TabsList>
           </div>
@@ -984,6 +999,18 @@ export default function AdminGuestServices() {
 
           <TabsContent value="inventory">
             <GuestInventoryTracker />
+          </TabsContent>
+
+          <TabsContent value="management">
+            <ServiceTypeManager />
+          </TabsContent>
+
+          <TabsContent value="analytics">
+            <ServiceAnalytics />
+          </TabsContent>
+
+          <TabsContent value="sla">
+            <SLATracker />
           </TabsContent>
         </Tabs>
 

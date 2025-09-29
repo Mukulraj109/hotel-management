@@ -405,6 +405,46 @@ class EnhancedBookingController {
         }
       }
 
+      // Handle price changes
+      if (updateData.totalAmount && updateData.totalAmount !== existingBooking.totalAmount) {
+        // Check authorization for price changes
+        const userRole = req.user.role;
+        const adjustmentAmount = updateData.totalAmount - existingBooking.totalAmount;
+
+        if (!existingBooking.canAdjustPrice(userRole, adjustmentAmount)) {
+          return res.status(403).json({
+            success: false,
+            message: `Insufficient authorization for price adjustment of ${adjustmentAmount > 0 ? '+' : ''}${adjustmentAmount}`
+          });
+        }
+
+        // Apply price adjustment
+        const adjustmentData = {
+          amount: adjustmentAmount,
+          type: updateData.adjustmentType || 'manual_adjustment',
+          reason: updateData.adjustmentReason || 'Price updated via booking modification',
+          percentage: updateData.adjustmentPercentage,
+          discountCode: updateData.discountCode
+        };
+
+        const userContext = {
+          userId: req.user._id,
+          userName: req.user.name || req.user.email,
+          userRole: req.user.role
+        };
+
+        try {
+          existingBooking.applyPriceAdjustment(adjustmentData, userContext);
+          // Remove totalAmount from updateData to prevent double update
+          delete updateData.totalAmount;
+        } catch (adjustmentError) {
+          return res.status(400).json({
+            success: false,
+            message: `Price adjustment failed: ${adjustmentError.message}`
+          });
+        }
+      }
+
       // Update booking
       const booking = await Booking.findByIdAndUpdate(
         id,
@@ -1134,6 +1174,274 @@ class EnhancedBookingController {
 
     } catch (error) {
       console.error('Error getting booking dashboard:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Apply price adjustment to booking
+   */
+  async adjustBookingPrice(req, res) {
+    try {
+      const { id } = req.params;
+      const {
+        amount,
+        type = 'manual_adjustment',
+        reason,
+        percentage,
+        discountCode,
+        authorizedBy
+      } = req.body;
+
+      // Validation
+      if (!amount || !reason) {
+        return res.status(400).json({
+          success: false,
+          message: 'Amount and reason are required for price adjustment'
+        });
+      }
+
+      const booking = await Booking.findById(id);
+      if (!booking) {
+        return res.status(404).json({
+          success: false,
+          message: 'Booking not found'
+        });
+      }
+
+      // Check permissions
+      if (req.user.role === 'guest' && booking.userId.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied'
+        });
+      }
+
+      if (req.user.role === 'staff' && booking.hotelId.toString() !== req.user.hotelId.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied'
+        });
+      }
+
+      // Check authorization for price adjustment
+      if (!booking.canAdjustPrice(req.user.role, amount)) {
+        return res.status(403).json({
+          success: false,
+          message: `Insufficient authorization for price adjustment of ${amount > 0 ? '+' : ''}${amount}. Contact manager for approval.`
+        });
+      }
+
+      const adjustmentData = {
+        amount: parseFloat(amount),
+        type,
+        reason,
+        percentage: percentage ? parseFloat(percentage) : undefined,
+        discountCode,
+        authorizedBy
+      };
+
+      const userContext = {
+        userId: req.user._id,
+        userName: req.user.name || req.user.email,
+        userRole: req.user.role
+      };
+
+      try {
+        const adjustment = booking.applyPriceAdjustment(adjustmentData, userContext);
+        await booking.save();
+
+        // Log audit trail
+        await AuditLog.logChange({
+          hotelId: booking.hotelId,
+          tableName: 'Booking',
+          recordId: booking._id,
+          changeType: 'price_adjustment',
+          oldValues: { totalAmount: adjustment.previousAmount },
+          newValues: { totalAmount: adjustment.newAmount },
+          userId: req.user._id,
+          userEmail: req.user.email,
+          source: 'manual',
+          metadata: {
+            adjustmentType: adjustment.adjustmentType,
+            adjustmentAmount: adjustment.amount,
+            reason: adjustment.reason,
+            tags: ['price_adjustment', 'booking_modification']
+          }
+        });
+
+        res.json({
+          success: true,
+          data: {
+            booking: {
+              _id: booking._id,
+              totalAmount: booking.totalAmount,
+              originalAmount: booking.originalAmount,
+              discountAmount: booking.discountAmount,
+              surchargeAmount: booking.surchargeAmount
+            },
+            adjustment,
+            message: 'Price adjustment applied successfully'
+          }
+        });
+
+      } catch (adjustmentError) {
+        return res.status(400).json({
+          success: false,
+          message: `Price adjustment failed: ${adjustmentError.message}`
+        });
+      }
+
+    } catch (error) {
+      console.error('Error adjusting booking price:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Reverse price adjustment
+   */
+  async reversePriceAdjustment(req, res) {
+    try {
+      const { id, adjustmentId } = req.params;
+      const { reason } = req.body;
+
+      if (!reason) {
+        return res.status(400).json({
+          success: false,
+          message: 'Reason is required for reversing price adjustment'
+        });
+      }
+
+      const booking = await Booking.findById(id);
+      if (!booking) {
+        return res.status(404).json({
+          success: false,
+          message: 'Booking not found'
+        });
+      }
+
+      // Check permissions (only admin and manager can reverse adjustments)
+      if (!['admin', 'manager'].includes(req.user.role)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Only admins and managers can reverse price adjustments'
+        });
+      }
+
+      const userContext = {
+        userId: req.user._id,
+        userName: req.user.name || req.user.email
+      };
+
+      try {
+        const reversedAdjustment = booking.reversePriceAdjustment(adjustmentId, reason, userContext);
+        await booking.save();
+
+        // Log audit trail
+        await AuditLog.logChange({
+          hotelId: booking.hotelId,
+          tableName: 'Booking',
+          recordId: booking._id,
+          changeType: 'price_adjustment_reversal',
+          oldValues: { adjustmentReversed: false },
+          newValues: { adjustmentReversed: true },
+          userId: req.user._id,
+          userEmail: req.user.email,
+          source: 'manual',
+          metadata: {
+            adjustmentId,
+            reverseReason: reason,
+            originalAmount: reversedAdjustment.amount,
+            tags: ['price_adjustment_reversal', 'booking_modification']
+          }
+        });
+
+        res.json({
+          success: true,
+          data: {
+            booking: {
+              _id: booking._id,
+              totalAmount: booking.totalAmount,
+              originalAmount: booking.originalAmount,
+              discountAmount: booking.discountAmount,
+              surchargeAmount: booking.surchargeAmount
+            },
+            reversedAdjustment,
+            message: 'Price adjustment reversed successfully'
+          }
+        });
+
+      } catch (reverseError) {
+        return res.status(400).json({
+          success: false,
+          message: `Failed to reverse adjustment: ${reverseError.message}`
+        });
+      }
+
+    } catch (error) {
+      console.error('Error reversing price adjustment:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+
+  /**
+   * Get price adjustment history for a booking
+   */
+  async getPriceAdjustmentHistory(req, res) {
+    try {
+      const { id } = req.params;
+
+      const booking = await Booking.findById(id)
+        .populate('priceAdjustments.adjustedBy.userId', 'name email')
+        .populate('priceAdjustments.authorizedBy.userId', 'name email')
+        .populate('priceAdjustments.reversedBy.userId', 'name email');
+
+      if (!booking) {
+        return res.status(404).json({
+          success: false,
+          message: 'Booking not found'
+        });
+      }
+
+      // Check permissions
+      if (req.user.role === 'guest' && booking.userId.toString() !== req.user._id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied'
+        });
+      }
+
+      if (req.user.role === 'staff' && booking.hotelId.toString() !== req.user.hotelId.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied'
+        });
+      }
+
+      const adjustmentSummary = booking.getTotalAdjustments();
+
+      res.json({
+        success: true,
+        data: {
+          bookingId: booking._id,
+          adjustmentSummary,
+          adjustmentHistory: booking.priceAdjustments,
+          currentAmount: booking.totalAmount
+        }
+      });
+
+    } catch (error) {
+      console.error('Error getting price adjustment history:', error);
       res.status(500).json({
         success: false,
         message: error.message

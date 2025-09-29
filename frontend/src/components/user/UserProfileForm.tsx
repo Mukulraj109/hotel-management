@@ -26,17 +26,25 @@ const UserProfileForm: React.FC<UserProfileFormProps> = ({
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    phone: ''
+    phone: '',
+    guestType: 'individual'
   });
 
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (user) {
+      console.log('UserProfileForm - Loading user data:', {
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        guestType: user.guestType
+      });
       setFormData({
         name: user.name || '',
         email: user.email || '',
-        phone: user.phone || ''
+        phone: user.phone || '',
+        guestType: user.guestType || 'individual'
       });
     }
   }, [user]);
@@ -74,6 +82,7 @@ const UserProfileForm: React.FC<UserProfileFormProps> = ({
         return;
       }
 
+      console.log('UserProfileForm - Submitting data:', formData);
       await api.put(`/users/${user?._id}/profile`, formData);
       toast.success('Profile updated successfully');
       onSuccess();
@@ -146,6 +155,24 @@ const UserProfileForm: React.FC<UserProfileFormProps> = ({
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Enter phone number"
               />
+            </div>
+
+            {/* Guest Type */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Guest Type
+              </label>
+              <select
+                value={formData.guestType}
+                onChange={(e) => handleInputChange('guestType', e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="individual">Individual</option>
+                <option value="corporate">Corporate</option>
+                <option value="normal">Normal</option>
+                <option value="vip">VIP</option>
+                <option value="group">Group</option>
+              </select>
             </div>
 
             {/* Submit Buttons */}

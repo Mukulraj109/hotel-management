@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, BellOff, AlertCircle, CheckCircle, Settings } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Switch } from '@/components/ui/switch';
+import { Button } from '../ui/button';
+import { Card } from '../ui/card';
+import { Switch } from '../ui/switch';
 import { pushNotificationService } from '../../services/pushNotificationService';
 import { notificationService } from '../../services/notificationService';
 import toast from 'react-hot-toast';

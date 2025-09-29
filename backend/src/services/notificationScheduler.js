@@ -720,7 +720,8 @@ class NotificationScheduler {
 
       for (const notification of dueNotifications) {
         try {
-          // Mark as sent and update timestamp
+          // Clear the scheduledFor field to avoid validation error when saving
+          notification.scheduledFor = undefined;
           notification.status = 'sent';
           notification.sentAt = new Date();
           await notification.save();
