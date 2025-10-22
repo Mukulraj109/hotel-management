@@ -12,7 +12,11 @@
       "Bash(npm audit fix)",
       "Bash(npm install axios@latest)",
       "Bash(npm run build)",
-      "Bash(npm install @radix-ui/react-select)"
+      "Bash(npm install @radix-ui/react-select)",
+      "Bash(npm install @radix-ui/react-dropdown-menu @radix-ui/react-popover @radix-ui/react-tooltip @radix-ui/react-accordion @radix-ui/react-collapsible @radix-ui/react-scroll-area)",
+      "Bash(npm install @radix-ui/react-radio-group @radix-ui/react-navigation-menu @radix-ui/react-avatar @radix-ui/react-menubar @radix-ui/react-context-menu @radix-ui/react-hover-card @radix-ui/react-toggle @radix-ui/react-toggle-group)",
+      "Bash(npm install date-fns-tz)",
+      "Bash(npm install --save-dev terser)"
     ],
     "deny": [],
     "ask": []
