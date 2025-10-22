@@ -247,25 +247,6 @@ class StaffSupplyRequestsService {
     }
   }
 
-  async updateRequest(requestId: string, updateData: UpdateSupplyRequestData) {
-    try {
-      const response = await axios.put(
-        `${API_BASE_URL}/supply-requests/${requestId}`,
-        updateData,
-        { headers: this.getAuthHeaders() }
-      );
-
-      return {
-        success: true,
-        data: response.data.data.supplyRequest,
-        message: 'Supply request updated successfully'
-      };
-    } catch (error: any) {
-      console.error('Error updating supply request:', error);
-      throw new Error(error.response?.data?.message || 'Failed to update supply request');
-    }
-  }
-
   async getRequestDetails(requestId: string) {
     try {
       const response = await axios.get(

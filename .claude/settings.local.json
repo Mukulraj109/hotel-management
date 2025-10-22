@@ -6,7 +6,13 @@
       "Bash(node src/scripts/createFrontdeskUser.js:*)",
       "Read(//c/Users/Mukul raj/OneDrive/Pictures/Screenshots/**)",
       "Bash(node:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(npm install @radix-ui/react-tabs@^1.1.7)",
+      "Bash(npm audit --json)",
+      "Bash(npm audit fix)",
+      "Bash(npm install axios@latest)",
+      "Bash(npm run build)",
+      "Bash(npm install @radix-ui/react-select)"
     ],
     "deny": [],
     "ask": []

@@ -867,21 +867,6 @@ class NotificationService {
     return 'Unknown';
   }
 
-  // Enhanced notification handler with browser notifications
-  private handleNewNotification = (notification: Notification): void => {
-    // Trigger browser notification
-    this.sendBrowserNotification(notification);
-
-    // Continue with existing logic
-    this.listeners.get('new')?.forEach(listener => {
-      try {
-        listener(notification);
-      } catch (error) {
-        console.error('Error in notification listener:', error);
-      }
-    });
-  };
-
   // Get notification preferences from user settings
   async getNotificationPreferences(): Promise<any> {
     try {
