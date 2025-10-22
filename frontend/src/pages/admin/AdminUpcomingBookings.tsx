@@ -10,6 +10,8 @@ import { formatCurrency, formatNumber, getStatusColor } from '../../utils/dashbo
 import { format, parseISO, isToday, isTomorrow, addDays } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { BookingEditModal } from '../../components/booking/BookingEditModal';
 import {
   Calendar,
@@ -421,6 +423,9 @@ export default function AdminUpcomingBookings() {
 
   return (
     <div className="space-y-6">
+      {/* Breadcrumb */}
+      <PropertyBreadcrumb items={['Upcoming Bookings']} />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -529,8 +534,8 @@ export default function AdminUpcomingBookings() {
             data={filteredBookings}
             columns={columns}
             loading={loading}
-            pagination={pagination}
-            onPageChange={(page) => setFilters(prev => ({ ...prev, page }))}
+            pagination={true}
+            pageSize={50}
             emptyMessage="No upcoming bookings found"
           />
         </CardContent>

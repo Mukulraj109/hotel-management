@@ -1,11 +1,14 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { operationalManagementController } from '../controllers/operationalManagementController.js';
 
 const router = express.Router();
 
-// Apply authentication and authorization to all routes
-router.use(authenticate, authorize(['admin', 'manager', 'staff']));
+// Apply authentication, authorization, and property access to all routes
+router.use(authenticate);
+router.use(authorize(['admin', 'manager', 'staff']));
+router.use(ensurePropertyAccess);
 
 // Operational Management Overview
 router.get('/overview', operationalManagementController.getOperationalOverview);

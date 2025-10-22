@@ -44,8 +44,11 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { PushNotificationSetup } from '../../components/notifications/PushNotificationSetup';
 import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 export default function AdminNotifications() {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState({
     status: '',
@@ -108,22 +111,25 @@ export default function AdminNotifications() {
     isLoading,
     error
   } = useQuery({
-    queryKey: ['admin-notifications', currentPage, filters],
+    queryKey: ['admin-notifications', currentPage, filters, selectedPropertyId],
     queryFn: () => notificationService.getNotifications({
       page: currentPage,
       limit: 20,
       ...filters,
       unreadOnly: filters.status === 'unread',
-      readOnly: filters.status === 'read'
+      readOnly: filters.status === 'read',
+      propertyId: selectedPropertyId || undefined
     }),
     refetchInterval: 30000, // Refetch every 30 seconds
+    enabled: !!(selectedPropertyId || viewMode === 'all')
   });
 
   // Fetch unread count
   const { data: unreadCount } = useQuery({
-    queryKey: ['unreadCount'],
-    queryFn: notificationService.getUnreadCount,
+    queryKey: ['unreadCount', selectedPropertyId],
+    queryFn: () => notificationService.getUnreadCount(selectedPropertyId || undefined),
     refetchInterval: 10000, // Refetch every 10 seconds
+    enabled: !!(selectedPropertyId || viewMode === 'all')
   });
 
   // Fetch notification preferences
@@ -271,6 +277,19 @@ export default function AdminNotifications() {
     }
   };
 
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6">
+        <PropertyBreadcrumb items={['Integration', 'Notifications']} />
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <p className="text-gray-600 text-lg">Please select a property to view notifications</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -287,8 +306,10 @@ export default function AdminNotifications() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <PropertyBreadcrumb items={['Integration', 'Notifications']} />
+
         {/* Header */}
-        <div className="mb-8">
+        <div className="mb-8 mt-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <div className="p-2 bg-blue-100 rounded-lg">
@@ -296,7 +317,10 @@ export default function AdminNotifications() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Admin Notifications</h1>
-                <p className="text-gray-600">Manage and track all system notifications</p>
+                <p className="text-gray-600">
+                  Manage and track all system notifications
+                  {selectedProperty && ` - ${selectedProperty.name}`}
+                </p>
               </div>
             </div>
             <div className="flex items-center space-x-4">

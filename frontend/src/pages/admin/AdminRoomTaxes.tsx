@@ -8,9 +8,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-import { toast } from '../../hooks/use-toast';
+import { toast as shadToast } from '../../hooks/use-toast';
 import RoomTaxForm from '../../components/admin/RoomTaxForm';
 import TaxCalculationDisplay from '../../components/admin/TaxCalculationDisplay';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../components/settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
+import { useProperty } from '../../context/PropertyContext';
+import toast from 'react-hot-toast';
 
 interface RoomTax {
   _id: string;
@@ -60,7 +64,29 @@ const AdminRoomTaxes: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
 
-  const hotelId = localStorage.getItem('hotelId') || '';
+  // Multi-property support
+  const { selectedProperty, selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
+
+  const hotelId = selectedPropertyId || localStorage.getItem('hotelId') || '';
 
   useEffect(() => {
     fetchTaxes();
@@ -233,10 +259,46 @@ const AdminRoomTaxes: React.FC = () => {
     }
   };
 
-  const handleFormSubmit = () => {
+  const handleFormSubmit = async (taxData?: any) => {
+    // If tax data is provided, apply multi-property settings
+    if (taxData && applyToScope !== 'single') {
+      try {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: taxData,
+          settingType: 'room_taxes',
+        });
+
+        if (!result) return; // Confirmation dialog shown
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`Tax configuration updated successfully${
+          applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
+        }`);
+      } catch (error) {
+        toast.error('Failed to update tax configuration');
+      }
+    }
+
     setShowForm(false);
+    setApplyToScope('single');
     fetchTaxes();
     fetchTaxSummary();
+  };
+
+  const handleConfirm = async () => {
+    if (pendingUpdate) {
+      const result = await confirmBulkUpdate();
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`Tax configuration updated for ${result.propertiesUpdated} properties`);
+        fetchTaxes();
+        fetchTaxSummary();
+      }
+    }
   };
 
   const handleSelectTax = (taxId: string, checked: boolean) => {
@@ -300,11 +362,49 @@ const AdminRoomTaxes: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Success Message */}
+      {showSuccess && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 px-4 py-3 rounded-lg">
+          <p className="font-medium">Tax configuration updated successfully!</p>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {updateError && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 px-4 py-3 rounded-lg">
+          <p className="font-medium">Error: {updateError}</p>
+        </div>
+      )}
+
+      {/* Inheritance Status Card */}
+      {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+        <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                  This property is part of: {inheritanceStatus.groupName}
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                  Tax settings are inherited from the property group
+                  {inheritanceStatus.lastSyncAt && ` • Last synced: ${new Date(inheritanceStatus.lastSyncAt).toLocaleDateString()}`}
+                </p>
+              </div>
+              {inheritanceStatus.canOverride && (
+                <Badge variant="secondary" className="text-xs">
+                  Override Enabled
+                </Badge>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold">Room Taxes</h1>
-          <p className="text-gray-600">Manage room taxes and calculations</p>
+          <h1 className="text-3xl font-bold dark:text-gray-100">Room Taxes</h1>
+          <p className="text-gray-600 dark:text-gray-400">Manage room taxes and calculations</p>
         </div>
         <div className="flex gap-2">
           <Button
@@ -579,11 +679,28 @@ const AdminRoomTaxes: React.FC = () => {
               {editingTax ? 'Edit Room Tax' : 'Add New Room Tax'}
             </DialogTitle>
           </DialogHeader>
+
+          {/* Multi-Property Selector */}
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <ApplyToSelector
+              value={applyToScope}
+              onChange={setApplyToScope}
+              isInGroup={inheritanceStatus?.hasGroup || false}
+              groupName={inheritanceStatus?.groupName}
+              totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+              showWarning={true}
+              warningMessage="These tax configurations will be applied to all selected properties. Existing taxes may be overridden."
+            />
+          </div>
+
           <RoomTaxForm
             tax={editingTax}
             hotelId={hotelId}
             onSubmit={handleFormSubmit}
-            onCancel={() => setShowForm(false)}
+            onCancel={() => {
+              setShowForm(false);
+              setApplyToScope('single');
+            }}
           />
         </DialogContent>
       </Dialog>
@@ -600,6 +717,17 @@ const AdminRoomTaxes: React.FC = () => {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Multi-Property Confirmation Dialog */}
+      <ApplyToConfirmation
+        isOpen={showConfirmation}
+        scope={applyToScope}
+        affectedCount={affectedCount}
+        settingName="tax configurations"
+        groupName={inheritanceStatus?.groupName}
+        onConfirm={handleConfirm}
+        onCancel={cancelBulkUpdate}
+      />
     </div>
   );
 };

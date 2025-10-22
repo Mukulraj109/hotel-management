@@ -2,6 +2,7 @@ import express from 'express';
 import { body, param, query } from 'express-validator';
 import hotelAreaController from '../controllers/hotelAreaController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import hotelMiddleware from '../middleware/hotelMiddleware.js';
 import roleMiddleware from '../middleware/roleMiddleware.js';
 
@@ -9,6 +10,7 @@ const router = express.Router();
 
 // Authentication middleware for all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Validation schemas
 const createAreaValidation = [

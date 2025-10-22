@@ -42,10 +42,16 @@ export default function LoginPage() {
     switch (userRole) {
       case 'admin':
         return '/admin';
+      case 'frontdesk':
+        return '/frontdesk';
       case 'staff':
         return '/staff';
       case 'guest':
         return '/app';
+      case 'travel_agent':
+        return '/travel-agent';
+      case 'manager':
+        return '/admin';
       default:
         return '/';
     }
@@ -72,7 +78,11 @@ export default function LoginPage() {
         const firstSegment = pathSegments[1];
         
         // If trying to access admin area but not admin, redirect to appropriate dashboard
-        if (firstSegment === 'admin' && user.role !== 'admin') {
+        if (firstSegment === 'admin' && user.role !== 'admin' && user.role !== 'manager') {
+          redirectPath = getRedirectPath(user.role);
+        }
+        // If trying to access frontdesk area but not frontdesk, redirect to appropriate dashboard
+        else if (firstSegment === 'frontdesk' && user.role !== 'frontdesk') {
           redirectPath = getRedirectPath(user.role);
         }
         // If trying to access staff area but not staff, redirect to appropriate dashboard
@@ -81,6 +91,10 @@ export default function LoginPage() {
         }
         // If trying to access guest area but not guest, redirect to appropriate dashboard
         else if (firstSegment === 'app' && user.role !== 'guest') {
+          redirectPath = getRedirectPath(user.role);
+        }
+        // If trying to access travel-agent area but not travel_agent, redirect to appropriate dashboard
+        else if (firstSegment === 'travel-agent' && user.role !== 'travel_agent') {
           redirectPath = getRedirectPath(user.role);
         }
         // Otherwise, allow access to the intended page
@@ -180,6 +194,7 @@ export default function LoginPage() {
 
             <div className="mt-4 space-y-2 text-sm text-gray-600">
               <p><strong>Admin:</strong> admin@hotel.com / admin123</p>
+              <p><strong>Front Desk:</strong> frontdesk@hotel.com / frontdesk123</p>
               <p><strong>Staff:</strong> staff@hotel.com / staff123</p>
               <p><strong>Guest:</strong> john@example.com / guest123</p>
             </div>

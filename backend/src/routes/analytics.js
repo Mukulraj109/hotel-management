@@ -1,6 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import NotificationAnalytics from '../models/NotificationAnalytics.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -36,8 +37,9 @@ import {
 
 const router = express.Router();
 
-// Apply authentication middleware to all analytics routes
+// Apply authentication and property access middleware to all analytics routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Basic report generation
 router.post('/reports/generate', authorize(['admin', 'manager']), generateReport);

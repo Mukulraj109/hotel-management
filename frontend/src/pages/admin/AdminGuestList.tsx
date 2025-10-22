@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  PlusIcon, 
-  PencilIcon, 
-  TrashIcon, 
+import {
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
   EyeIcon,
   FunnelIcon,
   MagnifyingGlassIcon,
@@ -11,6 +11,8 @@ import {
   UserGroupIcon
 } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import GuestForm from '../../components/admin/GuestForm';
 import GuestAdvancedSearch from '../../components/admin/GuestAdvancedSearch';
 import GuestBulkOperations from '../../components/admin/GuestBulkOperations';
@@ -46,6 +48,7 @@ interface Guest {
 }
 
 const AdminGuestList: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -103,17 +106,25 @@ const AdminGuestList: React.FC = () => {
   ];
 
   useEffect(() => {
-    fetchGuests();
-  }, [filters, pagination.current]);
+    if (selectedPropertyId) {
+      fetchGuests();
+    }
+  }, [filters, pagination.current, selectedPropertyId]);
 
   const fetchGuests = async () => {
+    if (!selectedPropertyId) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       const queryParams = new URLSearchParams();
-      
+
       queryParams.append('page', pagination.current.toString());
       queryParams.append('limit', '20');
-      
+      queryParams.append('hotelId', selectedPropertyId);
+
       if (filters.search) queryParams.append('search', filters.search);
       if (filters.loyaltyTier) queryParams.append('loyaltyTier', filters.loyaltyTier);
       if (filters.guestType) queryParams.append('guestType', filters.guestType);
@@ -304,6 +315,8 @@ const AdminGuestList: React.FC = () => {
 
   return (
     <div className="p-6">
+      <PropertyBreadcrumb items={['Guests']} />
+
       <div className="mb-6">
         <div className="flex justify-between items-center mb-4">
           <div>

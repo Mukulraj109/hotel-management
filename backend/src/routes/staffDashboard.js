@@ -1,6 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import User from '../models/User.js';
@@ -16,9 +17,10 @@ import CheckoutInventory from '../models/CheckoutInventory.js';
 
 const router = express.Router();
 
-// All routes require staff authentication
+// All routes require staff authentication and property access
 router.use(authenticate);
 router.use(authorize('staff', 'admin'));
+router.use(ensurePropertyAccess);
 
 // Simple health check for debugging
 router.get('/health', (req, res) => {

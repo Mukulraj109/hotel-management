@@ -1,6 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import DailyRoutineCheck from '../models/DailyRoutineCheck.js';
@@ -11,8 +12,9 @@ import DailyRoutineCheckTemplate from '../models/DailyRoutineCheckTemplate.js';
 
 const router = express.Router();
 
-// All routes require authentication
+// All routes require authentication and property access
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger
@@ -43,7 +45,7 @@ router.use(authenticate);
  *       200:
  *         description: List of rooms for daily check
  */
-router.get('/rooms', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/rooms', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { filter, floor, type, page = 1, limit = 50 } = req.query;
   
@@ -215,7 +217,7 @@ router.get('/rooms', authorize('staff', 'admin'), catchAsync(async (req, res) =>
  *       200:
  *         description: Room inventory details
  */
-router.get('/rooms/:roomId/inventory', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/rooms/:roomId/inventory', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { roomId } = req.params;
 
@@ -322,7 +324,7 @@ router.get('/rooms/:roomId/inventory', authorize('staff', 'admin'), catchAsync(a
  *       200:
  *         description: Daily check completed successfully
  */
-router.post('/rooms/:roomId/complete', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/rooms/:roomId/complete', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId, _id: checkedBy } = req.user;
   const { roomId } = req.params;
   const { cart, notes } = req.body;
@@ -455,7 +457,7 @@ router.post('/rooms/:roomId/complete', authorize('staff', 'admin'), catchAsync(a
  *       200:
  *         description: Daily check summary
  */
-router.get('/summary', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/summary', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   
   const today = new Date();
@@ -507,7 +509,7 @@ router.get('/summary', authorize('staff', 'admin'), catchAsync(async (req, res) 
  *       200:
  *         description: Assigned rooms for today
  */
-router.get('/my-assignments', authorize('staff'), catchAsync(async (req, res) => {
+router.get('/my-assignments', authorize('staff', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId, _id: staffId } = req.user;
   
   const today = new Date();
@@ -568,7 +570,7 @@ router.get('/my-assignments', authorize('staff'), catchAsync(async (req, res) =>
  *       200:
  *         description: Room marked as checked
  */
-router.post('/rooms/:roomId/mark-checked', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/rooms/:roomId/mark-checked', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId, _id: checkedBy } = req.user;
   const { roomId } = req.params;
   const { notes } = req.body;
@@ -646,7 +648,7 @@ router.post('/rooms/:roomId/mark-checked', authorize('staff', 'admin'), catchAsy
  *       200:
  *         description: Assignments created successfully
  */
-router.post('/assign', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/assign', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { assignments } = req.body;
 
@@ -735,7 +737,7 @@ router.post('/assign', authorize('admin', 'manager'), catchAsync(async (req, res
  *       200:
  *         description: List of inventory templates
  */
-router.get('/templates', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
+router.get('/templates', authorize('admin', 'manager', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
 
   const templates = await DailyRoutineCheckTemplate.find({
@@ -829,7 +831,7 @@ router.get('/templates', authorize('admin', 'manager', 'staff'), catchAsync(asyn
  *       400:
  *         description: Template already exists for this room type
  */
-router.post('/templates', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/templates', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId, _id: createdBy } = req.user;
   const { roomType, fixedInventory, dailyInventory, estimatedCheckDuration } = req.body;
 
@@ -930,7 +932,7 @@ router.post('/templates', authorize('admin', 'manager'), catchAsync(async (req, 
  *       200:
  *         description: Template updated successfully
  */
-router.put('/templates/:roomType', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.put('/templates/:roomType', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId, _id: updatedBy } = req.user;
   const { roomType } = req.params;
   const { fixedInventory, dailyInventory, estimatedCheckDuration } = req.body;
@@ -1004,7 +1006,7 @@ router.put('/templates/:roomType', authorize('admin', 'manager'), catchAsync(asy
  *       404:
  *         description: Template not found
  */
-router.delete('/templates/:roomType', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.delete('/templates/:roomType', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId, _id: updatedBy } = req.user;
   const { roomType } = req.params;
 
@@ -1045,7 +1047,7 @@ router.delete('/templates/:roomType', authorize('admin', 'manager'), catchAsync(
  *       200:
  *         description: Admin overview data
  */
-router.get('/admin/overview', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/admin/overview', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   
   const today = new Date();
@@ -1124,7 +1126,7 @@ router.get('/admin/overview', authorize('admin', 'manager'), catchAsync(async (r
  *       200:
  *         description: List of unassigned rooms
  */
-router.get('/admin/unassigned-rooms', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/admin/unassigned-rooms', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
 
   const today = new Date();

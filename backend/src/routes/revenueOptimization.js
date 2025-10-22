@@ -7,6 +7,7 @@ import dynamicPricingService from '../services/dynamicPricingService.js';
 import revenueManagementService from '../services/revenueManagementService.js';
 import revenueOptimizationController from '../controllers/revenueOptimizationController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validate } from '../middleware/validation.js';
 import { param, body, query } from 'express-validator';
 
@@ -14,6 +15,7 @@ const router = express.Router();
 
 // Apply auth middleware to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

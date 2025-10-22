@@ -2,6 +2,7 @@ import express from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import webSettingsController from '../controllers/webSettingsController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { requireRole } from '../middleware/roleAuth.js';
 
 const router = express.Router();
@@ -9,7 +10,7 @@ const router = express.Router();
 // Middleware to check for validation errors
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
-  
+
   console.log('🟡 WebSettings Route Validation:', {
     method: req.method,
     url: req.url,
@@ -26,20 +27,21 @@ const handleValidationErrors = (req, res, next) => {
       url: req.url,
       hotelId: req.params.hotelId
     });
-    
+
     return res.status(400).json({
       success: false,
       message: 'Validation error',
       errors: errors.array()
     });
   }
-  
+
   console.log('🟢 WebSettings Route Validation PASSED');
   next();
 };
 
 // Apply authentication and admin role requirement to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 router.use(requireRole(['admin']));
 
 // GET /api/v1/web-settings/:hotelId - Get web settings for hotel

@@ -1,11 +1,13 @@
 import express from 'express';
 import auditTrailController from '../controllers/auditTrailController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
 // All audit trail routes require authentication
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Get all audit logs with filtering and pagination
 router.get('/', authorize(['admin']), auditTrailController.getAuditLogs);

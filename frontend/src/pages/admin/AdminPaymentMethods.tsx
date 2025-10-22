@@ -50,6 +50,9 @@ import {
 } from '@mui/icons-material';
 import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
 import { paymentMethodService, PaymentMethod, PaymentMethodType, GatewayProvider } from '../../services/paymentMethodService';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../components/settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
+import { useProperty } from '../../context/PropertyContext';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -84,6 +87,28 @@ const AdminPaymentMethods: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  // Multi-property support
+  const { selectedProperty, selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
 
   // Dialog states
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -207,7 +232,24 @@ const AdminPaymentMethods: React.FC = () => {
 
   const handleCreatePaymentMethod = async () => {
     try {
-      await paymentMethodService.createPaymentMethod(formData);
+      // Multi-property update
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: formData,
+          settingType: 'payment_method',
+        });
+
+        if (!result) return; // Confirmation dialog shown
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        setError(null);
+        setApplyToScope('single');
+      } else {
+        await paymentMethodService.createPaymentMethod(formData);
+      }
       setCreateDialogOpen(false);
       resetForm();
       loadData();
@@ -220,12 +262,42 @@ const AdminPaymentMethods: React.FC = () => {
     if (!selectedPaymentMethod) return;
 
     try {
-      await paymentMethodService.updatePaymentMethod(selectedPaymentMethod._id, formData);
+      // Multi-property update
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: { id: selectedPaymentMethod._id, ...formData },
+          settingType: 'payment_method',
+        });
+
+        if (!result) return; // Confirmation dialog shown
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        setError(null);
+        setApplyToScope('single');
+      } else {
+        await paymentMethodService.updatePaymentMethod(selectedPaymentMethod._id, formData);
+      }
       setEditDialogOpen(false);
       resetForm();
       loadData();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to update payment method');
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (pendingUpdate) {
+      const result = await confirmBulkUpdate();
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        setError(null);
+        setApplyToScope('single');
+        loadData();
+      }
     }
   };
 
@@ -537,6 +609,38 @@ const AdminPaymentMethods: React.FC = () => {
 
   return (
     <Box>
+      {/* Success Message */}
+      {showSuccess && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setShowSuccess(false)}>
+          Settings updated successfully!
+          {applyToScope !== 'single' && affectedCount > 1 && (
+            <Typography variant="body2">Changes applied to {affectedCount} properties</Typography>
+          )}
+        </Alert>
+      )}
+
+      {/* Error Message */}
+      {(error || updateError) && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+          {error || updateError}
+        </Alert>
+      )}
+
+      {/* Inheritance Status Card */}
+      {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          <Typography variant="body2" fontWeight="medium">
+            This property is part of: {inheritanceStatus.groupName}
+          </Typography>
+          <Typography variant="caption">
+            Payment method settings can be managed centrally for all properties in this group.
+            {inheritanceStatus.lastSyncedAt && (
+              <span> Last synced: {new Date(inheritanceStatus.lastSyncedAt).toLocaleString()}</span>
+            )}
+          </Typography>
+        </Alert>
+      )}
+
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" component="h1">
           Payment Methods
@@ -549,12 +653,6 @@ const AdminPaymentMethods: React.FC = () => {
           Add Payment Method
         </Button>
       </Box>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
 
       {/* Summary Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
@@ -632,6 +730,19 @@ const AdminPaymentMethods: React.FC = () => {
             </Button>
           </Grid>
         </Grid>
+      </Paper>
+
+      {/* Multi-property selector */}
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <ApplyToSelector
+          value={applyToScope}
+          onChange={setApplyToScope}
+          isInGroup={inheritanceStatus?.hasGroup || false}
+          groupName={inheritanceStatus?.groupName}
+          totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+          showWarning={true}
+          warningMessage="Changes to payment method settings will affect payment processing across all properties in the selected scope."
+        />
       </Paper>
 
       {/* Data Grid */}
@@ -823,6 +934,17 @@ const AdminPaymentMethods: React.FC = () => {
           <Button onClick={handleDeletePaymentMethod} color="error" variant="contained">Delete</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Confirmation Dialog */}
+      <ApplyToConfirmation
+        isOpen={showConfirmation}
+        scope={applyToScope}
+        affectedCount={affectedCount}
+        settingName="Payment Method Settings"
+        groupName={inheritanceStatus?.groupName}
+        onConfirm={handleConfirm}
+        onCancel={cancelBulkUpdate}
+      />
     </Box>
   );
 };

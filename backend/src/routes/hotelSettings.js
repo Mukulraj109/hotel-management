@@ -2,6 +2,7 @@ import express from 'express';
 import HotelSettings from '../models/HotelSettings.js';
 import Hotel from '../models/Hotel.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import Joi from 'joi';
@@ -10,6 +11,7 @@ const router = express.Router();
 
 // Apply authentication middleware to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Only admin and manager can modify hotel settings
 router.use(authorize(['admin', 'manager']));
@@ -89,6 +91,38 @@ const hotelSettingsSchemas = {
         enabled: Joi.boolean(),
         token: Joi.string().when('enabled', { is: true, then: Joi.required() })
       })
+    })
+  }),
+
+  bookingRules: Joi.object({
+    minimumStay: Joi.object({
+      enabled: Joi.boolean(),
+      nights: Joi.number().min(1).max(30),
+      applyToWeekends: Joi.boolean()
+    }),
+    maximumStay: Joi.object({
+      enabled: Joi.boolean(),
+      nights: Joi.number().min(1).max(365)
+    }),
+    advanceBooking: Joi.object({
+      minDays: Joi.number().min(0).max(365),
+      maxDays: Joi.number().min(1).max(730)
+    }),
+    cutoffTime: Joi.object({
+      hours: Joi.number().min(0).max(168),
+      sameDay: Joi.boolean()
+    }),
+    blackoutDates: Joi.object({
+      enabled: Joi.boolean(),
+      dates: Joi.array().items(Joi.string())
+    }),
+    cancellationWindow: Joi.object({
+      hours: Joi.number().min(0).max(168),
+      penaltyPercentage: Joi.number().min(0).max(100)
+    }),
+    gapRules: Joi.object({
+      enabled: Joi.boolean(),
+      minGapNights: Joi.number().min(1).max(7)
     })
   })
 };
@@ -508,6 +542,57 @@ router.post('/restore', catchAsync(async (req, res, next) => {
     status: 'success',
     message: 'Settings restored from backup successfully',
     data: { settings }
+  });
+}));
+
+// GET /api/v1/hotel-settings/booking-rules - Get booking rules
+router.get('/booking-rules', catchAsync(async (req, res, next) => {
+  const propertyId = req.query.propertyId || req.user.hotelId;
+
+  if (!propertyId) {
+    return next(new ApplicationError('Property ID is required', 400));
+  }
+
+  const settings = await HotelSettings.getOrCreateForHotel(propertyId);
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      bookingRules: settings.bookingRules || {
+        minimumStay: { enabled: false, nights: 1, applyToWeekends: false },
+        maximumStay: { enabled: false, nights: 30 },
+        advanceBooking: { minDays: 0, maxDays: 365 },
+        cutoffTime: { hours: 24, sameDay: false },
+        blackoutDates: { enabled: false, dates: [] },
+        cancellationWindow: { hours: 24, penaltyPercentage: 0 },
+        gapRules: { enabled: false, minGapNights: 1 }
+      }
+    }
+  });
+}));
+
+// PUT /api/v1/hotel-settings/booking-rules - Update booking rules
+router.put('/booking-rules', catchAsync(async (req, res, next) => {
+  const { propertyId, ...bookingRulesData } = req.body;
+
+  const targetPropertyId = propertyId || req.user.hotelId;
+
+  if (!targetPropertyId) {
+    return next(new ApplicationError('Property ID is required', 400));
+  }
+
+  const { error } = hotelSettingsSchemas.bookingRules.validate(bookingRulesData);
+  if (error) {
+    return next(new ApplicationError(error.details[0].message, 400));
+  }
+
+  const updates = { bookingRules: bookingRulesData };
+  const settings = await HotelSettings.updateHotelSettings(targetPropertyId, updates);
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Booking rules updated successfully',
+    data: { bookingRules: settings.bookingRules }
   });
 }));
 

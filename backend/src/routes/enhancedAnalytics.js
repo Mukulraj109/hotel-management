@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import enhancedAnalyticsService from '../services/enhancedAnalyticsService.js';
@@ -9,6 +10,7 @@ const router = express.Router();
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

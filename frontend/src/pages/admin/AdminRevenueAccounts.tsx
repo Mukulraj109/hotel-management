@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/ca
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Badge } from '../../components/ui/badge';
-import { Plus, Search, Edit, Trash2, Calculator, Filter, Download, TrendingUp, IndianRupee } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Calculator, Filter, Download, TrendingUp, IndianRupee, CheckCircle, AlertCircle } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
@@ -11,6 +11,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/ta
 import { toast } from '../../hooks/use-toast';
 import RevenueAccountForm from '../../components/admin/RevenueAccountForm';
 import RevenueTrackingDashboard from '../../components/admin/RevenueTrackingDashboard';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '@/components/settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '@/hooks/useSettingsInheritance';
+import { useProperty } from '@/context/PropertyContext';
 
 interface RevenueAccount {
   _id: string;
@@ -86,6 +89,28 @@ const AdminRevenueAccounts: React.FC = () => {
   const [viewMode, setViewMode] = useState<'flat' | 'hierarchical'>('flat');
 
   const hotelId = localStorage.getItem('hotelId') || '';
+
+  // Multi-property support
+  const { selectedProperty, selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
 
   useEffect(() => {
     fetchAccounts();
@@ -207,21 +232,42 @@ const AdminRevenueAccounts: React.FC = () => {
     }
 
     try {
-      const response = await fetch(`/api/v1/revenue-accounts/${accountId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: { action: 'delete', accountId },
+          settingType: 'revenue_accounts',
+        });
+
+        if (!result) return; // Confirmation dialog will show
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast({
+          title: "Success",
+          description: `Revenue account deleted successfully${
+            applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
+          }`,
+        });
+        setApplyToScope('single');
+      } else {
+        const response = await fetch(`/api/v1/revenue-accounts/${accountId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to delete account');
         }
-      });
 
-      if (!response.ok) {
-        throw new Error('Failed to delete account');
+        toast({
+          title: "Success",
+          description: "Revenue account deleted successfully",
+        });
       }
-
-      toast({
-        title: "Success",
-        description: "Revenue account deleted successfully",
-      });
 
       fetchAccounts();
       fetchRevenueSummary();
@@ -246,26 +292,47 @@ const AdminRevenueAccounts: React.FC = () => {
     }
 
     try {
-      const response = await fetch(`/api/v1/revenue-accounts/hotels/${hotelId}/bulk-update`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({
-          accountIds: selectedAccounts,
-          isActive
-        })
-      });
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: { action: 'bulkStatus', accountIds: selectedAccounts, isActive },
+          settingType: 'revenue_accounts',
+        });
 
-      if (!response.ok) {
-        throw new Error('Failed to update accounts');
+        if (!result) return; // Confirmation dialog will show
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast({
+          title: "Success",
+          description: `Accounts updated successfully${
+            applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
+          }`,
+        });
+        setApplyToScope('single');
+      } else {
+        const response = await fetch(`/api/v1/revenue-accounts/hotels/${hotelId}/bulk-update`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({
+            accountIds: selectedAccounts,
+            isActive
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to update accounts');
+        }
+
+        toast({
+          title: "Success",
+          description: `${selectedAccounts.length} accounts updated successfully`,
+        });
       }
-
-      toast({
-        title: "Success",
-        description: `${selectedAccounts.length} accounts updated successfully`,
-      });
 
       setSelectedAccounts([]);
       fetchAccounts();
@@ -277,6 +344,23 @@ const AdminRevenueAccounts: React.FC = () => {
         description: "Failed to update accounts",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (pendingUpdate) {
+      const result = await confirmBulkUpdate();
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast({
+          title: "Success",
+          description: `Updated for ${result.propertiesUpdated} properties`,
+        });
+        setApplyToScope('single');
+        fetchAccounts();
+        fetchRevenueSummary();
+      }
     }
   };
 
@@ -480,6 +564,55 @@ const AdminRevenueAccounts: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* Success Message */}
+      {showSuccess && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 px-4 py-3 rounded-lg mb-4">
+          <div className="flex items-center">
+            <CheckCircle className="w-5 h-5 mr-2" />
+            <div>
+              <p className="font-medium">Settings updated successfully!</p>
+              {applyToScope !== 'single' && affectedCount > 1 && (
+                <p className="text-sm mt-1">Changes applied to {affectedCount} properties</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {updateError && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 px-4 py-3 rounded-lg mb-4">
+          <div className="flex items-center">
+            <AlertCircle className="w-5 h-5 mr-2" />
+            <p className="font-medium">Error: {updateError}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Inheritance Status Card */}
+      {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+        <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 mb-4">
+          <CardContent className="p-4">
+            <div className="flex items-start">
+              <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-3 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                  This property is part of: {inheritanceStatus.groupName}
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                  Settings are inherited from the property group.
+                  {inheritanceStatus.lastSyncedAt && (
+                    <span className="ml-1">
+                      Last synced: {new Date(inheritanceStatus.lastSyncedAt).toLocaleString()}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary Cards */}
       {revenueSummary && (
@@ -725,6 +858,17 @@ const AdminRevenueAccounts: React.FC = () => {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Confirmation Dialog */}
+      <ApplyToConfirmation
+        isOpen={showConfirmation}
+        scope={applyToScope}
+        affectedCount={affectedCount}
+        settingName="Revenue Account Mappings"
+        groupName={inheritanceStatus?.groupName}
+        onConfirm={handleConfirm}
+        onCancel={cancelBulkUpdate}
+      />
     </div>
   );
 };

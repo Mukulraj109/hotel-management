@@ -216,7 +216,7 @@ class BypassSecurityService {
    * Execute enhanced bypass checkout with full security tracking
    */
   async executeEnhancedBypass(request: EnhancedBypassRequest) {
-    const response = await api.post('/admin-bypass/enhanced-checkout', request);
+    const response = await api.post('/admin-bypass-management/enhanced-checkout', request);
     return response.data;
   }
 

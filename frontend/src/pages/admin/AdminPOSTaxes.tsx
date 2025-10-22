@@ -8,13 +8,13 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { 
-  Plus, 
-  Edit, 
-  Trash2, 
-  Calculator, 
-  FileText, 
-  Settings, 
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Calculator,
+  FileText,
+  Settings,
   TrendingUp,
   AlertTriangle,
   CheckCircle,
@@ -22,6 +22,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { api } from '../../services/api';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '@/components/settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '@/hooks/useSettingsInheritance';
+import { useProperty } from '@/context/PropertyContext';
 
 interface TaxRule {
   name: string;
@@ -104,6 +107,28 @@ const AdminPOSTaxes: React.FC = () => {
   const [isCalculationModalOpen, setIsCalculationModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [calculationResult, setCalculationResult] = useState<TaxCalculationResult | null>(null);
+
+  // Multi-property support
+  const { selectedProperty, selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
   
   const [formData, setFormData] = useState({
     name: '',
@@ -185,13 +210,34 @@ const AdminPOSTaxes: React.FC = () => {
 
   const handleCreateTax = async () => {
     try {
-      const response = await api.post('/pos/taxes', formData);
-      if (response.data.status === 'success') {
-        toast.success('Tax created successfully');
-        fetchTaxes();
-        setIsCreateModalOpen(false);
-        resetForm();
+      // If multi-property update, use applySettings
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: formData,
+          settingType: 'pos_taxes',
+        });
+
+        if (!result) return; // Confirmation dialog shown
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`POS tax created successfully${
+          applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
+        }`);
+        setApplyToScope('single');
+      } else {
+        // Single property update
+        const response = await api.post('/pos/taxes', formData);
+        if (response.data.status === 'success') {
+          toast.success('Tax created successfully');
+        }
       }
+
+      fetchTaxes();
+      setIsCreateModalOpen(false);
+      resetForm();
     } catch (error: any) {
       console.error('Error creating tax:', error);
       toast.error(error.response?.data?.message || 'Failed to create tax');
@@ -202,17 +248,50 @@ const AdminPOSTaxes: React.FC = () => {
     if (!selectedTax) return;
 
     try {
-      const response = await api.put(`/pos/taxes/${selectedTax._id}`, formData);
-      if (response.data.status === 'success') {
-        toast.success('Tax updated successfully');
-        fetchTaxes();
-        setIsEditModalOpen(false);
-        setSelectedTax(null);
-        resetForm();
+      // If multi-property update, use applySettings
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: { ...formData, taxId: selectedTax._id },
+          settingType: 'pos_taxes',
+        });
+
+        if (!result) return; // Confirmation dialog shown
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`POS tax updated successfully${
+          applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
+        }`);
+        setApplyToScope('single');
+      } else {
+        // Single property update
+        const response = await api.put(`/pos/taxes/${selectedTax._id}`, formData);
+        if (response.data.status === 'success') {
+          toast.success('Tax updated successfully');
+        }
       }
+
+      fetchTaxes();
+      setIsEditModalOpen(false);
+      setSelectedTax(null);
+      resetForm();
     } catch (error: any) {
       console.error('Error updating tax:', error);
       toast.error(error.response?.data?.message || 'Failed to update tax');
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (pendingUpdate) {
+      const result = await confirmBulkUpdate();
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`POS tax configuration updated for ${result.propertiesUpdated} properties`);
+        fetchTaxes();
+      }
     }
   };
 
@@ -338,8 +417,46 @@ const AdminPOSTaxes: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Success Message */}
+      {showSuccess && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 px-4 py-3 rounded-lg">
+          <p className="font-medium">POS tax configuration updated successfully!</p>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {updateError && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 px-4 py-3 rounded-lg">
+          <p className="font-medium">Error: {updateError}</p>
+        </div>
+      )}
+
+      {/* Inheritance Status Card */}
+      {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+        <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                  This property is part of: {inheritanceStatus.groupName}
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                  POS tax settings are inherited from the property group
+                  {inheritanceStatus.lastSyncAt && ` • Last synced: ${new Date(inheritanceStatus.lastSyncAt).toLocaleDateString()}`}
+                </p>
+              </div>
+              {inheritanceStatus.canOverride && (
+                <Badge variant="secondary" className="text-xs">
+                  Override Enabled
+                </Badge>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">POS Tax Management</h1>
+        <h1 className="text-3xl font-bold dark:text-gray-100">POS Tax Management</h1>
         <div className="flex space-x-2">
           <Button
             variant="outline"
@@ -359,11 +476,28 @@ const AdminPOSTaxes: React.FC = () => {
               <DialogHeader>
                 <DialogTitle>Create New Tax</DialogTitle>
               </DialogHeader>
+
+              {/* Multi-Property Selector */}
+              <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <ApplyToSelector
+                  value={applyToScope}
+                  onChange={setApplyToScope}
+                  isInGroup={inheritanceStatus?.hasGroup || false}
+                  groupName={inheritanceStatus?.groupName}
+                  totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+                  showWarning={true}
+                  warningMessage="These POS tax configurations will be applied to all selected properties. Tax rules, exemptions, and calculations will be synchronized."
+                />
+              </div>
+
               <TaxForm
                 formData={formData}
                 setFormData={setFormData}
                 onSubmit={handleCreateTax}
-                onCancel={() => setIsCreateModalOpen(false)}
+                onCancel={() => {
+                  setIsCreateModalOpen(false);
+                  setApplyToScope('single');
+                }}
                 taxTypes={taxTypes}
                 taxGroups={taxGroups}
               />
@@ -506,11 +640,28 @@ const AdminPOSTaxes: React.FC = () => {
           <DialogHeader>
             <DialogTitle>Edit Tax</DialogTitle>
           </DialogHeader>
+
+          {/* Multi-Property Selector */}
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <ApplyToSelector
+              value={applyToScope}
+              onChange={setApplyToScope}
+              isInGroup={inheritanceStatus?.hasGroup || false}
+              groupName={inheritanceStatus?.groupName}
+              totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+              showWarning={true}
+              warningMessage="These POS tax configuration updates will be applied to all selected properties. Existing tax rules may be overridden."
+            />
+          </div>
+
           <TaxForm
             formData={formData}
             setFormData={setFormData}
             onSubmit={handleUpdateTax}
-            onCancel={() => setIsEditModalOpen(false)}
+            onCancel={() => {
+              setIsEditModalOpen(false);
+              setApplyToScope('single');
+            }}
             isEdit
             taxTypes={taxTypes}
             taxGroups={taxGroups}
@@ -535,6 +686,17 @@ const AdminPOSTaxes: React.FC = () => {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Multi-Property Confirmation Dialog */}
+      <ApplyToConfirmation
+        isOpen={showConfirmation}
+        scope={applyToScope}
+        affectedCount={affectedCount}
+        settingName="POS tax configurations"
+        groupName={inheritanceStatus?.groupName}
+        onConfirm={handleConfirm}
+        onCancel={cancelBulkUpdate}
+      />
     </div>
   );
 };

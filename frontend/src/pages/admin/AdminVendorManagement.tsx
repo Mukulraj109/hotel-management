@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Plus, Filter, Download, BarChart3, Star, AlertTriangle, Eye, Edit, Trash2, CheckCircle, XCircle } from 'lucide-react';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface Vendor {
   _id: string;
@@ -34,6 +36,7 @@ interface VendorFilters {
 }
 
 const AdminVendorManagement: React.FC = () => {
+  const { selectedPropertyId, selectedProperty } = useProperty();
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -73,16 +76,21 @@ const AdminVendorManagement: React.FC = () => {
   ];
 
   useEffect(() => {
-    fetchVendors();
-  }, [currentPage, filters]);
+    if (selectedPropertyId) {
+      fetchVendors();
+    }
+  }, [currentPage, filters, selectedPropertyId]);
 
   const fetchVendors = async () => {
+    if (!selectedPropertyId) return;
+
     try {
       setLoading(true);
       const queryParams = new URLSearchParams({
         page: currentPage.toString(),
         limit: '20',
         enhanced: 'true',
+        hotelId: selectedPropertyId,
         ...(filters.status && { status: filters.status }),
         ...(filters.category && { category: filters.category }),
         ...(filters.rating && { rating: filters.rating }),
@@ -200,6 +208,18 @@ const AdminVendorManagement: React.FC = () => {
     });
   };
 
+  if (!selectedPropertyId) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">🏨</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Property Selected</h2>
+          <p className="text-gray-600">Please select a property from the header to view vendor management.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -210,6 +230,9 @@ const AdminVendorManagement: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Breadcrumb */}
+      <PropertyBreadcrumb items={['Vendor Management']} />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

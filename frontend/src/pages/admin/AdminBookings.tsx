@@ -3,9 +3,13 @@ import { DataTable } from '../../components/dashboard/DataTable';
 import { StatusBadge } from '../../components/dashboard/StatusBadge';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import { Textarea } from '../../components/ui/textarea';
 import { Modal } from '../../components/ui/Modal';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
 import { adminService } from '../../services/adminService';
+import { bookingEditingService } from '../../services/bookingEditingService';
+import { api } from '../../services/api';
 import { AdminBooking, BookingFilters, BookingStats } from '../../types/admin';
 import { formatCurrency, formatNumber, getStatusColor } from '../../utils/dashboardUtils';
 import { format, parseISO } from 'date-fns';
@@ -16,6 +20,8 @@ import NoShowModal from '../../components/admin/NoShowModal';
 import toast from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import {
   Calendar,
   Coins,
@@ -36,12 +42,17 @@ import {
   UserPlus,
   Building,
   DollarSign,
-  AlertTriangle
+  AlertTriangle,
+  AlertCircle,
+  FileText,
+  ShieldAlert,
+  Loader2
 } from 'lucide-react';
 
 export default function AdminBookings() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { selectedPropertyId } = useProperty();
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [stats, setStats] = useState<BookingStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -59,10 +70,20 @@ export default function AdminBookings() {
   const [showFilters, setShowFilters] = useState(false);
   const [updating, setUpdating] = useState(false);
   
-  // Payment collection modal state
+  // Payment collection modal state (for check-in)
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedBookingForPayment, setSelectedBookingForPayment] = useState<AdminBooking | null>(null);
-  
+
+  // Checkout payment modal state (for checkout)
+  const [showCheckOutPaymentModal, setShowCheckOutPaymentModal] = useState(false);
+  const [selectedBookingForCheckOut, setSelectedBookingForCheckOut] = useState<AdminBooking | null>(null);
+
+  // Bypass checkout modal state
+  const [showBypassCheckoutDialog, setShowBypassCheckoutDialog] = useState(false);
+  const [selectedBookingForBypass, setSelectedBookingForBypass] = useState<AdminBooking | null>(null);
+  const [bypassReason, setBypassReason] = useState('');
+  const [bypassConfirmed, setBypassConfirmed] = useState(false);
+
   // Room assignment state
   const [showRoomAssignmentModal, setShowRoomAssignmentModal] = useState(false);
   const [selectedBookingForRoomAssignment, setSelectedBookingForRoomAssignment] = useState<AdminBooking | null>(null);
@@ -77,6 +98,11 @@ export default function AdminBookings() {
   const [showNoShowModal, setShowNoShowModal] = useState(false);
   const [selectedBookingForNoShow, setSelectedBookingForNoShow] = useState<AdminBooking | null>(null);
 
+  // Settlement modal state
+  const [showSettlementModal, setShowSettlementModal] = useState(false);
+  const [selectedBookingForSettlement, setSelectedBookingForSettlement] = useState<AdminBooking | null>(null);
+  const [settlementData, setSettlementData] = useState<any>(null);
+
   // Manual booking form state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showWalkInModal, setShowWalkInModal] = useState(false);
@@ -85,7 +111,7 @@ export default function AdminBookings() {
   const [userSearch, setUserSearch] = useState('');
   const [creating, setCreating] = useState(false);
   const [createForm, setCreateForm] = useState({
-    hotelId: '68cd01414419c17b5f6b4c12', // Updated to match seeded hotel ID
+    hotelId: selectedPropertyId || user?.hotelId || '',
     userId: '',
     roomIds: [] as string[],
     checkIn: '',
@@ -110,7 +136,7 @@ export default function AdminBookings() {
       // Add hotelId to filters to ensure we only get bookings for the correct hotel
       const bookingFilters = {
         ...filters,
-        hotelId: user?.hotelId || '68cd01414419c17b5f6b4c12' // Use the correct seeded hotel ID
+        hotelId: selectedPropertyId || user?.hotelId || ''
       };
       console.log('🔍 [AdminBookings] FETCH DEBUG - Enhanced filters with hotelId:', bookingFilters);
 
@@ -182,7 +208,7 @@ export default function AdminBookings() {
 
       // Pass hotelId filter to stats to match booking list
       const statsFilters = {
-        hotelId: user?.hotelId || '68cd01414419c17b5f6b4c12' // Use the correct seeded hotel ID
+        hotelId: selectedPropertyId || user?.hotelId || ''
       };
 
       console.log('📊 [AdminBookings] Stats filters:', statsFilters);
@@ -275,10 +301,10 @@ export default function AdminBookings() {
       // If still no hotelId, try to get it from the user context or use a fallback
       if (!hotelId) {
         console.log('🔍 BOOKING DEBUG - No hotel ID found in booking, trying fallback');
-        
+
         // Try to get hotelId from user context (if user is logged in and has hotelId)
-        const userHotelId = user?.hotelId || '68cd01414419c17b5f6b4c12'; // Updated to match seeded hotel ID
-        
+        const userHotelId = selectedPropertyId || user?.hotelId || '';
+
         if (userHotelId) {
           hotelId = userHotelId;
           console.log('🔍 BOOKING DEBUG - Using fallback hotel ID from user context:', hotelId);
@@ -385,36 +411,96 @@ export default function AdminBookings() {
   };
 
   // Handle check-in with payment collection
-  const handleCheckIn = (booking: AdminBooking) => {
-    setSelectedBookingForPayment(booking);
-    setShowPaymentModal(true);
+  const handleCheckIn = async (booking: AdminBooking) => {
+    // If payment is already completed, check-in directly without payment modal
+    if (booking.paymentStatus === 'paid') {
+      try {
+        setUpdating(true);
+        const response = await adminService.checkInBooking(booking._id);
+
+        const updatedBooking = response.data.booking;
+        toast.success('Guest checked in successfully! Payment already completed.');
+
+        // Update the selected booking in the modal if it's the same booking
+        if (selectedBooking && selectedBooking._id === booking._id) {
+          setSelectedBooking(updatedBooking);
+        }
+
+        // Refresh all data
+        queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
+        queryClient.invalidateQueries({ queryKey: ['admin-bookings-stats'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        queryClient.invalidateQueries({ queryKey: ['bookings'] });
+
+        await fetchBookings();
+        await fetchStats();
+      } catch (error) {
+        console.error('Error checking in guest:', error);
+        toast.error('Failed to check in guest');
+      } finally {
+        setUpdating(false);
+      }
+    } else {
+      // Payment pending or partial - show payment modal
+      setSelectedBookingForPayment(booking);
+      setShowPaymentModal(true);
+    }
   };
 
   // Handle payment collection and check-in
-  const handlePaymentCollection = async (paymentDetails: { paymentMethods: any[] }) => {
+  const handlePaymentCollection = async (paymentDetails: { paymentMethods: any[] } | null) => {
     if (!selectedBookingForPayment) return;
 
     try {
       setUpdating(true);
-      const response = await adminService.checkInBooking(selectedBookingForPayment._id, paymentDetails);
-      
-      toast.success('Guest checked in successfully!');
-      
+      const response = await adminService.checkInBooking(
+        selectedBookingForPayment._id,
+        paymentDetails || undefined
+      );
+
+      // Extract payment details from response
+      const updatedBooking = response.data.booking;
+      const totalPaid = updatedBooking.paymentDetails?.totalPaid || 0;
+      const remainingAmount = updatedBooking.paymentDetails?.remainingAmount || 0;
+      const totalAmount = updatedBooking.totalAmount || 0;
+
+      // Show success message with balance information
+      if (paymentDetails && paymentDetails.paymentMethods.length > 0) {
+        const collectedAmount = paymentDetails.paymentMethods.reduce((sum, p) => sum + p.amount, 0);
+        if (remainingAmount > 0) {
+          toast.success(
+            `Guest checked in! Payment collected: ${formatCurrency(collectedAmount, updatedBooking.currency)}. Remaining balance: ${formatCurrency(remainingAmount, updatedBooking.currency)}`
+          );
+        } else {
+          toast.success(
+            `Guest checked in successfully! Payment collected: ${formatCurrency(collectedAmount, updatedBooking.currency)}. Fully paid!`
+          );
+        }
+      } else {
+        if (remainingAmount > 0) {
+          toast.success(
+            `Guest checked in! No payment collected. Remaining balance: ${formatCurrency(remainingAmount, updatedBooking.currency)}`
+          );
+        } else {
+          toast.success('Guest checked in successfully!');
+        }
+      }
+
       // Update the selected booking in the modal if it's the same booking
       if (selectedBooking && selectedBooking._id === selectedBookingForPayment._id) {
-        setSelectedBooking(response.data.booking);
+        setSelectedBooking(updatedBooking);
       }
 
       // Close payment modal and refresh data
       setShowPaymentModal(false);
       setSelectedBookingForPayment(null);
-      
+
       // Refresh all data
       queryClient.invalidateQueries({ queryKey: ['admin-bookings'] });
       queryClient.invalidateQueries({ queryKey: ['admin-bookings-stats'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      
+
       await fetchBookings();
       await fetchStats();
     } catch (error) {
@@ -425,17 +511,92 @@ export default function AdminBookings() {
     }
   };
 
-  // Handle check-out
+  // Handle check-out - Smart checkout with automatic payment collection
   const handleCheckOut = async (booking: AdminBooking) => {
     try {
+      console.log('Attempting checkout for booking:', booking._id);
+
+      // Calculate outstanding balance
+      const totalAmount = booking.totalAmount || 0;
+      const totalPaid = booking.paymentDetails?.totalPaid || 0;
+      const outstandingBalance = totalAmount - totalPaid;
+
+      console.log('💰 Checkout balance check:', {
+        bookingNumber: booking.bookingNumber,
+        totalAmount,
+        totalPaid,
+        outstandingBalance,
+        hasBalance: outstandingBalance > 0
+      });
+
+      // If there's an outstanding balance, open payment collection modal
+      if (outstandingBalance > 0) {
+        console.log('📝 Opening payment collection modal - balance due: ₹' + outstandingBalance);
+        setSelectedBookingForCheckOut(booking);
+        setShowCheckOutPaymentModal(true); // ✅ Open the modal
+        return;
+      }
+
+      // If fully paid, proceed with direct checkout
+      console.log('✅ Fully paid - proceeding with direct checkout');
+      await processCheckOut(booking, false); // false = don't bypass
+    } catch (error) {
+      console.error('Error in checkout flow:', error);
+    }
+  };
+
+  // Process actual checkout (called after payment or if no balance)
+  const processCheckOut = async (booking: AdminBooking, bypass: boolean = false, bypassReason?: string) => {
+    try {
       setUpdating(true);
-      const response = await adminService.checkOutBooking(booking._id);
-      
-      toast.success('Guest checked out successfully!');
-      
+
+      // Prepare request body with bypass flag if needed
+      const requestBody = bypass ? {
+        bypassBalanceCheck: true,
+        bypassReason: bypassReason || 'No reason provided'
+      } : {};
+
+      const response = await api.patch(`/bookings/${booking._id}/check-out`, requestBody);
+
+      console.log('Checkout response:', response);
+
+      // Extract settlement data from response
+      const settlement = response.data?.data?.settlement;
+      const settlementStatus = response.data?.data?.settlementStatus;
+      const updatedBooking = response.data?.data?.booking;
+
       // Update the selected booking in the modal if it's the same booking
       if (selectedBooking && selectedBooking._id === booking._id) {
-        setSelectedBooking(response.data.booking);
+        setSelectedBooking(updatedBooking);
+      }
+
+      // Show settlement summary based on status
+      if (settlement && settlementStatus) {
+        if (settlementStatus === 'pending' && settlement.outstandingBalance > 0) {
+          // Outstanding balance - show settlement modal with payment option
+          setSelectedBookingForSettlement(updatedBooking);
+          setSettlementData(settlement);
+          setShowSettlementModal(true);
+          if (bypass) {
+            toast.warning(`Guest checked out (BYPASSED)! Outstanding balance: ₹${settlement.outstandingBalance.toLocaleString()}`);
+          } else {
+            toast.success(`Guest checked out! Outstanding balance: ₹${settlement.outstandingBalance.toLocaleString()}`);
+          }
+        } else if (settlementStatus === 'refund_pending' && settlement.refundAmount > 0) {
+          // Refund due - show settlement modal with refund option
+          setSelectedBookingForSettlement(updatedBooking);
+          setSettlementData(settlement);
+          setShowSettlementModal(true);
+          toast.success(`Guest checked out! Refund due: ₹${settlement.refundAmount.toLocaleString()}`);
+        } else if (settlementStatus === 'completed') {
+          // Fully settled
+          toast.success('Guest checked out successfully - Fully Settled!');
+        } else {
+          // Fallback
+          toast.success('Guest checked out successfully!');
+        }
+      } else {
+        toast.success('Guest checked out successfully!');
       }
 
       // Refresh all data
@@ -443,15 +604,118 @@ export default function AdminBookings() {
       queryClient.invalidateQueries({ queryKey: ['admin-bookings-stats'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['bookings'] });
-      
+
       await fetchBookings();
       await fetchStats();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error checking out guest:', error);
-      toast.error('Failed to check out guest');
+
+      // Check if error is due to outstanding balance
+      const errorCode = error.response?.data?.code;
+      const errorMessage = error.response?.data?.message;
+
+      if (errorCode === 'OUTSTANDING_BALANCE' || errorMessage?.includes('outstanding balance')) {
+        // Extract balance from error message
+        const balanceMatch = errorMessage?.match(/₹([\d,]+)/);
+        const balance = balanceMatch ? balanceMatch[1] : 'unknown';
+
+        // Show payment modal to collect payment
+        setSelectedBookingForCheckOut(booking);
+        setShowCheckOutPaymentModal(true);
+
+        toast.error(`Cannot checkout: Outstanding balance of ₹${balance}. Please collect payment or use bypass.`);
+      } else {
+        toast.error(errorMessage || 'Failed to check out guest');
+      }
     } finally {
       setUpdating(false);
     }
+  };
+
+  // Handle checkout payment collection (BEFORE actual checkout)
+  const handleCheckOutPaymentCollection = async (paymentDetails: { paymentMethods: any[] }) => {
+    if (!selectedBookingForCheckOut) return;
+
+    try {
+      setUpdating(true);
+
+      const totalAmount = paymentDetails.paymentMethods.reduce((sum, pm) => sum + pm.amount, 0);
+
+      console.log('Processing checkout payment:', {
+        bookingId: selectedBookingForCheckOut._id,
+        paymentMethods: paymentDetails.paymentMethods,
+        totalAmount
+      });
+
+      // Process payment using the settlement payment endpoint with paymentMethods array
+      const response = await api.post(`/bookings/${selectedBookingForCheckOut._id}/settlement/payment`, {
+        paymentMethods: paymentDetails.paymentMethods,
+        amount: totalAmount
+      });
+
+      toast.success('Payment collected successfully!');
+
+      // Close the checkout payment modal
+      setShowCheckOutPaymentModal(false);
+
+      // Fetch updated booking to get new totalPaid
+      await fetchBookings();
+
+      // Find the updated booking
+      const updatedBookings = bookings;
+      const updatedBooking = updatedBookings.find(b => b._id === selectedBookingForCheckOut._id);
+
+      // Now proceed with checkout using the updated booking
+      if (updatedBooking) {
+        await processCheckOut(updatedBooking);
+      } else {
+        // Fallback to original booking
+        await processCheckOut(selectedBookingForCheckOut);
+      }
+
+      // Clear checkout payment state
+      setSelectedBookingForCheckOut(null);
+
+    } catch (error: any) {
+      console.error('Error processing checkout payment:', error);
+      toast.error(error.message || 'Failed to process payment');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // Handle bypass checkout - Show confirmation dialog
+  const handleBypassCheckout = (booking: AdminBooking) => {
+    setSelectedBookingForBypass(booking);
+    setBypassReason('');
+    setBypassConfirmed(false);
+    setShowBypassCheckoutDialog(true);
+  };
+
+  // Confirm bypass checkout with reason
+  const confirmBypassCheckout = async () => {
+    if (!selectedBookingForBypass) return;
+
+    if (!bypassReason.trim()) {
+      toast.error('Please provide a reason for bypassing checkout');
+      return;
+    }
+
+    if (bypassReason.length < 20) {
+      toast.error('Reason must be at least 20 characters long');
+      return;
+    }
+
+    if (!bypassConfirmed) {
+      toast.error('Please confirm that this bypass is authorized');
+      return;
+    }
+
+    setShowBypassCheckoutDialog(false);
+    await processCheckOut(selectedBookingForBypass, true, bypassReason);
+    setSelectedBookingForBypass(null);
+    setBypassReason('');
+    setBypassConfirmed(false);
   };
 
   // Handle price adjustment
@@ -517,10 +781,10 @@ export default function AdminBookings() {
     try {
       setCreating(true);
       await adminService.createBooking(createForm);
-      
+
       // Reset form and close modal
       setCreateForm({
-        hotelId: '68cd01414419c17b5f6b4c12', // Updated to match seeded hotel ID
+        hotelId: selectedPropertyId || user?.hotelId || '',
         userId: '',
         roomIds: [],
         checkIn: '',
@@ -716,7 +980,7 @@ export default function AdminBookings() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => handleStatusUpdate(row._id, 'checked_in')}
+                onClick={() => handleCheckIn(row)}
                 disabled={updating}
                 title="Check In"
               >
@@ -762,6 +1026,9 @@ export default function AdminBookings() {
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      {/* Breadcrumb */}
+      <PropertyBreadcrumb items={['Bookings']} />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -1187,19 +1454,72 @@ export default function AdminBookings() {
 
             {/* Financial Info */}
             <div className="border-t pt-4">
-              <div className="flex justify-between items-center">
-                <span className="text-lg font-medium">Total Amount</span>
-                <span className="text-lg font-bold">
-                  {formatCurrency(selectedBooking.totalAmount, selectedBooking.currency)}
-                </span>
-              </div>
-              <div className="flex justify-between items-center mt-2">
-                <span className="text-sm text-gray-600">Payment Status</span>
-                <StatusBadge status={selectedBooking.paymentStatus} variant="pill" size="sm" />
-              </div>
-              <div className="flex justify-between items-center mt-2">
-                <span className="text-sm text-gray-600">Booking Status</span>
-                <StatusBadge status={selectedBooking.status} variant="pill" size="sm" />
+              <div className="space-y-3">
+                {/* Total Amount with Edit Button */}
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-medium">Total Amount</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg font-bold">
+                      {formatCurrency(selectedBooking.totalAmount, selectedBooking.currency)}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedBookingForPriceAdjustment(selectedBooking);
+                        setShowPriceAdjustmentModal(true);
+                      }}
+                      className="bg-green-50 hover:bg-green-100 text-green-700 border border-green-200"
+                      title="Adjust Price"
+                    >
+                      <DollarSign className="h-4 w-4 mr-1" />
+                      Edit Price
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Show price adjustment indicator if booking has adjustments */}
+                {selectedBooking.originalAmount && selectedBooking.originalAmount !== selectedBooking.totalAmount && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <DollarSign className="h-4 w-4 text-blue-600" />
+                      <span className="text-sm font-medium text-blue-900">Price Adjusted</span>
+                    </div>
+                    <div className="space-y-1 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Original Price:</span>
+                        <span className="line-through text-gray-500">
+                          {formatCurrency(selectedBooking.originalAmount, selectedBooking.currency)}
+                        </span>
+                      </div>
+                      {selectedBooking.discountAmount && selectedBooking.discountAmount > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Discount:</span>
+                          <span className="text-green-600 font-medium">
+                            -{formatCurrency(selectedBooking.discountAmount, selectedBooking.currency)}
+                          </span>
+                        </div>
+                      )}
+                      {selectedBooking.surchargeAmount && selectedBooking.surchargeAmount > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Surcharge:</span>
+                          <span className="text-red-600 font-medium">
+                            +{formatCurrency(selectedBooking.surchargeAmount, selectedBooking.currency)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Payment Status</span>
+                  <StatusBadge status={selectedBooking.paymentStatus} variant="pill" size="sm" />
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Booking Status</span>
+                  <StatusBadge status={selectedBooking.status} variant="pill" size="sm" />
+                </div>
               </div>
             </div>
 
@@ -1304,7 +1624,7 @@ export default function AdminBookings() {
                  onClose={() => {
            setShowCreateModal(false);
            setCreateForm({
-             hotelId: '68cd01414419c17b5f6b4c12', // Updated to match seeded hotel ID
+             hotelId: selectedPropertyId || user?.hotelId || '',
              userId: '',
              roomIds: [],
              checkIn: '',
@@ -1819,7 +2139,7 @@ export default function AdminBookings() {
         }}
       />
 
-      {/* Payment Collection Modal */}
+      {/* Payment Collection Modal (for check-in) */}
       {selectedBookingForPayment && (
         <PaymentCollectionModal
           isOpen={showPaymentModal}
@@ -1833,6 +2153,205 @@ export default function AdminBookings() {
           bookingNumber={selectedBookingForPayment.bookingNumber}
         />
       )}
+
+      {/* Checkout Payment Collection Modal (for checkout - BEFORE checkout API) */}
+      {selectedBookingForCheckOut && (
+        <PaymentCollectionModal
+          isOpen={showCheckOutPaymentModal}
+          onClose={() => {
+            setShowCheckOutPaymentModal(false);
+            setSelectedBookingForCheckOut(null);
+          }}
+          onConfirm={handleCheckOutPaymentCollection}
+          totalAmount={selectedBookingForCheckOut.totalAmount - (selectedBookingForCheckOut.paymentDetails?.totalPaid || 0)}
+          currency={selectedBookingForCheckOut.currency}
+          bookingNumber={selectedBookingForCheckOut.bookingNumber}
+          mode="checkout"
+          onBypassCheckout={() => handleBypassCheckout(selectedBookingForCheckOut)}
+        />
+      )}
+
+      {/* Bypass Checkout Confirmation Dialog - Enhanced */}
+      {selectedBookingForBypass && (() => {
+        const outstandingBalance = (selectedBookingForBypass.totalAmount || 0) - (selectedBookingForBypass.paymentDetails?.totalPaid || 0);
+        const reasonTemplates = [
+          'Corporate credit account',
+          'Manager approval received',
+          'Payment plan arranged',
+          'VIP guest arrangement'
+        ];
+
+        return (
+          <Modal
+            isOpen={showBypassCheckoutDialog}
+            onClose={null}
+            noPadding={true}
+          >
+            <div className="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-auto overflow-hidden">
+              {/* Gradient Header */}
+              <div className="bg-gradient-to-r from-red-600 to-rose-700 p-8">
+                <div className="flex items-center gap-4 text-white">
+                  <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+                    <AlertCircle className="h-8 w-8 animate-pulse" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold mb-1">Bypass Checkout Authorization</h2>
+                    <p className="text-red-100 text-sm">Booking #{selectedBookingForBypass.bookingNumber}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-8">
+                {/* Enhanced Warning Section */}
+                <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-300 rounded-xl p-6 mb-6 shadow-md">
+                  <div className="flex gap-4">
+                    <AlertCircle className="h-7 w-7 text-amber-600 flex-shrink-0 mt-1 animate-pulse" />
+                    <div>
+                      <h3 className="font-bold text-amber-900 text-lg mb-3">Critical Warning</h3>
+                      <div className="mb-3">
+                        <p className="text-amber-800 mb-2">Outstanding balance:</p>
+                        <p className="text-3xl font-bold text-red-600">
+                          ₹{outstandingBalance.toLocaleString('en-IN')}
+                        </p>
+                      </div>
+                      <p className="text-amber-700 leading-relaxed">
+                        Authorizing this bypass allows the guest to check out without settling this amount.
+                        This action will be permanently recorded in the audit log with your credentials.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Reason Templates */}
+                <div className="mb-6">
+                  <Label className="text-sm font-semibold mb-3 block text-gray-700">
+                    Quick Reason Templates
+                  </Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    {reasonTemplates.map((template) => (
+                      <button
+                        key={template}
+                        onClick={() => setBypassReason(template)}
+                        className={`px-4 py-3 text-sm border-2 rounded-lg text-left transition-all duration-200 ${
+                          bypassReason === template
+                            ? 'border-blue-500 bg-blue-50 text-blue-900 font-medium'
+                            : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50 text-gray-700'
+                        }`}
+                      >
+                        {template}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Enhanced Reason Field */}
+                <div className="mb-6">
+                  <Label
+                    htmlFor="bypassReason"
+                    className="flex items-center gap-2 font-semibold mb-3 text-gray-800"
+                  >
+                    <FileText className="h-5 w-5 text-gray-600" />
+                    Authorization Reason (Required)
+                  </Label>
+                  <Textarea
+                    id="bypassReason"
+                    value={bypassReason}
+                    onChange={(e) => setBypassReason(e.target.value.slice(0, 500))}
+                    rows={6}
+                    maxLength={500}
+                    className="w-full focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all"
+                    placeholder="Enter detailed reason for bypass authorization. Include manager name, approval details, and payment arrangement specifics..."
+                  />
+                  <div className="flex justify-between mt-2 text-xs">
+                    <span className={`${bypassReason.length < 20 ? 'text-red-500 font-medium' : 'text-gray-500'}`}>
+                      {bypassReason.length < 20 ? `Minimum 20 characters required (${20 - bypassReason.length} more)` : 'Minimum met'}
+                    </span>
+                    <span className={`${bypassReason.length >= 500 ? 'text-red-500 font-medium' : 'text-gray-500'}`}>
+                      {bypassReason.length}/500
+                    </span>
+                  </div>
+                </div>
+
+                {/* Confirmation Checkbox */}
+                <div className="mb-6 bg-gray-50 border-2 border-gray-200 rounded-lg p-4">
+                  <label className="flex items-start gap-3 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={bypassConfirmed}
+                      onChange={(e) => setBypassConfirmed(e.target.checked)}
+                      className="mt-1 h-5 w-5 text-red-600 focus:ring-red-500 focus:ring-2 rounded cursor-pointer"
+                    />
+                    <span className="text-sm text-gray-700 leading-relaxed select-none">
+                      <strong className="text-gray-900">I confirm that this bypass is authorized</strong> and understand
+                      that it will be permanently recorded in the audit trail with my user credentials and timestamp.
+                    </span>
+                  </label>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowBypassCheckoutDialog(false);
+                      setSelectedBookingForBypass(null);
+                      setBypassReason('');
+                      setBypassConfirmed(false);
+                    }}
+                    className="flex-1 h-12 text-base font-medium border-2 hover:bg-gray-50 transition-colors"
+                    disabled={updating}
+                  >
+                    <X className="h-5 w-5 mr-2" />
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={confirmBypassCheckout}
+                    disabled={!bypassConfirmed || bypassReason.length < 20 || updating}
+                    className={`flex-1 h-12 text-base font-medium bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 transition-all duration-200 ${
+                      bypassConfirmed && bypassReason.length >= 20 && !updating
+                        ? 'shadow-lg shadow-red-500/50 animate-pulse'
+                        : ''
+                    }`}
+                  >
+                    {updating ? (
+                      <>
+                        <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <ShieldAlert className="h-5 w-5 mr-2" />
+                        Authorize Bypass
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {/* Audit Trail Preview */}
+                <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <p className="text-xs text-gray-600 font-semibold mb-2 flex items-center gap-2">
+                    <FileText className="h-3.5 w-3.5" />
+                    Audit Trail Preview - This action will be logged as:
+                  </p>
+                  <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono leading-relaxed">
+{`Action: Bypass Checkout
+Date/Time: ${new Date().toLocaleString('en-IN', {
+  dateStyle: 'medium',
+  timeStyle: 'short'
+})}
+Staff: ${user?.firstName} ${user?.lastName} (${user?.email})
+Booking: #${selectedBookingForBypass.bookingNumber}
+Guest: ${selectedBookingForBypass.guestName}
+Outstanding: ₹${outstandingBalance.toLocaleString('en-IN')}
+Reason: ${bypassReason.substring(0, 80)}${bypassReason.length > 80 ? '...' : ''}`}
+                  </pre>
+                </div>
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {/* Price Adjustment Modal */}
       {selectedBookingForPriceAdjustment && showPriceAdjustmentModal && (
@@ -1857,6 +2376,125 @@ export default function AdminBookings() {
           booking={selectedBookingForNoShow}
           onSuccess={handleNoShowSuccess}
         />
+      )}
+
+      {/* Settlement Summary Modal */}
+      {selectedBookingForSettlement && settlementData && showSettlementModal && (
+        <Modal
+          isOpen={showSettlementModal}
+          onClose={() => {
+            setShowSettlementModal(false);
+            setSelectedBookingForSettlement(null);
+            setSettlementData(null);
+          }}
+          title="Guest Checkout - Settlement Summary"
+          size="lg"
+        >
+          <div className="space-y-6">
+            {/* Booking Info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle className="w-5 h-5 text-blue-600" />
+                <h3 className="font-semibold text-blue-900">Guest Checked Out Successfully</h3>
+              </div>
+              <p className="text-sm text-blue-700">
+                Booking #{selectedBookingForSettlement.bookingNumber}
+              </p>
+            </div>
+
+            {/* Settlement Details */}
+            <div className="border rounded-lg p-4 space-y-3">
+              <h3 className="font-semibold text-gray-900">Settlement Details</h3>
+
+              <div className="space-y-2">
+                <div className="flex justify-between py-2 border-b">
+                  <span className="text-gray-600">Final Amount:</span>
+                  <span className="font-bold text-gray-900">₹{settlementData.finalAmount.toLocaleString()}</span>
+                </div>
+
+                {settlementData.outstandingBalance > 0 && (
+                  <div className="flex justify-between py-2 border-b bg-red-50 px-3 rounded">
+                    <span className="text-red-700 font-medium">Outstanding Balance:</span>
+                    <span className="font-bold text-red-700">₹{settlementData.outstandingBalance.toLocaleString()}</span>
+                  </div>
+                )}
+
+                {settlementData.refundAmount > 0 && (
+                  <div className="flex justify-between py-2 border-b bg-green-50 px-3 rounded">
+                    <span className="text-green-700 font-medium">Refund Due:</span>
+                    <span className="font-bold text-green-700">₹{settlementData.refundAmount.toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Adjustments */}
+              {settlementData.adjustments && settlementData.adjustments.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Adjustments:</h4>
+                  <div className="space-y-1">
+                    {settlementData.adjustments.map((adj: any, index: number) => (
+                      <div key={index} className="flex justify-between text-sm py-1">
+                        <span className="text-gray-600">{adj.description || adj.type}</span>
+                        <span className="text-gray-900">₹{adj.amount.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-3">
+              {settlementData.outstandingBalance > 0 && (
+                <button
+                  onClick={() => {
+                    // Open payment modal
+                    setSelectedBookingForPayment(selectedBookingForSettlement);
+                    setShowPaymentModal(true);
+                    setShowSettlementModal(false);
+                  }}
+                  className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 transition-colors"
+                >
+                  <DollarSign className="w-5 h-5" />
+                  Collect Payment (₹{settlementData.outstandingBalance.toLocaleString()})
+                </button>
+              )}
+
+              {settlementData.refundAmount > 0 && (
+                <button
+                  onClick={() => {
+                    toast.info('Refund processing feature coming soon');
+                    // TODO: Implement refund processing
+                  }}
+                  className="w-full bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 flex items-center justify-center gap-2 transition-colors"
+                >
+                  <DollarSign className="w-5 h-5" />
+                  Process Refund (₹{settlementData.refundAmount.toLocaleString()})
+                </button>
+              )}
+
+              {settlementData.outstandingBalance === 0 && settlementData.refundAmount === 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+                  <div className="flex items-center justify-center gap-2 text-green-800">
+                    <CheckCircle className="w-5 h-5" />
+                    <span className="font-medium">Checkout Complete - Fully Settled</span>
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => {
+                  setShowSettlementModal(false);
+                  setSelectedBookingForSettlement(null);
+                  setSettlementData(null);
+                }}
+                className="w-full bg-gray-200 text-gray-800 px-6 py-3 rounded-lg hover:bg-gray-300 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
+import {
   Key,
   Plus,
   Search,
@@ -34,15 +34,17 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatDate } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { QRCodeSVG as QRCode } from 'qrcode.react';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface AdminDigitalKeyManagementProps {}
 
 export default function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementProps) {
+  const { selectedPropertyId, selectedProperty } = useProperty();
   const [activeTab, setActiveTab] = useState<'all-keys' | 'analytics' | 'logs'>('all-keys');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
-  const [hotelFilter, setHotelFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedKey, setSelectedKey] = useState<DigitalKey | null>(null);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
@@ -53,22 +55,23 @@ export default function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementP
 
   // Fetch all digital keys (admin view)
   const { data: keysData, isLoading: keysLoading } = useQuery({
-    queryKey: ['admin-digital-keys', currentPage, statusFilter, typeFilter, hotelFilter, searchTerm],
+    queryKey: ['admin-digital-keys', selectedPropertyId, currentPage, statusFilter, typeFilter, searchTerm],
     queryFn: () => digitalKeyService.getAdminKeys({
       page: currentPage,
       status: statusFilter || undefined,
       type: typeFilter || undefined,
-      hotel: hotelFilter || undefined,
+      hotel: selectedPropertyId || undefined,
       search: searchTerm || undefined
     }),
+    enabled: !!selectedPropertyId,
     staleTime: 30 * 1000 // 30 seconds
   });
 
   // Fetch analytics data
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
-    queryKey: ['admin-key-analytics', timeRange],
+    queryKey: ['admin-key-analytics', selectedPropertyId, timeRange],
     queryFn: () => digitalKeyService.getAdminAnalytics(timeRange),
-    enabled: activeTab === 'analytics',
+    enabled: activeTab === 'analytics' && !!selectedPropertyId,
     staleTime: 5 * 60 * 1000
   });
 
@@ -126,13 +129,18 @@ export default function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementP
   };
 
   const exportKeysData = async () => {
+    if (!selectedPropertyId) {
+      toast.error('Please select a property first');
+      return;
+    }
+
     try {
       toast.loading('Preparing export...');
 
       const blob = await digitalKeyService.exportAdminKeys({
         status: statusFilter || undefined,
         type: typeFilter || undefined,
-        hotel: hotelFilter || undefined,
+        hotel: selectedPropertyId,
         format: 'csv'
       });
 
@@ -155,13 +163,28 @@ export default function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementP
     }
   };
 
+  if (!selectedPropertyId) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">🏨</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Property Selected</h2>
+          <p className="text-gray-600">Please select a property from the header to view digital key management.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {/* Breadcrumb */}
+      <PropertyBreadcrumb items={['Digital Key Management']} />
+
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Digital Key Management</h1>
-          <p className="text-gray-600 mt-1 text-sm sm:text-base">Manage all digital room keys across properties</p>
+          <p className="text-gray-600 mt-1 text-sm sm:text-base">Manage all digital room keys for {selectedProperty?.name || 'selected property'}</p>
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
           <Button
@@ -235,12 +258,12 @@ export default function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementP
               <h3 className="text-lg font-bold text-gray-900 ml-3">Filter Keys</h3>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Search */}
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                 <Input
-                  placeholder="Search keys, rooms, hotels..."
+                  placeholder="Search keys, rooms..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
@@ -272,27 +295,14 @@ export default function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementP
                 <option value="emergency">Emergency</option>
               </select>
 
-              {/* Hotel Filter */}
-              <select
-                value={hotelFilter}
-                onChange={(e) => setHotelFilter(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Hotels</option>
-                {/* Would populate with actual hotel data */}
-                <option value="pentouz-main">THE PENTOUZ Main</option>
-                <option value="pentouz-annex">THE PENTOUZ Annex</option>
-              </select>
-
               {/* Clear Filters */}
-              {(searchTerm || statusFilter || typeFilter || hotelFilter) && (
+              {(searchTerm || statusFilter || typeFilter) && (
                 <Button
                   variant="outline"
                   onClick={() => {
                     setSearchTerm('');
                     setStatusFilter('');
                     setTypeFilter('');
-                    setHotelFilter('');
                   }}
                 >
                   Clear Filters
@@ -313,7 +323,7 @@ export default function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementP
                   <Key className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <h3 className="text-xl font-semibold text-gray-900 mb-2">No digital keys found</h3>
                   <p className="text-gray-600 mb-6">
-                    {searchTerm || statusFilter || typeFilter || hotelFilter
+                    {searchTerm || statusFilter || typeFilter
                       ? 'Try adjusting your search or filters'
                       : 'Generate your first digital key to get started'
                     }
@@ -521,7 +531,13 @@ export default function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementP
       )}
 
       {/* Activity Logs Tab */}
-      {activeTab === 'logs' && <ActivityLogsTab timeRange={timeRange} setTimeRange={setTimeRange} />}
+      {activeTab === 'logs' && (
+        <ActivityLogsTab
+          timeRange={timeRange}
+          setTimeRange={setTimeRange}
+          hotelId={selectedPropertyId}
+        />
+      )}
 
       {/* Generate Key Modal */}
       {showGenerateModal && (
@@ -1081,22 +1097,25 @@ function KeyDetailsModal({ digitalKey, onClose }: KeyDetailsModalProps) {
 interface ActivityLogsTabProps {
   timeRange: string;
   setTimeRange: (range: string) => void;
+  hotelId?: string;
 }
 
-function ActivityLogsTab({ timeRange, setTimeRange }: ActivityLogsTabProps) {
+function ActivityLogsTab({ timeRange, setTimeRange, hotelId }: ActivityLogsTabProps) {
   const [actionFilter, setActionFilter] = useState('');
   const [userFilter, setUserFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
   const { data: logsData, isLoading } = useQuery({
-    queryKey: ['admin-activity-logs', currentPage, actionFilter, userFilter, timeRange],
+    queryKey: ['admin-activity-logs', hotelId, currentPage, actionFilter, userFilter, timeRange],
     queryFn: () => digitalKeyService.getAdminActivityLogs({
       page: currentPage,
       limit: 20,
       action: actionFilter || undefined,
       userId: userFilter || undefined,
-      timeRange
+      timeRange,
+      hotelId: hotelId || undefined
     }),
+    enabled: !!hotelId,
     staleTime: 30 * 1000
   });
 

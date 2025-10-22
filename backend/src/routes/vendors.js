@@ -2,6 +2,7 @@ import express from 'express';
 import { vendorController } from '../controllers/vendorController.js';
 import vendorService from '../services/vendorService.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { body, param, query, validationResult } from 'express-validator';
 
 const router = express.Router();
@@ -19,8 +20,9 @@ const validateRequest = (req, res, next) => {
   next();
 };
 
-// All routes require authentication
+// All routes require authentication and property access
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Enhanced validation schemas
 const createVendorValidation = [

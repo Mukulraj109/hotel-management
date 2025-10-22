@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import GuestService from '../models/GuestService.js';
 import Booking from '../models/Booking.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { serviceNotificationService } from '../services/serviceNotificationService.js';
@@ -11,6 +12,10 @@ import websocketService from '../services/websocketService.js';
 import guestServicePOSIntegration from '../services/guestServicePOSIntegration.js';
 
 const router = express.Router();
+
+// All routes require authentication and property access
+router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger
@@ -263,7 +268,7 @@ router.get('/', authenticate, catchAsync(async (req, res) => {
   // Role-based filtering
   if (req.user.role === 'guest') {
     query.userId = req.user._id;
-  } else if (req.user.role === 'staff' && req.user.hotelId) {
+  } else if ((req.user.role === 'staff' || req.user.role === 'frontdesk') && req.user.hotelId) {
     query.hotelId = req.user.hotelId;
   } else if (req.user.role === 'admin') {
     // Admin users can filter by hotelId from query parameter
@@ -337,11 +342,11 @@ router.get('/', authenticate, catchAsync(async (req, res) => {
  *       200:
  *         description: Service statistics
  */
-router.get('/stats', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/stats', authenticate, authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
   const { startDate, endDate } = req.query;
-  
+
   let hotelId;
-  if (req.user.role === 'staff') {
+  if (req.user.role === 'staff' || req.user.role === 'frontdesk') {
     hotelId = req.user.hotelId;
   } else if (req.user.role === 'admin') {
     hotelId = req.query.hotelId || req.user.hotelId;
@@ -403,9 +408,9 @@ router.get('/stats', authenticate, authorize('staff', 'admin'), catchAsync(async
  *       200:
  *         description: Available staff list
  */
-router.get('/available-staff', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/available-staff', authenticate, authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
   let hotelId;
-  if (req.user.role === 'staff') {
+  if (req.user.role === 'staff' || req.user.role === 'frontdesk') {
     hotelId = req.user.hotelId;
   } else if (req.user.role === 'admin') {
     hotelId = req.query.hotelId || req.user.hotelId;
@@ -466,7 +471,7 @@ router.get('/:id', authenticate, catchAsync(async (req, res) => {
     throw new ApplicationError('You can only view your own service requests', 403);
   }
 
-  if (req.user.role === 'staff' && serviceRequest.hotelId._id.toString() !== req.user.hotelId.toString()) {
+  if ((req.user.role === 'staff' || req.user.role === 'frontdesk') && serviceRequest.hotelId._id.toString() !== req.user.hotelId.toString()) {
     throw new ApplicationError('You can only view requests for your hotel', 403);
   }
 
@@ -531,9 +536,9 @@ router.patch('/:id', authenticate, catchAsync(async (req, res) => {
   } = req.body;
 
   // Permission checks
-  const canUpdate = 
+  const canUpdate =
     req.user.role === 'admin' ||
-    (req.user.role === 'staff' && serviceRequest.hotelId.toString() === req.user.hotelId.toString()) ||
+    ((req.user.role === 'staff' || req.user.role === 'frontdesk') && serviceRequest.hotelId.toString() === req.user.hotelId.toString()) ||
     (req.user.role === 'guest' && serviceRequest.userId.toString() === req.user._id.toString() && serviceRequest.canCancel());
 
   if (!canUpdate) {

@@ -8,6 +8,8 @@ import { DataTable } from '../../components/dashboard/DataTable';
 import { MetricCard } from '../../components/dashboard/MetricCard';
 import { adminService } from '../../services/adminService';
 import { useAuth } from '../../context/AuthContext';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import {
   Settings,
   Wifi,
@@ -27,10 +29,24 @@ import {
 
 const AdminOTA: React.FC = () => {
   const { user } = useAuth();
-  const hotelId = user?.hotelId || 'default';
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['OTA Management']} />
+        <div className="text-center py-12">
+          <Globe className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No Property Selected</h3>
+          <p className="text-gray-500">Please select a property to view OTA management.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <PropertyBreadcrumb items={['OTA Management']} />
       <Tabs defaultValue="analytics" className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="analytics">OTA Analytics</TabsTrigger>

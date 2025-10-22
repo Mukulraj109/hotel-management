@@ -122,6 +122,45 @@ const hotelSchema = new mongoose.Schema({
       languages: [String]
     }
   },
+
+  // Settings inheritance tracking
+  inheritSettings: {
+    type: Boolean,
+    default: false
+  },
+
+  settingsOverrides: {
+    type: Map,
+    of: mongoose.Schema.Types.Mixed,
+    default: new Map()
+  },
+
+  lastSyncedAt: {
+    type: Date,
+    default: null
+  },
+
+  // Multi-property management flags
+  multiPropertyEnabled: {
+    type: Boolean,
+    default: false
+  },
+
+  inheritanceConfig: {
+    autoSync: {
+      type: Boolean,
+      default: true
+    },
+    syncFrequency: {
+      type: String,
+      enum: ['real_time', 'hourly', 'daily', 'manual'],
+      default: 'manual'
+    },
+    allowLocalOverrides: {
+      type: Boolean,
+      default: true
+    }
+  },
   
   // Property hierarchy
   hierarchy: {
@@ -151,6 +190,14 @@ hotelSchema.virtual('rooms', {
   ref: 'Room',
   localField: '_id',
   foreignField: 'hotelId'
+});
+
+// Virtual for totalRooms count
+hotelSchema.virtual('totalRooms', {
+  ref: 'Room',
+  localField: '_id',
+  foreignField: 'hotelId',
+  count: true
 });
 
 export default mongoose.model('Hotel', hotelSchema);

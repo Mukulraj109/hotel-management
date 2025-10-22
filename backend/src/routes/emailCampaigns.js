@@ -21,6 +21,7 @@ import {
   getRealtimeMetrics
 } from '../controllers/emailTrackingController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import authorize from '../middleware/authorize.js';
 import { body, param, query } from 'express-validator';
 import { validate } from '../middleware/validation.js';
@@ -28,6 +29,7 @@ import { validate } from '../middleware/validation.js';
 const router = express.Router();
 
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 const createCampaignValidation = [
   body('name')

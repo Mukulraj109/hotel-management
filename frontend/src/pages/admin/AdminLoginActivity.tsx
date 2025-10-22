@@ -26,6 +26,8 @@ import { toast } from 'react-hot-toast';
 import LoginAnalytics from '../../components/login/LoginAnalytics';
 import SessionManager from '../../components/login/SessionManager';
 import SecurityAlerts from '../../components/login/SecurityAlerts';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface LoginSession {
   _id: string;
@@ -105,6 +107,7 @@ interface SecurityAlert {
 }
 
 const AdminLoginActivity: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [analytics, setAnalytics] = useState<LoginAnalytics | null>(null);
   const [activeSessions, setActiveSessions] = useState<LoginSession[]>([]);
   const [suspiciousSessions, setSuspiciousSessions] = useState<LoginSession[]>([]);
@@ -115,7 +118,7 @@ const AdminLoginActivity: React.FC = () => {
   const [showSessionManager, setShowSessionManager] = useState(false);
   const [showSecurityAlerts, setShowSecurityAlerts] = useState(false);
   const [selectedSession, setSelectedSession] = useState<LoginSession | null>(null);
-  
+
   const [filters, setFilters] = useState({
     dateRange: '',
     riskLevel: 'all',
@@ -124,17 +127,20 @@ const AdminLoginActivity: React.FC = () => {
   });
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 30000); // Refresh every 30 seconds
-    return () => clearInterval(interval);
-  }, [filters]);
+    if (selectedPropertyId || viewMode === 'all') {
+      fetchData();
+      const interval = setInterval(fetchData, 30000); // Refresh every 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [filters, selectedPropertyId, viewMode]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      
+
       const queryParams = new URLSearchParams();
       if (filters.dateRange) queryParams.append('dateRange', filters.dateRange);
+      if (selectedPropertyId) queryParams.append('propertyId', selectedPropertyId);
 
       const [analyticsRes, activeSessionsRes, suspiciousRes, alertsRes] = await Promise.all([
         fetch(`/api/v1/login-activity/analytics?${queryParams}`, {
@@ -286,13 +292,31 @@ const AdminLoginActivity: React.FC = () => {
     );
   }
 
+  // If in single mode and no property selected, show selection prompt
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['Analytics', 'Login Activity']} />
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <p className="text-gray-600 text-lg">Please select a property to view login activity</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
-      <div className="mb-6">
+      <PropertyBreadcrumb items={['Analytics', 'Login Activity']} />
+      <div className="mb-6 mt-4">
         <div className="flex justify-between items-center mb-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Login Activity Monitoring</h1>
-            <p className="text-gray-600">Real-time login monitoring and security analytics</p>
+            <p className="text-gray-600">
+              Real-time login monitoring and security analytics
+              {selectedProperty && ` - ${selectedProperty.name}`}
+            </p>
           </div>
           <div className="flex space-x-3">
             <button

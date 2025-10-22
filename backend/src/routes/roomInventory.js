@@ -6,14 +6,16 @@ import RoomInventory from '../models/RoomInventory.js';
 import InventoryTransaction from '../models/InventoryTransaction.js';
 import CheckoutInspection from '../models/CheckoutInspection.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 
 const router = express.Router();
 
-// All routes require authentication
+// All routes require authentication and property access
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

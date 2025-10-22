@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 // Import controllers
 import * as chartOfAccountsController from '../controllers/chartOfAccountsController.js';
@@ -12,8 +13,8 @@ import FinancialService from '../services/financialService.js';
 
 const router = express.Router();
 
-// === TEST ENDPOINT (temporary, no auth required) ===
-router.get('/test-dashboard', async (req, res) => {
+// === TEST ENDPOINT (temporary) ===
+router.get('/test-dashboard', authenticate, ensurePropertyAccess, authorize('admin', 'manager', 'frontdesk'), async (req, res) => {
   try {
     const financialService = new FinancialService();
     const dashboard = await financialService.generateFinancialDashboard('month');
@@ -26,8 +27,8 @@ router.get('/test-dashboard', async (req, res) => {
   }
 });
 
-// === DASHBOARD (temporarily no auth required for testing) ===
-router.get('/dashboard', async (req, res) => {
+// === DASHBOARD ===
+router.get('/dashboard', authenticate, ensurePropertyAccess, authorize('admin', 'manager', 'frontdesk'), async (req, res) => {
   try {
     const financialService = new FinancialService();
     const period = req.query.period || 'month';
@@ -54,93 +55,93 @@ router.get('/dashboard', async (req, res) => {
   }
 });
 
-// Temporarily bypass authentication for testing
-// router.use(authenticate);
-// router.use(authorize('admin', 'staff', 'manager'));-mana
+// Apply authentication and property access to all routes
+router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // === CHART OF ACCOUNTS ROUTES ===
 router.route('/chart-of-accounts')
-  .get(chartOfAccountsController.getAccounts)
-  .post(chartOfAccountsController.createAccount);
+  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), chartOfAccountsController.getAccounts)
+  .post(authorize('admin', 'manager'), chartOfAccountsController.createAccount);
 
-router.get('/chart-of-accounts/tree', chartOfAccountsController.getAccountTree);
-router.get('/chart-of-accounts/flattened', chartOfAccountsController.getFlattenedAccounts);
-router.post('/chart-of-accounts/bulk-import', chartOfAccountsController.bulkImportAccounts);
+router.get('/chart-of-accounts/tree', authorize('admin', 'staff', 'manager', 'frontdesk'), chartOfAccountsController.getAccountTree);
+router.get('/chart-of-accounts/flattened', authorize('admin', 'staff', 'manager', 'frontdesk'), chartOfAccountsController.getFlattenedAccounts);
+router.post('/chart-of-accounts/bulk-import', authorize('admin', 'manager'), chartOfAccountsController.bulkImportAccounts);
 
 router.route('/chart-of-accounts/:id')
-  .get(chartOfAccountsController.getAccount)
-  .patch(chartOfAccountsController.updateAccount)
-  .delete(chartOfAccountsController.deleteAccount);
+  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), chartOfAccountsController.getAccount)
+  .patch(authorize('admin', 'manager'), chartOfAccountsController.updateAccount)
+  .delete(authorize('admin'), chartOfAccountsController.deleteAccount);
 
-router.get('/chart-of-accounts/:id/activity', chartOfAccountsController.getAccountActivity);
+router.get('/chart-of-accounts/:id/activity', authorize('admin', 'staff', 'manager', 'frontdesk'), chartOfAccountsController.getAccountActivity);
 
 // === GENERAL LEDGER ROUTES ===
-router.get('/general-ledger', generalLedgerController.getLedgerEntries);
-router.get('/general-ledger/trial-balance', generalLedgerController.getTrialBalance);
-router.get('/general-ledger/financial-statements', generalLedgerController.getFinancialStatements);
-router.get('/general-ledger/aging-report', generalLedgerController.getAgingReport);
-router.get('/general-ledger/export', generalLedgerController.exportLedger);
-router.get('/general-ledger/account/:accountId', generalLedgerController.getAccountLedger);
+router.get('/general-ledger', authorize('admin', 'staff', 'manager', 'frontdesk'), generalLedgerController.getLedgerEntries);
+router.get('/general-ledger/trial-balance', authorize('admin', 'manager', 'frontdesk'), generalLedgerController.getTrialBalance);
+router.get('/general-ledger/financial-statements', authorize('admin', 'manager', 'frontdesk'), generalLedgerController.getFinancialStatements);
+router.get('/general-ledger/aging-report', authorize('admin', 'staff', 'manager', 'frontdesk'), generalLedgerController.getAgingReport);
+router.get('/general-ledger/export', authorize('admin', 'manager', 'frontdesk'), generalLedgerController.exportLedger);
+router.get('/general-ledger/account/:accountId', authorize('admin', 'staff', 'manager', 'frontdesk'), generalLedgerController.getAccountLedger);
 
 // === JOURNAL ENTRY ROUTES ===
 router.route('/journal-entries')
-  .get(journalEntryController.getJournalEntries)
-  .post(journalEntryController.createJournalEntry);
+  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), journalEntryController.getJournalEntries)
+  .post(authorize('admin', 'manager'), journalEntryController.createJournalEntry);
 
-router.get('/journal-entries/templates', journalEntryController.getJournalTemplates);
-router.post('/journal-entries/bulk-create', journalEntryController.bulkCreateJournalEntries);
+router.get('/journal-entries/templates', authorize('admin', 'staff', 'manager', 'frontdesk'), journalEntryController.getJournalTemplates);
+router.post('/journal-entries/bulk-create', authorize('admin', 'manager'), journalEntryController.bulkCreateJournalEntries);
 
 router.route('/journal-entries/:id')
-  .get(journalEntryController.getJournalEntry)
-  .patch(journalEntryController.updateJournalEntry)
-  .delete(journalEntryController.deleteJournalEntry);
+  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), journalEntryController.getJournalEntry)
+  .patch(authorize('admin', 'manager'), journalEntryController.updateJournalEntry)
+  .delete(authorize('admin'), journalEntryController.deleteJournalEntry);
 
-router.post('/journal-entries/:id/post', journalEntryController.postJournalEntry);
-router.post('/journal-entries/:id/reverse', journalEntryController.reverseJournalEntry);
-router.post('/journal-entries/:id/approve', journalEntryController.approveJournalEntry);
-router.post('/journal-entries/:id/reject', journalEntryController.rejectJournalEntry);
+router.post('/journal-entries/:id/post', authorize('admin', 'manager'), journalEntryController.postJournalEntry);
+router.post('/journal-entries/:id/reverse', authorize('admin', 'manager'), journalEntryController.reverseJournalEntry);
+router.post('/journal-entries/:id/approve', authorize('admin', 'manager'), journalEntryController.approveJournalEntry);
+router.post('/journal-entries/:id/reject', authorize('admin', 'manager'), journalEntryController.rejectJournalEntry);
 
 // === BANK ACCOUNT ROUTES ===
 router.route('/bank-accounts')
-  .get(bankAccountController.getBankAccounts)
-  .post(bankAccountController.createBankAccount);
+  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), bankAccountController.getBankAccounts)
+  .post(authorize('admin', 'manager'), bankAccountController.createBankAccount);
 
-router.get('/bank-accounts/cash-position', bankAccountController.getCashPosition);
-router.get('/bank-accounts/balances', bankAccountController.getAccountBalances);
+router.get('/bank-accounts/cash-position', authorize('admin', 'manager', 'frontdesk'), bankAccountController.getCashPosition);
+router.get('/bank-accounts/balances', authorize('admin', 'staff', 'manager', 'frontdesk'), bankAccountController.getAccountBalances);
 
 router.route('/bank-accounts/:id')
-  .get(bankAccountController.getBankAccount)
-  .patch(bankAccountController.updateBankAccount)
-  .delete(bankAccountController.deactivateBankAccount);
+  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), bankAccountController.getBankAccount)
+  .patch(authorize('admin', 'manager'), bankAccountController.updateBankAccount)
+  .delete(authorize('admin'), bankAccountController.deactivateBankAccount);
 
-router.get('/bank-accounts/:id/transactions', bankAccountController.getTransactions);
-router.post('/bank-accounts/:id/transactions', bankAccountController.addTransaction);
-router.post('/bank-accounts/:id/reconcile', bankAccountController.reconcileAccount);
-router.post('/bank-accounts/:id/import-statement', bankAccountController.importStatement);
+router.get('/bank-accounts/:id/transactions', authorize('admin', 'staff', 'manager', 'frontdesk'), bankAccountController.getTransactions);
+router.post('/bank-accounts/:id/transactions', authorize('admin', 'staff', 'manager'), bankAccountController.addTransaction);
+router.post('/bank-accounts/:id/reconcile', authorize('admin', 'manager'), bankAccountController.reconcileAccount);
+router.post('/bank-accounts/:id/import-statement', authorize('admin', 'manager'), bankAccountController.importStatement);
 
 // === BUDGET ROUTES ===
 router.route('/budgets')
-  .get(budgetController.getBudgets)
-  .post(budgetController.createBudget);
+  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), budgetController.getBudgets)
+  .post(authorize('admin', 'manager'), budgetController.createBudget);
 
-router.get('/budgets/summary', budgetController.getBudgetSummary);
-router.get('/budgets/statistics', budgetController.getBudgetStatistics);
-router.get('/budgets/templates', budgetController.getBudgetTemplates);
-router.get('/budgets/vs-actual', budgetController.getBudgetVsActual);
-router.get('/budgets/forecast', budgetController.generateForecast);
+router.get('/budgets/summary', authorize('admin', 'manager', 'frontdesk'), budgetController.getBudgetSummary);
+router.get('/budgets/statistics', authorize('admin', 'manager', 'frontdesk'), budgetController.getBudgetStatistics);
+router.get('/budgets/templates', authorize('admin', 'manager', 'frontdesk'), budgetController.getBudgetTemplates);
+router.get('/budgets/vs-actual', authorize('admin', 'manager', 'frontdesk'), budgetController.getBudgetVsActual);
+router.get('/budgets/forecast', authorize('admin', 'manager', 'frontdesk'), budgetController.generateForecast);
 
 router.route('/budgets/:id')
-  .get(budgetController.getBudget)
-  .patch(budgetController.updateBudget)
-  .delete(budgetController.deleteBudget);
+  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), budgetController.getBudget)
+  .patch(authorize('admin', 'manager'), budgetController.updateBudget)
+  .delete(authorize('admin'), budgetController.deleteBudget);
 
-router.post('/budgets/:id/submit-review', budgetController.submitForReview);
-router.post('/budgets/:id/approve', budgetController.approveBudget);
-router.post('/budgets/:id/revise', budgetController.createRevision);
+router.post('/budgets/:id/submit-review', authorize('admin', 'manager'), budgetController.submitForReview);
+router.post('/budgets/:id/approve', authorize('admin'), budgetController.approveBudget);
+router.post('/budgets/:id/revise', authorize('admin', 'manager'), budgetController.createRevision);
 
 // === INVOICES ===
 router.route('/invoices')
-  .get(async (req, res) => {
+  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), async (req, res) => {
     try {
       const FinancialInvoice = (await import('../models/FinancialInvoice.js')).default;
       const mongoose = (await import('mongoose')).default;
@@ -164,7 +165,7 @@ router.route('/invoices')
       });
     }
   })
-  .post(async (req, res) => {
+  .post(authorize('admin', 'staff', 'manager'), async (req, res) => {
     try {
       const FinancialInvoice = (await import('../models/FinancialInvoice.js')).default;
       const invoiceData = {
@@ -241,7 +242,7 @@ async function calculatePaymentStatistics(FinancialPayment, query = {}) {
 
 // === PAYMENTS ===
 router.route('/payments')
-  .get(async (req, res) => {
+  .get(authorize('admin', 'staff', 'manager', 'frontdesk'), async (req, res) => {
     try {
       const FinancialPayment = (await import('../models/FinancialPayment.js')).default;
       const mongoose = (await import('mongoose')).default;
@@ -282,7 +283,7 @@ router.route('/payments')
       });
     }
   })
-  .post(async (req, res) => {
+  .post(authorize('admin', 'staff', 'manager'), async (req, res) => {
     try {
       const FinancialPayment = (await import('../models/FinancialPayment.js')).default;
       const paymentData = {
@@ -311,7 +312,7 @@ router.route('/payments')
   });
 
 // === PAYMENT STATISTICS ===
-router.get('/payments/statistics', async (req, res) => {
+router.get('/payments/statistics', authorize('admin', 'staff', 'manager', 'frontdesk'), async (req, res) => {
   try {
     const FinancialPayment = (await import('../models/FinancialPayment.js')).default;
 
@@ -343,7 +344,7 @@ router.get('/payments/statistics', async (req, res) => {
 });
 
 // === FINANCIAL REPORTS ===
-router.get('/reports/trial-balance', async (req, res) => {
+router.get('/reports/trial-balance', authorize('admin', 'manager', 'frontdesk'), async (req, res) => {
   try {
     res.status(200).json({
       status: 'success',
@@ -358,10 +359,10 @@ router.get('/reports/trial-balance', async (req, res) => {
 });
 
 // === FINANCIAL REPORTS ROUTES ===
-router.get('/reports/income-statement', financialReportsController.getIncomeStatement);
-router.get('/reports/balance-sheet', financialReportsController.getBalanceSheet);
-router.get('/reports/cash-flow', financialReportsController.getCashFlowStatement);
-router.get('/reports/financial-ratios', financialReportsController.getFinancialRatios);
-router.get('/reports/comprehensive', financialReportsController.getComprehensiveFinancialStatement);
+router.get('/reports/income-statement', authorize('admin', 'manager', 'frontdesk'), financialReportsController.getIncomeStatement);
+router.get('/reports/balance-sheet', authorize('admin', 'manager', 'frontdesk'), financialReportsController.getBalanceSheet);
+router.get('/reports/cash-flow', authorize('admin', 'manager', 'frontdesk'), financialReportsController.getCashFlowStatement);
+router.get('/reports/financial-ratios', authorize('admin', 'manager', 'frontdesk'), financialReportsController.getFinancialRatios);
+router.get('/reports/comprehensive', authorize('admin', 'manager', 'frontdesk'), financialReportsController.getComprehensiveFinancialStatement);
 
 export default router;

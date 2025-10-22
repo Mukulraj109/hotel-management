@@ -1,11 +1,14 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 // import discountPricingController from '../controllers/discountPricingController.js';
 
 const router = express.Router();
 
 // Apply authentication and authorization to all routes
-router.use(authenticate, authorize(['admin', 'manager', 'staff']));
+router.use(authenticate);
+router.use(ensurePropertyAccess);
+router.use(authorize(['admin', 'manager', 'staff']));
 
 // Advanced Features Overview
 // router.get('/overview', discountPricingController.getAdvancedFeaturesOverview);

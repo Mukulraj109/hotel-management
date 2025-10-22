@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import ReportBuilder from './reports/ReportBuilder';
 import BusinessIntelligenceDashboard from '../../components/reports/BusinessIntelligenceDashboard';
 import ExecutiveDashboard from '../../components/admin/ExecutiveDashboard';
@@ -16,16 +18,17 @@ import toast from 'react-hot-toast';
 
 export default function AdminReports() {
   const { user } = useAuth();
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [currentView, setCurrentView] = useState<'executive' | 'business-intelligence' | 'overview' | 'builder'>('executive');
   const [selectedDateRange, setSelectedDateRange] = useState('thisYear');
   const [exportFormat, setExportFormat] = useState<'csv' | 'excel' | 'pdf'>('csv');
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
-  
-  // Test both hotel IDs to see which has data
-  const hotelId = user?.hotelId || '68afe8080c02fcbe30092b8e';
-  console.log('User hotelId:', user?.hotelId, 'Using hotelId:', hotelId);
+
+  // Use selectedPropertyId from context, fallback to user's hotelId
+  const hotelId = selectedPropertyId || user?.hotelId || '68afe8080c02fcbe30092b8e';
+  console.log('Selected Property ID:', selectedPropertyId, 'User hotelId:', user?.hotelId, 'Using hotelId:', hotelId);
   
   const dateRanges = useReportDateRanges();
   const currentRange = dateRanges[selectedDateRange as keyof typeof dateRanges];
@@ -105,6 +108,9 @@ export default function AdminReports() {
   if (currentView === 'business-intelligence') {
     return (
       <div className="p-6 space-y-6 max-w-7xl mx-auto">
+        {/* Property Breadcrumb */}
+        <PropertyBreadcrumb items={['Reports', 'Business Intelligence']} />
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -151,6 +157,9 @@ export default function AdminReports() {
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Reports']} />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

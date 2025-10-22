@@ -2,11 +2,14 @@ import express from 'express';
 import HotelService from '../models/HotelService.js';
 import ServiceBooking from '../models/ServiceBooking.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 
 const router = express.Router();
+
+// Note: Some routes are public or optional auth, middleware applied per-route as needed
 
 /**
  * @swagger
@@ -99,6 +102,7 @@ router.get('/', catchAsync(async (req, res) => {
  */
 router.get('/bookings',
   authenticate,
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { page = 1, limit = 20, status } = req.query;
     
@@ -142,6 +146,7 @@ router.get('/bookings',
  */
 router.get('/bookings/:bookingId',
   authenticate,
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { bookingId } = req.params;
     
@@ -338,6 +343,7 @@ router.get('/:serviceId/availability', catchAsync(async (req, res) => {
  */
 router.post('/:serviceId/bookings',
   authenticate,
+  ensurePropertyAccess,
   validate(schemas.createServiceBooking),
   catchAsync(async (req, res) => {
     const { serviceId } = req.params;
@@ -424,6 +430,7 @@ router.post('/:serviceId/bookings',
  */
 router.post('/bookings/:bookingId/cancel',
   authenticate,
+  ensurePropertyAccess,
   validate(schemas.cancelServiceBooking),
   catchAsync(async (req, res) => {
     const { bookingId } = req.params;

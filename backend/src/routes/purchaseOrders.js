@@ -1,6 +1,7 @@
 import express from 'express';
 import purchaseOrderService from '../services/purchaseOrderService.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validateRequest } from '../middleware/validation.js';
 import { body, param, query } from 'express-validator';
 
@@ -8,6 +9,7 @@ const router = express.Router();
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Validation schemas
 const createPOValidation = [

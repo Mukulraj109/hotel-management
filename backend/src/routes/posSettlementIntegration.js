@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import posSettlementIntegrationService from '../services/posSettlementIntegrationService.js';
@@ -45,6 +46,7 @@ const router = express.Router();
  */
 router.post('/create-from-session',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     const { billingSessionId, autoIntegrate = true } = req.body;
@@ -111,6 +113,7 @@ router.post('/create-from-session',
  */
 router.post('/add-checkout-to-settlement',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     const { checkoutInventoryId, settlementId = null } = req.body;
@@ -196,6 +199,7 @@ router.post('/add-checkout-to-settlement',
  */
 router.post('/:settlementId/unified-payment',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     const { settlementId } = req.params;
@@ -252,6 +256,7 @@ router.post('/:settlementId/unified-payment',
  */
 router.get('/preview/:bookingId',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     const { bookingId } = req.params;
@@ -293,6 +298,7 @@ router.get('/preview/:bookingId',
  */
 router.post('/sync-guest-data/:bookingId',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     const { bookingId } = req.params;
@@ -337,6 +343,7 @@ router.post('/sync-guest-data/:bookingId',
  */
 router.get('/ready-for-integration',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
@@ -404,6 +411,7 @@ router.get('/ready-for-integration',
  */
 router.get('/integration-stats',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
@@ -478,6 +486,7 @@ router.get('/integration-stats',
  */
 router.post('/bulk-integrate',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin']),
   catchAsync(async (req, res) => {
     const { billingSessionIds = [], checkoutInventoryIds = [], createNewSettlements = true } = req.body;

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import {
   FileText,
   Users,
@@ -121,6 +123,7 @@ const staffDocumentCategories = {
 
 export default function AdminDocumentVerification() {
   const { user } = useAuth();
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [activeQueue, setActiveQueue] = useState<'guest' | 'staff'>('guest');
   const [documents, setDocuments] = useState<Document[]>([]);
   const [stats, setStats] = useState<DocumentStats>({
@@ -145,13 +148,15 @@ export default function AdminDocumentVerification() {
   const [processing, setProcessing] = useState(false);
 
   useEffect(() => {
-    fetchDocuments();
-  }, [activeQueue, statusFilter]);
+    if (selectedPropertyId) {
+      fetchDocuments();
+    }
+  }, [selectedPropertyId, activeQueue, statusFilter]);
 
   const fetchDocuments = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/v1/documents/admin/queue?userType=${activeQueue}&status=${statusFilter}`, {
+      const response = await fetch(`/api/v1/documents/admin/queue?userType=${activeQueue}&status=${statusFilter}&propertyId=${selectedPropertyId}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -392,6 +397,17 @@ export default function AdminDocumentVerification() {
 
   const currentCategories = activeQueue === 'guest' ? guestDocumentCategories : staffDocumentCategories;
 
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['Compliance', 'Document Verification']} />
+        <div className="mt-8 text-center">
+          <p className="text-gray-500">Please select a property to manage document verification</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -402,6 +418,9 @@ export default function AdminDocumentVerification() {
 
   return (
     <div className="space-y-6">
+      {/* Breadcrumb */}
+      <PropertyBreadcrumb items={['Compliance', 'Document Verification']} />
+
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>

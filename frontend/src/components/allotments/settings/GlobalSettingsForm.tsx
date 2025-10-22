@@ -22,6 +22,9 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { GlobalDefaults, DefaultChannel, HotelAllotmentSettings } from '@/services/allotmentSettingsService';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '@/components/settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '@/hooks/useSettingsInheritance';
+import { useProperty } from '@/context/PropertyContext';
 
 interface GlobalSettingsFormProps {
   settings: HotelAllotmentSettings | null;
@@ -67,6 +70,28 @@ export default function GlobalSettingsForm({
   const [hasChanges, setHasChanges] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState('inventory');
+
+  // Multi-property support
+  const { selectedProperty, selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
 
   useEffect(() => {
     if (settings) {
@@ -117,13 +142,53 @@ export default function GlobalSettingsForm({
 
     try {
       setSaving(true);
-      await onSave(formData);
+
+      // If multi-property update, use applySettings
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: formData,
+          settingType: 'allotment_global_settings',
+        });
+
+        if (!result) {
+          setSaving(false);
+          return; // Confirmation dialog shown
+        }
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`Global settings saved successfully${
+          applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
+        }`);
+        setApplyToScope('single');
+      } else {
+        // Single property update
+        await onSave(formData);
+        toast.success('Global settings saved successfully');
+      }
+
       setHasChanges(false);
-      toast.success('Global settings saved successfully');
     } catch (error) {
       console.error('Error saving global settings:', error);
       toast.error('Failed to save global settings');
     } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (pendingUpdate) {
+      setSaving(true);
+      const result = await confirmBulkUpdate();
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`Settings updated for ${result.propertiesUpdated} properties`);
+        setApplyToScope('single');
+        setHasChanges(false);
+      }
       setSaving(false);
     }
   };
@@ -184,6 +249,47 @@ export default function GlobalSettingsForm({
           </Button>
         </div>
       </div>
+
+      {/* Success Message */}
+      {showSuccess && (
+        <Alert>
+          <CheckCircle className="w-4 h-4" />
+          <AlertDescription>
+            <p className="font-medium">Global settings updated successfully!</p>
+            {applyToScope !== 'single' && affectedCount > 1 && (
+              <p className="text-sm mt-1">Changes applied to {affectedCount} properties</p>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Error Message */}
+      {updateError && (
+        <Alert variant="destructive">
+          <AlertCircle className="w-4 h-4" />
+          <AlertDescription>
+            Error: {updateError}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Inheritance Status Card */}
+      {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+        <Alert>
+          <Info className="w-4 h-4" />
+          <AlertDescription>
+            <p className="font-medium">This property is part of: {inheritanceStatus.groupName}</p>
+            <p className="text-sm mt-1">
+              Allotment settings are inherited from the property group.
+              {inheritanceStatus.lastSyncedAt && (
+                <span className="ml-1">
+                  Last synced: {new Date(inheritanceStatus.lastSyncedAt).toLocaleString()}
+                </span>
+              )}
+            </p>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Validation Errors */}
       {validationErrors.length > 0 && (
@@ -533,6 +639,21 @@ export default function GlobalSettingsForm({
         </CardContent>
       </Card>
 
+      {/* Multi-property selector */}
+      <Card>
+        <CardContent className="pt-6">
+          <ApplyToSelector
+            value={applyToScope}
+            onChange={setApplyToScope}
+            isInGroup={inheritanceStatus?.hasGroup || false}
+            groupName={inheritanceStatus?.groupName}
+            totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+            showWarning={true}
+            warningMessage="These allotment settings will be applied to all selected properties. Ensure inventory limits, allocation methods, and operational settings are appropriate for all properties."
+          />
+        </CardContent>
+      </Card>
+
       {/* Help Information */}
       <Alert>
         <Info className="w-4 h-4" />
@@ -541,6 +662,17 @@ export default function GlobalSettingsForm({
           Existing allotments will not be affected by these changes.
         </AlertDescription>
       </Alert>
+
+      {/* Confirmation Dialog */}
+      <ApplyToConfirmation
+        isOpen={showConfirmation}
+        scope={applyToScope}
+        affectedCount={affectedCount}
+        settingName="Allotment Global Settings"
+        groupName={inheritanceStatus?.groupName}
+        onConfirm={handleConfirm}
+        onCancel={cancelBulkUpdate}
+      />
     </div>
   );
 }

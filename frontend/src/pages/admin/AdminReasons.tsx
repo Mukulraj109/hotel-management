@@ -22,6 +22,7 @@ import {
   Tabs,
   Tab,
   Alert,
+  AlertTitle,
   CircularProgress,
   Menu,
   MenuList,
@@ -44,6 +45,9 @@ import {
 } from '@mui/icons-material';
 import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
 import { reasonService, Reason } from '../../services/reasonService';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../components/settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
+import { useProperty } from '../../context/PropertyContext';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -121,6 +125,28 @@ const AdminReasons: React.FC = () => {
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [menuReason, setMenuReason] = useState<Reason | null>(null);
 
+  // Multi-property support
+  const { selectedProperty, selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
+
   const categories = [
     'cancellation', 'no_show', 'modification', 'discount', 'comp', 'refund',
     'upgrade', 'downgrade', 'early_checkout', 'late_checkout', 'damage',
@@ -180,10 +206,28 @@ const AdminReasons: React.FC = () => {
 
   const handleCreateReason = async () => {
     try {
-      await reasonService.createReason(formData);
-      setCreateDialogOpen(false);
-      resetForm();
-      loadReasons();
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: formData,
+          settingType: 'reason_codes',
+        });
+
+        if (!result) return;
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        setCreateDialogOpen(false);
+        resetForm();
+        setApplyToScope('single');
+        loadReasons();
+      } else {
+        await reasonService.createReason(formData);
+        setCreateDialogOpen(false);
+        resetForm();
+        loadReasons();
+      }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to create reason');
     }
@@ -193,12 +237,42 @@ const AdminReasons: React.FC = () => {
     if (!selectedReason) return;
 
     try {
-      await reasonService.updateReason(selectedReason._id, formData);
-      setEditDialogOpen(false);
-      resetForm();
-      loadReasons();
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: formData,
+          settingType: 'reason_codes',
+        });
+
+        if (!result) return;
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        setEditDialogOpen(false);
+        resetForm();
+        setApplyToScope('single');
+        loadReasons();
+      } else {
+        await reasonService.updateReason(selectedReason._id, formData);
+        setEditDialogOpen(false);
+        resetForm();
+        loadReasons();
+      }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to update reason');
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (pendingUpdate) {
+      const result = await confirmBulkUpdate();
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        setApplyToScope('single');
+        loadReasons();
+      }
     }
   };
 
@@ -442,9 +516,36 @@ const AdminReasons: React.FC = () => {
         </Button>
       </Box>
 
+      {showSuccess && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          <AlertTitle>Success</AlertTitle>
+          Settings updated successfully!
+          {applyToScope !== 'single' && affectedCount > 1 && (
+            <div>Changes applied to {affectedCount} properties</div>
+          )}
+        </Alert>
+      )}
+
+      {updateError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          <AlertTitle>Error</AlertTitle>
+          {updateError}
+        </Alert>
+      )}
+
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
           {error}
+        </Alert>
+      )}
+
+      {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          <AlertTitle>Property Group: {inheritanceStatus.groupName}</AlertTitle>
+          Settings are inherited from the property group.
+          {inheritanceStatus.lastSyncedAt && (
+            <span> Last synced: {new Date(inheritanceStatus.lastSyncedAt).toLocaleString()}</span>
+          )}
         </Alert>
       )}
 
@@ -670,12 +771,25 @@ const AdminReasons: React.FC = () => {
               </Grid>
             </TabPanel>
           </Box>
+
+          {/* Multi-property selector */}
+          <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 2, mt: 2 }}>
+            <ApplyToSelector
+              value={applyToScope}
+              onChange={setApplyToScope}
+              isInGroup={inheritanceStatus?.hasGroup || false}
+              groupName={inheritanceStatus?.groupName}
+              totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+              showWarning={true}
+              warningMessage="These reason codes will be applied to all selected properties. Ensure reason types are appropriate for all properties."
+            />
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => { setCreateDialogOpen(false); setEditDialogOpen(false); resetForm(); }}>
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={createDialogOpen ? handleCreateReason : handleUpdateReason}
             variant="contained"
           >
@@ -728,6 +842,17 @@ const AdminReasons: React.FC = () => {
           <Button onClick={handleDeleteReason} color="error" variant="contained">Delete</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Confirmation Dialog */}
+      <ApplyToConfirmation
+        isOpen={showConfirmation}
+        scope={applyToScope}
+        affectedCount={affectedCount}
+        settingName="Reason Codes"
+        groupName={inheritanceStatus?.groupName}
+        onConfirm={handleConfirm}
+        onCancel={cancelBulkUpdate}
+      />
     </Box>
   );
 };

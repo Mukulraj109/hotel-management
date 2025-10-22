@@ -7,12 +7,133 @@ import { authenticate, authorize } from '../middleware/auth.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
-// All admin routes require authentication and admin role
+// Hotels list endpoint - accessible by admin, staff, and frontdesk (needed for walk-in bookings)
+router.get('/hotels', authenticate, ensurePropertyAccess, authorize(['admin', 'staff', 'frontdesk']), catchAsync(async (req, res) => {
+  const {
+    page = 1,
+    limit = 20,
+    search,
+    isActive
+  } = req.query;
+
+  const query = {};
+
+  if (isActive !== undefined) query.isActive = isActive === 'true';
+
+  if (search) {
+    query.$or = [
+      { name: { $regex: search, $options: 'i' } },
+      { 'address.city': { $regex: search, $options: 'i' } },
+      { 'address.country': { $regex: search, $options: 'i' } }
+    ];
+  }
+
+  const skip = (page - 1) * limit;
+
+  const [hotels, total] = await Promise.all([
+    Hotel.find(query)
+      .select('name address contact isActive settings')
+      .sort({ name: 1 })
+      .skip(skip)
+      .limit(parseInt(limit)),
+    Hotel.countDocuments(query)
+  ]);
+
+  res.json({
+    status: 'success',
+    data: { hotels },
+    pagination: {
+      total,
+      page: parseInt(page),
+      pages: Math.ceil(total / limit),
+      limit: parseInt(limit)
+    }
+  });
+}));
+
+// Users list endpoint - accessible by admin, staff, and frontdesk (needed for staff management)
+router.get('/users', authenticate, ensurePropertyAccess, authorize(['admin', 'staff', 'frontdesk']), catchAsync(async (req, res) => {
+  const {
+    page = 1,
+    limit = 20,
+    role,
+    search,
+    isActive
+  } = req.query;
+
+  const query = {};
+
+  if (isActive !== undefined) query.isActive = isActive === 'true';
+
+  // Handle role filtering properly for staff management vs general user management
+  if (role === 'guest') {
+    // Only show guest users (no hotel filtering needed)
+    query.role = 'guest';
+  } else if (role === 'staff' || role === 'admin') {
+    // Show specific staff/admin role from this hotel
+    query.role = role;
+    query.hotelId = req.user.hotelId;
+  } else if (!role) {
+    // No role specified - check if this is a staff management context
+    // For staff management, only include staff/admin from this hotel
+    query.$or = [
+      { role: 'staff', hotelId: req.user.hotelId },
+      { role: 'admin', hotelId: req.user.hotelId }
+    ];
+  }
+
+  if (search) {
+    const searchQuery = [
+      { name: { $regex: search, $options: 'i' } },
+      { email: { $regex: search, $options: 'i' } }
+    ];
+
+    // If we already have a $or condition, combine them
+    if (query.$or) {
+      query.$and = [
+        { $or: query.$or },
+        { $or: searchQuery }
+      ];
+      delete query.$or;
+    } else {
+      query.$or = searchQuery;
+    }
+  }
+
+  const skip = (page - 1) * limit;
+
+  const [users, total] = await Promise.all([
+    User.find(query)
+      .populate('hotelId', 'name')
+      .select('-password -passwordResetToken -passwordResetExpires')
+      .sort('-createdAt')
+      .skip(skip)
+      .limit(parseInt(limit)),
+    User.countDocuments(query)
+  ]);
+
+  res.json({
+    status: 'success',
+    data: {
+      users,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    }
+  });
+}));
+
+// All other admin routes require authentication and admin role
 router.use(authenticate);
 router.use(authorize('admin'));
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger
@@ -102,112 +223,6 @@ router.get('/dashboard', catchAsync(async (req, res) => {
       },
       recentBookings,
       userTrends
-    }
-  });
-}));
-
-/**
- * @swagger
- * /admin/users:
- *   get:
- *     summary: Get all users with pagination
- *     tags: [Admin]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 20
- *       - in: query
- *         name: role
- *         schema:
- *           type: string
- *           enum: [guest, staff, admin]
- *       - in: query
- *         name: search
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: List of users
- */
-router.get('/users', catchAsync(async (req, res) => {
-  const {
-    page = 1,
-    limit = 20,
-    role,
-    search,
-    isActive
-  } = req.query;
-
-  const query = {};
-
-  if (isActive !== undefined) query.isActive = isActive === 'true';
-
-  // Handle role filtering properly for staff management vs general user management
-  if (role === 'guest') {
-    // Only show guest users (no hotel filtering needed)
-    query.role = 'guest';
-  } else if (role === 'staff' || role === 'admin') {
-    // Show specific staff/admin role from this hotel
-    query.role = role;
-    query.hotelId = req.user.hotelId;
-  } else if (!role) {
-    // No role specified - check if this is a staff management context
-    // For staff management, only include staff/admin from this hotel
-    query.$or = [
-      { role: 'staff', hotelId: req.user.hotelId },
-      { role: 'admin', hotelId: req.user.hotelId }
-    ];
-  }
-  
-  if (search) {
-    const searchQuery = [
-      { name: { $regex: search, $options: 'i' } },
-      { email: { $regex: search, $options: 'i' } }
-    ];
-    
-    // If we already have a $or condition, combine them
-    if (query.$or) {
-      query.$and = [
-        { $or: query.$or },
-        { $or: searchQuery }
-      ];
-      delete query.$or;
-    } else {
-      query.$or = searchQuery;
-    }
-  }
-
-  const skip = (page - 1) * limit;
-  
-  const [users, total] = await Promise.all([
-    User.find(query)
-      .populate('hotelId', 'name')
-      .select('-password -passwordResetToken -passwordResetExpires')
-      .sort('-createdAt')
-      .skip(skip)
-      .limit(parseInt(limit)),
-    User.countDocuments(query)
-  ]);
-
-  res.json({
-    status: 'success',
-    data: {
-      users,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / limit)
-      }
     }
   });
 }));
@@ -374,94 +389,8 @@ router.delete('/users/:id', catchAsync(async (req, res) => {
   });
 }));
 
-/**
- * @swagger
- * /admin/hotels:
- *   get:
- *     summary: Get all hotels with pagination
- *     tags: [Admin]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: page
- *         schema:
- *           type: integer
- *           default: 1
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 20
- *       - in: query
- *         name: search
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: List of hotels
- */
-router.get('/hotels', catchAsync(async (req, res) => {
-  const {
-    page = 1,
-    limit = 20,
-    search,
-    isActive
-  } = req.query;
-
-  const query = {};
-  
-  if (isActive !== undefined) query.isActive = isActive === 'true';
-  
-  if (search) {
-    query.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { 'address.city': { $regex: search, $options: 'i' } },
-      { 'address.country': { $regex: search, $options: 'i' } }
-    ];
-  }
-
-  const skip = (page - 1) * limit;
-  
-  const [hotels, total] = await Promise.all([
-    Hotel.find(query)
-      .populate('ownerId', 'name email')
-      .sort('-createdAt')
-      .skip(skip)
-      .limit(parseInt(limit)),
-    Hotel.countDocuments(query)
-  ]);
-
-  // Get room counts for each hotel
-  const hotelIds = hotels.map(hotel => hotel._id);
-  const roomCounts = await Room.aggregate([
-    { $match: { hotelId: { $in: hotelIds } } },
-    { $group: { _id: '$hotelId', count: { $sum: 1 } } }
-  ]);
-
-  const roomCountMap = roomCounts.reduce((acc, item) => {
-    acc[item._id] = item.count;
-    return acc;
-  }, {});
-
-  const hotelsWithRoomCount = hotels.map(hotel => ({
-    ...hotel.toJSON(),
-    roomCount: roomCountMap[hotel._id] || 0
-  }));
-
-  res.json({
-    status: 'success',
-    data: {
-      hotels: hotelsWithRoomCount,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / limit)
-      }
-    }
-  });
-}));
+// NOTE: GET /hotels route moved to top of file (before global admin middleware)
+// to allow frontdesk access for walk-in bookings
 
 /**
  * @swagger

@@ -16,12 +16,18 @@ import {
   Bell,
   Smartphone,
   MessageSquare,
-  Eye
+  Eye,
+  AlertCircle
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../services/api';
 import { TemplateEditor } from './TemplateEditor';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '@/components/settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '@/hooks/useSettingsInheritance';
+import { useProperty } from '@/context/PropertyContext';
+import toast from 'react-hot-toast';
+import { Card, CardContent } from '@/components/ui/card';
 
 interface NotificationTemplate {
   _id: string;
@@ -74,6 +80,28 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
   const [page, setPage] = useState(1);
   const limit = 10;
 
+  // Multi-property support
+  const { selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
+
   // Fetch templates
   const { data: templatesData, isLoading, error } = useQuery({
     queryKey: ['notification-templates', page, searchQuery, categoryFilter, typeFilter],
@@ -118,6 +146,20 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
     }
   });
 
+  const handleConfirm = async () => {
+    if (pendingUpdate) {
+      const result = await confirmBulkUpdate();
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`Settings updated for ${result.propertiesUpdated} properties`);
+        setApplyToScope('single');
+        // Refresh data
+        queryClient.invalidateQueries({ queryKey: ['notification-templates'] });
+      }
+    }
+  };
+
   const handleEditTemplate = (templateId: string) => {
     setSelectedTemplate(templateId);
     setShowEditor(true);
@@ -134,9 +176,33 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
     }
   };
 
-  const handleInitializeTemplates = () => {
+  const handleInitializeTemplates = async () => {
     if (window.confirm('This will create default system templates for your hotel. Continue?')) {
-      initializeTemplatesMutation.mutate();
+      try {
+        if (applyToScope !== 'single') {
+          const result = await applySettings({
+            scope: applyToScope,
+            propertyId: selectedPropertyId,
+            settingUpdates: { initializeTemplates: true },
+            settingType: 'email_templates',
+          });
+
+          if (!result) return; // Confirmation dialog shown
+
+          setShowSuccess(true);
+          setTimeout(() => setShowSuccess(false), 3000);
+          toast.success(`Email templates initialized successfully${
+            applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
+          }`);
+          setApplyToScope('single');
+          queryClient.invalidateQueries({ queryKey: ['notification-templates'] });
+        } else {
+          // Keep existing single property initialization
+          initializeTemplatesMutation.mutate();
+        }
+      } catch (error) {
+        toast.error('Failed to initialize email templates');
+      }
     }
   };
 
@@ -208,8 +274,49 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
         </div>
       </div>
 
+      {/* Success Message */}
+      {showSuccess && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 px-4 py-3 rounded-lg mb-4">
+          <p className="font-medium">Email templates updated successfully!</p>
+          {applyToScope !== 'single' && affectedCount > 1 && (
+            <p className="text-sm mt-1">Changes applied to {affectedCount} properties</p>
+          )}
+        </div>
+      )}
+
+      {/* Error Message */}
+      {updateError && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 px-4 py-3 rounded-lg mb-4">
+          <p className="font-medium">Error: {updateError}</p>
+        </div>
+      )}
+
+      {/* Inheritance Status Card */}
+      {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+        <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 mb-4">
+          <CardContent className="p-4">
+            <div className="flex items-start">
+              <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-3 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                  This property is part of: {inheritanceStatus.groupName}
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                  Email templates are inherited from the property group.
+                  {inheritanceStatus.lastSyncedAt && (
+                    <span className="ml-1">
+                      Last synced: {new Date(inheritanceStatus.lastSyncedAt).toLocaleString()}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Filters */}
-      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+      <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
             <div className="relative">
@@ -258,6 +365,21 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Multi-property selector */}
+      {hasPermission && (
+        <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+          <ApplyToSelector
+            value={applyToScope}
+            onChange={setApplyToScope}
+            isInGroup={inheritanceStatus?.hasGroup || false}
+            groupName={inheritanceStatus?.groupName}
+            totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+            showWarning={true}
+            warningMessage="These email templates will be applied to all selected properties. Ensure property-specific information (names, addresses, contact details) are updated per property after applying."
+          />
+        </div>
+      )}
 
       {/* Templates List */}
       {isLoading ? (
@@ -521,6 +643,17 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
           }}
         />
       )}
+
+      {/* Confirmation Dialog */}
+      <ApplyToConfirmation
+        isOpen={showConfirmation}
+        scope={applyToScope}
+        affectedCount={affectedCount}
+        settingName="Email Templates"
+        groupName={inheritanceStatus?.groupName}
+        onConfirm={handleConfirm}
+        onCancel={cancelBulkUpdate}
+      />
     </div>
   );
 };

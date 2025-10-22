@@ -47,7 +47,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
         const token = localStorage.getItem('token');
         if (!token) return;
 
-        const response = await fetch('/api/v1/users/display-preferences', {
+        const response = await fetch('/api/v1/user-preferences/display', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -55,7 +55,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
 
         if (response.ok) {
           const data = await response.json();
-          const savedTheme = data.data.preferences?.theme || 'light';
+          const savedTheme = data.data.display?.theme || 'light';
           setTheme(savedTheme);
         }
       } catch (error) {
@@ -107,7 +107,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
       const token = localStorage.getItem('token');
       if (!token) return;
 
-      await fetch('/api/v1/users/display-preferences', {
+      await fetch('/api/v1/user-preferences/display', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

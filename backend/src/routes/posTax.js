@@ -1,6 +1,7 @@
 import express from 'express';
 import posTaxController from '../controllers/posTaxController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
 
@@ -177,6 +178,7 @@ const exemptionSchema = Joi.object({
 
 // Authentication required for all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

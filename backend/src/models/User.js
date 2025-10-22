@@ -30,7 +30,7 @@ import bcrypt from 'bcryptjs';
  *           description: User's phone number
  *         role:
  *           type: string
- *           enum: [guest, staff, admin, manager, travel_agent]
+ *           enum: [guest, staff, frontdesk, manager, admin, travel_agent]
  *           default: guest
  *           description: User role
  *         preferences:
@@ -126,7 +126,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['guest', 'staff', 'admin', 'manager', 'travel_agent'],
+    enum: ['guest', 'staff', 'frontdesk', 'manager', 'admin', 'travel_agent'],
     default: 'guest'
   },
   guestType: {
@@ -259,7 +259,40 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.ObjectId,
     ref: 'Hotel',
     required: function() {
-      return this.role === 'staff' || this.role === 'admin';
+      return this.role === 'staff' || this.role === 'frontdesk' || this.role === 'manager' || this.role === 'admin';
+    }
+  },
+  // Multi-property support fields
+  properties: [{
+    type: mongoose.Schema.ObjectId,
+    ref: 'Hotel'
+  }],
+  primaryProperty: {
+    type: mongoose.Schema.ObjectId,
+    ref: 'Hotel'
+  },
+  multiPropertyAccess: {
+    enabled: {
+      type: Boolean,
+      default: false
+    },
+    allowedProperties: [{
+      type: mongoose.Schema.ObjectId,
+      ref: 'Hotel'
+    }],
+    restrictions: {
+      canCreateProperties: {
+        type: Boolean,
+        default: true
+      },
+      canDeleteProperties: {
+        type: Boolean,
+        default: false
+      },
+      canManageGroups: {
+        type: Boolean,
+        default: true
+      }
     }
   },
   preferences: {

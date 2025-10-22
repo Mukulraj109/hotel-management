@@ -8,11 +8,14 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { 
-  Plus, Edit, Trash2, Settings, TrendingUp, RefreshCw, Zap, Tag, Palette, Ruler
+import {
+  Plus, Edit, Trash2, Settings, TrendingUp, RefreshCw, Zap, Tag, Palette, Ruler, CheckCircle, AlertCircle
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { api } from '../../services/api';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '@/components/settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '@/hooks/useSettingsInheritance';
+import { useProperty } from '@/context/PropertyContext';
 
 interface POSAttribute {
   _id: string;
@@ -45,7 +48,29 @@ const AdminPOSAttributes: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  
+
+  // Multi-property support
+  const { selectedProperty, selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
+
   const [formData, setFormData] = useState({
     name: '',
     displayName: '',
@@ -138,13 +163,32 @@ const AdminPOSAttributes: React.FC = () => {
 
   const handleCreateAttribute = async () => {
     try {
-      const response = await api.post('/pos/attributes', formData);
-      if (response.data.status === 'success') {
-        toast.success('POS attribute created successfully');
-        fetchAttributes();
-        setIsCreateModalOpen(false);
-        resetForm();
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: { action: 'create', ...formData },
+          settingType: 'pos_attributes',
+        });
+
+        if (!result) return; // Confirmation dialog will show
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`POS attribute created successfully${
+          applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
+        }`);
+        setApplyToScope('single');
+      } else {
+        const response = await api.post('/pos/attributes', formData);
+        if (response.data.status === 'success') {
+          toast.success('POS attribute created successfully');
+        }
       }
+
+      fetchAttributes();
+      setIsCreateModalOpen(false);
+      resetForm();
     } catch (error: any) {
       console.error('Error creating attribute:', error);
       toast.error(error.response?.data?.message || 'Failed to create attribute');
@@ -155,14 +199,33 @@ const AdminPOSAttributes: React.FC = () => {
     if (!selectedAttribute) return;
 
     try {
-      const response = await api.put(`/pos/attributes/${selectedAttribute._id}`, formData);
-      if (response.data.status === 'success') {
-        toast.success('POS attribute updated successfully');
-        fetchAttributes();
-        setIsEditModalOpen(false);
-        setSelectedAttribute(null);
-        resetForm();
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: { action: 'update', attributeId: selectedAttribute._id, ...formData },
+          settingType: 'pos_attributes',
+        });
+
+        if (!result) return; // Confirmation dialog will show
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`POS attribute updated successfully${
+          applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
+        }`);
+        setApplyToScope('single');
+      } else {
+        const response = await api.put(`/pos/attributes/${selectedAttribute._id}`, formData);
+        if (response.data.status === 'success') {
+          toast.success('POS attribute updated successfully');
+        }
       }
+
+      fetchAttributes();
+      setIsEditModalOpen(false);
+      setSelectedAttribute(null);
+      resetForm();
     } catch (error: any) {
       console.error('Error updating attribute:', error);
       toast.error(error.response?.data?.message || 'Failed to update attribute');
@@ -175,14 +238,46 @@ const AdminPOSAttributes: React.FC = () => {
     }
 
     try {
-      const response = await api.delete(`/pos/attributes/${attribute._id}`);
-      if (response.data.status === 'success') {
-        toast.success(response.data.message);
-        fetchAttributes();
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: { action: 'delete', attributeId: attribute._id },
+          settingType: 'pos_attributes',
+        });
+
+        if (!result) return; // Confirmation dialog will show
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`Attribute deleted successfully${
+          applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
+        }`);
+        setApplyToScope('single');
+      } else {
+        const response = await api.delete(`/pos/attributes/${attribute._id}`);
+        if (response.data.status === 'success') {
+          toast.success(response.data.message);
+        }
       }
+
+      fetchAttributes();
     } catch (error: any) {
       console.error('Error deleting attribute:', error);
       toast.error(error.response?.data?.message || 'Failed to delete attribute');
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (pendingUpdate) {
+      const result = await confirmBulkUpdate();
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`Updated for ${result.propertiesUpdated} properties`);
+        setApplyToScope('single');
+        fetchAttributes();
+      }
     }
   };
 
@@ -311,10 +406,62 @@ const AdminPOSAttributes: React.FC = () => {
               attributeGroups={attributeGroups}
               dataTypes={dataTypes}
               posCategories={posCategories}
+              applyToScope={applyToScope}
+              setApplyToScope={setApplyToScope}
+              inheritanceStatus={inheritanceStatus}
             />
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Success Message */}
+      {showSuccess && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 px-4 py-3 rounded-lg mb-4">
+          <div className="flex items-center">
+            <CheckCircle className="w-5 h-5 mr-2" />
+            <div>
+              <p className="font-medium">Settings updated successfully!</p>
+              {applyToScope !== 'single' && affectedCount > 1 && (
+                <p className="text-sm mt-1">Changes applied to {affectedCount} properties</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {updateError && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 px-4 py-3 rounded-lg mb-4">
+          <div className="flex items-center">
+            <AlertCircle className="w-5 h-5 mr-2" />
+            <p className="font-medium">Error: {updateError}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Inheritance Status Card */}
+      {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+        <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 mb-4">
+          <CardContent className="p-4">
+            <div className="flex items-start">
+              <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-3 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                  This property is part of: {inheritanceStatus.groupName}
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                  Settings are inherited from the property group.
+                  {inheritanceStatus.lastSyncedAt && (
+                    <span className="ml-1">
+                      Last synced: {new Date(inheritanceStatus.lastSyncedAt).toLocaleString()}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Attribute Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -464,9 +611,23 @@ const AdminPOSAttributes: React.FC = () => {
             attributeGroups={attributeGroups}
             dataTypes={dataTypes}
             posCategories={posCategories}
+            applyToScope={applyToScope}
+            setApplyToScope={setApplyToScope}
+            inheritanceStatus={inheritanceStatus}
           />
         </DialogContent>
       </Dialog>
+
+      {/* Confirmation Dialog */}
+      <ApplyToConfirmation
+        isOpen={showConfirmation}
+        scope={applyToScope}
+        affectedCount={affectedCount}
+        settingName="POS Attribute Definitions"
+        groupName={inheritanceStatus?.groupName}
+        onConfirm={handleConfirm}
+        onCancel={cancelBulkUpdate}
+      />
     </div>
   );
 };
@@ -482,7 +643,10 @@ const AttributeForm: React.FC<{
   attributeGroups: Array<{ value: string; label: string }>;
   dataTypes: Array<{ value: string; label: string }>;
   posCategories: Array<{ value: string; label: string }>;
-}> = ({ formData, setFormData, onSubmit, onCancel, isEdit, attributeTypes, attributeGroups, dataTypes, posCategories }) => {
+  applyToScope: ApplyToScope;
+  setApplyToScope: (scope: ApplyToScope) => void;
+  inheritanceStatus: any;
+}> = ({ formData, setFormData, onSubmit, onCancel, isEdit, attributeTypes, attributeGroups, dataTypes, posCategories, applyToScope, setApplyToScope, inheritanceStatus }) => {
   const [activeTab, setActiveTab] = useState('basic');
 
   return (
@@ -738,6 +902,19 @@ const AttributeForm: React.FC<{
           </div>
         </div>
       </TabsContent>
+
+      {/* Multi-property selector */}
+      <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+        <ApplyToSelector
+          value={applyToScope}
+          onChange={setApplyToScope}
+          isInGroup={inheritanceStatus?.hasGroup || false}
+          groupName={inheritanceStatus?.groupName}
+          totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+          showWarning={true}
+          warningMessage="These POS attribute definitions will be applied to all selected properties. Ensure attribute configurations are appropriate for all properties."
+        />
+      </div>
 
       <div className="flex justify-end space-x-2 mt-6">
         <Button variant="outline" onClick={onCancel}>

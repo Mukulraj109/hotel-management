@@ -3,6 +3,7 @@ import UserPreference from '../models/UserPreference.js';
 import HotelSettings from '../models/HotelSettings.js';
 import User from '../models/User.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
@@ -12,6 +13,7 @@ const router = express.Router();
 
 // Apply authentication middleware to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Validation schemas for different preference types
 const preferenceSchemas = {

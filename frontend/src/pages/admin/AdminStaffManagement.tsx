@@ -1,21 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-hot-toast';
-import { 
-  Plus, 
-  Search, 
-  Edit, 
-  Trash2, 
-  UserPlus, 
-  Users, 
-  Mail, 
-  Phone, 
+import {
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+  UserPlus,
+  Users,
+  Mail,
+  Phone,
   Shield,
   Eye,
   EyeOff,
   Filter,
   MoreHorizontal
 } from 'lucide-react';
+import { useProperty } from '../../context/PropertyContext';
+import { useAuth } from '../../context/AuthContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +27,8 @@ import { Modal } from '@/components/ui/Modal';
 import { DataTable } from '../../components/dashboard/DataTable';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { staffService } from '../../services/staffService';
+import { EditUserModal } from '../../components/user/EditUserModal';
+import { CreateUserModal } from '../../components/user/CreateUserModal';
 
 interface StaffMember {
   _id: string;
@@ -56,6 +61,9 @@ interface UpdateStaffData {
 }
 
 export default function AdminStaffManagement() {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+  const { user } = useAuth();
+  const isFrontDesk = user?.role === 'frontdesk';
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -78,12 +86,17 @@ export default function AdminStaffManagement() {
 
   // Fetch staff members
   const { data: staffData, isLoading, error } = useQuery({
-    queryKey: ['staff', searchTerm, roleFilter, statusFilter],
+    queryKey: ['staff', selectedPropertyId, searchTerm, roleFilter, statusFilter],
     queryFn: () => staffService.getStaffMembers({
+      hotelId: selectedPropertyId,
       search: searchTerm,
       role: roleFilter === 'all' ? undefined : roleFilter as 'staff' | 'admin',
       isActive: statusFilter === 'all' ? undefined : statusFilter === 'true'
-    })
+    }),
+    enabled: !!selectedPropertyId,
+    refetchOnMount: 'always', // Always refetch on mount to avoid 304 cache issues
+    refetchOnWindowFocus: true, // Refetch when window regains focus
+    staleTime: 0, // Consider data stale immediately
   });
 
   // Create staff mutation
@@ -187,7 +200,8 @@ export default function AdminStaffManagement() {
     });
   };
 
-  const columns = [
+  // Base columns shown to all users
+  const baseColumns = [
     {
       key: 'name',
       header: 'Name',
@@ -243,54 +257,59 @@ export default function AdminStaffManagement() {
       header: 'Last Login',
       render: (value: any, row: StaffMember) => (
         <div className="text-sm text-gray-600">
-          {row.lastLogin ? 
-            new Date(row.lastLogin).toLocaleDateString() : 
+          {row.lastLogin ?
+            new Date(row.lastLogin).toLocaleDateString() :
             'Never'
           }
         </div>
       )
-    },
-    {
-      key: 'actions',
-      header: 'Actions',
-      render: (value: any, row: StaffMember) => (
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleStaffStatus(row);
-            }}
-            disabled={updateStaffMutation.isPending}
-          >
-            {row.isActive ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              openEditModal(row);
-            }}
-          >
-            <Edit className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              openDeleteModal(row);
-            }}
-            className="text-red-600 hover:text-red-700"
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
-        </div>
-      )
     }
   ];
+
+  // Actions column - only shown to admin/staff, not frontdesk
+  const actionsColumn = {
+    key: 'actions',
+    header: 'Actions',
+    render: (value: any, row: StaffMember) => (
+      <div className="flex items-center space-x-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleStaffStatus(row);
+          }}
+          disabled={updateStaffMutation.isPending}
+        >
+          {row.isActive ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            openEditModal(row);
+          }}
+        >
+          <Edit className="w-4 h-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            openDeleteModal(row);
+          }}
+          className="text-red-600 hover:text-red-700"
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
+      </div>
+    )
+  };
+
+  // Conditionally add actions column based on user role
+  const columns = isFrontDesk ? baseColumns : [...baseColumns, actionsColumn];
 
   if (error) {
     return (
@@ -305,16 +324,22 @@ export default function AdminStaffManagement() {
 
   return (
     <div className="space-y-6">
+      <PropertyBreadcrumb items={['Staff Management']} />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Staff Management</h1>
-          <p className="text-gray-600">Manage your hotel staff members</p>
+          <p className="text-gray-600">
+            {isFrontDesk ? 'View hotel staff members' : 'Manage your hotel staff members'}
+          </p>
         </div>
-        <Button onClick={() => setIsCreateModalOpen(true)}>
-          <UserPlus className="w-4 h-4 mr-2" />
-          Add Staff Member
-        </Button>
+        {!isFrontDesk && (
+          <Button onClick={() => setIsCreateModalOpen(true)}>
+            <UserPlus className="w-4 h-4 mr-2" />
+            Add Staff Member
+          </Button>
+        )}
       </div>
 
       {/* Stats Cards */}
@@ -424,7 +449,17 @@ export default function AdminStaffManagement() {
       {/* Staff Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Staff Members</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Staff Members</CardTitle>
+            <div className="text-sm text-gray-500">
+              Showing {staffData?.staff?.length || 0} of {staffData?.pagination?.total || 0} staff
+              {viewMode === 'single' && selectedProperty && (
+                <span className="ml-2 text-blue-600">
+                  for {selectedProperty.name}
+                </span>
+              )}
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -441,210 +476,66 @@ export default function AdminStaffManagement() {
         </CardContent>
       </Card>
 
-      {/* Create Staff Modal */}
-      <Modal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        title="Add New Staff Member"
-      >
-        <form onSubmit={handleCreateStaff} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Full Name *
-            </label>
-            <Input
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="Enter full name"
-              required
-            />
-          </div>
+      {/* Create User Modal - Comprehensive version with property access - Only for admin/staff */}
+      {!isFrontDesk && (
+        <CreateUserModal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['staff'] });
+            setIsCreateModalOpen(false);
+          }}
+        />
+      )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email Address *
-            </label>
-            <Input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              placeholder="Enter email address"
-              required
-            />
-          </div>
+      {/* Edit User Modal - Comprehensive version with property access - Only for admin/staff */}
+      {!isFrontDesk && selectedStaff && (
+        <EditUserModal
+          isOpen={isEditModalOpen}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setSelectedStaff(null);
+          }}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['staff'] });
+            setIsEditModalOpen(false);
+            setSelectedStaff(null);
+          }}
+          user={selectedStaff as any}
+        />
+      )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Phone Number
-            </label>
-            <Input
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              placeholder="Enter phone number"
-            />
-          </div>
+      {/* Delete Confirmation Modal - Only for admin/staff */}
+      {!isFrontDesk && (
+        <Modal
+          isOpen={isDeleteModalOpen}
+          onClose={() => setIsDeleteModalOpen(false)}
+          title="Delete Staff Member"
+        >
+          <div className="space-y-4">
+            <p className="text-gray-600">
+              Are you sure you want to delete <strong>{selectedStaff?.name}</strong>?
+              This action cannot be undone.
+            </p>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Password *
-            </label>
-            <div className="relative">
-              <Input
-                type={showPassword ? 'text' : 'password'}
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="Enter password"
-                required
-                minLength={6}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 transform -translate-y-1/2"
+            <div className="flex justify-end space-x-3">
+              <Button
+                variant="outline"
+                onClick={() => setIsDeleteModalOpen(false)}
               >
-                {showPassword ? <EyeOff className="w-4 h-4 text-gray-400" /> : <Eye className="w-4 h-4 text-gray-400" />}
-              </button>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDeleteStaff}
+                disabled={deleteStaffMutation.isPending}
+              >
+                {deleteStaffMutation.isPending ? 'Deleting...' : 'Delete Staff Member'}
+              </Button>
             </div>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Role *
-            </label>
-            <select
-              value={formData.role}
-              onChange={(e) => setFormData({ ...formData, role: e.target.value as 'staff' | 'admin' })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-              required
-            >
-              <option value="staff">Staff</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-
-          <div className="flex justify-end space-x-3 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsCreateModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={createStaffMutation.isPending}
-            >
-              {createStaffMutation.isPending ? 'Creating...' : 'Create Staff Member'}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Edit Staff Modal */}
-      <Modal
-        isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
-        title="Edit Staff Member"
-      >
-        <form onSubmit={handleEditStaff} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Full Name *
-            </label>
-            <Input
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="Enter full name"
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Email Address
-            </label>
-            <Input
-              type="email"
-              value={formData.email}
-              disabled
-              className="bg-gray-50"
-            />
-            <p className="text-xs text-gray-500 mt-1">Email cannot be changed</p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Phone Number
-            </label>
-            <Input
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              placeholder="Enter phone number"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Role *
-            </label>
-            <select
-              value={formData.role}
-              onChange={(e) => setFormData({ ...formData, role: e.target.value as 'staff' | 'admin' })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-              required
-            >
-              <option value="staff">Staff</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-
-          <div className="flex justify-end space-x-3 pt-4">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsEditModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={updateStaffMutation.isPending}
-            >
-              {updateStaffMutation.isPending ? 'Updating...' : 'Update Staff Member'}
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
-        title="Delete Staff Member"
-      >
-        <div className="space-y-4">
-          <p className="text-gray-600">
-            Are you sure you want to delete <strong>{selectedStaff?.name}</strong>? 
-            This action cannot be undone.
-          </p>
-          
-          <div className="flex justify-end space-x-3">
-            <Button
-              variant="outline"
-              onClick={() => setIsDeleteModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteStaff}
-              disabled={deleteStaffMutation.isPending}
-            >
-              {deleteStaffMutation.isPending ? 'Deleting...' : 'Delete Staff Member'}
-            </Button>
-          </div>
-        </div>
-      </Modal>
+        </Modal>
+      )}
     </div>
   );
 }

@@ -3,10 +3,15 @@ import StockMovement from '../models/StockMovement.js';
 import TransactionService from '../services/transactionService.js';
 import StockInventoryService from '../services/stockInventoryService.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { requireRole } from '../middleware/roleAuth.js';
 import { body, query, param, validationResult } from 'express-validator';
 
 const router = express.Router();
+
+// Apply authentication and property access to all routes
+router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Express-validator validation middleware
 const validateRequest = (req, res, next) => {

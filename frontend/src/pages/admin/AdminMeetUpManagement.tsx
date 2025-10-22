@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { 
+import {
   Users,
   Plus,
   Search,
@@ -24,12 +24,15 @@ import {
   Shield,
   TrendingUp,
   TrendingDown,
-  Activity
+  Activity,
+  FileText
 } from 'lucide-react';
-import { 
-  meetUpRequestService, 
-  MeetUpRequest, 
-  MeetUpRequestsResponse, 
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import {
+  meetUpRequestService,
+  MeetUpRequest,
+  MeetUpRequestsResponse,
   AdminAnalytics,
   AdminInsights
 } from '../../services/meetUpRequestService';
@@ -44,11 +47,11 @@ import toast from 'react-hot-toast';
 interface AdminMeetUpManagementProps {}
 
 export default function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [activeTab, setActiveTab] = useState<'all-meetups' | 'analytics' | 'insights'>('all-meetups');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
-  const [hotelFilter, setHotelFilter] = useState('');
   const [dateFromFilter, setDateFromFilter] = useState('');
   const [dateToFilter, setDateToFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -64,37 +67,38 @@ export default function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
 
   // Fetch all meet-up requests (admin view)
   const { data: meetUpsData, isLoading: meetUpsLoading } = useQuery({
-    queryKey: ['admin-meetups', currentPage, statusFilter, typeFilter, hotelFilter, searchTerm, dateFromFilter, dateToFilter],
+    queryKey: ['admin-meetups', selectedPropertyId, currentPage, statusFilter, typeFilter, searchTerm, dateFromFilter, dateToFilter],
     queryFn: () => meetUpRequestService.getAdminAllMeetUps({
       page: currentPage,
       status: statusFilter || undefined,
       type: typeFilter || undefined,
-      hotelId: hotelFilter || undefined,
+      hotelId: selectedPropertyId || undefined,
       search: searchTerm || undefined,
       dateFrom: dateFromFilter || undefined,
       dateTo: dateToFilter || undefined
     }),
+    enabled: !!selectedPropertyId,
     staleTime: 30 * 1000
   });
 
   // Fetch analytics data
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
-    queryKey: ['admin-meetup-analytics', timeRange, hotelFilter],
+    queryKey: ['admin-meetup-analytics', selectedPropertyId, timeRange],
     queryFn: () => meetUpRequestService.getAdminAnalytics({
       period: timeRange,
-      hotelId: hotelFilter || undefined
+      hotelId: selectedPropertyId || undefined
     }),
-    enabled: activeTab === 'analytics',
+    enabled: activeTab === 'analytics' && !!selectedPropertyId,
     staleTime: 5 * 60 * 1000
   });
 
   // Fetch insights data
   const { data: insights, isLoading: insightsLoading } = useQuery({
-    queryKey: ['admin-meetup-insights', hotelFilter],
+    queryKey: ['admin-meetup-insights', selectedPropertyId],
     queryFn: () => meetUpRequestService.getAdminInsights({
-      hotelId: hotelFilter || undefined
+      hotelId: selectedPropertyId || undefined
     }),
-    enabled: activeTab === 'insights',
+    enabled: activeTab === 'insights' && !!selectedPropertyId,
     staleTime: 5 * 60 * 1000
   });
 
@@ -129,11 +133,14 @@ export default function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
     setSearchTerm('');
     setStatusFilter('');
     setTypeFilter('');
-    setHotelFilter('');
     setDateFromFilter('');
     setDateToFilter('');
     setCurrentPage(1);
   };
+
+  if (!selectedPropertyId && viewMode === 'single') {
+    return <div className="p-6">Please select a property</div>;
+  }
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -238,7 +245,6 @@ export default function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
       const filterSuffix = [
         statusFilter && `status-${statusFilter}`,
         typeFilter && `type-${typeFilter}`,
-        hotelFilter && `hotel-${hotelFilter}`,
         dateFromFilter && `from-${dateFromFilter}`,
         dateToFilter && `to-${dateToFilter}`
       ].filter(Boolean).join('_');
@@ -276,7 +282,7 @@ export default function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
           filters: {
             status: statusFilter || 'all',
             type: typeFilter || 'all',
-            hotel: hotelFilter || 'all',
+            property: selectedProperty?.name || 'all',
             dateFrom: dateFromFilter || null,
             dateTo: dateToFilter || null,
             search: searchTerm || null
@@ -294,7 +300,6 @@ export default function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
       const filterSuffix = [
         statusFilter && `status-${statusFilter}`,
         typeFilter && `type-${typeFilter}`,
-        hotelFilter && `hotel-${hotelFilter}`,
         dateFromFilter && `from-${dateFromFilter}`,
         dateToFilter && `to-${dateToFilter}`
       ].filter(Boolean).join('_');
@@ -358,7 +363,7 @@ export default function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
         'Applied Filters:',
         statusFilter ? `  Status: ${statusFilter}` : '  Status: All',
         typeFilter ? `  Type: ${typeFilter}` : '  Type: All',
-        hotelFilter ? `  Hotel: ${hotelFilter}` : '  Hotel: All',
+        selectedProperty ? `  Property: ${selectedProperty.name}` : '  Property: All',
         dateFromFilter ? `  Date From: ${dateFromFilter}` : '',
         dateToFilter ? `  Date To: ${dateToFilter}` : '',
         searchTerm ? `  Search: ${searchTerm}` : ''
@@ -390,6 +395,8 @@ export default function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
 
   return (
     <div className="space-y-6">
+      <PropertyBreadcrumb items={['Meet-Up Management']} />
+
       {/* Clean Header */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -564,16 +571,6 @@ export default function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                 <option value="activity">Activity</option>
               </select>
 
-              {/* Hotel Filter */}
-              <select
-                value={hotelFilter}
-                onChange={(e) => setHotelFilter(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="">All Hotels</option>
-                <option value="pentouz-main">THE PENTOUZ Main</option>
-                <option value="pentouz-annex">THE PENTOUZ Annex</option>
-              </select>
 
               {/* Date From */}
               <Input
@@ -593,7 +590,7 @@ export default function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
             </div>
 
             {/* Clear Filters */}
-            {(searchTerm || statusFilter || typeFilter || hotelFilter || dateFromFilter || dateToFilter) && (
+            {(searchTerm || statusFilter || typeFilter || dateFromFilter || dateToFilter) && (
               <div className="mt-4">
                 <Button variant="outline" onClick={handleClearFilters}>
                   Clear All Filters
@@ -614,7 +611,7 @@ export default function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
                   <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                   <h3 className="text-xl font-semibold text-gray-900 mb-2">No meet-up requests found</h3>
                   <p className="text-gray-600 mb-6">
-                    {searchTerm || statusFilter || typeFilter || hotelFilter || dateFromFilter || dateToFilter
+                    {searchTerm || statusFilter || typeFilter || dateFromFilter || dateToFilter
                       ? 'Try adjusting your search or filters'
                       : 'No meet-up requests have been created yet'
                     }
@@ -667,30 +664,19 @@ export default function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
             </div>
           ) : analytics ? (
             <>
-              {/* Time Range & Hotel Filter */}
+              {/* Time Range Filter */}
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-gray-900">Analytics Dashboard</h2>
-                <div className="flex gap-3">
-                  <select
-                    value={hotelFilter}
-                    onChange={(e) => setHotelFilter(e.target.value)}
-                    className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">All Hotels</option>
-                    <option value="pentouz-main">THE PENTOUZ Main</option>
-                    <option value="pentouz-annex">THE PENTOUZ Annex</option>
-                  </select>
-                  <select
-                    value={timeRange}
-                    onChange={(e) => setTimeRange(e.target.value)}
-                    className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="7d">Last 7 days</option>
-                    <option value="30d">Last 30 days</option>
-                    <option value="90d">Last 90 days</option>
-                    <option value="365d">Last year</option>
-                  </select>
-                </div>
+                <select
+                  value={timeRange}
+                  onChange={(e) => setTimeRange(e.target.value)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="7d">Last 7 days</option>
+                  <option value="30d">Last 30 days</option>
+                  <option value="90d">Last 90 days</option>
+                  <option value="365d">Last year</option>
+                </select>
               </div>
 
               {/* Summary Cards */}
@@ -842,18 +828,9 @@ export default function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
             </div>
           ) : insights ? (
             <>
-              {/* Hotel Filter */}
+              {/* Header */}
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-gray-900">System Insights</h2>
-                <select
-                  value={hotelFilter}
-                  onChange={(e) => setHotelFilter(e.target.value)}
-                  className="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">All Hotels</option>
-                  <option value="pentouz-main">THE PENTOUZ Main</option>
-                  <option value="pentouz-annex">THE PENTOUZ Annex</option>
-                </select>
               </div>
 
               {/* Engagement Metrics */}

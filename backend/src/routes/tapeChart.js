@@ -4,30 +4,35 @@ import roomLockController from '../controllers/roomLockController.js';
 import searchController from '../controllers/searchController.js';
 import bulkOperationsController from '../controllers/bulkOperationsController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
+// All routes require authentication and property access
+router.use(authenticate);
+router.use(ensurePropertyAccess);
+
 // Room Configuration Routes
 router.post('/room-config', authenticate, authorize(['admin', 'staff']), tapeChartController.createRoomConfiguration);
-router.get('/room-config', authenticate, authorize(['admin', 'staff']), tapeChartController.getRoomConfigurations);
+router.get('/room-config', authenticate, authorize(['admin', 'staff', 'frontdesk']), tapeChartController.getRoomConfigurations);
 router.put('/room-config/:id', authenticate, authorize(['admin']), tapeChartController.updateRoomConfiguration);
 router.delete('/room-config/:id', authenticate, authorize(['admin']), tapeChartController.deleteRoomConfiguration);
 
 // Room Status Management Routes
 router.put('/rooms/:roomId/status', authenticate, authorize(['admin', 'staff']), tapeChartController.updateRoomStatus);
-router.get('/rooms/:roomId/status-history', authenticate, authorize(['admin', 'staff']), tapeChartController.getRoomStatusHistory);
-router.get('/rooms/available', authenticate, authorize(['admin', 'staff']), tapeChartController.getAvailableRooms);
+router.get('/rooms/:roomId/status-history', authenticate, authorize(['admin', 'staff', 'frontdesk']), tapeChartController.getRoomStatusHistory);
+router.get('/rooms/available', authenticate, authorize(['admin', 'staff', 'frontdesk']), tapeChartController.getAvailableRooms);
 
 // Room Block Management Routes
 router.post('/room-blocks', authenticate, authorize(['admin', 'staff']), tapeChartController.createRoomBlock);
-router.get('/room-blocks', authenticate, authorize(['admin', 'staff']), tapeChartController.getRoomBlocks);
-router.get('/room-blocks/:id', authenticate, authorize(['admin', 'staff']), tapeChartController.getRoomBlock);
+router.get('/room-blocks', authenticate, authorize(['admin', 'staff', 'frontdesk']), tapeChartController.getRoomBlocks);
+router.get('/room-blocks/:id', authenticate, authorize(['admin', 'staff', 'frontdesk']), tapeChartController.getRoomBlock);
 router.put('/room-blocks/:id', authenticate, authorize(['admin', 'staff']), tapeChartController.updateRoomBlock);
 router.post('/room-blocks/:id/release', authenticate, authorize(['admin', 'staff']), tapeChartController.releaseRoomBlock);
 
 // Advanced Reservation Management Routes
 router.post('/reservations', authenticate, authorize(['admin', 'staff']), tapeChartController.createAdvancedReservation);
-router.get('/reservations', authenticate, authorize(['admin', 'staff']), tapeChartController.getAdvancedReservations);
+router.get('/reservations', authenticate, authorize(['admin', 'staff', 'frontdesk']), tapeChartController.getAdvancedReservations);
 router.get('/reservations/:id', authenticate, authorize(['admin', 'staff']), tapeChartController.getAdvancedReservation);
 router.post('/reservations/:reservationId/assign-room', authenticate, authorize(['admin', 'staff']), tapeChartController.assignRoom);
 router.post('/reservations/:reservationId/auto-assign', authenticate, authorize(['admin', 'staff']), tapeChartController.autoAssignRooms);
@@ -35,12 +40,12 @@ router.post('/reservations/:reservationId/upgrade', authenticate, authorize(['ad
 
 // Tape Chart View Management Routes
 router.post('/views', authenticate, authorize(['admin', 'staff']), tapeChartController.createTapeChartView);
-router.get('/views', authenticate, authorize(['admin', 'staff']), tapeChartController.getTapeChartViews);
+router.get('/views', authenticate, authorize(['admin', 'staff', 'frontdesk']), tapeChartController.getTapeChartViews);
 router.put('/views/:id', authenticate, authorize(['admin', 'staff']), tapeChartController.updateTapeChartView);
 router.delete('/views/:id', authenticate, authorize(['admin', 'staff']), tapeChartController.deleteTapeChartView);
 
 // Generate Tape Chart Data
-router.get('/chart-data', authenticate, authorize(['admin', 'staff']), tapeChartController.generateTapeChartData);
+router.get('/chart-data', authenticate, authorize(['admin', 'staff', 'frontdesk']), tapeChartController.generateTapeChartData);
 
 // Room Assignment Rules Routes
 router.post('/assignment-rules', authenticate, authorize(['admin']), tapeChartController.createAssignmentRule);
@@ -59,10 +64,10 @@ router.get('/reports/room-utilization', authenticate, authorize(['admin']), tape
 router.get('/reports/revenue-by-room-type', authenticate, authorize(['admin']), tapeChartController.getRevenueByRoomType);
 
 // Dashboard Routes
-router.get('/dashboard', authenticate, authorize(['admin', 'staff']), tapeChartController.getTapeChartDashboard);
+router.get('/dashboard', authenticate, authorize(['admin', 'staff', 'frontdesk']), tapeChartController.getTapeChartDashboard);
 
 // Real-time Updates Routes
-router.get('/room-status-updates', authenticate, authorize(['admin', 'staff']), tapeChartController.getRoomStatusUpdates);
+router.get('/room-status-updates', authenticate, authorize(['admin', 'staff', 'frontdesk']), tapeChartController.getRoomStatusUpdates);
 
 // Bulk Operations Routes
 router.post('/bulk/room-status', authenticate, authorize(['admin', 'staff']), tapeChartController.bulkUpdateRoomStatus);

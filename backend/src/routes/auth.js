@@ -5,6 +5,7 @@ import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import emailService from '../services/emailService.js';
 
 const router = express.Router();
@@ -186,7 +187,7 @@ router.post('/login', validate(schemas.login), catchAsync(async (req, res) => {
  *                 user:
  *                   $ref: '#/components/schemas/User'
  */
-router.get('/me', authenticate, catchAsync(async (req, res) => {
+router.get('/me', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
   res.json({
     status: 'success',
     user: req.user
@@ -228,7 +229,7 @@ router.get('/me', authenticate, catchAsync(async (req, res) => {
  *       200:
  *         description: Profile updated successfully
  */
-router.patch('/profile', authenticate, validate(schemas.updateProfile), catchAsync(async (req, res) => {
+router.patch('/profile', authenticate, ensurePropertyAccess, validate(schemas.updateProfile), catchAsync(async (req, res) => {
   const { name, phone, preferences } = req.body;
   
   const updateData = {};
@@ -275,7 +276,7 @@ router.patch('/profile', authenticate, validate(schemas.updateProfile), catchAsy
  *       200:
  *         description: Password changed successfully
  */
-router.patch('/change-password', authenticate, validate(schemas.changePassword), catchAsync(async (req, res) => {
+router.patch('/change-password', authenticate, ensurePropertyAccess, validate(schemas.changePassword), catchAsync(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
 
   const user = await User.findById(req.user._id).select('+password');

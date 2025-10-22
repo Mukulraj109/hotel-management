@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import inventoryNotificationService from '../services/inventoryNotificationService.js';
 
@@ -8,6 +9,7 @@ const router = express.Router();
 // All routes require admin authentication
 router.use(authenticate);
 router.use(authorize('admin'));
+router.use(ensurePropertyAccess);
 
 /**
  * Get inventory notifications for admin

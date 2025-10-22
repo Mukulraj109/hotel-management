@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import {
   getMyAssignedServices,
   getMyServiceRequests,
@@ -13,6 +14,7 @@ const router = express.Router();
 
 // Apply authentication and staff authorization to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 router.use(authorize('staff'));
 
 /**

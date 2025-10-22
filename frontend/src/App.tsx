@@ -3,10 +3,13 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Toaster } from 'react-hot-toast';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
+import { PropertyProvider } from './context/PropertyContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import ErrorBoundary from './components/ui/ErrorBoundary';
 import { apiErrorInterceptor } from './services/apiErrorInterceptor';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { KeyboardShortcutsProvider } from './components/KeyboardShortcutsProvider';
 
 // Public Pages
 import HomePage from './pages/public/HomePage';
@@ -51,7 +54,7 @@ import PrivacySettings from './pages/guest/PrivacySettings';
 
 // Admin Pages
 import AdminLogin from './pages/admin/AdminLogin';
-import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminDashboardWrapper from './pages/admin/AdminDashboardWrapper';
 import AdminDailyCheckManagement from './pages/admin/AdminDailyCheckManagement';
 import AdminRooms from './pages/admin/AdminRooms';
 import RoomDetailsPage from './pages/admin/RoomDetailsPage';
@@ -112,6 +115,7 @@ import AdminDocumentVerification from './pages/admin/AdminDocumentVerification';
 import AdminDocumentAnalytics from './pages/admin/AdminDocumentAnalytics';
 import AdminNotifications from './pages/admin/AdminNotifications';
 import AdminGuestManagement from './pages/admin/AdminGuestManagement';
+import PortfolioDashboard from './pages/admin/PortfolioDashboard';
 import TravelAgentDashboard from './pages/travel-agent/TravelAgentDashboard';
 import TravelAgentNotifications from './pages/travel-agent/TravelAgentNotifications';
 import BookingCreate from './pages/travel-agent/BookingCreate';
@@ -162,6 +166,36 @@ import GuestLayout from './layouts/GuestLayout';
 import TravelAgentLayout from './layouts/TravelAgentLayout';
 import AdminLayout from './layouts/AdminLayout';
 import StaffLayout from './layouts/StaffLayout';
+import FrontDeskLayout from './layouts/FrontDeskLayout';
+
+// FrontDesk Pages
+import FrontDeskDashboard from './pages/frontdesk/FrontDeskDashboard';
+import FrontDeskRooms from './pages/frontdesk/FrontDeskRooms';
+import FrontDeskRoomTypes from './pages/frontdesk/FrontDeskRoomTypes';
+import FrontDeskTapeChart from './pages/frontdesk/FrontDeskTapeChart';
+import FrontDeskBookings from './pages/frontdesk/FrontDeskBookings';
+import FrontDeskUpcomingBookings from './pages/frontdesk/FrontDeskUpcomingBookings';
+import FrontDeskCorporate from './pages/frontdesk/FrontDeskCorporate';
+import FrontDeskTravelAgents from './pages/frontdesk/FrontDeskTravelAgents';
+import FrontDeskStaffManagement from './pages/frontdesk/FrontDeskStaffManagement';
+import FrontDeskBilling from './pages/frontdesk/FrontDeskBilling';
+import FrontDeskBookingEngine from './pages/frontdesk/FrontDeskBookingEngine';
+import FrontDeskHousekeeping from './pages/frontdesk/FrontDeskHousekeeping';
+import FrontDeskDailyCheck from './pages/frontdesk/FrontDeskDailyCheck';
+import FrontDeskMaintenance from './pages/frontdesk/FrontDeskMaintenance';
+import FrontDeskGuestServices from './pages/frontdesk/FrontDeskGuestServices';
+import FrontDeskServiceRequests from './pages/frontdesk/FrontDeskServiceRequests';
+import FrontDeskInventoryRequests from './pages/frontdesk/FrontDeskInventoryRequests';
+import FrontDeskHotelServices from './pages/frontdesk/FrontDeskHotelServices';
+import FrontDeskMeetUp from './pages/frontdesk/FrontDeskMeetUp';
+import FrontDeskSupply from './pages/frontdesk/FrontDeskSupply';
+import FrontDeskInventory from './pages/frontdesk/FrontDeskInventory';
+import FrontDeskCheckout from './pages/frontdesk/FrontDeskCheckout';
+import FrontDeskInventoryAutomation from './pages/frontdesk/FrontDeskInventoryAutomation';
+import MyApprovalRequests from './pages/frontdesk/MyApprovalRequests';
+
+// Approval Management (Admin)
+import ApprovalManagement from './pages/admin/ApprovalManagement';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -177,8 +211,10 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <Router>
         <AuthProvider>
-          <ThemeProvider>
-            <ErrorBoundary>
+          <PropertyProvider>
+            <KeyboardShortcutsProvider>
+              <ThemeProvider>
+                <ErrorBoundary>
               <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
               <Routes>
               {/* Public Routes - Accessible to all users */}
@@ -236,7 +272,8 @@ function App() {
                   <AdminLayout />
                 </ProtectedRoute>
               }>
-                <Route index element={<AdminDashboard />} />
+                <Route index element={<AdminDashboardWrapper />} />
+                <Route path="portfolio" element={<PortfolioDashboard />} />
                 <Route path="rooms" element={<AdminRooms />} />
                 <Route path="rooms/:roomId" element={<RoomDetailsPage />} />
                 <Route path="rooms/:roomId/bookings" element={<RoomBookingsPage />} />
@@ -297,6 +334,7 @@ function App() {
                 <Route path="notifications" element={<AdminNotifications />} />
                 <Route path="notification-analytics" element={<NotificationAnalyticsDashboard />} />
                 <Route path="travel-dashboard" element={<AdminTravelDashboard />} />
+                <Route path="approval-management" element={<ApprovalManagement />} />
 
                 {/* Admin Settings Routes */}
                 <Route path="settings/profile" element={<AdminProfileSettings />} />
@@ -305,6 +343,38 @@ function App() {
                 <Route path="settings/hotel" element={<AdminHotelSettings />} />
                 <Route path="settings/system" element={<AdminSystemSettings />} />
                 <Route path="settings/integrations" element={<AdminIntegrationSettings />} />
+              </Route>
+
+              {/* FrontDesk Routes */}
+              <Route path="/frontdesk" element={
+                <ProtectedRoute allowedRoles={['frontdesk']}>
+                  <FrontDeskLayout />
+                </ProtectedRoute>
+              }>
+                <Route index element={<FrontDeskDashboard />} />
+                <Route path="rooms" element={<FrontDeskRooms />} />
+                <Route path="room-types" element={<FrontDeskRoomTypes />} />
+                <Route path="tape-chart" element={<FrontDeskTapeChart />} />
+                <Route path="bookings" element={<FrontDeskBookings />} />
+                <Route path="upcoming-bookings" element={<FrontDeskUpcomingBookings />} />
+                <Route path="corporate" element={<FrontDeskCorporate />} />
+                <Route path="travel-agents" element={<FrontDeskTravelAgents />} />
+                <Route path="staff" element={<FrontDeskStaffManagement />} />
+                <Route path="billing" element={<FrontDeskBilling />} />
+                <Route path="booking-engine" element={<FrontDeskBookingEngine />} />
+                <Route path="housekeeping" element={<FrontDeskHousekeeping />} />
+                <Route path="daily-check-management" element={<FrontDeskDailyCheck />} />
+                <Route path="maintenance" element={<FrontDeskMaintenance />} />
+                <Route path="guest-services" element={<FrontDeskGuestServices />} />
+                <Route path="service-requests" element={<FrontDeskServiceRequests />} />
+                <Route path="inventory-requests" element={<FrontDeskInventoryRequests />} />
+                <Route path="hotel-services" element={<FrontDeskHotelServices />} />
+                <Route path="meet-up-management" element={<FrontDeskMeetUp />} />
+                <Route path="supply-requests" element={<FrontDeskSupply />} />
+                <Route path="inventory" element={<FrontDeskInventory />} />
+                <Route path="checkout" element={<FrontDeskCheckout />} />
+                <Route path="inventory-automation" element={<FrontDeskInventoryAutomation />} />
+                <Route path="my-approvals" element={<MyApprovalRequests />} />
               </Route>
 
               {/* Travel Agent Routes */}
@@ -375,12 +445,14 @@ function App() {
             }}
           />
               </div>
-            </ErrorBoundary>
-          </ThemeProvider>
+              </ErrorBoundary>
+              </ThemeProvider>
+            </KeyboardShortcutsProvider>
+          </PropertyProvider>
         </AuthProvider>
       </Router>
     </QueryClientProvider>
-);
+  );
 }
 
 export default App;

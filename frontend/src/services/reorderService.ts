@@ -1,4 +1,4 @@
-import api from './api';
+import { api } from './api';
 import { ReorderAlert, InventoryItem } from '../types/admin';
 
 export interface ReorderConfiguration {

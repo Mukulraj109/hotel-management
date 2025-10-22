@@ -82,8 +82,8 @@ export const getTravelDashboardOverview = catchAsync(async (req, res) => {
 
   // Filter by hotel if specified
   if (hotelId && hotelId !== 'all') {
-    baseQuery.hotelId = mongoose.Types.ObjectId(hotelId);
-    bookingQuery.hotelId = mongoose.Types.ObjectId(hotelId);
+    baseQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
+    bookingQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
   } else if (req.user.hotelId) {
     // If user has hotel restriction, apply it
     baseQuery.hotelId = req.user.hotelId;
@@ -336,7 +336,7 @@ export const getTravelAnalytics = catchAsync(async (req, res) => {
   let baseQuery = { isActive: true, createdAt: { $gte: startDate } };
 
   if (hotelId && hotelId !== 'all') {
-    baseQuery.hotelId = mongoose.Types.ObjectId(hotelId);
+    baseQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
   } else if (req.user.hotelId) {
     baseQuery.hotelId = req.user.hotelId;
   }

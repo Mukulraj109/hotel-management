@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  Star, 
-  IndianRupee, 
-  Users, 
+import {
+  Plus,
+  Search,
+  Filter,
+  Star,
+  IndianRupee,
+  Users,
   TrendingUp,
   Edit,
   Trash2,
@@ -22,6 +22,8 @@ import InclusionManager from '../../components/services/InclusionManager';
 import UpsellManager from '../../components/services/UpsellManager';
 import { addOnServicesService } from '../../services/addOnServicesService';
 import { useToast } from '../../hooks/useToast';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface AddOnService {
   _id: string;
@@ -62,6 +64,7 @@ interface ServiceCategory {
 }
 
 const AdminAddOnServices: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [activeTab, setActiveTab] = useState<'services' | 'catalog' | 'inclusions' | 'upsell' | 'analytics'>('services');
   const [services, setServices] = useState<AddOnService[]>([]);
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
@@ -79,21 +82,36 @@ const AdminAddOnServices: React.FC = () => {
   });
   const { showToast } = useToast();
 
+  // Early return if no property selected in single property mode
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['Services', 'Add-on Services']} />
+        <div className="text-center py-12">
+          <p className="text-gray-600">Please select a property to manage add-on services</p>
+        </div>
+      </div>
+    );
+  }
+
   useEffect(() => {
-    loadData();
-  }, [selectedCategory, searchTerm]);
+    if (selectedPropertyId) {
+      loadData();
+    }
+  }, [selectedCategory, searchTerm, selectedPropertyId]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      
+
       const [servicesRes, categoriesRes] = await Promise.all([
         addOnServicesService.getServices({
+          propertyId: selectedPropertyId,
           category: selectedCategory !== 'all' ? selectedCategory : undefined,
           search: searchTerm || undefined,
           ...filters
         }),
-        addOnServicesService.getCategories()
+        addOnServicesService.getCategories({ propertyId: selectedPropertyId })
       ]);
 
       setServices(servicesRes.data.services || servicesRes.data);
@@ -208,6 +226,9 @@ const AdminAddOnServices: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Services', 'Add-on Services']} />
+
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>

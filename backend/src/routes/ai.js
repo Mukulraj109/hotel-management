@@ -1,10 +1,12 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
 // Protect all AI routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

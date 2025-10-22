@@ -2,6 +2,7 @@ import express from 'express';
 import channelLocalizationController from '../controllers/channelLocalizationController.js';
 import otaMonitoringService from '../services/otaMonitoringService.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validate } from '../middleware/validation.js';
 import { body, param, query } from 'express-validator';
 
@@ -9,6 +10,7 @@ const router = express.Router();
 
 // Authentication required for all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Validation schemas
 const hotelIdValidation = [
@@ -83,8 +85,8 @@ const timeRangeValidation = [
  *       200:
  *         description: Channel configurations retrieved successfully
  */
-router.get('/hotels/:hotelId/channels', 
-  authorize(['admin', 'hotel_manager']),
+router.get('/hotels/:hotelId/channels',
+  authorize(['admin', 'hotel_manager', 'frontdesk']),
   hotelIdValidation,
   channelLocalizationController.getChannelConfigurations
 );
@@ -122,7 +124,7 @@ router.get('/hotels/:hotelId/channels',
  *         description: Channel configuration created successfully
  */
 router.post('/hotels/:hotelId/channels',
-  authorize(['admin', 'hotel_manager']),
+  authorize(['admin', 'hotel_manager', 'frontdesk']),
   createChannelConfigValidation,
   channelLocalizationController.createChannelConfiguration
 );
@@ -135,7 +137,7 @@ router.post('/hotels/:hotelId/channels',
  *     tags: [Channel Management]
  */
 router.put('/hotels/:hotelId/channels/:channelId',
-  authorize(['admin', 'hotel_manager']),
+  authorize(['admin', 'hotel_manager', 'frontdesk']),
   updateChannelConfigValidation,
   channelLocalizationController.updateChannelConfiguration
 );
@@ -148,7 +150,7 @@ router.put('/hotels/:hotelId/channels/:channelId',
  *     tags: [Channel Management]
  */
 router.delete('/hotels/:hotelId/channels/:channelId',
-  authorize(['admin', 'hotel_manager']),
+  authorize(['admin', 'hotel_manager', 'frontdesk']),
   updateChannelConfigValidation,
   channelLocalizationController.deleteChannelConfiguration
 );
@@ -161,7 +163,7 @@ router.delete('/hotels/:hotelId/channels/:channelId',
  *     tags: [Channel Management]
  */
 router.post('/hotels/:hotelId/channels/:channelId/test',
-  authorize(['admin', 'hotel_manager', 'channel_manager']),
+  authorize(['admin', 'hotel_manager', 'channel_manager', 'frontdesk']),
   updateChannelConfigValidation,
   channelLocalizationController.testChannelConnection
 );
@@ -176,7 +178,7 @@ router.post('/hotels/:hotelId/channels/:channelId/test',
  *     tags: [Rate Distribution]
  */
 router.post('/hotels/:hotelId/distribute-rates',
-  authorize(['admin', 'hotel_manager', 'revenue_manager']),
+  authorize(['admin', 'hotel_manager', 'revenue_manager', 'frontdesk']),
   rateDistributionValidation,
   channelLocalizationController.distributeRates
 );
@@ -189,7 +191,7 @@ router.post('/hotels/:hotelId/distribute-rates',
  *     tags: [Rate Distribution]
  */
 router.get('/hotels/:hotelId/distribution-status',
-  authorize(['admin', 'hotel_manager', 'revenue_manager']),
+  authorize(['admin', 'hotel_manager', 'revenue_manager', 'frontdesk']),
   hotelIdValidation,
   channelLocalizationController.getDistributionStatus
 );
@@ -204,7 +206,7 @@ router.get('/hotels/:hotelId/distribution-status',
  *     tags: [Content Translation]
  */
 router.post('/hotels/:hotelId/translate-content',
-  authorize(['admin', 'hotel_manager', 'content_manager']),
+  authorize(['admin', 'hotel_manager', 'content_manager', 'frontdesk']),
   contentTranslationValidation,
   channelLocalizationController.translateContent
 );
@@ -217,7 +219,7 @@ router.post('/hotels/:hotelId/translate-content',
  *     tags: [Content Translation]
  */
 router.post('/hotels/:hotelId/queue-translation',
-  authorize(['admin', 'hotel_manager', 'content_manager']),
+  authorize(['admin', 'hotel_manager', 'content_manager', 'frontdesk']),
   contentTranslationValidation,
   channelLocalizationController.queueContentTranslation
 );
@@ -232,8 +234,8 @@ router.post('/hotels/:hotelId/queue-translation',
  *     tags: [Channel Support]
  */
 router.get('/hotels/:hotelId/supported-currencies',
-  authorize(['admin', 'hotel_manager', 'revenue_manager']),
-  [...hotelIdValidation, 
+  authorize(['admin', 'hotel_manager', 'revenue_manager', 'frontdesk']),
+  [...hotelIdValidation,
    query('channelId').optional().isString(),
    validate],
   channelLocalizationController.getSupportedCurrencies
@@ -247,7 +249,7 @@ router.get('/hotels/:hotelId/supported-currencies',
  *     tags: [Channel Support]
  */
 router.get('/hotels/:hotelId/supported-languages',
-  authorize(['admin', 'hotel_manager', 'content_manager']),
+  authorize(['admin', 'hotel_manager', 'content_manager', 'frontdesk']),
   [...hotelIdValidation,
    query('channelId').optional().isString(),
    validate],
@@ -264,7 +266,7 @@ router.get('/hotels/:hotelId/supported-languages',
  *     tags: [Monitoring]
  */
 router.get('/hotels/:hotelId/channel-metrics',
-  authorize(['admin', 'hotel_manager']),
+  authorize(['admin', 'hotel_manager', 'frontdesk']),
   [...hotelIdValidation, ...timeRangeValidation],
   channelLocalizationController.getChannelMetrics
 );
@@ -277,7 +279,7 @@ router.get('/hotels/:hotelId/channel-metrics',
  *     tags: [Monitoring]
  */
 router.get('/hotels/:hotelId/dashboard',
-  authorize(['admin', 'hotel_manager']),
+  authorize(['admin', 'hotel_manager', 'frontdesk']),
   [...hotelIdValidation, ...timeRangeValidation],
   async (req, res) => {
     try {
@@ -309,7 +311,7 @@ router.get('/hotels/:hotelId/dashboard',
  *     tags: [Monitoring]
  */
 router.get('/hotels/:hotelId/channels/:channelId/report',
-  authorize(['admin', 'hotel_manager']),
+  authorize(['admin', 'hotel_manager', 'frontdesk']),
   [...hotelIdValidation, ...channelIdValidation, ...timeRangeValidation],
   async (req, res) => {
     try {
@@ -341,7 +343,7 @@ router.get('/hotels/:hotelId/channels/:channelId/report',
  *     tags: [Analytics]
  */
 router.get('/hotels/:hotelId/translation-analytics',
-  authorize(['admin', 'hotel_manager', 'content_manager']),
+  authorize(['admin', 'hotel_manager', 'content_manager', 'frontdesk']),
   [...hotelIdValidation,
    query('channelId').optional().isString(),
    query('language').optional().isLength({ min: 2, max: 3 }),
@@ -379,7 +381,7 @@ router.get('/hotels/:hotelId/translation-analytics',
  *     tags: [Bulk Operations]
  */
 router.post('/hotels/:hotelId/sync-all',
-  authorize(['admin', 'hotel_manager']),
+  authorize(['admin', 'hotel_manager', 'frontdesk']),
   [...hotelIdValidation,
    body('syncType').optional().isIn(['full', 'incremental', 'rates_only', 'content_only']),
    body('force').optional().isBoolean(),
@@ -423,7 +425,7 @@ router.post('/webhooks/channels/:channelId',
 
 // Real-time monitoring endpoints
 router.get('/hotels/:hotelId/real-time-status',
-  authorize(['admin', 'hotel_manager']),
+  authorize(['admin', 'hotel_manager', 'frontdesk']),
   hotelIdValidation,
   async (req, res) => {
     try {
@@ -451,7 +453,7 @@ router.get('/hotels/:hotelId/real-time-status',
 
 // Export monitoring data for external analysis
 router.get('/hotels/:hotelId/export-metrics',
-  authorize(['admin', 'hotel_manager']),
+  authorize(['admin', 'hotel_manager', 'frontdesk']),
   [...hotelIdValidation,
    query('format').optional().isIn(['json', 'csv', 'xlsx']),
    ...timeRangeValidation,

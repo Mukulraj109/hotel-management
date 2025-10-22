@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import StaffAlert from '../models/StaffAlert.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import logger from '../utils/logger.js';
@@ -10,7 +11,7 @@ const router = express.Router();
 // @desc    Get staff alerts summary
 // @route   GET /api/v1/staff/alerts/summary
 // @access  Private (staff, admin, manager)
-router.get('/summary', authenticate, authorize('staff', 'admin', 'manager'), asyncHandler(async (req, res) => {
+router.get('/summary', authenticate, ensurePropertyAccess, authorize('staff', 'admin', 'manager'), asyncHandler(async (req, res) => {
   const { hotelId } = req.user;
 
   // Get alert counts by status and priority
@@ -49,7 +50,7 @@ router.get('/summary', authenticate, authorize('staff', 'admin', 'manager'), asy
 // @desc    Get all staff alerts
 // @route   GET /api/v1/staff/alerts
 // @access  Private (staff, admin, manager)
-router.get('/', authenticate, authorize('staff', 'admin', 'manager'), asyncHandler(async (req, res) => {
+router.get('/', authenticate, ensurePropertyAccess, authorize('staff', 'admin', 'manager'), asyncHandler(async (req, res) => {
   const { hotelId } = req.user;
   const {
     status = 'all',
@@ -102,7 +103,7 @@ router.get('/', authenticate, authorize('staff', 'admin', 'manager'), asyncHandl
 // @desc    Create new staff alert
 // @route   POST /api/v1/staff/alerts
 // @access  Private (staff, admin, manager)
-router.post('/', authenticate, authorize('staff', 'admin', 'manager'), asyncHandler(async (req, res) => {
+router.post('/', authenticate, ensurePropertyAccess, authorize('staff', 'admin', 'manager'), asyncHandler(async (req, res) => {
   const { hotelId, _id: createdBy } = req.user;
 
   const alertData = {
@@ -146,7 +147,7 @@ router.post('/', authenticate, authorize('staff', 'admin', 'manager'), asyncHand
 // @desc    Update staff alert
 // @route   PUT /api/v1/staff/alerts/:id
 // @access  Private (staff, admin, manager)
-router.put('/:id', authenticate, authorize('staff', 'admin', 'manager'), asyncHandler(async (req, res) => {
+router.put('/:id', authenticate, ensurePropertyAccess, authorize('staff', 'admin', 'manager'), asyncHandler(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
 
   let alert = await StaffAlert.findOne({
@@ -205,7 +206,7 @@ router.put('/:id', authenticate, authorize('staff', 'admin', 'manager'), asyncHa
 // @desc    Acknowledge staff alert
 // @route   PATCH /api/v1/staff/alerts/:id/acknowledge
 // @access  Private (staff, admin, manager)
-router.patch('/:id/acknowledge', authenticate, authorize('staff', 'admin', 'manager'), asyncHandler(async (req, res) => {
+router.patch('/:id/acknowledge', authenticate, ensurePropertyAccess, authorize('staff', 'admin', 'manager'), asyncHandler(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
 
   let alert = await StaffAlert.findOne({
@@ -258,7 +259,7 @@ router.patch('/:id/acknowledge', authenticate, authorize('staff', 'admin', 'mana
 // @desc    Delete staff alert
 // @route   DELETE /api/v1/staff/alerts/:id
 // @access  Private (admin, manager)
-router.delete('/:id', authenticate, authorize('admin', 'manager'), asyncHandler(async (req, res) => {
+router.delete('/:id', authenticate, ensurePropertyAccess, authorize('admin', 'manager'), asyncHandler(async (req, res) => {
   const { hotelId } = req.user;
 
   const alert = await StaffAlert.findOne({

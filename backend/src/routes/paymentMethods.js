@@ -24,12 +24,14 @@ import {
   updateDisplayOrder
 } from '../controllers/paymentMethodController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import authorize from '../middleware/authorize.js';
 
 const router = express.Router();
 
-// Apply authentication to all routes
+// Apply authentication and property access to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Validation rules
 const createPaymentMethodValidation = [

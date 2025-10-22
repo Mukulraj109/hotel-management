@@ -3,9 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { 
-  ClipboardList, 
-  Users, 
+import {
+  ClipboardList,
+  Users,
   CreditCard,
   IndianRupee,
   Clock,
@@ -21,6 +21,8 @@ import {
   Wifi,
   WifiOff
 } from 'lucide-react';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { checkoutInventoryService, CheckoutInventory } from '../../services/checkoutInventoryService';
 import { useRealTime } from '../../services/realTimeService';
@@ -55,6 +57,7 @@ interface AdminOverview {
 }
 
 export default function AdminCheckoutInventoryManagement() {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [allChecks, setAllChecks] = useState<CheckoutInventory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,6 +72,7 @@ export default function AdminCheckoutInventoryManagement() {
   const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
 
   useEffect(() => {
+    if (!selectedPropertyId) return;
     fetchData();
     
     // Connect to real-time updates
@@ -77,7 +81,7 @@ export default function AdminCheckoutInventoryManagement() {
     return () => {
       disconnect();
     };
-  }, []);
+  }, [selectedPropertyId]);
 
   // Set up real-time event listeners
   useEffect(() => {
@@ -122,11 +126,16 @@ export default function AdminCheckoutInventoryManagement() {
   }, [isConnected, on, off]);
 
   const fetchData = async () => {
+    if (!selectedPropertyId) return;
+
     try {
       setLoading(true);
-      
+
       // Fetch all checkout inventories and calculate overview data
-      const response = await checkoutInventoryService.getCheckoutInventories({ limit: 100 });
+      const response = await checkoutInventoryService.getCheckoutInventories({
+        limit: 100,
+        propertyId: selectedPropertyId
+      });
       const checks = response.data.checkoutInventories || [];
       setAllChecks(checks);
       
@@ -233,6 +242,10 @@ export default function AdminCheckoutInventoryManagement() {
     return matchesSearch && matchesStatus && matchesPayment;
   });
 
+  if (!selectedPropertyId && viewMode === 'single') {
+    return <div className="p-6">Please select a property</div>;
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -244,6 +257,8 @@ export default function AdminCheckoutInventoryManagement() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/30">
       <div className="p-3 sm:p-4 md:p-6 max-w-7xl mx-auto">
+        <PropertyBreadcrumb items={['Checkout Inventory Management']} />
+
         {/* Modern Header with Gradient */}
         <div className="relative mb-8">
           <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-purple-600/10 rounded-3xl blur-3xl"></div>

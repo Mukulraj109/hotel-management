@@ -15,11 +15,14 @@ import {
   Download,
   RefreshCw
 } from 'lucide-react';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import LaundryDashboard from '@/components/inventory/LaundryDashboard';
 import LaundryTransactionForm from '@/components/inventory/LaundryTransactionForm';
 import LaundryStatusTracker from '@/components/inventory/LaundryStatusTracker';
 
 const AdminLaundryManagement: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -34,8 +37,14 @@ const AdminLaundryManagement: React.FC = () => {
     setRefreshKey(prev => prev + 1);
   };
 
+  if (!selectedPropertyId && viewMode === 'single') {
+    return <div className="p-6">Please select a property</div>;
+  }
+
   return (
     <div className="space-y-6">
+      <PropertyBreadcrumb items={['Laundry Management']} />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -64,6 +73,7 @@ const AdminLaundryManagement: React.FC = () => {
                 </DialogDescription>
               </DialogHeader>
               <LaundryTransactionForm
+                propertyId={selectedPropertyId}
                 onSuccess={handleTransactionSuccess}
                 onCancel={() => setShowTransactionForm(false)}
               />
@@ -94,11 +104,11 @@ const AdminLaundryManagement: React.FC = () => {
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-6">
-          <LaundryDashboard key={refreshKey} />
+          <LaundryDashboard key={refreshKey} propertyId={selectedPropertyId} />
         </TabsContent>
 
         <TabsContent value="tracker" className="space-y-6">
-          <LaundryStatusTracker key={refreshKey} />
+          <LaundryStatusTracker key={refreshKey} propertyId={selectedPropertyId} />
         </TabsContent>
 
         <TabsContent value="transactions" className="space-y-6">

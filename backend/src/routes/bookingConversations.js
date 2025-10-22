@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import BookingConversation from '../models/BookingConversation.js';
 import Booking from '../models/Booking.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import websocketService from '../services/websocketService.js';
@@ -48,7 +49,7 @@ const router = express.Router();
  *       201:
  *         description: Conversation created successfully
  */
-router.post('/', authenticate, catchAsync(async (req, res) => {
+router.post('/', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     bookingId,
     subject,
@@ -224,7 +225,7 @@ router.post('/', authenticate, catchAsync(async (req, res) => {
  *       200:
  *         description: List of conversations
  */
-router.get('/', authenticate, catchAsync(async (req, res) => {
+router.get('/', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
   const filters = {
     ...req.query,
     hotelId: req.user.hotelId // For admin/staff users
@@ -256,7 +257,7 @@ router.get('/', authenticate, catchAsync(async (req, res) => {
  *       200:
  *         description: Conversation details
  */
-router.get('/:id', authenticate, catchAsync(async (req, res) => {
+router.get('/:id', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
   const conversation = await BookingConversation.findById(req.params.id)
     .populate('bookingId', 'bookingNumber checkIn checkOut rooms totalAmount currency')
     .populate('participants.userId', 'name email role')
@@ -323,7 +324,7 @@ router.get('/:id', authenticate, catchAsync(async (req, res) => {
  *       201:
  *         description: Message added successfully
  */
-router.post('/:id/messages', authenticate, catchAsync(async (req, res) => {
+router.post('/:id/messages', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     content,
     messageType = 'text',
@@ -426,7 +427,7 @@ router.post('/:id/messages', authenticate, catchAsync(async (req, res) => {
  *       200:
  *         description: Messages marked as read
  */
-router.patch('/:id/read', authenticate, catchAsync(async (req, res) => {
+router.patch('/:id/read', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
   const { messageIds } = req.body;
 
   const conversation = await BookingConversation.findById(req.params.id);
@@ -481,7 +482,7 @@ router.patch('/:id/read', authenticate, catchAsync(async (req, res) => {
  *       200:
  *         description: Conversation assigned successfully
  */
-router.patch('/:id/assign', authenticate, authorize('staff', 'admin', 'manager'), catchAsync(async (req, res) => {
+router.patch('/:id/assign', authenticate, ensurePropertyAccess, authorize('staff', 'admin', 'manager'), catchAsync(async (req, res) => {
   const { staffUserId } = req.body;
 
   const conversation = await BookingConversation.findById(req.params.id);
@@ -563,7 +564,7 @@ router.patch('/:id/assign', authenticate, authorize('staff', 'admin', 'manager')
  *       200:
  *         description: Status updated successfully
  */
-router.patch('/:id/status', authenticate, catchAsync(async (req, res) => {
+router.patch('/:id/status', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
   const { status, reason } = req.body;
 
   const conversation = await BookingConversation.findById(req.params.id);
@@ -650,7 +651,7 @@ router.patch('/:id/status', authenticate, catchAsync(async (req, res) => {
  *       200:
  *         description: Conversation statistics
  */
-router.get('/stats', authenticate, authorize('staff', 'admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/stats', authenticate, ensurePropertyAccess, authorize('staff', 'admin', 'manager'), catchAsync(async (req, res) => {
   const { hotelId, startDate, endDate } = req.query;
 
   let targetHotelId;

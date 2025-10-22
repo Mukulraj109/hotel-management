@@ -1,13 +1,14 @@
 import express from 'express';
 import Inventory from '../models/Inventory.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
 
 // Get inventory items
-router.get('/', authenticate, authorize('admin', 'staff'), catchAsync(async (req, res) => {
+router.get('/', authenticate, authorize('admin', 'staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     category,
     lowStock,
@@ -49,7 +50,7 @@ router.get('/', authenticate, authorize('admin', 'staff'), catchAsync(async (req
 }));
 
 // Create inventory item
-router.post('/', authenticate, authorize('admin'), catchAsync(async (req, res) => {
+router.post('/', authenticate, authorize('admin', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const itemData = {
     ...req.body,
     hotelId: req.user.hotelId
@@ -64,7 +65,7 @@ router.post('/', authenticate, authorize('admin'), catchAsync(async (req, res) =
 }));
 
 // Update inventory item
-router.patch('/:id', authenticate, authorize('admin', 'staff'), catchAsync(async (req, res) => {
+router.patch('/:id', authenticate, authorize('admin', 'staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const item = await Inventory.findByIdAndUpdate(
     req.params.id,
     req.body,
@@ -82,7 +83,7 @@ router.patch('/:id', authenticate, authorize('admin', 'staff'), catchAsync(async
 }));
 
 // Create supply request
-router.post('/request', authenticate, authorize('staff'), catchAsync(async (req, res) => {
+router.post('/request', authenticate, authorize('staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const { itemId, quantity, reason } = req.body;
 
   const item = await Inventory.findById(itemId);
@@ -110,9 +111,10 @@ router.post('/request', authenticate, authorize('staff'), catchAsync(async (req,
 }));
 
 // Approve/reject supply request
-router.patch('/request/:itemId/:requestId', 
-  authenticate, 
-  authorize('admin'), 
+router.patch('/request/:itemId/:requestId',
+  authenticate,
+  authorize('admin', 'frontdesk'),
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { itemId, requestId } = req.params;
     const { status } = req.body; // 'approved', 'rejected', 'fulfilled'

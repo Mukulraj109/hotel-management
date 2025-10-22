@@ -3,13 +3,15 @@ import mongoose from 'mongoose';
 import MaintenanceTask from '../models/MaintenanceTask.js';
 import Room from '../models/Room.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
 
-// All routes require authentication
+// All routes require authentication and property access
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger
@@ -79,7 +81,7 @@ router.use(authenticate);
  *       201:
  *         description: Maintenance task created successfully
  */
-router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
   const taskData = {
     ...req.body,
     hotelId: req.user.role === 'staff' ? req.user.hotelId : req.body.hotelId,
@@ -253,7 +255,7 @@ router.get('/', catchAsync(async (req, res) => {
  *       200:
  *         description: Maintenance statistics
  */
-router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/stats', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
   const { startDate, endDate } = req.query;
   
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
@@ -364,7 +366,7 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
  *       200:
  *         description: Available staff members
  */
-router.get('/available-staff', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/available-staff', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
@@ -402,7 +404,7 @@ router.get('/available-staff', authorize('staff', 'admin'), catchAsync(async (re
  *       200:
  *         description: Available rooms
  */
-router.get('/available-rooms', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/available-rooms', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
@@ -507,7 +509,7 @@ router.get('/:id', catchAsync(async (req, res) => {
  *       200:
  *         description: Task updated successfully
  */
-router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.patch('/:id', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
   const { id } = req.params;
   console.log('🔧 PATCH /maintenance/:id - Updating task:', {
     id,
@@ -636,7 +638,7 @@ router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =>
  *       200:
  *         description: Task assigned successfully
  */
-router.post('/:id/assign', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/:id/assign', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
   const { assignedTo, scheduledDate, notes } = req.body;
   
   const task = await MaintenanceTask.findById(req.params.id);
@@ -685,7 +687,7 @@ router.post('/:id/assign', authorize('staff', 'admin'), catchAsync(async (req, r
  *       200:
  *         description: Overdue maintenance tasks
  */
-router.get('/overdue', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/overdue', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
@@ -727,7 +729,7 @@ router.get('/overdue', authorize('staff', 'admin'), catchAsync(async (req, res) 
  *       200:
  *         description: Upcoming recurring maintenance tasks
  */
-router.get('/recurring/upcoming', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/recurring/upcoming', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
   const { days = 30 } = req.query;
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   

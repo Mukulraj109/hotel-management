@@ -4,12 +4,12 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Settings, 
-  Save, 
-  Download, 
-  Upload, 
-  RefreshCw, 
+import {
+  Settings,
+  Save,
+  Download,
+  Upload,
+  RefreshCw,
   TestTube,
   Eye,
   RotateCcw,
@@ -28,6 +28,9 @@ import { webSettingsService, WebSettings } from '@/services/webSettingsService';
 import WebSettingsForm from '@/components/web/WebSettingsForm';
 import SettingsPreview from '@/components/web/SettingsPreview';
 import { useAuth } from '@/context/AuthContext';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '@/components/settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '@/hooks/useSettingsInheritance';
+import { useProperty } from '@/context/PropertyContext';
 
 export default function AdminWebSettings() {
   const { user } = useAuth();
@@ -39,8 +42,30 @@ export default function AdminWebSettings() {
   const [previewMode, setPreviewMode] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, any>>({});
 
+  // Multi-property support
+  const { selectedProperty, selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
+
   // Get hotel ID from authenticated user context
-  const hotelId = user?.hotelId || '68bc094f80c86bfe258e172b'; // Fallback to default if not in user context
+  const hotelId = selectedPropertyId || user?.hotelId || '68bc094f80c86bfe258e172b'; // Fallback to default if not in user context
 
   useEffect(() => {
     loadSettings();
@@ -119,6 +144,7 @@ export default function AdminWebSettings() {
       hotelId,
       data,
       dataKeys: Object.keys(data || {}),
+      applyToScope,
       userContext: {
         hasUser: !!user,
         userId: user?.id,
@@ -128,18 +154,43 @@ export default function AdminWebSettings() {
 
     try {
       setSaving(true);
-      console.log('🟡 AdminWebSettings: About to call webSettingsService.updateSection');
-      
-      const updatedSettings = await webSettingsService.updateSection(hotelId, section, data);
-      
-      console.log('🟢 AdminWebSettings: Section updated successfully:', {
-        section,
-        updatedSettings
-      });
-      
-      setSettings(updatedSettings);
+
+      // If multi-property update, use applySettings
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: { section, data },
+          settingType: 'web_settings',
+        });
+
+        if (!result) {
+          setSaving(false);
+          return; // Confirmation dialog shown
+        }
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`Web settings updated successfully${
+          applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
+        }`);
+        setApplyToScope('single');
+      } else {
+        // Single property update
+        console.log('🟡 AdminWebSettings: About to call webSettingsService.updateSection');
+
+        const updatedSettings = await webSettingsService.updateSection(hotelId, section, data);
+
+        console.log('🟢 AdminWebSettings: Section updated successfully:', {
+          section,
+          updatedSettings
+        });
+
+        setSettings(updatedSettings);
+        toast.success(`${section} settings updated successfully`);
+      }
+
       setHasChanges(false);
-      toast.success(`${section} settings updated successfully`);
     } catch (error) {
       console.error('🔴 AdminWebSettings: Error updating section:', {
         error,
@@ -150,6 +201,18 @@ export default function AdminWebSettings() {
       toast.error(`Failed to update ${section} settings`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (pendingUpdate) {
+      const result = await confirmBulkUpdate();
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`Web settings updated for ${result.propertiesUpdated} properties`);
+        loadSettings();
+      }
     }
   };
 
@@ -281,11 +344,49 @@ export default function AdminWebSettings() {
 
   return (
     <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
+      {/* Success Message */}
+      {showSuccess && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 px-4 py-3 rounded-lg">
+          <p className="font-medium">Web settings updated successfully!</p>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {updateError && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 px-4 py-3 rounded-lg">
+          <p className="font-medium">Error: {updateError}</p>
+        </div>
+      )}
+
+      {/* Inheritance Status Card */}
+      {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+        <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                  This property is part of: {inheritanceStatus.groupName}
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                  Web settings are inherited from the property group
+                  {inheritanceStatus.lastSyncAt && ` • Last synced: ${new Date(inheritanceStatus.lastSyncAt).toLocaleDateString()}`}
+                </p>
+              </div>
+              {inheritanceStatus.canOverride && (
+                <Badge variant="secondary" className="text-xs">
+                  Override Enabled
+                </Badge>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Web Settings</h1>
-          <p className="text-sm sm:text-base text-gray-600 mt-1">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">Web Settings</h1>
+          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">
             Configure your hotel's web presence and booking system
           </p>
         </div>
@@ -400,6 +501,19 @@ export default function AdminWebSettings() {
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
+              {/* Multi-Property Selector */}
+              <div className="mb-6 pb-6 border-b border-gray-200 dark:border-gray-700">
+                <ApplyToSelector
+                  value={applyToScope}
+                  onChange={setApplyToScope}
+                  isInGroup={inheritanceStatus?.hasGroup || false}
+                  groupName={inheritanceStatus?.groupName}
+                  totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+                  showWarning={true}
+                  warningMessage="These web settings (booking, payment, theme, etc.) will be applied to all selected properties. This affects the public-facing website for each property."
+                />
+              </div>
+
               <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-1 h-auto">
                   {[
@@ -557,6 +671,17 @@ export default function AdminWebSettings() {
           </Card>
         </div>
       </div>
+
+      {/* Multi-Property Confirmation Dialog */}
+      <ApplyToConfirmation
+        isOpen={showConfirmation}
+        scope={applyToScope}
+        affectedCount={affectedCount}
+        settingName="web settings"
+        groupName={inheritanceStatus?.groupName}
+        onConfirm={handleConfirm}
+        onCancel={cancelBulkUpdate}
+      />
     </div>
   );
 }

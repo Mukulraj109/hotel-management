@@ -1,8 +1,12 @@
 import express from 'express';
 import roomTypeController from '../controllers/roomTypeController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
+
+// Apply authentication and property access to all authenticated routes
+// Note: Some routes like /hotel/:hotelId/options are public, middleware applied per-route
 
 /**
  * @swagger
@@ -126,7 +130,7 @@ const router = express.Router();
  *                   items:
  *                     $ref: '#/components/schemas/RoomType'
  */
-router.get('/hotel/:hotelId', authenticate, authorize(['admin', 'manager', 'front_desk']), roomTypeController.getRoomTypes);
+router.get('/hotel/:hotelId', authenticate, ensurePropertyAccess, authorize(['admin', 'manager', 'frontdesk']), roomTypeController.getRoomTypes);
 
 /**
  * @swagger
@@ -166,7 +170,7 @@ router.get('/hotel/:hotelId/options', roomTypeController.getRoomTypeOptions);
  *       404:
  *         description: Room type not found
  */
-router.get('/:id', authenticate, authorize(['admin', 'manager', 'front_desk']), roomTypeController.getRoomType);
+router.get('/:id', authenticate, ensurePropertyAccess, authorize(['admin', 'manager', 'frontdesk']), roomTypeController.getRoomType);
 
 /**
  * @swagger
@@ -188,7 +192,7 @@ router.get('/:id', authenticate, authorize(['admin', 'manager', 'front_desk']), 
  *       400:
  *         description: Validation error or duplicate code
  */
-router.post('/', authenticate, authorize(['admin', 'manager']), roomTypeController.createRoomType);
+router.post('/', authenticate, ensurePropertyAccess, authorize(['admin', 'manager']), roomTypeController.createRoomType);
 
 /**
  * @swagger
@@ -216,7 +220,7 @@ router.post('/', authenticate, authorize(['admin', 'manager']), roomTypeControll
  *       404:
  *         description: Room type not found
  */
-router.put('/:id', authenticate, authorize(['admin', 'manager']), roomTypeController.updateRoomType);
+router.put('/:id', authenticate, ensurePropertyAccess, authorize(['admin', 'manager']), roomTypeController.updateRoomType);
 
 /**
  * @swagger
@@ -240,7 +244,7 @@ router.put('/:id', authenticate, authorize(['admin', 'manager']), roomTypeContro
  *       404:
  *         description: Room type not found
  */
-router.delete('/:id', authenticate, authorize(['admin', 'manager']), roomTypeController.deleteRoomType);
+router.delete('/:id', authenticate, ensurePropertyAccess, authorize(['admin', 'manager']), roomTypeController.deleteRoomType);
 
 /**
  * @swagger
@@ -284,7 +288,7 @@ router.delete('/:id', authenticate, authorize(['admin', 'manager']), roomTypeCon
  *       404:
  *         description: Room type not found
  */
-router.post('/:id/channel-mapping', authenticate, authorize(['admin', 'channel_manager']), roomTypeController.addChannelMapping);
+router.post('/:id/channel-mapping', authenticate, ensurePropertyAccess, authorize(['admin', 'channel_manager']), roomTypeController.addChannelMapping);
 
 /**
  * @swagger
@@ -311,7 +315,7 @@ router.post('/:id/channel-mapping', authenticate, authorize(['admin', 'channel_m
  *       404:
  *         description: Room type not found
  */
-router.delete('/:id/channel-mapping/:channelId', authenticate, authorize(['admin', 'channel_manager']), roomTypeController.removeChannelMapping);
+router.delete('/:id/channel-mapping/:channelId', authenticate, ensurePropertyAccess, authorize(['admin', 'channel_manager']), roomTypeController.removeChannelMapping);
 
 /**
  * @swagger
@@ -390,7 +394,7 @@ router.get('/legacy/:hotelId/:legacyType', roomTypeController.getRoomTypeByLegac
  *                 message:
  *                   type: string
  */
-router.post('/migrate/hotel/:hotelId/rooms', authenticate, authorize(['admin']), roomTypeController.migrateRoomsToRoomTypes);
+router.post('/migrate/hotel/:hotelId/rooms', authenticate, ensurePropertyAccess, authorize(['admin']), roomTypeController.migrateRoomsToRoomTypes);
 
 /**
  * @swagger
@@ -440,7 +444,7 @@ router.post('/migrate/hotel/:hotelId/rooms', authenticate, authorize(['admin']),
  *       404:
  *         description: Room type not found
  */
-router.post('/:id/inventory', authenticate, authorize(['admin', 'manager']), roomTypeController.createInventoryForRoomType);
+router.post('/:id/inventory', authenticate, ensurePropertyAccess, authorize(['admin', 'manager']), roomTypeController.createInventoryForRoomType);
 
 /**
  * @swagger
@@ -471,6 +475,6 @@ router.post('/:id/inventory', authenticate, authorize(['admin', 'manager']), roo
  *       200:
  *         description: Localized room types retrieved successfully
  */
-router.get('/:hotelId/localized', authenticate, authorize(['admin', 'manager', 'front_desk']), roomTypeController.getLocalizedRoomTypes);
+router.get('/:hotelId/localized', authenticate, ensurePropertyAccess, authorize(['admin', 'manager', 'frontdesk']), roomTypeController.getLocalizedRoomTypes);
 
 export default router;

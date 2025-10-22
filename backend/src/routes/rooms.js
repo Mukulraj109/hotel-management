@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import Room from '../models/Room.js';
 import Booking from '../models/Booking.js';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -55,7 +56,7 @@ const router = express.Router();
  *       200:
  *         description: List of rooms
  */
-router.get('/', optionalAuth, catchAsync(async (req, res) => {
+router.get('/', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     hotelId,
     checkIn,
@@ -67,11 +68,13 @@ router.get('/', optionalAuth, catchAsync(async (req, res) => {
     maxPrice
   } = req.query;
 
-  // Build query
+  // Build query - hotelId is now required by ensurePropertyAccess middleware
   const query = { isActive: true };
-  
+
   if (hotelId) {
     query.hotelId = hotelId;
+  } else {
+    throw new ApplicationError('Hotel ID is required', 400);
   }
   
   if (type) {
@@ -300,9 +303,9 @@ router.get('/debug', async (req, res) => {
 });
 
 // Get room metrics for admin dashboard
-router.get('/metrics', authenticate, catchAsync(async (req, res) => {
+router.get('/metrics', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
   const { hotelId } = req.query;
-  
+
   if (!hotelId) {
     throw new ApplicationError('Hotel ID is required', 400);
   }
@@ -344,6 +347,8 @@ router.get('/metrics', authenticate, catchAsync(async (req, res) => {
  *   get:
  *     summary: Get room by ID
  *     tags: [Rooms]
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -355,7 +360,7 @@ router.get('/metrics', authenticate, catchAsync(async (req, res) => {
  *       200:
  *         description: Room details
  */
-router.get('/:id', catchAsync(async (req, res) => {
+router.get('/:id', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
   const room = await Room.findById(req.params.id)
     .populate('hotelId', 'name address contact policies');
 
@@ -389,10 +394,11 @@ router.get('/:id', catchAsync(async (req, res) => {
  *       201:
  *         description: Room created successfully
  */
-router.post('/', 
-  authenticate, 
-  authorize('admin', 'staff'), 
-  validate(schemas.createRoom), 
+router.post('/',
+  authenticate,
+  authorize('admin', 'staff'),
+  ensurePropertyAccess,
+  validate(schemas.createRoom),
   catchAsync(async (req, res) => {
     const room = await Room.create(req.body);
 
@@ -424,9 +430,10 @@ router.post('/',
  *       200:
  *         description: Room updated successfully
  */
-router.patch('/:id', 
-  authenticate, 
-  authorize('admin', 'staff'), 
+router.patch('/:id',
+  authenticate,
+  authorize('admin', 'staff'),
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const room = await Room.findByIdAndUpdate(
       req.params.id,
@@ -466,9 +473,10 @@ router.patch('/:id',
  *       204:
  *         description: Room deleted successfully
  */
-router.delete('/:id', 
-  authenticate, 
-  authorize('admin'), 
+router.delete('/:id',
+  authenticate,
+  authorize('admin'),
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const room = await Room.findByIdAndUpdate(
       req.params.id,
@@ -521,6 +529,7 @@ router.delete('/:id',
  */
 router.put('/:id/pricing',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'manager']),
   catchAsync(async (req, res) => {
     const { baseRate, currentRate, reason } = req.body;
@@ -531,10 +540,7 @@ router.put('/:id/pricing',
       throw new ApplicationError('Room not found', 404);
     }
 
-    // Check permissions for hotel
-    if (req.user.role !== 'admin' && room.hotelId.toString() !== req.user.hotelId.toString()) {
-      throw new ApplicationError('Access denied', 403);
-    }
+    // Property access already validated by ensurePropertyAccess middleware
 
     const oldBaseRate = room.baseRate;
     const oldCurrentRate = room.currentRate;
@@ -584,6 +590,7 @@ router.put('/:id/pricing',
  */
 router.get('/:id/price-history',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'manager', 'staff']),
   catchAsync(async (req, res) => {
     const roomId = req.params.id;
@@ -593,10 +600,7 @@ router.get('/:id/price-history',
       throw new ApplicationError('Room not found', 404);
     }
 
-    // Check permissions for hotel
-    if (req.user.role !== 'admin' && room.hotelId.toString() !== req.user.hotelId.toString()) {
-      throw new ApplicationError('Access denied', 403);
-    }
+    // Property access already validated by ensurePropertyAccess middleware
 
     // For now, return empty history as we don't have a price history model yet
     // In a full implementation, you'd query a PriceHistory collection
@@ -651,6 +655,7 @@ router.get('/:id/price-history',
  */
 router.post('/bulk-price-update',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'manager']),
   catchAsync(async (req, res) => {
     const { updates, reason } = req.body;
@@ -674,11 +679,7 @@ router.post('/bulk-price-update',
           continue;
         }
 
-        // Check permissions for hotel
-        if (req.user.role !== 'admin' && room.hotelId.toString() !== req.user.hotelId.toString()) {
-          results.errors.push({ roomId, error: 'Access denied' });
-          continue;
-        }
+        // Property access already validated by ensurePropertyAccess middleware
 
         if (baseRate !== undefined) room.baseRate = baseRate;
         if (currentRate !== undefined) room.currentRate = currentRate;

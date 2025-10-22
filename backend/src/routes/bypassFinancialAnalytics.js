@@ -7,6 +7,7 @@ import {
     authenticate,
     authorize
 } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import {
     ApplicationError
 } from '../middleware/errorHandler.js';
@@ -18,6 +19,7 @@ const router = express.Router();
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 router.use(authorize('admin', 'manager'));
 
 /**

@@ -2,6 +2,7 @@ import express from 'express';
 import Vendor from '../models/Vendor.js';
 import SupplyRequest from '../models/SupplyRequest.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 
@@ -9,6 +10,7 @@ const router = express.Router();
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

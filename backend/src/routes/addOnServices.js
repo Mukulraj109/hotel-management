@@ -2,11 +2,13 @@ import express from 'express';
 import addOnController from '../controllers/addOnController.js';
 import { authenticate } from '../middleware/auth.js';
 import adminAuth from '../middleware/adminAuth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
 // Public routes (accessible by authenticated users)
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Get services with filtering and pagination
 router.get('/', addOnController.getServices);

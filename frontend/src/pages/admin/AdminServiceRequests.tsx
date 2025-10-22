@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import '../../styles/admin-service-requests-animations.css';
 import { useAuth } from '../../context/AuthContext';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { adminGuestServicesService } from '../../services/adminGuestServicesService';
 import {
   Clock,
@@ -99,6 +101,7 @@ interface ServiceStats {
 
 export default function AdminServiceRequests() {
   const { user } = useAuth();
+  const { selectedPropertyId, selectedProperty } = useProperty();
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [stats, setStats] = useState<ServiceStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -185,11 +188,11 @@ export default function AdminServiceRequests() {
   };
 
   useEffect(() => {
-    if (user && ['admin', 'manager'].includes(user.role)) {
+    if (user && ['admin', 'manager'].includes(user.role) && selectedPropertyId) {
       fetchRequests();
       fetchAvailableStaff();
     }
-  }, [user, filters]);
+  }, [user, selectedPropertyId, filters]);
 
   useEffect(() => {
     calculateStats(requests);
@@ -297,6 +300,19 @@ export default function AdminServiceRequests() {
     }
   };
 
+  // Property validation
+  if (!selectedPropertyId) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">🏨</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Property Selected</h2>
+          <p className="text-gray-600">Please select a property from the header to view service requests.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -311,6 +327,9 @@ export default function AdminServiceRequests() {
       toast.error('An error occurred in the service requests management page');
     }}>
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-4 sm:p-6 space-y-6">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Service Requests']} />
+
       {/* Header */}
       <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6 sm:p-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

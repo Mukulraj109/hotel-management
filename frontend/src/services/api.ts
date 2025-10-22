@@ -14,13 +14,16 @@ const api = axios.create({
   },
 });
 
-// Request interceptor to add auth token
+// Request interceptor to add auth token and selected property
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
+    const selectedPropertyId = localStorage.getItem('selectedPropertyId');
+
     console.log('🔐 AUTH: Request interceptor - Token exists?', !!token);
+    console.log('🏨 PROPERTY: Selected property ID:', selectedPropertyId);
     console.log('🔐 AUTH: Request URL:', config.url);
-    
+
     if (token) {
       console.log('🔐 AUTH: Token found, validating...');
       // Validate token format before sending
@@ -43,6 +46,44 @@ api.interceptors.request.use(
     } else {
       console.warn('🔐 AUTH: No token found in localStorage');
     }
+
+    // Add cache-busting headers for GET requests to prevent 304 Not Modified responses
+    if (config.method?.toUpperCase() === 'GET') {
+      config.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+      config.headers['Pragma'] = 'no-cache';
+      config.headers['Expires'] = '0';
+    }
+
+    // Add selected property ID to requests if available
+    // This ensures multi-property users' API calls target the selected property
+    if (selectedPropertyId && selectedPropertyId !== 'null') {
+      // For GET requests, add to params
+      if (config.method?.toUpperCase() === 'GET') {
+        config.params = config.params || {};
+
+        // Check if hotelId is already in params OR in the URL string
+        const urlHasHotelId = config.url?.includes('hotelId=');
+        const paramsHaveHotelId = config.params.hotelId;
+
+        if (!urlHasHotelId && !paramsHaveHotelId) {
+          config.params.hotelId = selectedPropertyId;
+          console.log('🏨 PROPERTY: Added hotelId to query params:', selectedPropertyId);
+        } else {
+          console.log('🏨 PROPERTY: hotelId already present, NOT overriding. URL hotelId:', urlHasHotelId, 'Params hotelId:', paramsHaveHotelId);
+        }
+      }
+      // For POST/PUT/PATCH requests, add to body
+      else if (['POST', 'PUT', 'PATCH'].includes(config.method?.toUpperCase() || '')) {
+        if (config.data && typeof config.data === 'object') {
+          // Only add if hotelId not already specified
+          if (!config.data.hotelId) {
+            config.data.hotelId = selectedPropertyId;
+            console.log('🏨 PROPERTY: Added hotelId to request body:', selectedPropertyId);
+          }
+        }
+      }
+    }
+
     return config;
   },
   (error) => {
@@ -51,6 +92,9 @@ api.interceptors.request.use(
   }
 );
 
+// Prevent infinite redirect loops
+let isRedirecting = false;
+
 // Response interceptor for error handling
 api.interceptors.response.use(
   (response) => {
@@ -58,12 +102,23 @@ api.interceptors.response.use(
   },
   (error) => {
     const { response } = error;
-    
+
     if (response?.status === 401) {
-      // Unauthorized - clear token and redirect to login
-      console.warn('401 Unauthorized - clearing token and redirecting to login');
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+      // Unauthorized - clear token and redirect to login (but only once)
+      if (!isRedirecting && !window.location.pathname.includes('/login')) {
+        isRedirecting = true;
+        console.warn('401 Unauthorized - clearing token and redirecting to login');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        localStorage.removeItem('selectedPropertyId');
+
+        window.location.href = '/login';
+
+        // Reset flag after a delay
+        setTimeout(() => {
+          isRedirecting = false;
+        }, 2000);
+      }
       return Promise.reject(error);
     }
     

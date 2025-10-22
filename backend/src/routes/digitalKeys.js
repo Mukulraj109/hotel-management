@@ -5,14 +5,16 @@ import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
 import User from '../models/User.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 
 const router = express.Router();
 
-// Apply authentication to all routes
+// Apply authentication and property access to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Get all digital keys for the authenticated user
 router.get('/', catchAsync(async (req, res) => {

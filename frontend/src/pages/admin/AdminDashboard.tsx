@@ -18,9 +18,13 @@ import { SatisfactionBreakdownPopup } from '../../components/dashboard/Satisfact
 import { StatusBadge } from '../../components/dashboard/StatusBadge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Building2, Activity, Clock, Settings } from 'lucide-react';
 import { useDashboardOverview, useOccupancyData, useRevenueData } from '../../hooks/useDashboard';
 import { formatCurrency, formatPercentage, formatRelativeTime } from '../../utils/dashboardUtils';
 import { useAuth } from '../../context/AuthContext';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { useNavigate } from 'react-router-dom';
 import { InventoryDashboardWidget } from '../../components/admin/InventoryDashboardWidget';
 import { InventoryNotifications } from '../../components/admin/InventoryNotifications';
@@ -30,20 +34,16 @@ import UpcomingArrivalsWidget from '../../components/admin/UpcomingArrivalsWidge
 export default function AdminDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  // Use user's hotelId, fallback to fixed seeded hotel ID if not available
-  const [selectedHotelId, setSelectedHotelId] = useState<string>(user?.hotelId || '68c7ab1242a357d06adbb2aa');
+  const { selectedPropertyId, selectedProperty } = useProperty();
+
+  // Use PropertyContext's selectedPropertyId
+  const selectedHotelId = selectedPropertyId || user?.hotelId || '';
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [showRevenueBreakdown, setShowRevenueBreakdown] = useState(false);
   const [showOccupancyBreakdown, setShowOccupancyBreakdown] = useState(false);
   const [showBookingsBreakdown, setShowBookingsBreakdown] = useState(false);
   const [showSatisfactionBreakdown, setShowSatisfactionBreakdown] = useState(false);
 
-  // Update selected hotel ID when user changes
-  React.useEffect(() => {
-    if (user?.hotelId && selectedHotelId !== user.hotelId) {
-      setSelectedHotelId(user.hotelId);
-    }
-  }, [user?.hotelId, selectedHotelId]);
 
   // Fetch dashboard data
   const {
@@ -55,10 +55,10 @@ export default function AdminDashboard() {
     error
   } = useDashboardOverview(selectedHotelId);
 
-  const occupancyQuery = useOccupancyData(selectedHotelId, undefined, undefined, { 
+  const occupancyQuery = useOccupancyData(selectedHotelId, undefined, undefined, {
     enabled: !!selectedHotelId
   });
-  const revenueQuery = useRevenueData(selectedHotelId, 'month', undefined, undefined, { 
+  const revenueQuery = useRevenueData(selectedHotelId, 'month', undefined, undefined, {
     enabled: !!selectedHotelId
   });
 
@@ -122,9 +122,7 @@ export default function AdminDashboard() {
   };
 
   const handleFilterChange = (key: string, value: any) => {
-    if (key === 'hotelId') {
-      setSelectedHotelId(value);
-    } else if (key === 'dateRange') {
+    if (key === 'dateRange') {
       setDateRange(value);
     }
   };
@@ -149,6 +147,9 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-4 sm:space-y-6 min-w-0">
+      {/* Breadcrumb */}
+      <PropertyBreadcrumb items={['Dashboard']} />
+
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -181,23 +182,12 @@ export default function AdminDashboard() {
       <FilterBar
         filters={[
           {
-            key: 'hotelId',
-            label: 'Hotel',
-            type: 'select',
-            options: user?.hotelId ? [
-              { value: user.hotelId, label: 'THE PENTOUZ' },
-            ] : [
-              { value: '68c7ab1242a357d06adbb2aa', label: 'THE PENTOUZ' },
-            ],
-            placeholder: 'Select hotel',
-          },
-          {
             key: 'dateRange',
             label: 'Date Range',
             type: 'daterange',
           },
         ]}
-        values={{ hotelId: selectedHotelId, dateRange }}
+        values={{ dateRange }}
         onChange={handleFilterChange}
         className="mb-6"
       />
@@ -478,6 +468,85 @@ export default function AdminDashboard() {
       <div className="mb-8">
         <InventoryNotifications />
       </div>
+
+      {/* Multi-Property Management Section */}
+      {(user?.properties && user.properties.length > 1) && (
+        <Card className="mb-8">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="h-5 w-5" />
+                  Multi-Property Management
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  Recent settings changes across your properties
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate('/admin/analytics/multi-property')}
+                >
+                  View Analytics
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate('/admin/audit-log')}
+                >
+                  View All
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {/* Quick Stats */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+              <div className="bg-blue-50 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-blue-600 font-medium">Properties Managed</p>
+                    <p className="text-2xl font-bold text-blue-900">
+                      {user?.properties?.length || 0}
+                    </p>
+                  </div>
+                  <Building2 className="h-8 w-8 text-blue-600" />
+                </div>
+              </div>
+              <div className="bg-green-50 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-green-600 font-medium">Changes This Week</p>
+                    <p className="text-2xl font-bold text-green-900">-</p>
+                  </div>
+                  <Activity className="h-8 w-8 text-green-600" />
+                </div>
+              </div>
+              <div className="bg-orange-50 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-orange-600 font-medium">Time Saved</p>
+                    <p className="text-2xl font-bold text-orange-900">-</p>
+                  </div>
+                  <Clock className="h-8 w-8 text-orange-600" />
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Changes - Placeholder for now */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold text-gray-700">Recent Activity</h4>
+              <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                <Settings className="h-12 w-12 mx-auto mb-3 text-gray-400" />
+                <p>No recent multi-property changes</p>
+                <p className="text-sm mt-1">Settings changes will appear here</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Bottom Section - Tables and Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">

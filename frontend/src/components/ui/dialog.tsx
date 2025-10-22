@@ -94,8 +94,8 @@ export function DialogContent({ children, className }: DialogContentProps) {
   if (!open) return null;
   
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div 
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div
         className="fixed inset-0 bg-black bg-opacity-50"
         onClick={() => setOpen(false)}
       />

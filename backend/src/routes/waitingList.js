@@ -2,6 +2,7 @@ import express from 'express';
 import { body } from 'express-validator';
 import waitingListController from '../controllers/waitingListController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
@@ -121,6 +122,7 @@ const validateContactRecord = [
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Get all waiting list entries with filters
 router.get('/',

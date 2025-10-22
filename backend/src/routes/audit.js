@@ -15,11 +15,13 @@ import {
 } from '../controllers/auditController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { validateObjectId } from '../middleware/validation.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
 // Apply authentication to all audit routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

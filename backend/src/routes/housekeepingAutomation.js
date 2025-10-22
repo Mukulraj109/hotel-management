@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 
@@ -7,6 +8,7 @@ const router = express.Router();
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger
@@ -61,7 +63,7 @@ router.use(authenticate);
  *       404:
  *         description: Booking or room not found
  */
-router.post('/process-checkout', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
+router.post('/process-checkout', authorize('admin', 'manager', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { bookingId, roomId, options = {} } = req.body;
 
@@ -125,7 +127,7 @@ router.post('/process-checkout', authorize('admin', 'manager', 'staff'), catchAs
  *       200:
  *         description: Tasks retrieved successfully
  */
-router.get('/tasks', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
+router.get('/tasks', authorize('admin', 'manager', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { status, priority, taskType, roomId, assignedTo } = req.query;
 
@@ -174,7 +176,7 @@ router.get('/tasks', authorize('admin', 'manager', 'staff'), catchAsync(async (r
  *       404:
  *         description: Task not found
  */
-router.get('/tasks/:taskId', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
+router.get('/tasks/:taskId', authorize('admin', 'manager', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { taskId } = req.params;
 
@@ -227,7 +229,7 @@ router.get('/tasks/:taskId', authorize('admin', 'manager', 'staff'), catchAsync(
  *       404:
  *         description: Task or staff member not found
  */
-router.put('/tasks/:taskId/assign', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.put('/tasks/:taskId/assign', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { taskId } = req.params;
   const { staffId } = req.body;
@@ -286,7 +288,7 @@ router.put('/tasks/:taskId/assign', authorize('admin', 'manager'), catchAsync(as
  *       404:
  *         description: Task not found
  */
-router.put('/tasks/:taskId/start', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
+router.put('/tasks/:taskId/start', authorize('admin', 'manager', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { taskId } = req.params;
 
@@ -356,7 +358,7 @@ router.put('/tasks/:taskId/start', authorize('admin', 'manager', 'staff'), catch
  *       404:
  *         description: Task not found
  */
-router.put('/tasks/:taskId/complete', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
+router.put('/tasks/:taskId/complete', authorize('admin', 'manager', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { taskId } = req.params;
   const { actualDuration, notes, beforeImages, afterImages } = req.body;
@@ -406,7 +408,7 @@ router.put('/tasks/:taskId/complete', authorize('admin', 'manager', 'staff'), ca
  *       200:
  *         description: Available staff retrieved successfully
  */
-router.get('/available-staff', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/available-staff', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
 
   // Import models
@@ -450,7 +452,7 @@ router.get('/available-staff', authorize('admin', 'manager'), catchAsync(async (
  *       200:
  *         description: Statistics retrieved successfully
  */
-router.get('/statistics', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/statistics', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { startDate, endDate } = req.query;
 
@@ -496,7 +498,7 @@ router.get('/statistics', authorize('admin', 'manager'), catchAsync(async (req, 
  *       200:
  *         description: Auto-assignment completed successfully
  */
-router.post('/auto-assign', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/auto-assign', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { taskIds, priority } = req.body;
 

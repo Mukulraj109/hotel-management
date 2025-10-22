@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Typography, Tabs, Tab, Paper, Grid, Card, CardContent, CardHeader, CardTitle } from '@mui/material';
-import { 
-  LocalOffer, 
-  TrendingUp, 
-  Group, 
+import {
+  LocalOffer,
+  TrendingUp,
+  Group,
   Work,
   Analytics,
   Add,
@@ -16,6 +16,8 @@ import PricingManager from '../../components/advanced/PricingManager';
 import MarketSegmentManager from '../../components/advanced/MarketSegmentManager';
 import JobTypeManager from '../../components/advanced/JobTypeManager';
 import AdvancedAnalytics from '../../components/advanced/AdvancedAnalytics';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface OverviewData {
   summary: {
@@ -40,13 +42,16 @@ interface OverviewData {
 }
 
 const AdminAdvancedFeatures: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [currentTab, setCurrentTab] = useState(0);
   const [overviewData, setOverviewData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchOverviewData();
-  }, []);
+    if (selectedPropertyId || viewMode === 'all') {
+      fetchOverviewData();
+    }
+  }, [selectedPropertyId, viewMode]);
 
   const fetchOverviewData = async () => {
     try {
@@ -140,13 +145,29 @@ const AdminAdvancedFeatures: React.FC = () => {
     </Card>
   );
 
+  // If in single mode and no property selected, show selection prompt
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <Box sx={{ p: 3 }}>
+        <PropertyBreadcrumb items={['Integration', 'Advanced Features']} />
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
+          <Typography variant="h6" color="textSecondary">
+            Please select a property to view advanced features
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" component="h1" gutterBottom>
+      <PropertyBreadcrumb items={['Integration', 'Advanced Features']} />
+      <Typography variant="h4" component="h1" gutterBottom sx={{ mt: 2 }}>
         Advanced Features
       </Typography>
       <Typography variant="subtitle1" color="textSecondary" gutterBottom>
         Manage discounts, dynamic pricing, market segments, and job types for advanced hotel operations
+        {selectedProperty && ` - ${selectedProperty.name}`}
       </Typography>
 
       {/* Overview Cards */}

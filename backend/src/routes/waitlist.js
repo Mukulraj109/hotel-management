@@ -12,18 +12,20 @@ import {
   getWaitlistEntry
 } from '../controllers/waitlistController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validateWaitlistEntry } from '../middleware/validation.js';
 
 const router = express.Router();
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Public waitlist routes (guests can create entries)
 router.post('/', validateWaitlistEntry, createWaitlistEntry);
 
 // Staff-only routes
-router.use(authorize('staff', 'manager', 'admin'));
+router.use(authorize('staff', 'manager', 'admin', 'frontdesk'));
 
 // Get active waitlist with filtering and pagination
 router.get('/', getActiveWaitlist);

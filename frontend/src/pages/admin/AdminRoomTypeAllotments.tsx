@@ -9,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import AllotmentCalendar from '../../components/admin/AllotmentCalendar';
 import AllotmentAnalytics from '../../components/admin/AllotmentAnalytics';
 import allotmentService, { RoomTypeAllotment } from '../../services/allotmentService';
@@ -17,6 +19,7 @@ import IntegrationSettingsForm from '../../components/allotments/settings/Integr
 import allotmentSettingsService, { HotelAllotmentSettings } from '../../services/allotmentSettingsService';
 
 const AdminRoomTypeAllotments: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [allotments, setAllotments] = useState<RoomTypeAllotment[]>([]);
   const [filteredAllotments, setFilteredAllotments] = useState<RoomTypeAllotment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -44,6 +47,11 @@ const AdminRoomTypeAllotments: React.FC = () => {
 
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  // Early return if no property selected in single mode
+  if (!selectedPropertyId && viewMode === 'single') {
+    return <div className="p-6">Please select a property</div>;
+  }
 
   useEffect(() => {
     loadAllotments();
@@ -333,6 +341,9 @@ const AdminRoomTypeAllotments: React.FC = () => {
 
   return (
     <div className="p-6">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Configuration', 'Room Allotments']} />
+
       <div className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Room Type Allotments</h1>

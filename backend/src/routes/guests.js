@@ -1,11 +1,13 @@
 import express from 'express';
 import * as guestController from '../controllers/guestController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
-// Apply authentication to all routes
+// Apply authentication and property access to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Public routes (for guest self-service)
 router.get('/:id', guestController.getGuest);

@@ -16,6 +16,10 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { apiRequest } from '../../services/api';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
+import { useProperty } from '../../context/PropertyContext';
+import toast from 'react-hot-toast';
 
 interface TemplateVariable {
   name: string;
@@ -76,6 +80,28 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'basic' | 'content' | 'variables' | 'routing' | 'preview'>('basic');
   const [previewVariables, setPreviewVariables] = useState<Record<string, any>>({});
+
+  // Multi-property support
+  const { selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
 
   // Form state
   const [formData, setFormData] = useState<Partial<NotificationTemplate>>({

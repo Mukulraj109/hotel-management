@@ -14,13 +14,15 @@ import SupplyRequest from '../models/SupplyRequest.js';
 import Housekeeping from '../models/Housekeeping.js';
 import CheckoutInventory from '../models/CheckoutInventory.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
 
-// All routes require authentication
+// All routes require authentication and property access
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 // Most routes require admin authentication - specific routes can override this
 
 /**
@@ -820,16 +822,22 @@ router.get('/kpis', authorize('admin', 'staff'), catchAsync(async (req, res) => 
  */
 router.get('/occupancy', authorize('admin', 'staff'), catchAsync(async (req, res, next) => {
   const { hotelId, floor, roomType } = req.query;
-  
+
+  console.log('='.repeat(80));
+  console.log('🏨 [OCCUPANCY ENDPOINT] Request received');
+  console.log('   - hotelId param:', hotelId);
+  console.log('   - typeof hotelId:', typeof hotelId);
+
   if (!hotelId) {
     return next(new ApplicationError('Hotel ID is required', 400));
   }
-  
+
   // Check if hotel exists
   const hotelExists = await Hotel.findById(hotelId);
-  console.log('Hotel exists:', !!hotelExists);
+  console.log('   - Hotel exists:', !!hotelExists);
   if (hotelExists) {
-    console.log('Hotel name:', hotelExists.name);
+    console.log('   - Hotel name:', hotelExists.name);
+    console.log('   - Hotel _id:', hotelExists._id);
   }
 
   // Use UTC dates to match booking dates (which are stored in UTC)
@@ -854,9 +862,9 @@ router.get('/occupancy', authorize('admin', 'staff'), catchAsync(async (req, res
   const roomFilter = { hotelId: new mongoose.Types.ObjectId(hotelId) };
   if (floor) roomFilter.floor = floor;
   if (roomType) roomFilter.type = roomType;
-  
-  console.log('Room filter:', roomFilter);
-  console.log('Hotel ID being used:', hotelId);
+
+  console.log('   - Room filter:', roomFilter);
+  console.log('   - Room filter hotelId as ObjectId:', roomFilter.hotelId);
 
   // Get all rooms with current status and booking information
   const roomsWithStatus = await Room.aggregate([
@@ -961,12 +969,12 @@ router.get('/occupancy', authorize('admin', 'staff'), catchAsync(async (req, res
     }
   ]);
 
-  console.log('Rooms with status found:', roomsWithStatus.length);
-  console.log('Sample rooms:', roomsWithStatus.slice(0, 3).map(r => ({ roomNumber: r.roomNumber, status: r.status, isOccupied: r.isOccupied })));
-  
+  console.log('   ✅ Rooms with status found:', roomsWithStatus.length);
+  console.log('   - Sample rooms:', roomsWithStatus.slice(0, 3).map(r => ({ roomNumber: r.roomNumber, status: r.status, isOccupied: r.isOccupied })));
+
   // Check if any rooms exist for this hotel at all
   const roomCount = await Room.countDocuments({ hotelId: new mongoose.Types.ObjectId(hotelId) });
-  console.log('Total rooms for hotel:', roomCount);
+  console.log('   ✅ Direct Room.countDocuments for this hotelId:', roomCount);
 
   // Calculate occupancy metrics by floor
   const floorMetrics = await Room.aggregate([
@@ -1196,15 +1204,13 @@ router.get('/occupancy', authorize('admin', 'staff'), catchAsync(async (req, res
   const outOfOrderCount = roomsWithStatus.filter(room => room.status === 'out_of_order').length;
 
   // Debug occupancy calculation
-  console.log('🔍 OCCUPANCY CALCULATION DEBUG:');
-  console.log('- totalRooms:', totalRooms);
-  console.log('- occupiedCount:', occupiedCount);
-  console.log('- availableCount:', availableCount);
-  console.log('- cleaningCount:', cleaningCount);
-  console.log('- maintenanceCount:', maintenanceCount);
-  console.log('- Raw calculation:', occupiedCount / totalRooms);
-  console.log('- Percentage calculation:', (occupiedCount / totalRooms) * 100);
-  console.log('- Rounded result:', totalRooms > 0 ? Math.round((occupiedCount / totalRooms) * 100) : 0);
+  console.log('   🔍 OCCUPANCY CALCULATION:');
+  console.log('   - totalRooms:', totalRooms);
+  console.log('   - occupiedCount:', occupiedCount);
+  console.log('   - availableCount:', availableCount);
+  console.log('   - cleaningCount:', cleaningCount);
+  console.log('   - maintenanceCount:', maintenanceCount);
+  console.log('   - outOfOrderCount:', outOfOrderCount);
 
   const calculatedOccupancyRate = totalRooms > 0 ? Math.round((occupiedCount / totalRooms) * 100) : 0;
 
@@ -1219,7 +1225,8 @@ router.get('/occupancy', authorize('admin', 'staff'), catchAsync(async (req, res
     availabilityRate: totalRooms > 0 ? Math.round((availableCount / totalRooms) * 100) : 0
   };
 
-  console.log('- Final overallMetrics.occupancyRate:', overallMetrics.occupancyRate);
+  console.log('   ✅ Final overallMetrics:', overallMetrics);
+  console.log('='.repeat(80));
 
   // Get room type distribution
   const roomTypeDistribution = roomsWithStatus.reduce((acc, room) => {
@@ -5792,7 +5799,7 @@ router.get('/reports', authorize('admin', 'staff'), catchAsync(async (req, res, 
 /**
  * Admin Bypass Checkout - Emergency/Special Case Checkout
  */
-router.post('/bypass-checkout', authenticate, authorize('admin'), catchAsync(async (req, res) => {
+router.post('/bypass-checkout', authenticate, authorize('admin', 'frontdesk'), catchAsync(async (req, res) => {
   const { bookingId, notes, paymentMethod = 'cash' } = req.body;
   const adminId = req.user._id;
 
@@ -5873,7 +5880,7 @@ router.post('/bypass-checkout', authenticate, authorize('admin'), catchAsync(asy
 /**
  * Get Checked-in Bookings for Admin Bypass
  */
-router.get('/checked-in-bookings', authenticate, authorize('admin'), catchAsync(async (req, res) => {
+router.get('/checked-in-bookings', authenticate, authorize('admin', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
 
   // Get all checked-in bookings for this hotel

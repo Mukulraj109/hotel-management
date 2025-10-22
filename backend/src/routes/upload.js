@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import User from '../models/User.js';
@@ -54,6 +55,7 @@ const upload = multer({
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Upload avatar endpoint
 router.post('/avatar', upload.single('avatar'), catchAsync(async (req, res, next) => {

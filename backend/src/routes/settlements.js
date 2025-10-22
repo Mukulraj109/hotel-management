@@ -2,6 +2,7 @@ import express from 'express';
 import Settlement from '../models/Settlement.js';
 import Booking from '../models/Booking.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import {
@@ -66,6 +67,7 @@ const router = express.Router();
  */
 router.get('/',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   validateSettlementQuery,
   catchAsync(async (req, res) => {
@@ -133,6 +135,7 @@ router.get('/',
  */
 router.get('/overdue',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
@@ -180,6 +183,7 @@ router.get('/overdue',
  */
 router.get('/analytics',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
@@ -248,6 +252,7 @@ router.get('/analytics',
  */
 router.post('/',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   validateSettlementCreation,
   logFinancialOperation('settlement_creation'),
@@ -349,6 +354,7 @@ router.post('/',
  */
 router.get('/:id',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     const { id } = req.params;
@@ -425,6 +431,7 @@ router.get('/:id',
  */
 router.post('/:id/payment',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   validatePaymentAddition,
   validateCalculationIntegrity,
@@ -502,6 +509,7 @@ router.post('/:id/payment',
  */
 router.post('/:id/escalate',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   validateEscalation,
   logFinancialOperation('settlement_escalation'),
@@ -594,6 +602,7 @@ router.post('/:id/escalate',
  */
 router.post('/:id/communication',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   validateCommunication,
   logFinancialOperation('communication_addition'),
@@ -687,6 +696,7 @@ router.post('/:id/communication',
  */
 router.post('/:id/dispute',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     const { id } = req.params;
@@ -767,6 +777,7 @@ router.post('/:id/dispute',
  */
 router.post('/:id/dispute/:disputeId/resolve',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     const { id, disputeId } = req.params;
@@ -828,6 +839,7 @@ router.post('/:id/dispute/:disputeId/resolve',
  */
 router.post('/:id/validate',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   logFinancialOperation('calculation_validation'),
   catchAsync(async (req, res) => {
@@ -908,6 +920,7 @@ router.post('/:id/validate',
  */
 router.post('/:id/adjustment',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   validateAdjustment,
   validateCalculationIntegrity,
@@ -970,6 +983,7 @@ router.post('/:id/adjustment',
  */
 router.get('/:id/late-fee',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     const { id } = req.params;
@@ -1025,6 +1039,7 @@ router.get('/:id/late-fee',
  */
 router.get('/validation-statistics',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin']),
   validateSettlementQuery,
   catchAsync(async (req, res) => {

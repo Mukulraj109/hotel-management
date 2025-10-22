@@ -2,11 +2,13 @@ import express from 'express';
 import assignmentRulesController from '../controllers/assignmentRulesController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
 // Protect all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

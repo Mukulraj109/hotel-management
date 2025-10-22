@@ -22,12 +22,14 @@ import {
   cloneDepartment
 } from '../controllers/departmentController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import authorize from '../middleware/authorize.js';
 
 const router = express.Router();
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Validation rules
 const createDepartmentValidation = [

@@ -4,12 +4,17 @@ import Booking from '../models/Booking.js';
 import Payment from '../models/Payment.js';
 import POSOrder from '../models/POSOrder.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+// All routes require authentication and property access
+router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger
@@ -384,23 +389,36 @@ router.post('/extra-person-charges/intent',
  */
 router.post('/settlement/intent',
   authenticate,
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { settlementId, amount, currency = 'INR', description = '' } = req.body;
 
     // Import Settlement model
     const Settlement = (await import('../models/Settlement.js')).default;
 
-    // Get settlement
-    const settlement = await Settlement.findById(settlementId).populate('bookingId');
+    // Get settlement with full booking details including hotel
+    const settlement = await Settlement.findById(settlementId).populate({
+      path: 'bookingId',
+      populate: { path: 'hotelId' }
+    });
+
     if (!settlement) {
       throw new ApplicationError('Settlement not found', 404);
     }
 
-    // Check permissions - only admin/staff or booking owner can pay settlements
-    const canPay = ['admin', 'staff'].includes(req.user.role) ||
-                   settlement.bookingId.userId.toString() === req.user._id.toString();
+    // CRITICAL FIX: Multi-property validation using checkPropertyAccess
+    const { checkPropertyAccess } = await import('../middleware/propertyAccess.js');
+    const hasAccess = await checkPropertyAccess(
+      req.user._id,
+      settlement.bookingId.hotelId._id,
+      req.user
+    );
 
-    if (!canPay) {
+    // Check permissions - only admin/staff with property access or booking owner
+    const isBookingOwner = settlement.bookingId.userId.toString() === req.user._id.toString();
+    const isStaffWithAccess = ['admin', 'staff'].includes(req.user.role) && hasAccess;
+
+    if (!isBookingOwner && !isStaffWithAccess) {
       throw new ApplicationError('You do not have permission to pay this settlement', 403);
     }
 
@@ -408,9 +426,13 @@ router.post('/settlement/intent',
       throw new ApplicationError('Settlement amount must be greater than 0', 400);
     }
 
+    // CRITICAL FIX: Proper rounding for INR (smallest unit = paisa = 1/100 rupee)
+    // Stripe expects amount in smallest currency unit (paisa for INR)
+    const amountInPaisa = Math.round(amount * 100);
+
     // Create Stripe Payment Intent
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount * 100), // Convert to cents
+      amount: amountInPaisa,
       currency: currency.toLowerCase(),
       metadata: {
         settlementId: settlementId,

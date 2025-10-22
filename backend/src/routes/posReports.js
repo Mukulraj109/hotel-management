@@ -4,6 +4,7 @@ import BillingSession from '../models/BillingSession.js';
 import POSOutlet from '../models/POSOutlet.js';
 import User from '../models/User.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
@@ -11,6 +12,7 @@ const router = express.Router();
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Sales Summary Report - Daily/Weekly/Monthly aggregated sales
 router.get('/sales-summary', authorize('admin', 'staff'), catchAsync(async (req, res) => {

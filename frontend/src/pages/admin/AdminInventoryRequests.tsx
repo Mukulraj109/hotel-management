@@ -46,6 +46,8 @@ import { adminGuestServicesService, GuestService, GuestServiceStats, GuestServic
 // import { useRealTime } from '../../services/realTimeService'; // Disabled for now - will implement later
 import { useAuth } from '../../context/AuthContext';
 import '../../styles/inventory-requests-animations.css';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface InventoryRequest extends GuestService {
   items?: Array<{
@@ -92,6 +94,7 @@ interface BulkOperationData {
 
 export default function AdminInventoryRequests() {
   const { user, logout } = useAuth();
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [requests, setRequests] = useState<InventoryRequest[]>([]);
   const [stats, setStats] = useState<InventoryStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -136,7 +139,10 @@ export default function AdminInventoryRequests() {
   const fetchRequests = async () => {
     try {
       setLoading(true);
-      const response = await adminGuestServicesService.getServices(filters);
+      const response = await adminGuestServicesService.getServices({
+        ...filters,
+        propertyId: selectedPropertyId
+      });
       console.log('Inventory requests response:', response.data);
 
       // Filter for only inventory requests with enhanced matching
@@ -215,7 +221,7 @@ export default function AdminInventoryRequests() {
 
   const fetchAvailableStaff = async () => {
     try {
-      const response = await adminGuestServicesService.getAvailableStaff();
+      const response = await adminGuestServicesService.getAvailableStaff(selectedPropertyId);
       setAvailableStaff(response.data);
     } catch (error) {
       console.error('Error fetching available staff:', error);
@@ -419,8 +425,10 @@ export default function AdminInventoryRequests() {
   */
 
   useEffect(() => {
-    fetchRequests();
-    fetchAvailableStaff();
+    if (selectedPropertyId) {
+      fetchRequests();
+      fetchAvailableStaff();
+    }
 
     // WebSocket connection disabled for now
     // connectWithRetry();
@@ -434,7 +442,7 @@ export default function AdminInventoryRequests() {
         clearTimeout(debounceTimeoutRef.current);
       }
     };
-  }, [filters]); // removed connectWithRetry, disconnect from deps
+  }, [filters, selectedPropertyId]); // removed connectWithRetry, disconnect from deps
 
   // Trigger search when searchTerm changes
   useEffect(() => {
@@ -714,6 +722,18 @@ export default function AdminInventoryRequests() {
     }
   ];
 
+  // Early return if no property selected in single property mode
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['Inventory', 'Requests']} />
+        <div className="text-center py-12">
+          <p className="text-gray-600">Please select a property to view inventory requests</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading && !requests.length) {
     return (
       <div className="min-h-screen relative overflow-hidden">
@@ -747,6 +767,9 @@ export default function AdminInventoryRequests() {
       toast.error('An error occurred in the inventory requests management page');
     }}>
       <div className="space-y-6">
+        {/* Property Breadcrumb */}
+        <PropertyBreadcrumb items={['Inventory', 'Requests']} />
+
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>

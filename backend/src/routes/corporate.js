@@ -69,13 +69,15 @@ import {
 } from '../controllers/corporateTrackingController.js';
 
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validate } from '../middleware/validation.js';
 import { corporateCompanyValidation, groupBookingValidation, creditTransactionValidation } from '../validation/corporateValidation.js';
 
 const router = express.Router();
 
-// Apply authentication to all corporate routes
+// Apply authentication and property access to all corporate routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger
@@ -100,7 +102,7 @@ router.use(authenticate);
  */
 router
   .route('/companies')
-  .get(authorize('admin', 'staff'), getAllCorporateCompanies)
+  .get(authorize('admin', 'staff', 'frontdesk'), getAllCorporateCompanies)
   .post(
     authorize('admin', 'staff'),
     validate(corporateCompanyValidation.create),
@@ -116,7 +118,7 @@ router
  */
 router
   .route('/companies/low-credit')
-  .get(authorize('admin', 'staff'), getLowCreditCompanies);
+  .get(authorize('admin', 'staff', 'frontdesk'), getLowCreditCompanies);
 
 /**
  * @swagger
@@ -133,7 +135,7 @@ router
  */
 router
   .route('/companies/:id')
-  .get(authorize('admin', 'staff'), getCorporateCompany)
+  .get(authorize('admin', 'staff', 'frontdesk'), getCorporateCompany)
   .patch(
     authorize('admin', 'staff'),
     validate(corporateCompanyValidation.update),
@@ -150,7 +152,7 @@ router
  */
 router
   .route('/companies/:id/credit-summary')
-  .get(authorize('admin', 'staff'), getCorporateCompanyCreditSummary);
+  .get(authorize('admin', 'staff', 'frontdesk'), getCorporateCompanyCreditSummary);
 
 /**
  * @swagger
@@ -172,7 +174,7 @@ router
  */
 router
   .route('/companies/:id/bookings')
-  .get(authorize('admin', 'staff'), getCorporateCompanyBookings);
+  .get(authorize('admin', 'staff', 'frontdesk'), getCorporateCompanyBookings);
 
 /**
  * @swagger
@@ -194,7 +196,7 @@ router
  */
 router
   .route('/dashboard/metrics')
-  .get(authorize('admin', 'staff'), getCorporateDashboardMetrics);
+  .get(authorize('admin', 'staff', 'frontdesk'), getCorporateDashboardMetrics);
 
 // Credit Monitoring Routes
 /**
@@ -206,7 +208,7 @@ router
  */
 router
   .route('/monitoring/status')
-  .get(authorize('admin', 'staff'), runCreditMonitoring);
+  .get(authorize('admin', 'staff', 'frontdesk'), runCreditMonitoring);
 
 /**
  * @swagger
@@ -217,7 +219,7 @@ router
  */
 router
   .route('/monitoring/summary')
-  .get(authorize('admin', 'staff'), getCreditMonitoringSummary);
+  .get(authorize('admin', 'staff', 'frontdesk'), getCreditMonitoringSummary);
 
 /**
  * @swagger
@@ -228,7 +230,7 @@ router
  */
 router
   .route('/credit/validate')
-  .post(authorize('admin', 'staff'), validateBookingCredit);
+  .post(authorize('admin', 'staff', 'frontdesk'), validateBookingCredit);
 
 /**
  * @swagger
@@ -239,7 +241,7 @@ router
  */
 router
   .route('/credit/process-booking')
-  .post(authorize('admin', 'staff'), processBookingCredit);
+  .post(authorize('admin', 'staff', 'frontdesk'), processBookingCredit);
 
 // Credit Approval Workflow Routes
 /**
@@ -251,7 +253,7 @@ router
  */
 router
   .route('/credit/request-limit-increase')
-  .post(authorize('admin', 'staff'), requestCreditLimitIncrease);
+  .post(authorize('admin', 'staff', 'frontdesk'), requestCreditLimitIncrease);
 
 /**
  * @swagger
@@ -284,7 +286,7 @@ router
  */
 router
   .route('/credit/pending-requests')
-  .get(authorize('admin', 'staff'), getPendingCreditRequests);
+  .get(authorize('admin', 'staff', 'frontdesk'), getPendingCreditRequests);
 
 // Transaction History Timeline Routes
 /**
@@ -296,7 +298,7 @@ router
  */
 router
   .route('/credit/transaction-timeline/:companyId')
-  .get(authorize('admin', 'staff'), getTransactionHistoryTimeline);
+  .get(authorize('admin', 'staff', 'frontdesk'), getTransactionHistoryTimeline);
 
 /**
  * @swagger
@@ -307,7 +309,7 @@ router
  */
 router
   .route('/credit/transaction-analytics/:companyId')
-  .get(authorize('admin', 'staff'), getTransactionAnalytics);
+  .get(authorize('admin', 'staff', 'frontdesk'), getTransactionAnalytics);
 
 // Group Booking Routes
 /**
@@ -322,9 +324,9 @@ router
  */
 router
   .route('/group-bookings')
-  .get(authorize('admin', 'staff'), getAllGroupBookings)
+  .get(authorize('admin', 'staff', 'frontdesk'), getAllGroupBookings)
   .post(
-    authorize('admin', 'staff'),
+    authorize('admin', 'staff', 'frontdesk'),
     validate(groupBookingValidation.create),
     createGroupBooking
   );
@@ -338,7 +340,7 @@ router
  */
 router
   .route('/group-bookings/upcoming')
-  .get(authorize('admin', 'staff'), getUpcomingGroupBookings);
+  .get(authorize('admin', 'staff', 'frontdesk'), getUpcomingGroupBookings);
 
 /**
  * @swagger
@@ -352,9 +354,9 @@ router
  */
 router
   .route('/group-bookings/:id')
-  .get(authorize('admin', 'staff'), getGroupBooking)
+  .get(authorize('admin', 'staff', 'frontdesk'), getGroupBooking)
   .patch(
-    authorize('admin', 'staff'),
+    authorize('admin', 'staff', 'frontdesk'),
     validate(groupBookingValidation.update),
     updateGroupBooking
   );
@@ -368,7 +370,7 @@ router
  */
 router
   .route('/group-bookings/:id/confirm')
-  .patch(authorize('admin', 'staff'), confirmGroupBooking);
+  .patch(authorize('admin', 'staff', 'frontdesk'), confirmGroupBooking);
 
 /**
  * @swagger
@@ -379,7 +381,7 @@ router
  */
 router
   .route('/group-bookings/:id/cancel')
-  .patch(authorize('admin', 'staff'), cancelGroupBooking);
+  .patch(authorize('admin', 'staff', 'frontdesk'), cancelGroupBooking);
 
 /**
  * @swagger
@@ -390,7 +392,7 @@ router
  */
 router
   .route('/group-bookings/:id/rooms/:roomIndex')
-  .patch(authorize('admin', 'staff'), updateGroupBookingRoom);
+  .patch(authorize('admin', 'staff', 'frontdesk'), updateGroupBookingRoom);
 
 // Credit Transaction Routes
 /**
@@ -405,9 +407,9 @@ router
  */
 router
   .route('/credit/transactions')
-  .get(authorize('admin', 'staff'), getAllCreditTransactions)
+  .get(authorize('admin', 'staff', 'frontdesk'), getAllCreditTransactions)
   .post(
-    authorize('admin', 'staff'),
+    authorize('admin', 'staff', 'frontdesk'),
     validate(creditTransactionValidation.create),
     createCreditTransaction
   );
@@ -421,7 +423,7 @@ router
  */
 router
   .route('/credit/transactions/:id')
-  .get(authorize('admin', 'staff'), getCreditTransaction);
+  .get(authorize('admin', 'staff', 'frontdesk'), getCreditTransaction);
 
 /**
  * @swagger
@@ -454,7 +456,7 @@ router
  */
 router
   .route('/credit/overdue')
-  .get(authorize('admin', 'staff'), getOverdueTransactions);
+  .get(authorize('admin', 'staff', 'frontdesk'), getOverdueTransactions);
 
 /**
  * @swagger
@@ -465,7 +467,7 @@ router
  */
 router
   .route('/credit/monthly-report')
-  .get(authorize('admin', 'staff'), getMonthlyCreditReport);
+  .get(authorize('admin', 'staff', 'frontdesk'), getMonthlyCreditReport);
 
 /**
  * @swagger
@@ -476,7 +478,7 @@ router
  */
 router
   .route('/credit/summary/:companyId')
-  .get(authorize('admin', 'staff'), getCompanyCreditSummary);
+  .get(authorize('admin', 'staff', 'frontdesk'), getCompanyCreditSummary);
 
 /**
  * @swagger
@@ -499,7 +501,7 @@ router
  */
 router
   .route('/gst/calculate')
-  .post(authorize('admin', 'staff'), calculateGST);
+  .post(authorize('admin', 'staff', 'frontdesk'), calculateGST);
 
 /**
  * @swagger
@@ -510,7 +512,7 @@ router
  */
 router
   .route('/gst/validate-number')
-  .post(authorize('admin', 'staff'), validateGSTNumber);
+  .post(authorize('admin', 'staff', 'frontdesk'), validateGSTNumber);
 
 /**
  * @swagger
@@ -521,7 +523,7 @@ router
  */
 router
   .route('/gst/calculate-booking')
-  .post(authorize('admin', 'staff'), calculateBookingGST);
+  .post(authorize('admin', 'staff', 'frontdesk'), calculateBookingGST);
 
 /**
  * @swagger
@@ -532,7 +534,7 @@ router
  */
 router
   .route('/gst/reverse-calculate')
-  .post(authorize('admin', 'staff'), reverseCalculateGST);
+  .post(authorize('admin', 'staff', 'frontdesk'), reverseCalculateGST);
 
 /**
  * @swagger
@@ -543,7 +545,7 @@ router
  */
 router
   .route('/gst/generate-invoice-data/:bookingId')
-  .get(authorize('admin', 'staff'), generateGSTInvoiceData);
+  .get(authorize('admin', 'staff', 'frontdesk'), generateGSTInvoiceData);
 
 /**
  * @swagger
@@ -554,7 +556,7 @@ router
  */
 router
   .route('/gst/state-codes')
-  .get(authorize('admin', 'staff'), getStateCodes);
+  .get(authorize('admin', 'staff', 'frontdesk'), getStateCodes);
 
 /**
  * @swagger
@@ -565,9 +567,9 @@ router
  */
 router
   .route('/gst/update-booking-gst/:bookingId')
-  .patch(authorize('admin', 'staff'), updateBookingGSTDetails);
+  .patch(authorize('admin', 'staff', 'frontdesk'), updateBookingGSTDetails);
 
-// Admin Tracking Routes
+// Admin Tracking Routes - Accessible by admin, staff, and frontdesk
 /**
  * @swagger
  * /api/v1/corporate/admin/dashboard-overview:
@@ -577,7 +579,7 @@ router
  */
 router
   .route('/admin/dashboard-overview')
-  .get(authorize('admin'), getCorporateDashboardOverview);
+  .get(authorize('admin', 'staff', 'frontdesk'), getCorporateDashboardOverview);
 
 /**
  * @swagger
@@ -588,7 +590,7 @@ router
  */
 router
   .route('/admin/monthly-trends')
-  .get(authorize('admin'), getMonthlyTrends);
+  .get(authorize('admin', 'staff', 'frontdesk'), getMonthlyTrends);
 
 /**
  * @swagger
@@ -599,7 +601,7 @@ router
  */
 router
   .route('/admin/company-performance')
-  .get(authorize('admin'), getCompanyPerformance);
+  .get(authorize('admin', 'staff', 'frontdesk'), getCompanyPerformance);
 
 /**
  * @swagger
@@ -610,7 +612,7 @@ router
  */
 router
   .route('/admin/booking-analytics')
-  .get(authorize('admin'), getBookingAnalytics);
+  .get(authorize('admin', 'staff', 'frontdesk'), getBookingAnalytics);
 
 /**
  * @swagger
@@ -621,7 +623,7 @@ router
  */
 router
   .route('/admin/credit-analysis')
-  .get(authorize('admin'), getCreditAnalysis);
+  .get(authorize('admin', 'staff', 'frontdesk'), getCreditAnalysis);
 
 // Security Routes
 /**
@@ -657,7 +659,7 @@ router
   .route('/security/daily-audit')
   .post(authorize('admin'), runDailyIntegrityAudit);
 
-// ===== GROUP BOOKING ROUTES =====
+// ===== GROUP BOOKING ROUTES (Duplicate section - kept for backwards compatibility) =====
 
 /**
  * @swagger
@@ -671,9 +673,9 @@ router
  */
 router
   .route('/group-bookings')
-  .get(authorize('admin', 'staff'), getAllGroupBookings)
+  .get(authorize('admin', 'staff', 'frontdesk'), getAllGroupBookings)
   .post(
-    authorize('admin', 'staff'),
+    authorize('admin', 'staff', 'frontdesk'),
     validate(groupBookingValidation.create),
     createGroupBooking
   );
@@ -687,7 +689,7 @@ router
  */
 router
   .route('/group-bookings/upcoming')
-  .get(authorize('admin', 'staff'), getUpcomingGroupBookings);
+  .get(authorize('admin', 'staff', 'frontdesk'), getUpcomingGroupBookings);
 
 /**
  * @swagger
@@ -701,9 +703,9 @@ router
  */
 router
   .route('/group-bookings/:id')
-  .get(authorize('admin', 'staff'), getGroupBooking)
+  .get(authorize('admin', 'staff', 'frontdesk'), getGroupBooking)
   .patch(
-    authorize('admin', 'staff'),
+    authorize('admin', 'staff', 'frontdesk'),
     validate(groupBookingValidation.update),
     updateGroupBooking
   );
@@ -717,7 +719,7 @@ router
  */
 router
   .route('/group-bookings/:id/toggle-status')
-  .patch(authorize('admin', 'staff'), toggleGroupBookingStatus);
+  .patch(authorize('admin', 'staff', 'frontdesk'), toggleGroupBookingStatus);
 
 /**
  * @swagger
@@ -728,7 +730,7 @@ router
  */
 router
   .route('/group-bookings/:id/confirm')
-  .patch(authorize('admin', 'staff'), confirmGroupBooking);
+  .patch(authorize('admin', 'staff', 'frontdesk'), confirmGroupBooking);
 
 /**
  * @swagger
@@ -739,7 +741,7 @@ router
  */
 router
   .route('/group-bookings/:id/cancel')
-  .patch(authorize('admin', 'staff'), cancelGroupBooking);
+  .patch(authorize('admin', 'staff', 'frontdesk'), cancelGroupBooking);
 
 /**
  * @swagger
@@ -750,6 +752,6 @@ router
  */
 router
   .route('/group-bookings/:id/rooms/:roomIndex')
-  .patch(authorize('admin', 'staff'), updateGroupBookingRoom);
+  .patch(authorize('admin', 'staff', 'frontdesk'), updateGroupBookingRoom);
 
 export default router;

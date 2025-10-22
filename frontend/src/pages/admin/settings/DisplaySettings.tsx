@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '../../../context/ThemeContext';
 import {
   Palette,
@@ -15,7 +15,12 @@ import {
   Loader2
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
+import { Badge } from '../../../components/ui/badge';
+import { Card, CardContent } from '../../../components/ui/card';
 import toast from 'react-hot-toast';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../../components/settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '../../../hooks/useSettingsInheritance';
+import { useProperty } from '../../../context/PropertyContext';
 
 interface DisplayFormData {
   theme: 'light' | 'dark' | 'auto';
@@ -35,6 +40,29 @@ interface DisplaySettingsProps {
 
 export default function DisplaySettings({ onSettingsChange }: DisplaySettingsProps = {}) {
   const { theme, setTheme } = useTheme();
+  const queryClient = useQueryClient();
+
+  // Multi-property support
+  const { selectedProperty, selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
 
   const {
     register,
@@ -149,13 +177,59 @@ export default function DisplaySettings({ onSettingsChange }: DisplaySettingsPro
     }
   });
 
-  const onSubmit = (data: DisplayFormData) => {
-    // Update theme context if theme changed
+  const onSubmit = async (data: DisplayFormData) => {
+    // Update theme context if theme changed (this is user-specific, not property-specific)
     if (data.theme !== theme) {
       setTheme(data.theme as 'light' | 'dark' | 'auto');
     }
 
-    saveDisplayMutation.mutate(data);
+    // For display settings, only language, currency, and date/time formats should be property-level
+    // Theme and layout preferences are user-specific
+    const propertySettings = {
+      language: data.language,
+      currency: data.currency,
+      dateFormat: data.dateFormat,
+      timeFormat: data.timeFormat,
+      numberFormat: data.numberFormat,
+    };
+
+    try {
+      // If multi-property update, use applySettings for property-level settings
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: propertySettings,
+          settingType: 'display_preferences',
+        });
+
+        if (!result) return; // Confirmation dialog shown
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`Display preferences updated successfully${
+          applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
+        }`);
+        setApplyToScope('single');
+      }
+
+      // Always save user-specific preferences (theme, layout) to current user
+      saveDisplayMutation.mutate(data);
+    } catch (error) {
+      toast.error('Failed to update display settings');
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (pendingUpdate) {
+      const result = await confirmBulkUpdate();
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`Display preferences updated for ${result.propertiesUpdated} properties`);
+        queryClient.invalidateQueries({ queryKey: ['display-settings'] });
+      }
+    }
   };
 
   const languages = [
@@ -185,6 +259,44 @@ export default function DisplaySettings({ onSettingsChange }: DisplaySettingsPro
   return (
     <div className="p-6 bg-white dark:bg-gray-800 transition-colors">
       <div className="max-w-3xl">
+        {/* Success Message */}
+        {showSuccess && (
+          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 px-4 py-3 rounded-lg mb-6">
+            <p className="font-medium">Display preferences updated successfully!</p>
+          </div>
+        )}
+
+        {/* Error Message */}
+        {updateError && (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 px-4 py-3 rounded-lg mb-6">
+            <p className="font-medium">Error: {updateError}</p>
+          </div>
+        )}
+
+        {/* Inheritance Status Card */}
+        {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+          <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 mb-6">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                    This property is part of: {inheritanceStatus.groupName}
+                  </p>
+                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                    Display preferences are inherited from the property group
+                    {inheritanceStatus.lastSyncAt && ` • Last synced: ${new Date(inheritanceStatus.lastSyncAt).toLocaleDateString()}`}
+                  </p>
+                </div>
+                {inheritanceStatus.canOverride && (
+                  <Badge variant="secondary" className="text-xs">
+                    Override Enabled
+                  </Badge>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Header */}
         <div className="mb-6">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center space-x-2">
@@ -197,6 +309,27 @@ export default function DisplaySettings({ onSettingsChange }: DisplaySettingsPro
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+          {/* Multi-Property Selector - Only for property-level settings */}
+          <div className="pb-6 border-b border-gray-200 dark:border-gray-700">
+            <div className="mb-4">
+              <h3 className="text-md font-medium text-gray-900 dark:text-gray-100 mb-2">
+                Apply Property-Level Settings To
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Language, currency, and date/time formats can be applied across multiple properties.
+                Theme and layout preferences are user-specific.
+              </p>
+            </div>
+            <ApplyToSelector
+              value={applyToScope}
+              onChange={setApplyToScope}
+              isInGroup={inheritanceStatus?.hasGroup || false}
+              groupName={inheritanceStatus?.groupName}
+              totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+              showWarning={true}
+              warningMessage="Property-level display preferences (language, currency, date/time formats) will be applied to all selected properties. User-specific preferences (theme, layout) remain unchanged."
+            />
+          </div>
           {/* Theme Settings */}
           <div>
             <h3 className="text-md font-medium text-gray-900 dark:text-gray-100 mb-4 flex items-center space-x-2">
@@ -375,10 +508,10 @@ export default function DisplaySettings({ onSettingsChange }: DisplaySettingsPro
           <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-600">
             <Button
               type="submit"
-              disabled={!isDirty || saveDisplayMutation.isLoading}
+              disabled={!isDirty || saveDisplayMutation.isLoading || isUpdating}
               className="flex items-center space-x-2"
             >
-              {saveDisplayMutation.isLoading ? (
+              {(saveDisplayMutation.isLoading || isUpdating) ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />
@@ -387,6 +520,17 @@ export default function DisplaySettings({ onSettingsChange }: DisplaySettingsPro
             </Button>
           </div>
         </form>
+
+        {/* Multi-Property Confirmation Dialog */}
+        <ApplyToConfirmation
+          isOpen={showConfirmation}
+          scope={applyToScope}
+          affectedCount={affectedCount}
+          settingName="display preferences (language, currency, date/time formats)"
+          groupName={inheritanceStatus?.groupName}
+          onConfirm={handleConfirm}
+          onCancel={cancelBulkUpdate}
+        />
       </div>
     </div>
   );

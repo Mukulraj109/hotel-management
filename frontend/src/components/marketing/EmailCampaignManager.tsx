@@ -8,8 +8,11 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { Plus, Edit, Send, Eye, BarChart3, Users, Mail, Calendar, Target } from 'lucide-react';
+import { Plus, Edit, Send, Eye, BarChart3, Users, Mail, Calendar, Target, AlertTriangle } from 'lucide-react';
 import { bookingEngineService, EmailCampaign, CreateEmailCampaignData } from '@/services/bookingEngineService';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
+import { useProperty } from '../../context/PropertyContext';
 
 interface CreateCampaignData {
   name: string;
@@ -31,6 +34,28 @@ const EmailCampaignManager: React.FC = () => {
   const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all');
+
+  // Multi-property support
+  const { selectedProperty, selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
 
   const [formData, setFormData] = useState<CreateCampaignData>({
     name: '',
@@ -88,7 +113,24 @@ const EmailCampaignManager: React.FC = () => {
         }
       };
 
-      await bookingEngineService.createEmailCampaign(campaignData);
+      // Multi-property update
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: campaignData,
+          settingType: 'email_campaign',
+        });
+
+        if (!result) return; // Confirmation dialog shown
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        setApplyToScope('single');
+      } else {
+        await bookingEngineService.createEmailCampaign(campaignData);
+      }
+
       fetchCampaigns();
       setIsCreateModalOpen(false);
       resetForm();
@@ -118,7 +160,24 @@ const EmailCampaignManager: React.FC = () => {
         }
       };
 
-      await bookingEngineService.updateEmailCampaign(selectedCampaign._id, updateData);
+      // Multi-property update
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: { id: selectedCampaign._id, ...updateData },
+          settingType: 'email_campaign',
+        });
+
+        if (!result) return; // Confirmation dialog shown
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        setApplyToScope('single');
+      } else {
+        await bookingEngineService.updateEmailCampaign(selectedCampaign._id, updateData);
+      }
+
       fetchCampaigns();
       setIsEditModalOpen(false);
       setSelectedCampaign(null);
@@ -127,6 +186,18 @@ const EmailCampaignManager: React.FC = () => {
     } catch (error) {
       console.error('Error updating campaign:', error);
       alert('Error updating campaign');
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (pendingUpdate) {
+      const result = await confirmBulkUpdate();
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        setApplyToScope('single');
+        fetchCampaigns();
+      }
     }
   };
 
@@ -215,6 +286,47 @@ const EmailCampaignManager: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Success Message */}
+      {showSuccess && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 px-4 py-3 rounded-lg">
+          <p className="font-medium">Settings updated successfully!</p>
+          {applyToScope !== 'single' && affectedCount > 1 && (
+            <p className="text-sm mt-1">Changes applied to {affectedCount} properties</p>
+          )}
+        </div>
+      )}
+
+      {/* Error Message */}
+      {updateError && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 px-4 py-3 rounded-lg">
+          <p className="font-medium">Error: {updateError}</p>
+        </div>
+      )}
+
+      {/* Inheritance Status Card */}
+      {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+        <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+          <CardContent className="p-4">
+            <div className="flex items-start">
+              <AlertTriangle className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-3 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                  This property is part of: {inheritanceStatus.groupName}
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                  Email campaign settings can be managed centrally for all properties in this group.
+                  {inheritanceStatus.lastSyncedAt && (
+                    <span className="ml-1">
+                      Last synced: {new Date(inheritanceStatus.lastSyncedAt).toLocaleString()}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Email Campaign Management</h1>
         <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
@@ -290,6 +402,21 @@ const EmailCampaignManager: React.FC = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Multi-property selector */}
+      <Card>
+        <CardContent className="p-4">
+          <ApplyToSelector
+            value={applyToScope}
+            onChange={setApplyToScope}
+            isInGroup={inheritanceStatus?.hasGroup || false}
+            groupName={inheritanceStatus?.groupName}
+            totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+            showWarning={true}
+            warningMessage="Changes to email campaign settings will affect marketing communications across all properties in the selected scope."
+          />
+        </CardContent>
+      </Card>
 
       {/* Campaign Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -408,6 +535,17 @@ const EmailCampaignManager: React.FC = () => {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Confirmation Dialog */}
+      <ApplyToConfirmation
+        isOpen={showConfirmation}
+        scope={applyToScope}
+        affectedCount={affectedCount}
+        settingName="Email Campaign Settings"
+        groupName={inheritanceStatus?.groupName}
+        onConfirm={handleConfirm}
+        onCancel={cancelBulkUpdate}
+      />
     </div>
   );
 };

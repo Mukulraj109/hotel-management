@@ -1,329 +1,993 @@
 import express from 'express';
-import * as settingsController from '../controllers/settingsController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
-import { catchAsync } from '../utils/catchAsync.js';
-
-// Legacy imports for backwards compatibility
-import UserPreference from '../models/UserPreference.js';
-import HotelSettings from '../models/HotelSettings.js';
-import User from '../models/User.js';
+import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { SettingsInheritanceService } from '../services/settingsInheritance.js';
+import Hotel from '../models/Hotel.js';
+import PropertyGroup from '../models/PropertyGroup.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
+import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
 
-// Apply authentication middleware to all routes
-router.use(authenticate);
+/**
+ * Settings Routes with Group Inheritance Support
+ *
+ * All endpoints support three application scopes:
+ * 1. Single property only (default)
+ * 2. Property group (applyToGroup: true)
+ * 3. All user properties (applyToAll: true)
+ */
 
-// ========================================
-// NEW UNIFIED SETTINGS API - SPECIFIC ROUTES ONLY
-// ========================================
+// =============================================================================
+// Check-in/Check-out Time Settings
+// =============================================================================
 
-// Get all settings or specific category - SPECIFIC CATEGORIES ONLY
-router.get('/', settingsController.getSettings);
-router.get('/general', settingsController.getSettings);
-router.get('/security', settingsController.getSettings);
-router.get('/billing', settingsController.getSettings);
-router.get('/notifications', settingsController.getSettings);
-router.get('/integrations', settingsController.getSettings);
-router.get('/hotel-policies', settingsController.getSettings);
-router.get('/system', settingsController.getSettings);
+/**
+ * PUT /api/v1/settings/check-in-out
+ * Update check-in/check-out times
+ *
+ * Body:
+ * {
+ *   "checkInTime": "14:00",
+ *   "checkOutTime": "11:00",
+ *   "applyToAll": false,
+ *   "applyToGroup": false,
+ *   "propertyId": "xxx"  // Required unless applyToAll is true
+ * }
+ */
+router.put('/check-in-out',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { checkInTime, checkOutTime, applyToAll, applyToGroup, propertyId } = req.body;
 
-// Update settings (category or all) - SPECIFIC CATEGORIES ONLY
-router.put('/', settingsController.updateSettings);
-router.put('/general', settingsController.updateSettings);
-router.put('/security', settingsController.updateSettings);
-router.put('/billing', settingsController.updateSettings);
-router.put('/notifications', settingsController.updateSettings);
-router.put('/integrations', settingsController.updateSettings);
-router.put('/hotel-policies', settingsController.updateSettings);
-router.put('/system', settingsController.updateSettings);
+    // Validate time formats
+    const validation = SettingsInheritanceService.validateSettings(
+      { checkInTime, checkOutTime },
+      'checkInOut'
+    );
 
-// Reset settings to defaults - SPECIFIC CATEGORIES ONLY
-router.post('/reset', settingsController.resetSettings);
-router.post('/reset/general', settingsController.resetSettings);
-router.post('/reset/security', settingsController.resetSettings);
-router.post('/reset/billing', settingsController.resetSettings);
-router.post('/reset/notifications', settingsController.resetSettings);
-router.post('/reset/integrations', settingsController.resetSettings);
-router.post('/reset/hotel-policies', settingsController.resetSettings);
-router.post('/reset/system', settingsController.resetSettings);
+    if (!validation.valid) {
+      throw new ApplicationError(validation.errors.join(', '), 400);
+    }
 
-// Export/Import settings
-router.get('/export', settingsController.exportSettings);
-router.post('/import', settingsController.importSettings);
+    const settingUpdates = { checkInTime, checkOutTime };
+    let result;
 
-// Hotel settings (Admin only)
-router.get('/hotel/settings', authorize(['admin']), settingsController.getHotelSettings);
-router.put('/hotel/settings', authorize(['admin']), settingsController.updateHotelSettings);
-router.get('/hotel/policies', authorize(['admin']), settingsController.getHotelPolicies);
-router.put('/hotel/policies', authorize(['admin']), settingsController.updateHotelPolicies);
-
-// Notification preferences
-router.get('/notifications/preferences', settingsController.getNotificationPreferences);
-router.put('/notifications/preferences', settingsController.updateNotificationPreferences);
-
-// Settings analytics (Admin only)
-router.get('/analytics/stats', authorize(['admin']), settingsController.getSettingsStats);
-
-// ========================================
-// LEGACY API ROUTES (for backwards compatibility)
-// ========================================
-
-// POST /api/v1/users/profile - Update user profile (from frontend ProfileSettings)
-router.put('/users/profile', catchAsync(async (req, res, next) => {
-  const userId = req.user._id;
-  const { name, email, phone, timezone, language, avatar } = req.body;
-
-  // Update User model
-  const updatedUser = await User.findByIdAndUpdate(userId, {
-    name,
-    email,
-    phone,
-    timezone,
-    language,
-    avatar
-  }, { new: true });
-
-  if (!updatedUser) {
-    return next(new ApplicationError('User not found', 404));
-  }
-
-  // Update preferences
-  await UserPreference.updatePreferences(userId, {
-    'profile.timezone': timezone,
-    'profile.language': language,
-    'profile.avatar': avatar
-  });
-
-  res.status(200).json({
-    status: 'success',
-    message: 'Profile updated successfully',
-    data: { user: updatedUser }
-  });
-}));
-
-// PUT /api/v1/users/notification-preferences - Update notification preferences
-router.put('/users/notification-preferences', catchAsync(async (req, res, next) => {
-  const userId = req.user._id;
-  const preferences = await UserPreference.updatePreferences(userId, {
-    'notifications': req.body
-  });
-
-  res.status(200).json({
-    status: 'success',
-    message: 'Notification preferences updated successfully',
-    data: { preferences }
-  });
-}));
-
-// GET /api/v1/users/display-preferences - Get display preferences
-router.get('/users/display-preferences', catchAsync(async (req, res, next) => {
-  const userId = req.user._id;
-  const preferences = await UserPreference.getOrCreateForUser(userId);
-
-  res.status(200).json({
-    status: 'success',
-    data: {
-      preferences: preferences.display || {
-        theme: 'light',
-        sidebarCollapsed: false,
-        compactView: false,
-        highContrastMode: false,
-        language: 'English',
-        currency: 'Indian Rupee (₹)',
-        dateFormat: 'DD/MM/YYYY',
-        timeFormat: '24 Hour'
+    if (applyToAll) {
+      // Apply to all user properties
+      result = await SettingsInheritanceService.applySettingsToAllUserProperties(
+        req.user._id,
+        settingUpdates,
+        'checkInOut'
+      );
+    } else if (applyToGroup) {
+      // Apply to property group
+      if (!propertyId) {
+        throw new ApplicationError('propertyId is required when applyToGroup is true', 400);
       }
+
+      const property = await Hotel.findById(propertyId);
+      if (!property) {
+        throw new ApplicationError('Property not found', 404);
+      }
+
+      if (!property.propertyGroupId) {
+        throw new ApplicationError('Property is not part of a group', 400);
+      }
+
+      result = await SettingsInheritanceService.applySettingsToGroup(
+        property.propertyGroupId,
+        settingUpdates
+      );
+    } else {
+      // Apply to single property only
+      if (!propertyId) {
+        throw new ApplicationError('propertyId is required', 400);
+      }
+
+      const property = await Hotel.findById(propertyId);
+      if (!property) {
+        throw new ApplicationError('Property not found', 404);
+      }
+
+      // Check if property can override group settings
+      if (property.propertyGroupId) {
+        const canOverride = await SettingsInheritanceService.canOverride(property, 'checkInOut');
+        if (!canOverride) {
+          throw new ApplicationError('This property cannot override group settings', 403);
+        }
+      }
+
+      // Update single property
+      const updates = {};
+      if (checkInTime) updates['policies.checkInTime'] = checkInTime;
+      if (checkOutTime) updates['policies.checkOutTime'] = checkOutTime;
+
+      const updatedProperty = await Hotel.findByIdAndUpdate(
+        propertyId,
+        { $set: updates },
+        { new: true, runValidators: true }
+      );
+
+      result = {
+        success: true,
+        message: 'Check-in/out times updated successfully',
+        propertiesUpdated: 1,
+        property: updatedProperty
+      };
     }
-  });
-}));
 
-// PUT /api/v1/users/display-preferences - Update display preferences
-router.put('/users/display-preferences', catchAsync(async (req, res, next) => {
-  const userId = req.user._id;
-  const preferences = await UserPreference.updatePreferences(userId, {
-    'display': req.body
-  });
+    res.json({
+      success: true,
+      data: result
+    });
+  })
+);
 
-  res.status(200).json({
-    status: 'success',
-    message: 'Display preferences updated successfully',
-    data: { preferences }
-  });
-}));
+// =============================================================================
+// Currency Settings
+// =============================================================================
 
-// Staff-specific routes
-// PUT /api/v1/staff/profile - Update staff profile
-router.put('/staff/profile', authorize(['staff']), catchAsync(async (req, res, next) => {
-  const userId = req.user._id;
-  const { name, email, phone, department, employeeId, avatar } = req.body;
+/**
+ * PUT /api/v1/settings/currency
+ * Update currency settings
+ */
+router.put('/currency',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { currency, applyToAll, applyToGroup, propertyId } = req.body;
 
-  // Update User model
-  const updatedUser = await User.findByIdAndUpdate(userId, {
-    name,
-    email,
-    phone,
-    department,
-    employeeId,
-    avatar
-  }, { new: true });
+    // Validate currency
+    const validation = SettingsInheritanceService.validateSettings(
+      { currency },
+      'currency'
+    );
 
-  // Update preferences
-  await UserPreference.updatePreferences(userId, {
-    'staff.department': department,
-    'staff.employeeId': employeeId,
-    'profile.avatar': avatar
-  });
-
-  res.status(200).json({
-    status: 'success',
-    message: 'Staff profile updated successfully',
-    data: { user: updatedUser }
-  });
-}));
-
-// PUT /api/v1/staff/notification-preferences - Update staff notification preferences
-router.put('/staff/notification-preferences', authorize(['staff']), catchAsync(async (req, res, next) => {
-  const userId = req.user._id;
-  const preferences = await UserPreference.updatePreferences(userId, {
-    'notifications': req.body
-  });
-
-  res.status(200).json({
-    status: 'success',
-    message: 'Staff notification preferences updated successfully',
-    data: { preferences }
-  });
-}));
-
-// PUT /api/v1/staff/display-preferences - Update staff display preferences
-router.put('/staff/display-preferences', authorize(['staff']), catchAsync(async (req, res, next) => {
-  const userId = req.user._id;
-  const preferences = await UserPreference.updatePreferences(userId, {
-    'display': req.body,
-    'staff.quickActions': req.body.quickActions
-  });
-
-  res.status(200).json({
-    status: 'success',
-    message: 'Staff display preferences updated successfully',
-    data: { preferences }
-  });
-}));
-
-// PUT /api/v1/staff/availability - Update staff availability
-router.put('/staff/availability', authorize(['staff']), catchAsync(async (req, res, next) => {
-  const userId = req.user._id;
-  const preferences = await UserPreference.updatePreferences(userId, {
-    'staff.availability': req.body
-  });
-
-  res.status(200).json({
-    status: 'success',
-    message: 'Staff availability updated successfully',
-    data: { preferences }
-  });
-}));
-
-// Guest-specific routes
-// PUT /api/v1/guest/settings - Update guest settings (single endpoint for all guest settings)
-router.put('/guest/settings', authorize(['guest', 'travel_agent']), catchAsync(async (req, res, next) => {
-  const userId = req.user._id;
-  const {
-    name, email, phone, dateOfBirth, nationality, avatar,
-    roomType, floor, bedType, smoking, dietaryRestrictions,
-    bookingUpdates, serviceAlerts, promotions, loyaltyUpdates, reviewRequests,
-    language, preferredChannel, marketingConsent,
-    dataSharing, locationTracking, analyticsTracking
-  } = req.body;
-
-  // Update User model
-  const userUpdates = {
-    name, email, phone, dateOfBirth, nationality, avatar, language
-  };
-  const updatedUser = await User.findByIdAndUpdate(userId, userUpdates, { new: true });
-
-  // Update preferences
-  const preferences = await UserPreference.updatePreferences(userId, {
-    'profile.language': language,
-    'profile.avatar': avatar,
-    'guest.stayPreferences': {
-      roomType, floor, bedType, smoking, dietaryRestrictions
-    },
-    'notifications.categories': {
-      bookingUpdates,
-      serviceAlerts,
-      promotions,
-      loyaltyUpdates,
-      reviewRequests
-    },
-    'guest.communication': {
-      preferredChannel,
-      marketingConsent
-    },
-    'guest.privacy': {
-      dataSharing,
-      locationTracking,
-      analyticsTracking
+    if (!validation.valid) {
+      throw new ApplicationError(validation.errors.join(', '), 400);
     }
-  });
 
-  res.status(200).json({
-    status: 'success',
-    message: 'Guest settings updated successfully',
-    data: { user: updatedUser, preferences }
-  });
-}));
+    const settingUpdates = { currency };
+    let result;
 
-// Hotel settings routes (Admin only)
-// PUT /api/v1/hotels/settings - Update hotel settings
-router.put('/hotels/settings', authorize(['admin']), catchAsync(async (req, res, next) => {
-  const hotelId = req.user.hotelId;
-  if (!hotelId) {
-    return next(new ApplicationError('User not associated with any hotel', 400));
-  }
+    if (applyToAll) {
+      result = await SettingsInheritanceService.applySettingsToAllUserProperties(
+        req.user._id,
+        settingUpdates,
+        'currency'
+      );
+    } else if (applyToGroup) {
+      if (!propertyId) {
+        throw new ApplicationError('propertyId is required when applyToGroup is true', 400);
+      }
 
-  const settings = await HotelSettings.updateHotelSettings(hotelId, req.body);
+      const property = await Hotel.findById(propertyId);
+      if (!property || !property.propertyGroupId) {
+        throw new ApplicationError('Property not found or not part of a group', 400);
+      }
 
-  res.status(200).json({
-    status: 'success',
-    message: 'Hotel settings updated successfully',
-    data: { settings }
-  });
-}));
+      result = await SettingsInheritanceService.applySettingsToGroup(
+        property.propertyGroupId,
+        settingUpdates
+      );
+    } else {
+      if (!propertyId) {
+        throw new ApplicationError('propertyId is required', 400);
+      }
 
-// System settings routes (Admin only)
-// PUT /api/v1/system/settings - Update system settings
-router.put('/system/settings', authorize(['admin']), catchAsync(async (req, res, next) => {
-  const userId = req.user._id;
-  const preferences = await UserPreference.updatePreferences(userId, {
-    'system': req.body
-  });
+      const property = await Hotel.findById(propertyId);
+      if (!property) {
+        throw new ApplicationError('Property not found', 404);
+      }
 
-  res.status(200).json({
-    status: 'success',
-    message: 'System settings updated successfully',
-    data: { preferences }
-  });
-}));
+      if (property.propertyGroupId) {
+        const canOverride = await SettingsInheritanceService.canOverride(property, 'currency');
+        if (!canOverride) {
+          throw new ApplicationError('This property cannot override group settings', 403);
+        }
+      }
 
-// Integration settings routes (Admin only)
-// PUT /api/v1/integrations/settings - Update integration settings
-router.put('/integrations/settings', authorize(['admin']), catchAsync(async (req, res, next) => {
-  const hotelId = req.user.hotelId;
-  if (!hotelId) {
-    return next(new ApplicationError('User not associated with any hotel', 400));
-  }
+      const updatedProperty = await Hotel.findByIdAndUpdate(
+        propertyId,
+        { $set: { 'settings.currency': currency } },
+        { new: true, runValidators: true }
+      );
 
-  const settings = await HotelSettings.updateHotelSettings(hotelId, {
-    'integrations': req.body
-  });
+      result = {
+        success: true,
+        message: 'Currency updated successfully',
+        propertiesUpdated: 1,
+        property: updatedProperty
+      };
+    }
 
-  res.status(200).json({
-    status: 'success',
-    message: 'Integration settings updated successfully',
-    data: { settings }
-  });
-}));
+    res.json({
+      success: true,
+      data: result
+    });
+  })
+);
+
+// =============================================================================
+// Timezone Settings
+// =============================================================================
+
+/**
+ * PUT /api/v1/settings/timezone
+ * Update timezone settings
+ */
+router.put('/timezone',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { timezone, applyToAll, applyToGroup, propertyId } = req.body;
+
+    // Validate timezone
+    const validation = SettingsInheritanceService.validateSettings(
+      { timezone },
+      'timezone'
+    );
+
+    if (!validation.valid) {
+      throw new ApplicationError(validation.errors.join(', '), 400);
+    }
+
+    const settingUpdates = { timezone };
+    let result;
+
+    if (applyToAll) {
+      result = await SettingsInheritanceService.applySettingsToAllUserProperties(
+        req.user._id,
+        settingUpdates,
+        'timezone'
+      );
+    } else if (applyToGroup) {
+      if (!propertyId) {
+        throw new ApplicationError('propertyId is required when applyToGroup is true', 400);
+      }
+
+      const property = await Hotel.findById(propertyId);
+      if (!property || !property.propertyGroupId) {
+        throw new ApplicationError('Property not found or not part of a group', 400);
+      }
+
+      result = await SettingsInheritanceService.applySettingsToGroup(
+        property.propertyGroupId,
+        settingUpdates
+      );
+    } else {
+      if (!propertyId) {
+        throw new ApplicationError('propertyId is required', 400);
+      }
+
+      const property = await Hotel.findById(propertyId);
+      if (!property) {
+        throw new ApplicationError('Property not found', 404);
+      }
+
+      if (property.propertyGroupId) {
+        const canOverride = await SettingsInheritanceService.canOverride(property, 'timezone');
+        if (!canOverride) {
+          throw new ApplicationError('This property cannot override group settings', 403);
+        }
+      }
+
+      const updatedProperty = await Hotel.findByIdAndUpdate(
+        propertyId,
+        { $set: { 'settings.timezone': timezone } },
+        { new: true, runValidators: true }
+      );
+
+      result = {
+        success: true,
+        message: 'Timezone updated successfully',
+        propertiesUpdated: 1,
+        property: updatedProperty
+      };
+    }
+
+    res.json({
+      success: true,
+      data: result
+    });
+  })
+);
+
+// =============================================================================
+// Cancellation Policy Settings
+// =============================================================================
+
+/**
+ * PUT /api/v1/settings/cancellation-policy
+ * Update cancellation policy settings
+ */
+router.put('/cancellation-policy',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { cancellationPolicy, applyToAll, applyToGroup, propertyId } = req.body;
+
+    if (!cancellationPolicy) {
+      throw new ApplicationError('cancellationPolicy is required', 400);
+    }
+
+    const settingUpdates = { cancellationPolicy };
+    let result;
+
+    if (applyToAll) {
+      result = await SettingsInheritanceService.applySettingsToAllUserProperties(
+        req.user._id,
+        settingUpdates,
+        'cancellationPolicy'
+      );
+    } else if (applyToGroup) {
+      if (!propertyId) {
+        throw new ApplicationError('propertyId is required when applyToGroup is true', 400);
+      }
+
+      const property = await Hotel.findById(propertyId);
+      if (!property || !property.propertyGroupId) {
+        throw new ApplicationError('Property not found or not part of a group', 400);
+      }
+
+      result = await SettingsInheritanceService.applySettingsToGroup(
+        property.propertyGroupId,
+        settingUpdates
+      );
+    } else {
+      if (!propertyId) {
+        throw new ApplicationError('propertyId is required', 400);
+      }
+
+      const property = await Hotel.findById(propertyId);
+      if (!property) {
+        throw new ApplicationError('Property not found', 404);
+      }
+
+      if (property.propertyGroupId) {
+        const canOverride = await SettingsInheritanceService.canOverride(property, 'cancellationPolicy');
+        if (!canOverride) {
+          throw new ApplicationError('This property cannot override group settings', 403);
+        }
+      }
+
+      const updatedProperty = await Hotel.findByIdAndUpdate(
+        propertyId,
+        { $set: { 'policies.cancellationPolicy': cancellationPolicy } },
+        { new: true, runValidators: true }
+      );
+
+      result = {
+        success: true,
+        message: 'Cancellation policy updated successfully',
+        propertiesUpdated: 1,
+        property: updatedProperty
+      };
+    }
+
+    res.json({
+      success: true,
+      data: result
+    });
+  })
+);
+
+// =============================================================================
+// Generic Settings Update
+// =============================================================================
+
+/**
+ * PUT /api/v1/settings/general
+ * Update general settings (generic endpoint for any setting type)
+ *
+ * Body:
+ * {
+ *   "settingType": "roomTypes" | "taxes" | "policies" | etc,
+ *   "settingUpdates": { ... },
+ *   "applyToAll": false,
+ *   "applyToGroup": false,
+ *   "propertyId": "xxx"
+ * }
+ */
+router.put('/general',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { settingType, settingUpdates, applyToAll, applyToGroup, propertyId } = req.body;
+
+    if (!settingType || !settingUpdates) {
+      throw new ApplicationError('settingType and settingUpdates are required', 400);
+    }
+
+    let result;
+
+    if (applyToAll) {
+      result = await SettingsInheritanceService.applySettingsToAllUserProperties(
+        req.user._id,
+        settingUpdates,
+        settingType
+      );
+    } else if (applyToGroup) {
+      if (!propertyId) {
+        throw new ApplicationError('propertyId is required when applyToGroup is true', 400);
+      }
+
+      const property = await Hotel.findById(propertyId);
+      if (!property || !property.propertyGroupId) {
+        throw new ApplicationError('Property not found or not part of a group', 400);
+      }
+
+      result = await SettingsInheritanceService.applySettingsToGroup(
+        property.propertyGroupId,
+        settingUpdates
+      );
+    } else {
+      if (!propertyId) {
+        throw new ApplicationError('propertyId is required', 400);
+      }
+
+      const property = await Hotel.findById(propertyId);
+      if (!property) {
+        throw new ApplicationError('Property not found', 404);
+      }
+
+      if (property.propertyGroupId) {
+        const canOverride = await SettingsInheritanceService.canOverride(property, settingType);
+        if (!canOverride) {
+          throw new ApplicationError('This property cannot override group settings', 403);
+        }
+      }
+
+      // Build update object
+      const updates = {};
+      Object.keys(settingUpdates).forEach(key => {
+        updates[`settings.${key}`] = settingUpdates[key];
+      });
+
+      const updatedProperty = await Hotel.findByIdAndUpdate(
+        propertyId,
+        { $set: updates },
+        { new: true, runValidators: true }
+      );
+
+      result = {
+        success: true,
+        message: `${settingType} settings updated successfully`,
+        propertiesUpdated: 1,
+        property: updatedProperty
+      };
+    }
+
+    res.json({
+      success: true,
+      data: result
+    });
+  })
+);
+
+// =============================================================================
+// Get Inheritance Status
+// =============================================================================
+
+/**
+ * GET /api/v1/settings/inheritance-status/:propertyId
+ * Get inheritance status for a property
+ */
+router.get('/inheritance-status/:propertyId',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { propertyId } = req.params;
+
+    const status = await SettingsInheritanceService.getInheritanceStatus(propertyId);
+
+    res.json({
+      success: true,
+      data: status
+    });
+  })
+);
+
+// =============================================================================
+// Apply Group Settings to Property
+// =============================================================================
+
+/**
+ * POST /api/v1/settings/apply-group-settings
+ * Manually apply group settings to a property
+ *
+ * Body:
+ * {
+ *   "propertyId": "xxx",
+ *   "groupId": "xxx"  // Optional, uses property's group if not provided
+ * }
+ */
+router.post('/apply-group-settings',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { propertyId, groupId } = req.body;
+
+    if (!propertyId) {
+      throw new ApplicationError('propertyId is required', 400);
+    }
+
+    let finalGroupId = groupId;
+
+    // If groupId not provided, get it from the property
+    if (!finalGroupId) {
+      const property = await Hotel.findById(propertyId);
+      if (!property) {
+        throw new ApplicationError('Property not found', 404);
+      }
+
+      if (!property.propertyGroupId) {
+        throw new ApplicationError('Property is not part of a group', 400);
+      }
+
+      finalGroupId = property.propertyGroupId;
+    }
+
+    const result = await SettingsInheritanceService.applyGroupSettings(
+      propertyId,
+      finalGroupId
+    );
+
+    res.json({
+      success: true,
+      data: result
+    });
+  })
+);
+
+// =============================================================================
+// Toggle Inheritance for Property
+// =============================================================================
+
+/**
+ * PUT /api/v1/settings/toggle-inheritance/:propertyId
+ * Enable or disable settings inheritance for a property
+ *
+ * Body:
+ * {
+ *   "inheritSettings": true | false
+ * }
+ */
+router.put('/toggle-inheritance/:propertyId',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { propertyId } = req.params;
+    const { inheritSettings } = req.body;
+
+    if (typeof inheritSettings !== 'boolean') {
+      throw new ApplicationError('inheritSettings must be a boolean', 400);
+    }
+
+    const property = await Hotel.findById(propertyId);
+    if (!property) {
+      throw new ApplicationError('Property not found', 404);
+    }
+
+    // Verify user owns this property
+    if (property.ownerId?.toString() !== req.user._id.toString() &&
+        property.createdBy?.toString() !== req.user._id.toString()) {
+      throw new ApplicationError('You do not have permission to modify this property', 403);
+    }
+
+    property.groupSettings = property.groupSettings || {};
+    property.groupSettings.inheritSettings = inheritSettings;
+
+    await property.save();
+
+    res.json({
+      success: true,
+      message: `Settings inheritance ${inheritSettings ? 'enabled' : 'disabled'} for property`,
+      data: {
+        propertyId: property._id,
+        inheritSettings
+      }
+    });
+  })
+);
+
+// =============================================================================
+// Get Property Group Settings
+// =============================================================================
+
+/**
+ * GET /api/v1/settings/group/:groupId
+ * Get property group settings
+ */
+router.get('/group/:groupId',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { groupId } = req.params;
+
+    const group = await PropertyGroup.findById(groupId);
+    if (!group) {
+      throw new ApplicationError('Property group not found', 404);
+    }
+
+    // Verify user owns this group
+    if (group.ownerId?.toString() !== req.user._id.toString()) {
+      throw new ApplicationError('You do not have permission to view this group', 403);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        groupId: group._id,
+        groupName: group.name,
+        settings: group.settings
+      }
+    });
+  })
+);
+
+// =============================================================================
+// Universal Settings Application Endpoint (Phase 5.3)
+// =============================================================================
+
+/**
+ * POST /api/v1/settings/apply
+ * Universal endpoint to apply settings with scope
+ * Supports all 28 setting types from Phase 4
+ *
+ * Body:
+ * {
+ *   "scope": "single" | "group" | "all",
+ *   "propertyId": "xxx",
+ *   "settingType": "booking_rules" | "room_types" | "message_templates" | etc.,
+ *   "settingUpdates": { ... }
+ * }
+ */
+router.post('/apply',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { scope, propertyId, settingType, settingUpdates } = req.body;
+    const userId = req.user._id;
+
+    // Validate required fields
+    if (!scope || !propertyId || !settingType || !settingUpdates) {
+      throw new ApplicationError('Missing required fields: scope, propertyId, settingType, settingUpdates', 400);
+    }
+
+    // Validate scope
+    if (!['single', 'group', 'all'].includes(scope)) {
+      throw new ApplicationError('Invalid scope. Must be: single, group, or all', 400);
+    }
+
+    // Apply settings using the service
+    const result = await SettingsInheritanceService.applySettingsByScope({
+      scope,
+      propertyId,
+      settingType,
+      settingUpdates,
+      userId
+    });
+
+    res.json({
+      status: 'success',
+      message: `Settings applied to ${result.propertiesUpdated} ${result.propertiesUpdated === 1 ? 'property' : 'properties'}`,
+      data: result
+    });
+  })
+);
+
+// =============================================================================
+// Get Affected Properties Count
+// =============================================================================
+
+/**
+ * POST /api/v1/settings/affected-count
+ * Calculate how many properties will be affected by a settings change
+ *
+ * Body:
+ * {
+ *   "scope": "single" | "group" | "all",
+ *   "propertyId": "xxx"
+ * }
+ */
+router.post('/affected-count',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { scope, propertyId } = req.body;
+
+    if (!scope || !propertyId) {
+      throw new ApplicationError('scope and propertyId are required', 400);
+    }
+
+    const count = await SettingsInheritanceService.getAffectedPropertiesCount({
+      scope,
+      propertyId
+    });
+
+    res.json({
+      status: 'success',
+      data: { count }
+    });
+  })
+);
+
+// =============================================================================
+// Toggle Inheritance for Setting Type
+// =============================================================================
+
+/**
+ * PUT /api/v1/settings/toggle-inheritance
+ * Toggle inheritance for a specific setting type
+ *
+ * Body:
+ * {
+ *   "propertyId": "xxx",
+ *   "settingType": "booking_rules" | "room_types" | etc.,
+ *   "enabled": true | false
+ * }
+ */
+router.put('/toggle-inheritance',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { propertyId, settingType, enabled } = req.body;
+
+    if (!propertyId || !settingType || typeof enabled !== 'boolean') {
+      throw new ApplicationError('propertyId, settingType, and enabled are required', 400);
+    }
+
+    const result = await SettingsInheritanceService.toggleInheritance(
+      propertyId,
+      settingType,
+      enabled
+    );
+
+    res.json({
+      status: 'success',
+      message: `Inheritance ${enabled ? 'enabled' : 'disabled'} for ${settingType}`,
+      data: result
+    });
+  })
+);
+
+// =============================================================================
+// Set Override for Setting Type
+// =============================================================================
+
+/**
+ * PUT /api/v1/settings/override
+ * Set property-specific override for a setting type
+ *
+ * Body:
+ * {
+ *   "propertyId": "xxx",
+ *   "settingType": "booking_rules" | "room_types" | etc.,
+ *   "overrideValues": { ... }
+ * }
+ */
+router.put('/override',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { propertyId, settingType, overrideValues } = req.body;
+    const userId = req.user._id;
+
+    if (!propertyId || !settingType || !overrideValues) {
+      throw new ApplicationError('propertyId, settingType, and overrideValues are required', 400);
+    }
+
+    const result = await SettingsInheritanceService.setOverride(
+      propertyId,
+      settingType,
+      overrideValues,
+      userId
+    );
+
+    res.json({
+      status: 'success',
+      message: 'Override set successfully',
+      data: result
+    });
+  })
+);
+
+// =============================================================================
+// Remove Override (Revert to Inheritance)
+// =============================================================================
+
+/**
+ * DELETE /api/v1/settings/override
+ * Remove property-specific override and revert to group inheritance
+ *
+ * Body:
+ * {
+ *   "propertyId": "xxx",
+ *   "settingType": "booking_rules" | "room_types" | etc.
+ * }
+ */
+router.delete('/override',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { propertyId, settingType } = req.body;
+
+    if (!propertyId || !settingType) {
+      throw new ApplicationError('propertyId and settingType are required', 400);
+    }
+
+    const result = await SettingsInheritanceService.removeOverride(
+      propertyId,
+      settingType
+    );
+
+    res.json({
+      status: 'success',
+      message: 'Override removed successfully',
+      data: result
+    });
+  })
+);
+
+// =============================================================================
+// Get Group Inheritance Summary
+// =============================================================================
+
+/**
+ * GET /api/v1/settings/group-summary/:groupId
+ * Get inheritance summary for a property group
+ */
+router.get('/group-summary/:groupId',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { groupId } = req.params;
+
+    const summary = await SettingsInheritanceService.getGroupInheritanceSummary(groupId);
+
+    res.json({
+      status: 'success',
+      data: summary
+    });
+  })
+);
+
+// =============================================================================
+// Change Preview (Feature 2)
+// =============================================================================
+
+/**
+ * POST /api/v1/settings/preview-changes
+ * Preview changes before applying
+ *
+ * Body:
+ * {
+ *   "scope": "single" | "group" | "all",
+ *   "propertyId": "xxx",
+ *   "settingType": "booking_rules",
+ *   "settingUpdates": { ... }
+ * }
+ */
+router.post('/preview-changes',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { scope, propertyId, settingType, settingUpdates } = req.body;
+
+    // Validate inputs
+    if (!['single', 'group', 'all'].includes(scope)) {
+      throw new ApplicationError('Invalid scope. Must be single, group, or all', 400);
+    }
+
+    if (!settingType || !settingUpdates) {
+      throw new ApplicationError('settingType and settingUpdates are required', 400);
+    }
+
+    if (!propertyId) {
+      throw new ApplicationError('propertyId is required', 400);
+    }
+
+    const preview = await SettingsInheritanceService.previewChanges({
+      scope,
+      propertyId,
+      settingType,
+      settingUpdates
+    });
+
+    res.json({
+      status: 'success',
+      data: preview
+    });
+  })
+);
+
+// =============================================================================
+// Change History & Rollback (Feature 3)
+// =============================================================================
+
+/**
+ * GET /api/v1/settings/change-history/:propertyId/:settingType
+ * Get change history for a property/setting
+ *
+ * Query params:
+ * - limit: number (default: 50)
+ * - includeRolledBack: boolean (default: false)
+ */
+router.get('/change-history/:propertyId/:settingType',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { propertyId, settingType } = req.params;
+    const { limit, includeRolledBack } = req.query;
+
+    const history = await SettingsInheritanceService.getChangeHistory({
+      propertyId,
+      settingType,
+      limit: parseInt(limit) || 50,
+      includeRolledBack: includeRolledBack === 'true'
+    });
+
+    res.json({
+      status: 'success',
+      data: { history }
+    });
+  })
+);
+
+/**
+ * POST /api/v1/settings/rollback
+ * Rollback specific change
+ *
+ * Body:
+ * {
+ *   "propertyId": "xxx",
+ *   "settingType": "booking_rules",
+ *   "historyId": "xxx"
+ * }
+ */
+router.post('/rollback',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { propertyId, settingType, historyId } = req.body;
+
+    if (!propertyId || !settingType || !historyId) {
+      throw new ApplicationError('propertyId, settingType, and historyId are required', 400);
+    }
+
+    const result = await SettingsInheritanceService.rollbackChange({
+      propertyId,
+      settingType,
+      historyId,
+      userId: req.user._id
+    });
+
+    res.json({
+      status: 'success',
+      message: 'Settings rolled back successfully',
+      data: result
+    });
+  })
+);
+
+/**
+ * POST /api/v1/settings/bulk-rollback
+ * Rollback same change across multiple properties
+ *
+ * Body:
+ * {
+ *   "propertyIds": ["xxx", "yyy"],
+ *   "settingType": "booking_rules",
+ *   "historyId": "xxx"
+ * }
+ */
+router.post('/bulk-rollback',
+  authenticate,
+  catchAsync(async (req, res) => {
+    const { propertyIds, settingType, historyId } = req.body;
+
+    if (!propertyIds || !Array.isArray(propertyIds) || !settingType || !historyId) {
+      throw new ApplicationError('propertyIds (array), settingType, and historyId are required', 400);
+    }
+
+    const result = await SettingsInheritanceService.bulkRollback({
+      propertyIds,
+      settingType,
+      historyId,
+      userId: req.user._id
+    });
+
+    res.json({
+      status: 'success',
+      message: `Rolled back ${result.successful} of ${result.total} properties`,
+      data: result
+    });
+  })
+);
 
 export default router;

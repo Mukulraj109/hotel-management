@@ -11,6 +11,7 @@ import {
   getRoomSchedule
 } from '../controllers/meetUpResourceController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import adminAuth from '../middleware/adminAuth.js';
 import { validate, schemas } from '../middleware/validation.js';
 
@@ -18,6 +19,7 @@ const router = express.Router();
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

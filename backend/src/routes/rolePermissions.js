@@ -1,6 +1,7 @@
 import express from 'express';
 import rolePermissionController from '../controllers/rolePermissionController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { requirePermission, requireRoleLevel } from '../middleware/permissionCheck.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
@@ -57,6 +58,7 @@ const bulkAssignSchema = Joi.object({
 
 // Authentication required for all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

@@ -1,15 +1,19 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { BookingComConnector } from '../services/bookingComConnector.js';
 
 const router = express.Router();
 
+// Note: OTA routes apply middleware per-route as some need different access levels
+
 // Quick setup endpoint for testing - enable Booking.com integration
-router.post('/setup/:hotelId', 
-  authenticate, 
-  authorize('admin'), 
+router.post('/setup/:hotelId',
+  authenticate,
+  authorize('admin'),
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { hotelId } = req.params;
     
@@ -50,9 +54,10 @@ router.post('/setup/:hotelId',
 );
 
 // Manual sync trigger for Booking.com
-router.post('/bookingcom/sync', 
-  authenticate, 
-  authorize('admin'), 
+router.post('/bookingcom/sync',
+  authenticate,
+  authorize('admin'),
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { hotelId } = req.body;
     
@@ -79,9 +84,10 @@ router.post('/bookingcom/sync',
 );
 
 // Get Booking.com sync status
-router.get('/bookingcom/status/:hotelId', 
-  authenticate, 
-  authorize('admin', 'staff'), 
+router.get('/bookingcom/status/:hotelId',
+  authenticate,
+  authorize('admin', 'staff'),
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { hotelId } = req.params;
 
@@ -100,9 +106,10 @@ router.get('/bookingcom/status/:hotelId',
 );
 
 // Get OTA sync history
-router.get('/sync-history', 
-  authenticate, 
-  authorize('admin', 'staff'), 
+router.get('/sync-history',
+  authenticate,
+  authorize('admin', 'staff'),
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { hotelId, page = 1, limit = 10, provider, status } = req.query;
 
@@ -167,6 +174,7 @@ router.get('/sync-history',
 router.get('/config/:hotelId',
   authenticate,
   authorize('admin'),
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { hotelId } = req.params;
     
@@ -235,6 +243,7 @@ router.get('/config/:hotelId',
 router.patch('/config/:hotelId',
   authenticate,
   authorize('admin'),
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { hotelId } = req.params;
     const { provider, config } = req.body;
@@ -289,6 +298,7 @@ router.patch('/config/:hotelId',
 router.get('/stats/:hotelId',
   authenticate,
   authorize('admin', 'staff'),
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { hotelId } = req.params;
     

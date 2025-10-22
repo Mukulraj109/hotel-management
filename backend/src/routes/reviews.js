@@ -5,10 +5,14 @@ import Booking from '../models/Booking.js';
 import Hotel from '../models/Hotel.js';
 import User from '../models/User.js';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
+
+// Apply property access middleware to authenticated routes
+// Note: Some routes use optionalAuth and don't require property access
 
 /**
  * @swagger
@@ -68,7 +72,7 @@ const router = express.Router();
  *       201:
  *         description: Review created successfully
  */
-router.post('/', authenticate, catchAsync(async (req, res) => {
+router.post('/', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     hotelId,
     bookingId,
@@ -363,7 +367,7 @@ router.get('/:id', catchAsync(async (req, res) => {
  *       200:
  *         description: Response added successfully
  */
-router.post('/:id/response', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/:id/response', authenticate, authorize('staff', 'admin'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const { content } = req.body;
   
   const review = await Review.findById(req.params.id);
@@ -506,7 +510,7 @@ router.post('/:id/report', catchAsync(async (req, res) => {
  *       200:
  *         description: Review moderated successfully
  */
-router.patch('/:id/moderate', authenticate, authorize('admin'), catchAsync(async (req, res) => {
+router.patch('/:id/moderate', authenticate, authorize('admin'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const { status, notes } = req.body;
   
   const review = await Review.findById(req.params.id);
@@ -546,7 +550,7 @@ router.patch('/:id/moderate', authenticate, authorize('admin'), catchAsync(async
  *       200:
  *         description: Pending reviews
  */
-router.get('/pending', authenticate, authorize('admin'), catchAsync(async (req, res) => {
+router.get('/pending', authenticate, authorize('admin'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     page = 1,
     limit = 20
@@ -601,7 +605,7 @@ router.get('/pending', authenticate, authorize('admin'), catchAsync(async (req, 
  *       200:
  *         description: User's reviews
  */
-router.get('/user/my-reviews', authenticate, catchAsync(async (req, res) => {
+router.get('/user/my-reviews', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     page = 1,
     limit = 10

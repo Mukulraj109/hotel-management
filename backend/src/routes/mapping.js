@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import {
   // Room Mapping Controllers
@@ -10,7 +11,7 @@ import {
   deleteRoomMapping,
   getRoomMappingsByRoomType,
   getRoomMappingsByChannel,
-  
+
   // Rate Mapping Controllers
   getRateMappings,
   getRateMapping,
@@ -20,7 +21,7 @@ import {
   getRateMappingsByRoomMapping,
   getRateMappingsByRatePlan,
   testRateCalculation,
-  
+
   // Bulk Operations
   bulkCreateRoomMappings,
   bulkUpdateSyncStatus
@@ -30,6 +31,7 @@ const router = express.Router();
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

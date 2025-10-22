@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Calendar, 
-  Clock, 
-  TrendingUp, 
-  Plus, 
-  Edit, 
-  Trash2, 
+import {
+  Calendar,
+  Clock,
+  TrendingUp,
+  Plus,
+  Edit,
+  Trash2,
   Filter,
   Download,
   Upload,
@@ -16,6 +16,9 @@ import SeasonCalendar from '../../components/pricing/SeasonCalendar';
 import SpecialPeriodManager from '../../components/pricing/SpecialPeriodManager';
 import { seasonalPricingService } from '../../services/seasonalPricingService';
 import { useToast } from '../../hooks/useToast';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../components/settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
+import { useProperty } from '../../context/PropertyContext';
 
 interface Season {
   _id: string;
@@ -74,6 +77,28 @@ const AdminSeasonalPricing: React.FC = () => {
   const [analytics, setAnalytics] = useState<any>(null);
   const { showToast } = useToast();
 
+  // Multi-property support
+  const { selectedProperty, selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
+
   useEffect(() => {
     loadData();
   }, [selectedYear]);
@@ -104,8 +129,25 @@ const AdminSeasonalPricing: React.FC = () => {
 
   const handleCreateSeason = async (seasonData: Partial<Season>) => {
     try {
-      await seasonalPricingService.createSeason(seasonData);
-      showToast('Season created successfully', 'success');
+      // Multi-property update
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: seasonData,
+          settingType: 'seasonal_pricing_season',
+        });
+
+        if (!result) return; // Confirmation dialog shown
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        showToast(`Season created successfully for ${result.propertiesUpdated} properties`, 'success');
+        setApplyToScope('single');
+      } else {
+        await seasonalPricingService.createSeason(seasonData);
+        showToast('Season created successfully', 'success');
+      }
       setShowCreateSeason(false);
       loadData();
     } catch (error: any) {
@@ -115,8 +157,25 @@ const AdminSeasonalPricing: React.FC = () => {
 
   const handleCreateSpecialPeriod = async (periodData: Partial<SpecialPeriod>) => {
     try {
-      await seasonalPricingService.createSpecialPeriod(periodData);
-      showToast('Special period created successfully', 'success');
+      // Multi-property update
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: periodData,
+          settingType: 'seasonal_pricing_period',
+        });
+
+        if (!result) return; // Confirmation dialog shown
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        showToast(`Special period created successfully for ${result.propertiesUpdated} properties`, 'success');
+        setApplyToScope('single');
+      } else {
+        await seasonalPricingService.createSpecialPeriod(periodData);
+        showToast('Special period created successfully', 'success');
+      }
       setShowCreateSpecialPeriod(false);
       loadData();
     } catch (error: any) {
@@ -126,17 +185,47 @@ const AdminSeasonalPricing: React.FC = () => {
 
   const handleUpdateItem = async (id: string, data: Partial<Season | SpecialPeriod>, type: 'season' | 'period') => {
     try {
-      if (type === 'season') {
-        await seasonalPricingService.updateSeason(id, data);
-        showToast('Season updated successfully', 'success');
+      // Multi-property update
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: { id, data },
+          settingType: type === 'season' ? 'seasonal_pricing_season' : 'seasonal_pricing_period',
+        });
+
+        if (!result) return; // Confirmation dialog shown
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        showToast(`${type === 'season' ? 'Season' : 'Special period'} updated successfully for ${result.propertiesUpdated} properties`, 'success');
+        setApplyToScope('single');
       } else {
-        await seasonalPricingService.updateSpecialPeriod(id, data);
-        showToast('Special period updated successfully', 'success');
+        if (type === 'season') {
+          await seasonalPricingService.updateSeason(id, data);
+          showToast('Season updated successfully', 'success');
+        } else {
+          await seasonalPricingService.updateSpecialPeriod(id, data);
+          showToast('Special period updated successfully', 'success');
+        }
       }
       setEditingItem(null);
       loadData();
     } catch (error: any) {
       showToast(error.message || 'Error updating item', 'error');
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (pendingUpdate) {
+      const result = await confirmBulkUpdate();
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        showToast(`Settings updated for ${result.propertiesUpdated} properties`, 'success');
+        setApplyToScope('single');
+        loadData();
+      }
     }
   };
 
@@ -194,6 +283,45 @@ const AdminSeasonalPricing: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Success Message */}
+      {showSuccess && (
+        <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg">
+          <p className="font-medium">Settings updated successfully!</p>
+          {applyToScope !== 'single' && affectedCount > 1 && (
+            <p className="text-sm mt-1">Changes applied to {affectedCount} properties</p>
+          )}
+        </div>
+      )}
+
+      {/* Error Message */}
+      {updateError && (
+        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">
+          <p className="font-medium">Error: {updateError}</p>
+        </div>
+      )}
+
+      {/* Inheritance Status Card */}
+      {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-start">
+            <AlertTriangle className="w-5 h-5 text-blue-600 mr-3 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-blue-900">
+                This property is part of: {inheritanceStatus.groupName}
+              </p>
+              <p className="text-xs text-blue-700 mt-1">
+                Seasonal pricing settings can be managed centrally for all properties in this group.
+                {inheritanceStatus.lastSyncedAt && (
+                  <span className="ml-1">
+                    Last synced: {new Date(inheritanceStatus.lastSyncedAt).toLocaleString()}
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -330,6 +458,19 @@ const AdminSeasonalPricing: React.FC = () => {
                 </div>
               </div>
 
+              {/* Multi-property selector */}
+              <div className="border-t border-gray-200 pt-4 mt-4">
+                <ApplyToSelector
+                  value={applyToScope}
+                  onChange={setApplyToScope}
+                  isInGroup={inheritanceStatus?.hasGroup || false}
+                  groupName={inheritanceStatus?.groupName}
+                  totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+                  showWarning={true}
+                  warningMessage="Changes to seasonal pricing will affect rate calculations across all properties in the selected scope."
+                />
+              </div>
+
               <div className="grid gap-4">
                 {seasons.map((season) => (
                   <div key={season._id} className="border border-gray-200 rounded-lg p-4">
@@ -456,6 +597,17 @@ const AdminSeasonalPricing: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      <ApplyToConfirmation
+        isOpen={showConfirmation}
+        scope={applyToScope}
+        affectedCount={affectedCount}
+        settingName="Seasonal Pricing Settings"
+        groupName={inheritanceStatus?.groupName}
+        onConfirm={handleConfirm}
+        onCancel={cancelBulkUpdate}
+      />
     </div>
   );
 };

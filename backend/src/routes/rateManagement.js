@@ -1,6 +1,7 @@
 import express from 'express';
 import rateManagementController from '../controllers/rateManagementController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
@@ -131,7 +132,7 @@ router.get('/all-rates', rateManagementController.getAllRates);
  *       201:
  *         description: Rate plan created successfully
  */
-router.post('/plans', authenticate, authorize(['admin', 'revenue_manager']), rateManagementController.createRatePlan);
+router.post('/plans', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager']), rateManagementController.createRatePlan);
 
 /**
  * @swagger
@@ -155,7 +156,7 @@ router.post('/plans', authenticate, authorize(['admin', 'revenue_manager']), rat
  *       200:
  *         description: List of rate plans
  */
-router.get('/plans', authenticate, authorize(['admin', 'revenue_manager', 'manager']), rateManagementController.getRatePlans);
+router.get('/plans', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager', 'manager']), rateManagementController.getRatePlans);
 
 /**
  * @swagger
@@ -181,7 +182,7 @@ router.get('/plans', authenticate, authorize(['admin', 'revenue_manager', 'manag
  *       200:
  *         description: Rate plan updated successfully
  */
-router.put('/plans/:id', authenticate, authorize(['admin', 'revenue_manager']), rateManagementController.updateRatePlan);
+router.put('/plans/:id', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager']), rateManagementController.updateRatePlan);
 
 /**
  * @swagger
@@ -201,7 +202,7 @@ router.put('/plans/:id', authenticate, authorize(['admin', 'revenue_manager']), 
  *       200:
  *         description: Rate plan deactivated successfully
  */
-router.delete('/plans/:id', authenticate, authorize(['admin', 'revenue_manager']), rateManagementController.deleteRatePlan);
+router.delete('/plans/:id', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager']), rateManagementController.deleteRatePlan);
 
 // Seasonal Rates
 /**
@@ -251,7 +252,7 @@ router.delete('/plans/:id', authenticate, authorize(['admin', 'revenue_manager']
  *       201:
  *         description: Seasonal rate created successfully
  */
-router.post('/seasonal', authenticate, authorize(['admin', 'revenue_manager']), rateManagementController.createSeasonalRate);
+router.post('/seasonal', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager']), rateManagementController.createSeasonalRate);
 
 /**
  * @swagger
@@ -274,7 +275,7 @@ router.post('/seasonal', authenticate, authorize(['admin', 'revenue_manager']), 
  *       200:
  *         description: List of seasonal rates
  */
-router.get('/seasonal', authenticate, authorize(['admin', 'revenue_manager', 'manager']), rateManagementController.getSeasonalRates);
+router.get('/seasonal', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager', 'manager']), rateManagementController.getSeasonalRates);
 
 /**
  * @swagger
@@ -294,7 +295,7 @@ router.get('/seasonal', authenticate, authorize(['admin', 'revenue_manager', 'ma
  *       200:
  *         description: Seasonal rate updated successfully
  */
-router.put('/seasonal/:id', authenticate, authorize(['admin', 'revenue_manager']), rateManagementController.updateSeasonalRate);
+router.put('/seasonal/:id', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager']), rateManagementController.updateSeasonalRate);
 
 // Rate Overrides
 /**
@@ -336,7 +337,7 @@ router.put('/seasonal/:id', authenticate, authorize(['admin', 'revenue_manager']
  *       201:
  *         description: Rate override created successfully
  */
-router.post('/override', authenticate, authorize(['admin', 'revenue_manager']), rateManagementController.overrideRate);
+router.post('/override', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager']), rateManagementController.overrideRate);
 
 /**
  * @swagger
@@ -370,7 +371,7 @@ router.post('/override', authenticate, authorize(['admin', 'revenue_manager']), 
  *       200:
  *         description: List of rate overrides
  */
-router.get('/override', authenticate, authorize(['admin', 'revenue_manager', 'manager']), rateManagementController.getRateOverrides);
+router.get('/override', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager', 'manager']), rateManagementController.getRateOverrides);
 
 /**
  * @swagger
@@ -390,7 +391,7 @@ router.get('/override', authenticate, authorize(['admin', 'revenue_manager', 'ma
  *       200:
  *         description: Rate override removed successfully
  */
-router.delete('/override/:id', authenticate, authorize(['admin', 'revenue_manager']), rateManagementController.deleteRateOverride);
+router.delete('/override/:id', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager']), rateManagementController.deleteRateOverride);
 
 // Dynamic Pricing
 /**
@@ -405,7 +406,7 @@ router.delete('/override/:id', authenticate, authorize(['admin', 'revenue_manage
  *       201:
  *         description: Dynamic pricing rule created successfully
  */
-router.post('/dynamic-pricing', authenticate, authorize(['admin', 'revenue_manager']), rateManagementController.createDynamicPricingRule);
+router.post('/dynamic-pricing', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager']), rateManagementController.createDynamicPricingRule);
 
 /**
  * @swagger
@@ -429,7 +430,7 @@ router.post('/dynamic-pricing', authenticate, authorize(['admin', 'revenue_manag
  *       200:
  *         description: List of dynamic pricing rules
  */
-router.get('/dynamic-pricing', authenticate, authorize(['admin', 'revenue_manager', 'manager']), rateManagementController.getDynamicPricingRules);
+router.get('/dynamic-pricing', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager', 'manager']), rateManagementController.getDynamicPricingRules);
 
 // Yield Management
 /**
@@ -460,7 +461,7 @@ router.get('/dynamic-pricing', authenticate, authorize(['admin', 'revenue_manage
  *       200:
  *         description: Yield metrics updated successfully
  */
-router.post('/yield/update', authenticate, authorize(['admin', 'revenue_manager']), rateManagementController.updateYieldMetrics);
+router.post('/yield/update', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager']), rateManagementController.updateYieldMetrics);
 
 /**
  * @swagger
@@ -492,7 +493,7 @@ router.post('/yield/update', authenticate, authorize(['admin', 'revenue_manager'
  *       200:
  *         description: Yield management data
  */
-router.get('/yield', authenticate, authorize(['admin', 'revenue_manager', 'manager']), rateManagementController.getYieldData);
+router.get('/yield', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager', 'manager']), rateManagementController.getYieldData);
 
 /**
  * @swagger
@@ -524,7 +525,7 @@ router.get('/yield', authenticate, authorize(['admin', 'revenue_manager', 'manag
  *       200:
  *         description: Revenue forecast data
  */
-router.get('/forecast', authenticate, authorize(['admin', 'revenue_manager', 'manager']), rateManagementController.getRevenueForecast);
+router.get('/forecast', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager', 'manager']), rateManagementController.getRevenueForecast);
 
 // Packages
 /**
@@ -539,7 +540,7 @@ router.get('/forecast', authenticate, authorize(['admin', 'revenue_manager', 'ma
  *       201:
  *         description: Package created successfully
  */
-router.post('/packages', authenticate, authorize(['admin', 'revenue_manager']), rateManagementController.createPackage);
+router.post('/packages', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager']), rateManagementController.createPackage);
 
 /**
  * @swagger
@@ -581,7 +582,7 @@ router.get('/packages', rateManagementController.getPackages);
  *       200:
  *         description: Package updated successfully
  */
-router.put('/packages/:id', authenticate, authorize(['admin', 'revenue_manager']), rateManagementController.updatePackage);
+router.put('/packages/:id', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager']), rateManagementController.updatePackage);
 
 // Utility endpoints
 /**
@@ -614,7 +615,7 @@ router.put('/packages/:id', authenticate, authorize(['admin', 'revenue_manager']
  *       200:
  *         description: Rate comparison data
  */
-router.post('/comparison', authenticate, authorize(['admin', 'revenue_manager', 'manager']), rateManagementController.getRateComparison);
+router.post('/comparison', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager', 'manager']), rateManagementController.getRateComparison);
 
 /**
  * @swagger
@@ -653,6 +654,6 @@ router.post('/comparison', authenticate, authorize(['admin', 'revenue_manager', 
  *       200:
  *         description: Bulk rate update results
  */
-router.post('/bulk-update', authenticate, authorize(['admin', 'revenue_manager']), rateManagementController.bulkUpdateRates);
+router.post('/bulk-update', authenticate, ensurePropertyAccess, authorize(['admin', 'revenue_manager']), rateManagementController.bulkUpdateRates);
 
 export default router;

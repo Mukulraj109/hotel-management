@@ -51,6 +51,8 @@ import DayUseBookingsTable from '../../components/admin/DayUseBookingsTable';
 import DayUseAnalytics from '../../components/admin/DayUseAnalytics';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -81,6 +83,7 @@ function a11yProps(index: number) {
 }
 
 const AdminDayUseManagement: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [tabValue, setTabValue] = useState(0);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [slots, setSlots] = useState([]);
@@ -98,19 +101,24 @@ const AdminDayUseManagement: React.FC = () => {
   });
 
   useEffect(() => {
-    fetchData();
-    fetchTodaySchedule();
-    fetchQuickStats();
-  }, [selectedDate]);
+    if (selectedPropertyId || viewMode === 'portfolio') {
+      fetchData();
+      fetchTodaySchedule();
+      fetchQuickStats();
+    }
+  }, [selectedDate, selectedPropertyId]);
 
   const fetchData = async () => {
+    if (!selectedPropertyId && viewMode === 'single') return;
+
     setLoading(true);
     setError(null);
     try {
       const [slotsRes, bookingsRes] = await Promise.all([
-        axios.get('/api/v1/day-use/slots'),
+        axios.get('/api/v1/day-use/slots', { params: { propertyId: selectedPropertyId } }),
         axios.get('/api/v1/day-use/bookings', {
           params: {
+            propertyId: selectedPropertyId,
             startDate: selectedDate.toISOString().split('T')[0],
             endDate: selectedDate.toISOString().split('T')[0]
           }
@@ -129,7 +137,9 @@ const AdminDayUseManagement: React.FC = () => {
 
   const fetchTodaySchedule = async () => {
     try {
-      const response = await axios.get('/api/v1/day-use/schedule/today');
+      const response = await axios.get('/api/v1/day-use/schedule/today', {
+        params: { propertyId: selectedPropertyId }
+      });
       setTodaySchedule(response.data.data);
     } catch (err) {
       console.error('Failed to fetch today schedule:', err);
@@ -141,9 +151,11 @@ const AdminDayUseManagement: React.FC = () => {
       const today = new Date().toISOString().split('T')[0];
       const [revenueRes, occupancyRes] = await Promise.all([
         axios.get('/api/v1/day-use/analytics/revenue', {
-          params: { startDate: today, endDate: today }
+          params: { propertyId: selectedPropertyId, startDate: today, endDate: today }
         }),
-        axios.get(`/api/v1/day-use/analytics/occupancy/${today}`)
+        axios.get(`/api/v1/day-use/analytics/occupancy/${today}`, {
+          params: { propertyId: selectedPropertyId }
+        })
       ]);
 
       const todayRevenue = revenueRes.data.data.revenue.reduce(
@@ -271,6 +283,21 @@ const AdminDayUseManagement: React.FC = () => {
     </Card>
   );
 
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <Container maxWidth="xl" sx={{ py: 3 }}>
+        <PropertyBreadcrumb items={['Day Use Management']} />
+        <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="400px">
+          <ScheduleIcon sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
+          <Typography variant="h6" color="text.secondary">No Property Selected</Typography>
+          <Typography variant="body2" color="text.disabled">
+            Please select a property to view day use management.
+          </Typography>
+        </Box>
+      </Container>
+    );
+  }
+
   if (loading && slots.length === 0) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -282,6 +309,7 @@ const AdminDayUseManagement: React.FC = () => {
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Container maxWidth="xl" sx={{ py: 3 }}>
+        <PropertyBreadcrumb items={['Day Use Management']} />
         {/* Header */}
         <Box mb={4}>
           <Typography variant="h4" component="h1" fontWeight="bold" mb={1}>

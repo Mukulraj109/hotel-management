@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { format, parseISO } from 'date-fns';
-import { 
-  Package, 
-  Clock, 
-  CheckCircle, 
-  AlertTriangle, 
+import {
+  Package,
+  Clock,
+  CheckCircle,
+  AlertTriangle,
   Filter,
   Eye,
   User,
@@ -29,9 +29,12 @@ import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { adminSupplyRequestsService, SupplyRequest, SupplyRequestStats, SupplyRequestFilters, SupplyRequestItem } from '../../services/adminSupplyRequestsService';
 import { useRealTime } from '../../services/realTimeService';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 
 export default function AdminSupplyRequests() {
+  const { selectedPropertyId, selectedProperty } = useProperty();
   const [requests, setRequests] = useState<SupplyRequest[]>([]);
   const [stats, setStats] = useState<SupplyRequestStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,16 +84,18 @@ export default function AdminSupplyRequests() {
   };
 
   useEffect(() => {
-    fetchRequests();
-    fetchStats();
-    
-    // Connect to real-time updates
-    connect().catch(console.error);
-    
+    if (selectedPropertyId) {
+      fetchRequests();
+      fetchStats();
+
+      // Connect to real-time updates
+      connect().catch(console.error);
+    }
+
     return () => {
       disconnect();
     };
-  }, [filters]);
+  }, [selectedPropertyId, filters]);
   
   // Set up real-time event listeners
   useEffect(() => {
@@ -309,6 +314,19 @@ export default function AdminSupplyRequests() {
     }
   ];
 
+  // Property validation
+  if (!selectedPropertyId) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">🏨</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Property Selected</h2>
+          <p className="text-gray-600">Please select a property from the header to view supply requests.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading && !requests.length) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -323,6 +341,9 @@ export default function AdminSupplyRequests() {
       toast.error('An error occurred in the supply requests management page');
     }}>
     <div className="space-y-6">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Supply Requests']} />
+
       {/* Modern Header */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-4 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

@@ -44,9 +44,13 @@ import {
   TrendingUp as TrendingUpIcon,
   TrendingDown as TrendingDownIcon
 } from '@mui/icons-material';
+import { AlertCircle } from 'lucide-react';
 import DepartmentTree from '../../components/departments/DepartmentTree';
 import DepartmentMetrics from '../../components/departments/DepartmentMetrics';
 import { departmentsApi } from '../../services/api';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../components/settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
+import { useProperty } from '../../context/PropertyContext';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -139,6 +143,28 @@ const AdminDepartments: React.FC = () => {
     isOperational: true,
     isRevenueCenter: false
   });
+
+  // Multi-property support
+  const { selectedProperty, selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
 
   const departmentTypes = [
     { value: 'front_office', label: 'Front Office' },
@@ -233,17 +259,46 @@ const AdminDepartments: React.FC = () => {
 
   const handleSaveDepartment = async () => {
     try {
-      if (editingDepartment) {
-        await departmentsApi.updateDepartment(editingDepartment._id, formData);
+      // If multi-property update, use applySettings
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: formData,
+          settingType: 'departments',
+        });
+
+        if (!result) return; // Confirmation dialog shown
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
       } else {
-        await departmentsApi.createDepartment(formData);
+        // Single property update
+        if (editingDepartment) {
+          await departmentsApi.updateDepartment(editingDepartment._id, formData);
+        } else {
+          await departmentsApi.createDepartment(formData);
+        }
       }
 
       await loadData();
       setDialogOpen(false);
       resetForm();
+      setApplyToScope('single');
     } catch (error) {
       console.error('Error saving department:', error);
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (pendingUpdate) {
+      const result = await confirmBulkUpdate();
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        setApplyToScope('single');
+        await loadData();
+      }
     }
   };
 
@@ -313,6 +368,46 @@ const AdminDepartments: React.FC = () => {
             Create Department
           </Button>
         </Box>
+
+        {/* Success Message */}
+        {showSuccess && (
+          <Alert severity="success" sx={{ mb: 2 }}>
+            Settings updated successfully!
+            {applyToScope !== 'single' && affectedCount > 1 && (
+              <Box component="span" sx={{ display: 'block', mt: 0.5 }}>
+                Changes applied to {affectedCount} properties
+              </Box>
+            )}
+          </Alert>
+        )}
+
+        {/* Error Message */}
+        {updateError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            Error: {updateError}
+          </Alert>
+        )}
+
+        {/* Inheritance Status Card */}
+        {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            <Box display="flex" alignItems="flex-start">
+              <Box flex={1}>
+                <Typography variant="body2" fontWeight="medium">
+                  This property is part of: {inheritanceStatus.groupName}
+                </Typography>
+                <Typography variant="caption">
+                  Department structure is inherited from the group. You can override it for this property if needed.
+                  {inheritanceStatus.lastSyncedAt && (
+                    <span>
+                      {' '}Last synced: {new Date(inheritanceStatus.lastSyncedAt).toLocaleString()}
+                    </span>
+                  )}
+                </Typography>
+              </Box>
+            </Box>
+          </Alert>
+        )}
 
         {/* Summary Cards */}
         {summary && (
@@ -580,6 +675,21 @@ const AdminDepartments: React.FC = () => {
                 label="Revenue Center"
               />
             </Grid>
+
+            {/* Multi-property selector */}
+            <Grid item xs={12}>
+              <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 2, mt: 2 }}>
+                <ApplyToSelector
+                  value={applyToScope}
+                  onChange={setApplyToScope}
+                  isInGroup={inheritanceStatus?.hasGroup || false}
+                  groupName={inheritanceStatus?.groupName}
+                  totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+                  showWarning={true}
+                  warningMessage="These department settings will be applied to all selected properties. Ensure department structure is appropriate for all properties."
+                />
+              </Box>
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
@@ -589,6 +699,17 @@ const AdminDepartments: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Confirmation Dialog */}
+      <ApplyToConfirmation
+        isOpen={showConfirmation}
+        scope={applyToScope}
+        affectedCount={affectedCount}
+        settingName="Department Structure"
+        groupName={inheritanceStatus?.groupName}
+        onConfirm={handleConfirm}
+        onCancel={cancelBulkUpdate}
+      />
     </Container>
   );
 };

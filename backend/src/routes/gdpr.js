@@ -1,6 +1,7 @@
 import express from 'express';
 import gdprController from '../controllers/gdprController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
 
@@ -41,6 +42,7 @@ const dataRequestProcessSchema = Joi.object({
 
 // Authentication required for all GDPR routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // User data subject rights endpoints
 

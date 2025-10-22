@@ -3,6 +3,7 @@ import {
     authenticate,
     authorize
 } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import inventoryIntegrationService from '../services/inventoryIntegrationService.js';
 import workflowAutomationService from '../services/workflowAutomationService.js';
 import {
@@ -19,6 +20,7 @@ const router = express.Router();
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 router.use(authorize('admin', 'manager'));
 
 /**

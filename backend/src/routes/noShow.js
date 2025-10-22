@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import {
   markAsNoShow,
   getNoShowStats,
@@ -7,6 +8,10 @@ import {
 } from '../controllers/noShowController.js';
 
 const router = express.Router();
+
+// Apply authentication and property access to all routes
+router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger
@@ -88,7 +93,7 @@ const router = express.Router();
  *       404:
  *         description: Booking not found
  */
-router.post('/:bookingId/no-show', authenticate, authorize('admin', 'staff', 'manager'), markAsNoShow);
+router.post('/:bookingId/no-show', authorize('admin', 'staff', 'manager'), markAsNoShow);
 
 /**
  * @swagger
@@ -133,7 +138,7 @@ router.post('/:bookingId/no-show', authenticate, authorize('admin', 'staff', 'ma
  *       404:
  *         description: Booking not found
  */
-router.put('/:bookingId/reverse-no-show', authenticate, authorize('admin', 'manager'), reverseNoShow);
+router.put('/:bookingId/reverse-no-show', authorize('admin', 'manager'), reverseNoShow);
 
 /**
  * @swagger
@@ -196,6 +201,6 @@ router.put('/:bookingId/reverse-no-show', authenticate, authorize('admin', 'mana
  *       403:
  *         description: Insufficient permissions
  */
-router.get('/no-show/stats', authenticate, authorize('admin', 'manager'), getNoShowStats);
+router.get('/no-show/stats', authorize('admin', 'manager'), getNoShowStats);
 
 export default router;

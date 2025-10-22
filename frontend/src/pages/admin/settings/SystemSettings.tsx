@@ -15,10 +15,18 @@ import {
   Eye,
   EyeOff,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  Users,
+  UserPlus,
+  ExternalLink
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import toast from 'react-hot-toast';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../../components/settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '../../../hooks/useSettingsInheritance';
+import { useProperty } from '../../../context/PropertyContext';
+import { CreateUserModal } from '../../../components/user/CreateUserModal';
+import { useNavigate } from 'react-router-dom';
 
 interface SystemFormData {
   twoFactorAuth: boolean;
@@ -76,7 +84,9 @@ interface SystemSettingsProps {
 }
 
 export default function SystemSettings({ onSettingsChange }: SystemSettingsProps = {}) {
+  const { selectedProperty, selectedPropertyId } = useProperty();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [apiKeys, setApiKeys] = useState<APIKey[]>([]);
   const [showNewKeyForm, setShowNewKeyForm] = useState(false);
   const [newKeyData, setNewKeyData] = useState({
@@ -85,6 +95,29 @@ export default function SystemSettings({ onSettingsChange }: SystemSettingsProps
     type: 'read',
     permissions: []
   });
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [showCreateUserModal, setShowCreateUserModal] = useState(false);
+
+  // Settings inheritance hook
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  // Fetch inheritance status
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+
+  // Get affected properties count
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.hasGroup ? 5 : 0
+  );
 
   const {
     register,
@@ -182,6 +215,39 @@ export default function SystemSettings({ onSettingsChange }: SystemSettingsProps
       setApiKeys(apiKeysData.apiKeys);
     }
   }, [apiKeysData]);
+
+  // Fetch user statistics
+  const { data: userStats } = useQuery({
+    queryKey: ['user-stats'],
+    queryFn: async () => {
+      const response = await fetch('/api/v1/users', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch user statistics');
+      }
+
+      const data = await response.json();
+      const users = data.data.users;
+
+      // Calculate statistics
+      const total = users.length;
+      const active = users.filter((u: any) => u.isActive).length;
+      const admins = users.filter((u: any) => u.role === 'admin').length;
+      const staff = users.filter((u: any) => u.role === 'staff' || u.role === 'manager').length;
+
+      return {
+        total,
+        active,
+        admins,
+        staff,
+        recentUsers: users.slice(0, 5)
+      };
+    }
+  });
 
   // Watch for form changes
   useEffect(() => {
@@ -379,8 +445,82 @@ export default function SystemSettings({ onSettingsChange }: SystemSettingsProps
     }
   });
 
-  const onSubmit = (data: SystemFormData) => {
-    saveSystemMutation.mutate(data);
+  const onSubmit = async (data: SystemFormData) => {
+    try {
+      // Use multi-property settings inheritance for system settings
+      const result = await applySettings({
+        scope: applyToScope,
+        propertyId: selectedPropertyId,
+        settingUpdates: {
+          security: {
+            requireTwoFactor: data.twoFactorAuth,
+            sessionSettings: {
+              timeout: data.sessionTimeout,
+              maxConcurrentSessions: 5
+            },
+            passwordPolicy: {
+              expireDays: data.passwordExpiry,
+              minLength: 8,
+              requireNumbers: true,
+              requireUppercase: true,
+              requireSymbols: false
+            },
+            maxLoginAttempts: data.loginAttempts
+          },
+          maintenance: {
+            backupSchedule: data.backupSchedule,
+            backupRetention: data.dataRetention,
+            autoBackup: true
+          }
+        },
+        settingType: 'system',
+      });
+
+      // If confirmation dialog was shown, return early
+      if (!result) {
+        return;
+      }
+
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+
+      toast.success(`System settings updated successfully${
+        applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
+      }`);
+
+      // Invalidate and refetch the system settings query
+      queryClient.invalidateQueries({ queryKey: ['system-settings'] });
+
+      if (onSettingsChange) {
+        onSettingsChange(false);
+      }
+    } catch (error) {
+      toast.error('Failed to update system settings');
+      console.error('Settings update error:', error);
+    }
+  };
+
+  // Handle confirmation dialog confirm
+  const handleConfirm = async () => {
+    try {
+      const result = await confirmBulkUpdate();
+
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+
+        toast.success(`System settings updated for ${result.propertiesUpdated} properties`);
+
+        queryClient.invalidateQueries({ queryKey: ['system-settings'] });
+
+        if (onSettingsChange) {
+          onSettingsChange(false);
+        }
+      }
+    } catch (error) {
+      toast.error('Failed to update settings');
+      console.error('Bulk update error:', error);
+    }
   };
 
   const handleCreateApiKey = () => {
@@ -424,6 +564,117 @@ export default function SystemSettings({ onSettingsChange }: SystemSettingsProps
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
             Configure security, backup, and system-wide settings
           </p>
+        </div>
+
+        {/* User Management Section */}
+        <div className="mb-8 p-6 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-md font-medium text-gray-900 dark:text-gray-100 flex items-center space-x-2">
+                <Users className="h-4 w-4" />
+                <span>User Management</span>
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                Manage system users and permissions
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/admin/user-management')}
+                className="flex items-center space-x-2"
+              >
+                <ExternalLink className="h-4 w-4" />
+                <span>View All Users</span>
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => setShowCreateUserModal(true)}
+                className="flex items-center space-x-2"
+              >
+                <UserPlus className="h-4 w-4" />
+                <span>Create User</span>
+              </Button>
+            </div>
+          </div>
+
+          {/* User Statistics */}
+          {userStats && (
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Users</p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{userStats.total}</p>
+                  </div>
+                  <Users className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Users</p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{userStats.active}</p>
+                  </div>
+                  <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400" />
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Admins</p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{userStats.admins}</p>
+                  </div>
+                  <Shield className="h-8 w-8 text-purple-600 dark:text-purple-400" />
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Staff</p>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{userStats.staff}</p>
+                  </div>
+                  <Users className="h-8 w-8 text-orange-600 dark:text-orange-400" />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Recent Activity */}
+          {userStats && userStats.recentUsers.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-600">
+              <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">Recent Users</h4>
+              <div className="space-y-2">
+                {userStats.recentUsers.map((user: any) => (
+                  <div key={user._id} className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700 last:border-0">
+                    <div className="flex items-center space-x-3">
+                      <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                        <span className="text-sm font-medium text-blue-600 dark:text-blue-300">
+                          {user.name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{user.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{user.email}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-medium text-gray-600 dark:text-gray-400 capitalize">{user.role}</p>
+                      <p className={`text-xs ${user.isActive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {user.isActive ? 'Active' : 'Inactive'}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
@@ -696,23 +947,105 @@ export default function SystemSettings({ onSettingsChange }: SystemSettingsProps
             </div>
           </div>
 
+          {/* Multi-Property Scope Selector */}
+          <div className="pt-6 border-t border-gray-200 dark:border-gray-600">
+            <ApplyToSelector
+              value={applyToScope}
+              onChange={setApplyToScope}
+              isInGroup={inheritanceStatus?.hasGroup || false}
+              groupName={inheritanceStatus?.groupName}
+              totalProperties={5}
+              showWarning={true}
+              warningMessage="These system settings (security policies, backup schedules) will be applied to all selected properties. Ensure these settings are appropriate for all properties."
+            />
+          </div>
+
+          {/* Success Message */}
+          {showSuccess && (
+            <div className="flex items-center space-x-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+              <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+              <p className="text-sm text-green-800 dark:text-green-400">
+                System settings updated successfully!
+              </p>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {updateError && (
+            <div className="flex items-start space-x-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-red-900 dark:text-red-400 mb-1">Update Failed</p>
+                <p className="text-xs text-red-800 dark:text-red-500">
+                  {updateError instanceof Error ? updateError.message : 'An error occurred while updating system settings'}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Save Button */}
           <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-600">
             <Button
               type="submit"
-              disabled={!isDirty || saveSystemMutation.isLoading}
+              disabled={!isDirty || saveSystemMutation.isLoading || isUpdating}
               className="flex items-center space-x-2"
             >
-              {saveSystemMutation.isLoading ? (
+              {(saveSystemMutation.isLoading || isUpdating) ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              <span>Save Changes</span>
+              <span>{(saveSystemMutation.isLoading || isUpdating) ? 'Saving...' : 'Save Changes'}</span>
             </Button>
           </div>
         </form>
+
+        {/* Inheritance Info Card */}
+        {inheritanceStatus?.hasGroup && inheritanceStatus.inheritanceEnabled && (
+          <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <div className="flex items-start space-x-3">
+              <div className="h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-800 flex items-center justify-center mt-0.5">
+                <Shield className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-400 mb-1">
+                  Group Inheritance Enabled
+                </p>
+                <p className="text-xs text-blue-800 dark:text-blue-500">
+                  This property is part of "{inheritanceStatus.groupName}" group and inherits system settings automatically.
+                  {inheritanceStatus.lastSyncAt && (
+                    <span className="block mt-1">
+                      Last synced: {new Date(inheritanceStatus.lastSyncAt).toLocaleString()}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Confirmation Dialog for Bulk Updates */}
+      <ApplyToConfirmation
+        isOpen={showConfirmation}
+        scope={applyToScope}
+        affectedCount={affectedCount}
+        settingName="system settings"
+        groupName={inheritanceStatus?.groupName}
+        onConfirm={handleConfirm}
+        onCancel={cancelBulkUpdate}
+      />
+
+      {/* Create User Modal */}
+      <CreateUserModal
+        isOpen={showCreateUserModal}
+        onClose={() => setShowCreateUserModal(false)}
+        onSuccess={() => {
+          setShowCreateUserModal(false);
+          queryClient.invalidateQueries({ queryKey: ['user-stats'] });
+          toast.success('User created successfully');
+        }}
+      />
     </div>
   );
 }

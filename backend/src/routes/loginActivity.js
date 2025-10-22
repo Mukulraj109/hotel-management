@@ -1,6 +1,7 @@
 import express from 'express';
 import * as loginActivityController from '../controllers/loginActivityController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
@@ -9,6 +10,7 @@ router.use(authenticate);
 
 // Admin/Manager routes only
 router.use(authorize('admin', 'manager'));
+router.use(ensurePropertyAccess);
 
 // Analytics and reporting routes
 router.route('/analytics')

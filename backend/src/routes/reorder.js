@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { requireRole } from '../middleware/roleAuth.js';
 import { validateObjectId } from '../middleware/validation.js';
 import reorderService from '../services/reorderService.js';
@@ -94,7 +95,7 @@ const router = express.Router();
  *                         byStatus:
  *                           type: object
  */
-router.get('/alerts', authenticate, requireRole(['admin', 'manager']), async (req, res, next) => {
+router.get('/alerts', authenticate, ensurePropertyAccess, requireRole(['admin', 'manager']), async (req, res, next) => {
   try {
     const { status, priority, alertType } = req.query;
     const hotelId = req.user.hotelId;
@@ -172,6 +173,7 @@ router.get('/alerts', authenticate, requireRole(['admin', 'manager']), async (re
  */
 router.post('/configure/:itemId',
   authenticate,
+  ensurePropertyAccess,
   requireRole(['admin', 'manager']),
   validateObjectId('itemId'),
   async (req, res, next) => {
@@ -258,7 +260,7 @@ router.post('/configure/:itemId',
  *                       type: object
  *                       description: Check results summary
  */
-router.post('/check', authenticate, requireRole(['admin', 'manager']), async (req, res, next) => {
+router.post('/check', authenticate, ensurePropertyAccess, requireRole(['admin', 'manager']), async (req, res, next) => {
   try {
     const hotelId = req.user.hotelId;
 
@@ -334,6 +336,7 @@ router.post('/check', authenticate, requireRole(['admin', 'manager']), async (re
  */
 router.post('/approve/:alertId',
   authenticate,
+  ensurePropertyAccess,
   requireRole(['admin', 'manager']),
   validateObjectId('alertId'),
   async (req, res, next) => {
@@ -425,6 +428,7 @@ router.post('/approve/:alertId',
  */
 router.post('/acknowledge/:alertId',
   authenticate,
+  ensurePropertyAccess,
   requireRole(['admin', 'manager', 'staff']),
   validateObjectId('alertId'),
   async (req, res, next) => {
@@ -497,6 +501,7 @@ router.post('/acknowledge/:alertId',
  */
 router.post('/dismiss/:alertId',
   authenticate,
+  ensurePropertyAccess,
   requireRole(['admin', 'manager']),
   validateObjectId('alertId'),
   async (req, res, next) => {
@@ -576,7 +581,7 @@ router.post('/dismiss/:alertId',
  *       200:
  *         description: Reorder history retrieved successfully
  */
-router.get('/history', authenticate, requireRole(['admin', 'manager', 'staff']), async (req, res, next) => {
+router.get('/history', authenticate, ensurePropertyAccess, requireRole(['admin', 'manager', 'staff']), async (req, res, next) => {
   try {
     const { itemId, status, startDate, endDate, limit } = req.query;
     const hotelId = req.user.hotelId;
@@ -632,7 +637,7 @@ router.get('/history', authenticate, requireRole(['admin', 'manager', 'staff']),
  *                       type: object
  *                       description: Comprehensive reorder statistics
  */
-router.get('/stats', authenticate, requireRole(['admin', 'manager']), async (req, res, next) => {
+router.get('/stats', authenticate, ensurePropertyAccess, requireRole(['admin', 'manager']), async (req, res, next) => {
   try {
     const hotelId = req.user.hotelId;
 
@@ -661,7 +666,7 @@ router.get('/stats', authenticate, requireRole(['admin', 'manager']), async (req
  *       200:
  *         description: Items needing reorder retrieved successfully
  */
-router.get('/items-needing-reorder', authenticate, requireRole(['admin', 'manager', 'staff']), async (req, res, next) => {
+router.get('/items-needing-reorder', authenticate, ensurePropertyAccess, requireRole(['admin', 'manager', 'staff']), async (req, res, next) => {
   try {
     const hotelId = req.user.hotelId;
 
@@ -724,7 +729,7 @@ router.get('/items-needing-reorder', authenticate, requireRole(['admin', 'manage
  *       200:
  *         description: Bulk configuration completed successfully
  */
-router.post('/bulk-configure', authenticate, requireRole(['admin', 'manager']), async (req, res, next) => {
+router.post('/bulk-configure', authenticate, ensurePropertyAccess, requireRole(['admin', 'manager']), async (req, res, next) => {
   try {
     const { items } = req.body;
     const hotelId = req.user.hotelId;

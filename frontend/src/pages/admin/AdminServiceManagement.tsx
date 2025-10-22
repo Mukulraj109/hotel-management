@@ -26,6 +26,8 @@ import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface ServiceFormData {
   name: string;
@@ -52,6 +54,7 @@ interface ServiceFormData {
 }
 
 const AdminServiceManagement: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<string>('');
@@ -86,12 +89,14 @@ const AdminServiceManagement: React.FC = () => {
 
   // Fetch services
   const { data: servicesData, isLoading } = useQuery({
-    queryKey: ['admin-hotel-services', { type: typeFilter, search: searchTerm, status: statusFilter }],
+    queryKey: ['admin-hotel-services', { propertyId: selectedPropertyId, type: typeFilter, search: searchTerm, status: statusFilter }],
     queryFn: () => hotelServicesService.getAdminServices({
+      propertyId: selectedPropertyId,
       type: typeFilter || undefined,
       search: searchTerm || undefined,
       status: statusFilter || undefined
     }),
+    enabled: !!selectedPropertyId,
     staleTime: 5 * 60 * 1000
   });
 
@@ -99,15 +104,17 @@ const AdminServiceManagement: React.FC = () => {
 
   // Fetch service types
   const { data: serviceTypes } = useQuery({
-    queryKey: ['service-types'],
-    queryFn: hotelServicesService.getServiceTypes,
+    queryKey: ['service-types', selectedPropertyId],
+    queryFn: () => hotelServicesService.getServiceTypes(selectedPropertyId),
+    enabled: !!selectedPropertyId,
     staleTime: 10 * 60 * 1000
   });
 
   // Create/Update service mutation
   const saveServiceMutation = useMutation({
     mutationFn: async (data: ServiceFormData & { images?: File[] }) => {
-      const formData = hotelServicesService.convertToFormData(data, data.images);
+      const serviceData = { ...data, propertyId: selectedPropertyId };
+      const formData = hotelServicesService.convertToFormData(serviceData, data.images);
 
       if (editingService) {
         return await hotelServicesService.updateService(editingService._id, formData);
@@ -263,8 +270,23 @@ const AdminServiceManagement: React.FC = () => {
     return isActive ? 'text-green-600 bg-green-100' : 'text-red-600 bg-red-100';
   };
 
+  // Early return if no property selected in single property mode
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['Services', 'Service Management']} />
+        <div className="text-center py-12">
+          <p className="text-gray-600">Please select a property to manage services</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Services', 'Service Management']} />
+
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>

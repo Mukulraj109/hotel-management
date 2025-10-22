@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { 
+import {
   Plus, Edit, Trash2, MessageSquare, Eye, Globe, Clock, RefreshCw, FileText, Settings
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
@@ -48,6 +50,7 @@ interface BillMessage {
 }
 
 const AdminBillMessages: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [messages, setMessages] = useState<BillMessage[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<BillMessage | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -140,13 +143,17 @@ const AdminBillMessages: React.FC = () => {
   ];
 
   useEffect(() => {
-    fetchMessages();
-  }, []);
+    if (selectedPropertyId) {
+      fetchMessages();
+    }
+  }, [selectedPropertyId]);
 
   const fetchMessages = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/pos/bill-messages');
+      const response = await api.get('/pos/bill-messages', {
+        params: { propertyId: selectedPropertyId }
+      });
       if (response.data.status === 'success') {
         setMessages(response.data.data.messages);
       }
@@ -333,6 +340,17 @@ const AdminBillMessages: React.FC = () => {
     return colors[category as keyof typeof colors] || 'bg-gray-100 text-gray-800';
   };
 
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['Compliance', 'Bill Messages']} />
+        <div className="mt-8 text-center">
+          <p className="text-gray-500">Please select a property to manage bill messages</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -343,6 +361,8 @@ const AdminBillMessages: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6">
+      <PropertyBreadcrumb items={['Compliance', 'Bill Messages']} />
+
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold">Bill Messages</h1>
         <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>

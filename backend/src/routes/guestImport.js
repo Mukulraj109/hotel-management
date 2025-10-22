@@ -1,11 +1,13 @@
 import express from 'express';
 import * as guestImportController from '../controllers/guestImportController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Admin/Staff routes only
 router.use(authorize('admin', 'manager', 'staff'));

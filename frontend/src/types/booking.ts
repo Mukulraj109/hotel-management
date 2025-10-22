@@ -46,6 +46,19 @@ export interface Booking {
   source: 'direct' | 'booking_com' | 'expedia' | 'airbnb';
   createdAt: string;
   updatedAt: string;
+  // Price adjustment fields
+  originalAmount?: number;
+  discountAmount?: number;
+  surchargeAmount?: number;
+  priceAdjustments?: Array<{
+    _id: string;
+    amount: number;
+    reason: string;
+    type: 'discount' | 'surcharge';
+    adjustedBy: string;
+    adjustedAt: string;
+    isReversed?: boolean;
+  }>;
 }
 
 export interface BookingFilters {

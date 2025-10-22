@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 
@@ -52,6 +53,7 @@ const upload = multer({
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * Upload single photo for inventory documentation

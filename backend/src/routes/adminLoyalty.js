@@ -8,6 +8,7 @@ import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import Joi from 'joi';
 import { v4 as uuidv4 } from 'uuid';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
@@ -82,7 +83,7 @@ const bulkOperationSchema = Joi.object({
  *       200:
  *         description: List of offers with pagination
  */
-router.get('/offers', authenticate, authorize(['admin', 'manager']), catchAsync(async (req, res) => {
+router.get('/offers', authenticate, authorize(['admin', 'manager']), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     page = 1,
     limit = 20,
@@ -154,9 +155,10 @@ router.get('/offers', authenticate, authorize(['admin', 'manager']), catchAsync(
  *       201:
  *         description: Offer created successfully
  */
-router.post('/offers', 
-  authenticate, 
-  authorize(['admin', 'manager']), 
+router.post('/offers',
+  authenticate,
+  authorize(['admin', 'manager']),
+  ensurePropertyAccess,
   validate(createOfferSchema),
   catchAsync(async (req, res) => {
     console.log('Creating new offer:', req.body);
@@ -196,7 +198,7 @@ router.post('/offers',
  *       200:
  *         description: Offer details
  */
-router.get('/offers/:id', authenticate, authorize(['admin', 'manager']), catchAsync(async (req, res) => {
+router.get('/offers/:id', authenticate, authorize(['admin', 'manager']), ensurePropertyAccess, catchAsync(async (req, res) => {
   const offer = await Offer.findById(req.params.id)
     .populate('hotelId', 'name');
     
@@ -254,6 +256,7 @@ router.get('/offers/:id', authenticate, authorize(['admin', 'manager']), catchAs
 router.put('/offers/:id',
   authenticate,
   authorize(['admin', 'manager']),
+  ensurePropertyAccess,
   validate(updateOfferSchema),
   catchAsync(async (req, res) => {
     console.log('Updating offer:', req.params.id, req.body);
@@ -295,7 +298,7 @@ router.put('/offers/:id',
  *       204:
  *         description: Offer deleted successfully
  */
-router.delete('/offers/:id', authenticate, authorize(['admin', 'manager']), catchAsync(async (req, res) => {
+router.delete('/offers/:id', authenticate, authorize(['admin', 'manager']), ensurePropertyAccess, catchAsync(async (req, res) => {
   console.log('Deleting offer:', req.params.id);
   
   const offer = await Offer.findByIdAndDelete(req.params.id);
@@ -341,6 +344,7 @@ router.delete('/offers/:id', authenticate, authorize(['admin', 'manager']), catc
 router.post('/offers/bulk',
   authenticate,
   authorize(['admin', 'manager']),
+  ensurePropertyAccess,
   validate(bulkOperationSchema),
   catchAsync(async (req, res) => {
     const { offerIds, operation } = req.body;
@@ -405,7 +409,7 @@ router.post('/offers/bulk',
  *       200:
  *         description: Loyalty analytics data
  */
-router.get('/analytics', authenticate, authorize(['admin', 'manager']), catchAsync(async (req, res) => {
+router.get('/analytics', authenticate, authorize(['admin', 'manager']), ensurePropertyAccess, catchAsync(async (req, res) => {
   const { dateFrom, dateTo } = req.query;
   
   // Build date filter
@@ -532,7 +536,7 @@ router.get('/analytics', authenticate, authorize(['admin', 'manager']), catchAsy
  *       200:
  *         description: Detailed offer statistics
  */
-router.get('/offers/:id/stats', authenticate, authorize(['admin', 'manager']), catchAsync(async (req, res) => {
+router.get('/offers/:id/stats', authenticate, authorize(['admin', 'manager']), ensurePropertyAccess, catchAsync(async (req, res) => {
   const offerId = req.params.id;
   
   // Verify offer exists

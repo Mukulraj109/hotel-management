@@ -3,6 +3,7 @@ import { body, param, query } from 'express-validator';
 import allotmentController from '../controllers/allotmentController.js';
 import allotmentSettingsController from '../controllers/allotmentSettingsController.js';
 import { authenticate, optionalAuth } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import rateLimit from 'express-rate-limit';
 
 const router = express.Router();
@@ -463,8 +464,10 @@ const settingsValidation = [
     .withMessage('Settings must be an object')
 ];
 
-// Admin routes - require authentication and admin role
-router.use(authenticate, (req, res, next) => {
+// Admin routes - require authentication, property access, and admin role
+router.use(authenticate);
+router.use(ensurePropertyAccess);
+router.use((req, res, next) => {
   // For testing purposes, allow any authenticated user
   if (!req.user) {
     return res.status(401).json({

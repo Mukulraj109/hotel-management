@@ -29,6 +29,8 @@ import { Checkbox } from '../../components/ui/checkbox';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { api } from '../../services/api';
 import toast from 'react-hot-toast';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface Offer {
   _id: string;
@@ -89,12 +91,12 @@ const fetchOffers = async (params: any) => {
   return response.data.data;
 };
 
-const createOffer = async (data: Partial<OfferFormData>) => {
+const createOffer = async (data: Partial<OfferFormData> & { propertyId?: string }) => {
   const response = await api.post('/admin/loyalty/offers', data);
   return response.data.data;
 };
 
-const updateOffer = async ({ id, data }: { id: string; data: Partial<OfferFormData> }) => {
+const updateOffer = async ({ id, data }: { id: string; data: Partial<OfferFormData> & { propertyId?: string } }) => {
   const response = await api.put(`/admin/loyalty/offers/${id}`, data);
   return response.data.data;
 };
@@ -104,13 +106,15 @@ const deleteOffer = async (id: string) => {
   return response.data;
 };
 
-const bulkOperation = async (data: { offerIds: string[]; operation: string }) => {
+const bulkOperation = async (data: { offerIds: string[]; operation: string; propertyId?: string }) => {
   const response = await api.post('/admin/loyalty/offers/bulk', data);
   return response.data.data;
 };
 
-const fetchAnalytics = async () => {
-  const response = await api.get('/admin/loyalty/analytics');
+const fetchAnalytics = async (propertyId?: string) => {
+  const response = await api.get('/admin/loyalty/analytics', {
+    params: { propertyId }
+  });
   return response.data.data;
 };
 
@@ -136,6 +140,7 @@ const getCategoryColor = (category: string) => {
 };
 
 export default function AdminOfferManagement() {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [activeTab, setActiveTab] = useState('offers');
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -152,8 +157,9 @@ export default function AdminOfferManagement() {
 
   // Fetch offers with filters
   const { data: offersData, isLoading: offersLoading, error: offersError } = useQuery({
-    queryKey: ['admin-offers', searchTerm, categoryFilter, typeFilter, statusFilter, currentPage],
+    queryKey: ['admin-offers', selectedPropertyId, searchTerm, categoryFilter, typeFilter, statusFilter, currentPage],
     queryFn: () => fetchOffers({
+      propertyId: selectedPropertyId,
       search: searchTerm || undefined,
       category: categoryFilter || undefined,
       type: typeFilter || undefined,
@@ -161,19 +167,21 @@ export default function AdminOfferManagement() {
       page: currentPage,
       limit: 20
     }),
+    enabled: !!selectedPropertyId,
     staleTime: 5 * 60 * 1000
   });
 
   // Fetch analytics
   const { data: analytics, isLoading: analyticsLoading } = useQuery({
-    queryKey: ['admin-loyalty-analytics'],
-    queryFn: fetchAnalytics,
+    queryKey: ['admin-loyalty-analytics', selectedPropertyId],
+    queryFn: () => fetchAnalytics(selectedPropertyId),
+    enabled: !!selectedPropertyId,
     staleTime: 10 * 60 * 1000
   });
 
   // Mutations
   const createMutation = useMutation({
-    mutationFn: createOffer,
+    mutationFn: (data: Partial<OfferFormData>) => createOffer({ ...data, propertyId: selectedPropertyId }),
     onSuccess: () => {
       toast.success('Offer created successfully');
       setIsCreateModalOpen(false);
@@ -186,7 +194,8 @@ export default function AdminOfferManagement() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: updateOffer,
+    mutationFn: ({ id, data }: { id: string; data: Partial<OfferFormData> }) =>
+      updateOffer({ id, data: { ...data, propertyId: selectedPropertyId } }),
     onSuccess: () => {
       toast.success('Offer updated successfully');
       setIsEditModalOpen(false);
@@ -211,7 +220,8 @@ export default function AdminOfferManagement() {
   });
 
   const bulkMutation = useMutation({
-    mutationFn: bulkOperation,
+    mutationFn: (data: { offerIds: string[]; operation: string }) =>
+      bulkOperation({ ...data, propertyId: selectedPropertyId }),
     onSuccess: (data) => {
       toast.success(`Bulk operation completed: ${data.affectedCount} offers affected`);
       setSelectedOffers([]);
@@ -329,6 +339,18 @@ export default function AdminOfferManagement() {
     );
   };
 
+  // Early return if no property selected in single property mode
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['Services', 'Offer Management']} />
+        <div className="text-center py-12">
+          <p className="text-gray-600">Please select a property to manage offers</p>
+        </div>
+      </div>
+    );
+  }
+
   if (offersLoading && !offers.length) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -339,6 +361,9 @@ export default function AdminOfferManagement() {
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Services', 'Offer Management']} />
+
       {/* Header */}
       <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">

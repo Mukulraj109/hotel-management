@@ -11,6 +11,7 @@ import {
   getServiceTypeStats
 } from '../controllers/serviceTypeController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validateRoles } from '../middleware/roleValidation.js';
 
 const router = express.Router();
@@ -24,6 +25,7 @@ const router = express.Router();
 
 // Apply authentication middleware to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * Service Type CRUD Operations

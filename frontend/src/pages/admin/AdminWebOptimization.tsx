@@ -4,12 +4,12 @@ import { Button } from '../../components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Badge } from '../../components/ui/badge';
 import { Alert, AlertDescription } from '../../components/ui/alert';
-import { 
-  TrendingUp, 
-  BarChart3, 
-  Target, 
-  Users, 
-  MousePointer, 
+import {
+  TrendingUp,
+  BarChart3,
+  Target,
+  Users,
+  MousePointer,
   Eye,
   Settings,
   Zap,
@@ -20,6 +20,8 @@ import {
   Pause,
   RotateCcw
 } from 'lucide-react';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import ABTestingManager from '../../components/web/ABTestingManager';
 import ConversionOptimizer from '../../components/web/ConversionOptimizer';
 import PerformanceMonitor from '../../components/web/PerformanceMonitor';
@@ -44,6 +46,7 @@ interface RecentActivity {
 }
 
 const AdminWebOptimization: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [activeTab, setActiveTab] = useState('overview');
   const [summary, setSummary] = useState<OptimizationSummary>({
     activeTests: 0,
@@ -56,20 +59,26 @@ const AdminWebOptimization: React.FC = () => {
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Early return if no property selected in single mode
+  if (!selectedPropertyId && viewMode === 'single') {
+    return <div className="p-6">Please select a property</div>;
+  }
+
   useEffect(() => {
-    fetchOptimizationData();
-  }, []);
+    if (selectedPropertyId) {
+      fetchOptimizationData();
+    }
+  }, [selectedPropertyId]);
 
   const fetchOptimizationData = async () => {
     try {
       setLoading(true);
       // Fetch optimization summary data
-      const hotelId = localStorage.getItem('hotelId');
       const token = localStorage.getItem('token');
-      
-      if (!hotelId || !token) return;
 
-      const response = await fetch(`/api/v1/web-optimization/${hotelId}/optimization/report`, {
+      if (!selectedPropertyId || !token) return;
+
+      const response = await fetch(`/api/v1/web-optimization/${selectedPropertyId}/optimization/report`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
@@ -164,6 +173,9 @@ const AdminWebOptimization: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Configuration', 'Web Optimization']} />
+
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Web Optimization</h1>

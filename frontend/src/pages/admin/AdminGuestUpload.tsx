@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { 
-  CloudArrowUpIcon, 
+import {
+  CloudArrowUpIcon,
   DocumentArrowDownIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -9,6 +9,8 @@ import {
   ArrowPathIcon
 } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface ImportResult {
   totalRows: number;
@@ -27,6 +29,7 @@ interface ImportStatistics {
 }
 
 const AdminGuestUpload: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -89,6 +92,9 @@ const AdminGuestUpload: React.FC = () => {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('skipHeader', 'true');
+      if (selectedPropertyId) {
+        formData.append('propertyId', selectedPropertyId);
+      }
 
       const response = await fetch('/api/v1/guest-import/upload', {
         method: 'POST',
@@ -132,6 +138,7 @@ const AdminGuestUpload: React.FC = () => {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({
+          propertyId: selectedPropertyId,
           guestData: importResult.preview // In a real implementation, you'd send all valid data
         })
       });
@@ -185,7 +192,12 @@ const AdminGuestUpload: React.FC = () => {
 
   const fetchStatistics = async () => {
     try {
-      const response = await fetch('/api/v1/guest-import/statistics', {
+      const params = new URLSearchParams();
+      if (selectedPropertyId) {
+        params.append('propertyId', selectedPropertyId);
+      }
+
+      const response = await fetch(`/api/v1/guest-import/statistics?${params.toString()}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -223,16 +235,33 @@ const AdminGuestUpload: React.FC = () => {
   };
 
   React.useEffect(() => {
-    fetchSupportedFormats();
-  }, []);
+    if (selectedPropertyId) {
+      fetchSupportedFormats();
+    }
+  }, [selectedPropertyId]);
+
+  // Early return if no property selected in single property mode
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['Inventory', 'Guest Upload']} />
+        <div className="text-center py-12">
+          <p className="text-gray-600">Please select a property to upload guests</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Inventory', 'Guest Upload']} />
+
       <div className="mb-6">
         <div className="flex justify-between items-center mb-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Guest Import</h1>
-            <p className="text-gray-600">Import guests from CSV or Excel files</p>
+            <p className="text-gray-600">Import guests from CSV or Excel files for {selectedProperty?.name || 'selected property'}</p>
           </div>
           <div className="flex space-x-3">
             <button

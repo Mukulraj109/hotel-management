@@ -9,6 +9,8 @@ import { Textarea } from '../../components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Checkbox } from '../../components/ui/checkbox';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { api } from '../../services/api';
 
 interface RoomType {
@@ -41,6 +43,7 @@ interface CreateAllotmentFormData {
 
 const AdminRoomAllotmentCreate: React.FC = () => {
   const navigate = useNavigate();
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [loading, setLoading] = useState(false);
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
   const [existingAllotments, setExistingAllotments] = useState<Set<string>>(new Set());
@@ -75,15 +78,16 @@ const AdminRoomAllotmentCreate: React.FC = () => {
     loadExistingAllotments();
   }, []);
 
+  // Early return if no property selected in single mode
+  if (!selectedPropertyId && viewMode === 'single') {
+    return <div className="p-6">Please select a property</div>;
+  }
+
   const loadRoomTypes = async () => {
     try {
-      // Get user's hotelId from localStorage or context
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const hotelId = user.hotelId || user.corporateDetails?.hotelId || '68b9e0125eaf06d56ef64a78';
-      
-      console.log('Loading room types for hotelId:', hotelId);
-      
-      const response = await api.get(`/room-types/hotel/${hotelId}`);
+      console.log('Loading room types for propertyId:', selectedPropertyId);
+
+      const response = await api.get(`/room-types/hotel/${selectedPropertyId}`);
       setRoomTypes(response.data.data || []);
     } catch (error) {
       console.error('Error loading room types:', error);
@@ -241,6 +245,9 @@ const AdminRoomAllotmentCreate: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Configuration', 'Room Allotments', 'Create']} />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">

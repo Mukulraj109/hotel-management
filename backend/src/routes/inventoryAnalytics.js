@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import InventoryHistoricalService from '../services/inventoryHistoricalService.js';
@@ -7,6 +8,10 @@ import CostOptimizationService from '../services/costOptimizationService.js';
 import ComplianceService from '../services/complianceService.js';
 
 const router = express.Router();
+
+// Apply authentication and property access to all routes
+router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

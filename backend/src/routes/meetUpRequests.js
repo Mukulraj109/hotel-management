@@ -5,6 +5,7 @@ import Hotel from '../models/Hotel.js';
 import Room from '../models/Room.js';
 import ServiceBooking from '../models/ServiceBooking.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import adminAuth from '../middleware/adminAuth.js';
 import { authorize } from '../middleware/auth.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -15,10 +16,11 @@ const router = express.Router();
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // ============= ADMIN ROUTES (Place first to avoid conflicts) =============
-// Admin/Staff: Get all meet-up requests across the system
-router.get('/admin/all', authorize('admin', 'staff'), catchAsync(async (req, res) => {
+// Admin/Staff/Frontdesk: Get all meet-up requests across the system
+router.get('/admin/all', authorize('admin', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
   const {
     page = 1,
     limit = 20,
@@ -83,8 +85,8 @@ router.get('/admin/all', authorize('admin', 'staff'), catchAsync(async (req, res
   });
 }));
 
-// Admin/Staff: Get system-wide meet-up insights
-router.get('/admin/insights', authorize('admin', 'staff'), catchAsync(async (req, res) => {
+// Admin/Staff/Frontdesk: Get system-wide meet-up insights
+router.get('/admin/insights', authorize('admin', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
   const { hotelId } = req.query;
 
   let baseQuery = {};
@@ -192,8 +194,8 @@ router.get('/admin/insights', authorize('admin', 'staff'), catchAsync(async (req
   });
 }));
 
-// Admin/Staff: Get comprehensive analytics
-router.get('/admin/analytics', authorize('admin', 'staff'), catchAsync(async (req, res) => {
+// Admin/Staff/Frontdesk: Get comprehensive analytics
+router.get('/admin/analytics', authorize('admin', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
   const { period = '30d', hotelId } = req.query;
 
   // Calculate date range based on period
@@ -387,8 +389,8 @@ router.get('/admin/analytics', authorize('admin', 'staff'), catchAsync(async (re
   });
 }));
 
-// Admin/Staff: Force cancel any meet-up request
-router.post('/admin/:requestId/force-cancel', authorize('admin', 'staff'), catchAsync(async (req, res) => {
+// Admin/Staff/Frontdesk: Force cancel any meet-up request
+router.post('/admin/:requestId/force-cancel', authorize('admin', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
   const { reason } = req.body;
 
   const meetUpRequest = await MeetUpRequest.findById(req.params.requestId);

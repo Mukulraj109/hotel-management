@@ -6,11 +6,13 @@ import RoomAvailability from '../models/RoomAvailability.js';
 import BookingComService from '../services/channels/bookingComService.js';
 // import { syncMiddleware } from '../middleware/channelSyncMiddleware.js'; // Temporarily disabled to debug server hang
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
 // Apply auth middleware to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Channel services mapping
 const channelServices = {

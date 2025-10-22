@@ -56,10 +56,13 @@ import toast from 'react-hot-toast';
 import { adminGuestServicesService, GuestService, GuestServiceStats, GuestServiceFilters } from '../../services/adminGuestServicesService';
 import { useRealTime } from '../../services/realTimeService';
 import { useAuth } from '../../context/AuthContext';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 
 export default function AdminGuestServices() {
   const { user } = useAuth();
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [services, setServices] = useState<GuestService[]>([]);
   const [stats, setStats] = useState<GuestServiceStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -91,7 +94,10 @@ export default function AdminGuestServices() {
   const fetchServices = async () => {
     try {
       setLoading(true);
-      const response = await adminGuestServicesService.getServices(filters);
+      const response = await adminGuestServicesService.getServices({
+        ...filters,
+        propertyId: selectedPropertyId
+      });
       console.log('Guest services response:', response.data);
       console.log('First service:', response.data.serviceRequests?.[0]);
       setServices(response.data.serviceRequests || []);
@@ -110,7 +116,7 @@ export default function AdminGuestServices() {
   const fetchStats = async () => {
     try {
       // Service will handle hotelId dynamically
-      const response = await adminGuestServicesService.getStats();
+      const response = await adminGuestServicesService.getStats(selectedPropertyId);
       
       // Map backend response to frontend expected format
       const backendData = response.data;
@@ -138,7 +144,7 @@ export default function AdminGuestServices() {
   const fetchAvailableStaff = async () => {
     try {
       // Service will handle hotelId dynamically
-      const response = await adminGuestServicesService.getAvailableStaff();
+      const response = await adminGuestServicesService.getAvailableStaff(selectedPropertyId);
       setAvailableStaff(response.data);
     } catch (error) {
       console.error('Error fetching available staff:', error);
@@ -146,9 +152,11 @@ export default function AdminGuestServices() {
   };
 
   useEffect(() => {
-    fetchServices();
-    fetchStats();
-    fetchAvailableStaff();
+    if (selectedPropertyId) {
+      fetchServices();
+      fetchStats();
+      fetchAvailableStaff();
+    }
     
     // Connect to real-time updates
     connect().catch(console.error);
@@ -156,7 +164,7 @@ export default function AdminGuestServices() {
     return () => {
       disconnect();
     };
-  }, [filters]);
+  }, [filters, selectedPropertyId]);
   
   // Set up real-time event listeners
   useEffect(() => {
@@ -554,6 +562,18 @@ export default function AdminGuestServices() {
     }
   ];
 
+  // Early return if no property selected in single property mode
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['Services', 'Guest Services']} />
+        <div className="text-center py-12">
+          <p className="text-gray-600">Please select a property to manage guest services</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading && !services.length) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -568,6 +588,10 @@ export default function AdminGuestServices() {
       toast.error('An error occurred in the guest services management page');
     }}>
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 relative overflow-hidden">
+      {/* Property Breadcrumb */}
+      <div className="relative z-10 px-3 sm:px-6 lg:px-8">
+        <PropertyBreadcrumb items={['Services', 'Guest Services']} />
+      </div>
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-10 left-10 w-72 h-72 bg-gradient-to-br from-blue-400/20 to-indigo-600/20 rounded-full blur-3xl animate-float"></div>

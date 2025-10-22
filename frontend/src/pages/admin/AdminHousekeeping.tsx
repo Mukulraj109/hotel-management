@@ -31,10 +31,15 @@ import { DataTable } from '../../components/dashboard/DataTable';
 import { StatusBadge } from '../../components/dashboard/StatusBadge';
 import HousekeepingInventoryDashboard from '../../components/admin/HousekeepingInventoryDashboard';
 import { adminService } from '../../services/adminService';
+import { api } from '../../services/api';
 import { HousekeepingTask } from '../../types/admin';
 import { formatNumber, getStatusColor } from '../../utils/dashboardUtils';
 import { useRealTime } from '../../services/realTimeService';
 import { toast } from 'react-hot-toast';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../components/settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface HousekeepingFilters {
   status?: string;
@@ -71,6 +76,9 @@ interface StaffMember {
 }
 
 export default function AdminHousekeeping() {
+  // Property Context
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+
   // State
   const [tasks, setTasks] = useState<HousekeepingTask[]>([]);
   const [stats, setStats] = useState<HousekeepingStats | null>(null);
@@ -110,9 +118,12 @@ export default function AdminHousekeeping() {
 
   // Fetch tasks
   const fetchTasks = async () => {
+    if (!selectedPropertyId) return;
+
     try {
       setLoading(true);
-      const response = await adminService.getHousekeepingTasks(filters);
+      const filtersWithHotel = { ...filters, hotelId: selectedPropertyId };
+      const response = await adminService.getHousekeepingTasks(filtersWithHotel);
       console.log('Full response from getHousekeepingTasks:', response);
       
       setTasks(response.data.tasks || []);
@@ -138,8 +149,10 @@ export default function AdminHousekeeping() {
 
   // Fetch stats
   const fetchStats = async () => {
+    if (!selectedPropertyId) return;
+
     try {
-      const response = await adminService.getHousekeepingStats();
+      const response = await adminService.getHousekeepingStats(selectedPropertyId);
       const statsData = response.data.stats;
       
       // Transform stats to match our interface
@@ -200,9 +213,11 @@ export default function AdminHousekeeping() {
 
   // Fetch staff members
   const fetchStaffMembers = async () => {
+    if (!selectedPropertyId) return;
+
     try {
       // Fetch only staff members (role: 'staff') from the API
-      const response = await adminService.getUsers({ role: 'staff' });
+      const response = await adminService.getUsers({ role: 'staff', hotelId: selectedPropertyId });
       const staffUsers = response.data.users || [];
       
       // Transform the data to match our StaffMember interface
@@ -223,21 +238,18 @@ export default function AdminHousekeeping() {
 
   // Fetch rooms
   const fetchRooms = async () => {
+    if (!selectedPropertyId) return;
+
     try {
-      // Fetch rooms from the API
-      const response = await fetch('/api/v1/rooms?limit=100');
-      if (response.ok) {
-        const data = await response.json();
-        setRooms(data.data.rooms || []);
-      } else {
-        console.error('Failed to fetch rooms:', response.statusText);
-        setRooms([]);
-        toast.error('Failed to fetch rooms');
-      }
+      // Fetch rooms from the API using axios instance (includes auth token)
+      const response = await api.get('/rooms', {
+        params: { limit: 100, hotelId: selectedPropertyId }
+      });
+      setRooms(response.data.data.rooms || []);
     } catch (error) {
       console.error('Error fetching rooms:', error);
       setRooms([]);
-      toast.error('Error fetching rooms');
+      toast.error('Failed to fetch rooms');
     }
   };
 
@@ -252,57 +264,61 @@ export default function AdminHousekeeping() {
 
   // Load data on mount and filter changes
   useEffect(() => {
-    fetchTasks();
-    fetchStats();
-    fetchStaffMembers();
-    fetchRooms();
-  }, [filters]);
+    if (selectedPropertyId) {
+      fetchTasks();
+      fetchStats();
+      fetchStaffMembers();
+      fetchRooms();
+    }
+  }, [filters, selectedPropertyId]);
 
-  // Real-time connection setup
+  // Real-time connection setup (run once on mount)
   useEffect(() => {
     connect();
     return () => {
       disconnect();
     };
-  }, [connect, disconnect]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - only connect/disconnect once on mount/unmount
 
   // Set up real-time event listeners
   useEffect(() => {
     if (!isConnected) return;
-    
+
     const handleTaskCreate = (data: any) => {
       console.log('Real-time housekeeping task created:', data);
       fetchTasks();
       fetchStats();
       toast.success('New housekeeping task created!');
     };
-    
+
     const handleTaskUpdate = (data: any) => {
       console.log('Real-time housekeeping task updated:', data);
       fetchTasks();
       fetchStats();
       toast.success(`Housekeeping task ${data.status === 'completed' ? 'completed' : 'updated'}!`);
     };
-    
+
     const handleTaskAssigned = (data: any) => {
       console.log('Real-time housekeeping task assigned:', data);
       fetchTasks();
       fetchStats();
       toast.success(`Task assigned to ${data.assignedToName || 'staff member'}!`);
     };
-    
+
     on('housekeeping:task_created', handleTaskCreate);
     on('housekeeping:task_updated', handleTaskUpdate);
     on('housekeeping:task_assigned', handleTaskAssigned);
     on('housekeeping:status_changed', handleTaskUpdate);
-    
+
     return () => {
       off('housekeeping:task_created', handleTaskCreate);
       off('housekeeping:task_updated', handleTaskUpdate);
       off('housekeeping:task_assigned', handleTaskAssigned);
       off('housekeeping:status_changed', handleTaskUpdate);
     };
-  }, [isConnected, on, off]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected]); // Only re-run when connection state changes, not when on/off change
 
   // Handle status update
   const handleStatusUpdate = async (taskId: string, newStatus: 'assigned' | 'in_progress' | 'completed' | 'cancelled') => {
@@ -643,6 +659,9 @@ export default function AdminHousekeeping() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-3 sm:p-6 space-y-4 sm:space-y-6">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Housekeeping']} />
+
       {/* Header */}
       <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-4 sm:p-6 lg:p-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">

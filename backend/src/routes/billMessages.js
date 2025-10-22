@@ -1,6 +1,7 @@
 import express from 'express';
 import billMessageController from '../controllers/billMessageController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validate } from '../middleware/validation.js';
 import { body, param, query } from 'express-validator';
 
@@ -489,6 +490,7 @@ const idParamValidation = [
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Public API endpoints (accessible to all authenticated users)
 

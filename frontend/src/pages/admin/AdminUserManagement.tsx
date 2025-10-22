@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Users, 
-  UserPlus, 
-  Search, 
-  Filter, 
-  Download, 
-  Upload, 
-  BarChart3, 
-  Activity, 
+import {
+  Users,
+  UserPlus,
+  Search,
+  Filter,
+  Download,
+  Upload,
+  BarChart3,
+  Activity,
   TrendingUp,
   AlertTriangle,
   CheckCircle,
@@ -23,9 +23,14 @@ import {
   Calendar
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import UserAnalytics from '../../components/user/UserAnalytics';
 import UserBulkOperations from '../../components/user/UserBulkOperations';
 import UserActivityTimeline from '../../components/user/UserActivityTimeline';
+import { CreateUserModal } from '../../components/user/CreateUserModal';
+import { EditUserModal } from '../../components/user/EditUserModal';
+import { DeleteUserConfirmation } from '../../components/user/DeleteUserConfirmation';
 
 interface User {
   _id: string;
@@ -62,6 +67,7 @@ interface UserAnalytics {
 }
 
 const AdminUserManagement: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [users, setUsers] = useState<User[]>([]);
   const [analytics, setAnalytics] = useState<UserAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,7 +76,12 @@ const AdminUserManagement: React.FC = () => {
   const [showBulkOperations, setShowBulkOperations] = useState(false);
   const [showActivityTimeline, setShowActivityTimeline] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editUser, setEditUser] = useState<User | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteUser, setDeleteUser] = useState<User | null>(null);
+
   const [filters, setFilters] = useState({
     search: '',
     role: 'all',
@@ -79,7 +90,7 @@ const AdminUserManagement: React.FC = () => {
     sortOrder: 'desc',
     dateRange: ''
   });
-  
+
   const [pagination, setPagination] = useState({
     current: 1,
     pages: 1,
@@ -101,19 +112,29 @@ const AdminUserManagement: React.FC = () => {
     { value: 'false', label: 'Inactive' }
   ];
 
+  // Early return if no property selected in single mode
+  if (!selectedPropertyId && viewMode === 'single') {
+    return <div className="p-6">Please select a property</div>;
+  }
+
   useEffect(() => {
-    fetchUsers();
-    fetchAnalytics();
-  }, [filters, pagination.current]);
+    if (selectedPropertyId) {
+      fetchUsers();
+      fetchAnalytics();
+    }
+  }, [filters, pagination.current, selectedPropertyId]);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
       const queryParams = new URLSearchParams();
-      
+
       queryParams.append('page', pagination.current.toString());
       queryParams.append('limit', pagination.limit.toString());
-      
+
+      // Add property filter
+      if (selectedPropertyId) queryParams.append('propertyId', selectedPropertyId);
+
       if (filters.search) queryParams.append('search', filters.search);
       if (filters.role !== 'all') queryParams.append('role', filters.role);
       if (filters.isActive !== 'all') queryParams.append('isActive', filters.isActive);
@@ -287,12 +308,22 @@ const AdminUserManagement: React.FC = () => {
 
   const getActivityStatus = (user: User) => {
     if (!user.lastActivity) return { status: 'inactive', color: 'text-gray-500', label: 'No Activity' };
-    
+
     const days = user.daysSinceLastActivity || 0;
     if (days <= 1) return { status: 'active', color: 'text-green-500', label: 'Very Active' };
     if (days <= 7) return { status: 'recent', color: 'text-blue-500', label: 'Recent' };
     if (days <= 30) return { status: 'moderate', color: 'text-yellow-500', label: 'Moderate' };
     return { status: 'inactive', color: 'text-red-500', label: 'Inactive' };
+  };
+
+  const handleEditUser = (user: User) => {
+    setEditUser(user);
+    setShowEditModal(true);
+  };
+
+  const handleDeleteUserClick = (user: User) => {
+    setDeleteUser(user);
+    setShowDeleteModal(true);
   };
 
   if (showAnalytics) {
@@ -331,6 +362,9 @@ const AdminUserManagement: React.FC = () => {
 
   return (
     <div className="p-6">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Configuration', 'User Management']} />
+
       <div className="mb-6">
         <div className="flex justify-between items-center mb-4">
           <div>
@@ -371,7 +405,10 @@ const AdminUserManagement: React.FC = () => {
                 Bulk Operations ({selectedUsers.length})
               </button>
             )}
-            <button className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700">
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700"
+            >
               <UserPlus className="w-4 h-4 mr-2" />
               Add User
             </button>
@@ -666,17 +703,18 @@ const AdminUserManagement: React.FC = () => {
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
+                            onClick={() => handleEditUser(user)}
                             className="text-green-600 hover:text-green-900"
                             title="Edit User"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleBulkOperation(user.isActive ? 'deactivate' : 'activate')}
-                            className={user.isActive ? "text-red-600 hover:text-red-900" : "text-green-600 hover:text-green-900"}
-                            title={user.isActive ? "Deactivate" : "Activate"}
+                            onClick={() => handleDeleteUserClick(user)}
+                            className="text-red-600 hover:text-red-900"
+                            title="Delete User"
                           >
-                            {user.isActive ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -743,6 +781,48 @@ const AdminUserManagement: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Create User Modal */}
+      <CreateUserModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={() => {
+          setShowCreateModal(false);
+          fetchUsers();
+        }}
+      />
+
+      {/* Edit User Modal */}
+      {editUser && (
+        <EditUserModal
+          isOpen={showEditModal}
+          onClose={() => {
+            setShowEditModal(false);
+            setEditUser(null);
+          }}
+          onSuccess={() => {
+            setShowEditModal(false);
+            setEditUser(null);
+            fetchUsers();
+          }}
+          user={editUser}
+        />
+      )}
+
+      {/* Delete User Confirmation */}
+      <DeleteUserConfirmation
+        isOpen={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setDeleteUser(null);
+        }}
+        onSuccess={() => {
+          setShowDeleteModal(false);
+          setDeleteUser(null);
+          fetchUsers();
+        }}
+        user={deleteUser}
+      />
     </div>
   );
 };

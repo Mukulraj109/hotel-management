@@ -11,6 +11,7 @@ import {
   getAmendmentMetrics
 } from '../controllers/otaAmendmentController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validateBookingId } from '../middleware/validation.js';
 
 const router = express.Router();
@@ -110,6 +111,7 @@ router.post('/webhook', handleOTAAmendmentWebhook);
 
 // Protected routes - require authentication
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

@@ -228,6 +228,122 @@ class CacheService {
     return totalDeleted;
   }
 
+  /**
+   * Invalidate cache for a property (multi-property system)
+   * Removes all cached data related to a specific property
+   * @param {String} propertyId - Property ID
+   * @returns {Promise<Number>} Number of keys deleted
+   */
+  async invalidateProperty(propertyId) {
+    if (!this.connected || !this.client) {
+      return 0;
+    }
+
+    const patterns = [
+      `property:${propertyId}:*`,
+      `inheritance:${propertyId}:*`,
+      `settings:${propertyId}:*`,
+      `api:*propertyId=${propertyId}*`
+    ];
+
+    let totalDeleted = 0;
+    for (const pattern of patterns) {
+      totalDeleted += await this.delPattern(pattern);
+    }
+
+    logger.info(`Invalidated ${totalDeleted} cache entries for property ${propertyId}`);
+    return totalDeleted;
+  }
+
+  /**
+   * Invalidate cache for a property group
+   * @param {String} groupId - Property group ID
+   * @returns {Promise<Number>} Number of keys deleted
+   */
+  async invalidateGroup(groupId) {
+    if (!this.connected || !this.client) {
+      return 0;
+    }
+
+    const patterns = [
+      `group:${groupId}:*`,
+      `api:*groupId=${groupId}*`
+    ];
+
+    let totalDeleted = 0;
+    for (const pattern of patterns) {
+      totalDeleted += await this.delPattern(pattern);
+    }
+
+    logger.info(`Invalidated ${totalDeleted} cache entries for group ${groupId}`);
+    return totalDeleted;
+  }
+
+  /**
+   * Invalidate cache for multiple properties
+   * @param {Array} propertyIds - Array of property IDs
+   * @returns {Promise<Number>} Total keys deleted
+   */
+  async invalidateProperties(propertyIds) {
+    if (!this.connected || !this.client) {
+      return 0;
+    }
+
+    let totalDeleted = 0;
+    for (const propertyId of propertyIds) {
+      totalDeleted += await this.invalidateProperty(propertyId);
+    }
+
+    return totalDeleted;
+  }
+
+  /**
+   * Invalidate all settings-related cache
+   * @returns {Promise<Number>} Number of keys deleted
+   */
+  async invalidateAllSettings() {
+    if (!this.connected || !this.client) {
+      return 0;
+    }
+
+    const patterns = [
+      'settings:*',
+      'inheritance:*',
+      'api:*settings*'
+    ];
+
+    let totalDeleted = 0;
+    for (const pattern of patterns) {
+      totalDeleted += await this.delPattern(pattern);
+    }
+
+    logger.info(`Invalidated ${totalDeleted} settings cache entries`);
+    return totalDeleted;
+  }
+
+  /**
+   * Get or set pattern: get from cache or compute and cache
+   * @param {String} key - Cache key
+   * @param {Function} computeFn - Async function to compute value
+   * @param {Number} ttl - Time to live in seconds
+   * @returns {Promise<any>} Cached or computed value
+   */
+  async getOrSet(key, computeFn, ttl = 300) {
+    // Try to get from cache
+    const cached = await this.get(key);
+    if (cached !== null) {
+      return cached;
+    }
+
+    // Not in cache, compute value
+    const value = await computeFn();
+
+    // Cache the result
+    await this.set(key, value, ttl);
+
+    return value;
+  }
+
   // Cache middleware
   cacheMiddleware(ttl = 3600, keyGenerator = null) {
     return async (req, res, next) => {

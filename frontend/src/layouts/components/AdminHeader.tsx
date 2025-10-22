@@ -6,6 +6,7 @@ import { useNotifications, useNotificationStream } from '../../hooks/useNotifica
 import NotificationDropdown from '../../components/notifications/NotificationDropdown';
 import SettingsDropdown from '../../components/settings/SettingsDropdown';
 import { WebSocketStatus } from '../../components/debug/WebSocketStatus';
+import { PropertySelector } from '../../components/common/PropertySelector';
 
 interface AdminHeaderProps {
   onMenuClick?: () => void;
@@ -50,8 +51,11 @@ export default function AdminHeader({ onMenuClick, onSidebarToggle, isSidebarCol
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
             {user?.role === 'admin' ? 'Admin Dashboard' : 'Staff Dashboard'}
           </h1>
+
+          {/* Property Selector */}
+          <PropertySelector />
         </div>
-        
+
         <div className="flex items-center space-x-2 sm:space-x-4">
           {/* Notification Dropdown */}
           <div className="relative">

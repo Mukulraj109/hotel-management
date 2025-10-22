@@ -20,12 +20,14 @@ import {
   updateRateStatus
 } from '../controllers/centralizedRateController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import authorize from '../middleware/authorize.js';
 
 const router = express.Router();
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Rate CRUD operations
 router.post('/', authorize(['admin', 'rate_manager']), createRate);

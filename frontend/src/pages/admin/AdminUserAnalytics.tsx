@@ -24,6 +24,8 @@ import { toast } from 'react-hot-toast';
 import UserEngagementChart from '../../components/analytics/UserEngagementChart';
 import UserSegmentation from '../../components/analytics/UserSegmentation';
 import PredictiveAnalytics from '../../components/analytics/PredictiveAnalytics';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface UserAnalytics {
   totalUserCount: number;
@@ -152,6 +154,7 @@ interface LifecycleAnalysis {
 }
 
 const AdminUserAnalytics: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [analytics, setAnalytics] = useState<UserAnalytics | null>(null);
   const [behaviorAnalysis, setBehaviorAnalysis] = useState<BehaviorAnalysis | null>(null);
   const [performanceMetrics, setPerformanceMetrics] = useState<PerformanceMetrics | null>(null);
@@ -161,7 +164,7 @@ const AdminUserAnalytics: React.FC = () => {
   const [showEngagementChart, setShowEngagementChart] = useState(false);
   const [showSegmentation, setShowSegmentation] = useState(false);
   const [showPredictiveAnalytics, setShowPredictiveAnalytics] = useState(false);
-  
+
   const [filters, setFilters] = useState({
     dateRange: '',
     userId: '',
@@ -170,20 +173,23 @@ const AdminUserAnalytics: React.FC = () => {
   });
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 60000); // Refresh every minute
-    return () => clearInterval(interval);
-  }, [filters]);
+    if (selectedPropertyId || viewMode === 'all') {
+      fetchData();
+      const interval = setInterval(fetchData, 60000); // Refresh every minute
+      return () => clearInterval(interval);
+    }
+  }, [filters, selectedPropertyId, viewMode]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      
+
       const queryParams = new URLSearchParams();
       if (filters.dateRange) queryParams.append('dateRange', filters.dateRange);
       if (filters.userId) queryParams.append('userId', filters.userId);
       if (filters.role) queryParams.append('role', filters.role);
       if (filters.segmentTags) queryParams.append('segmentTags', filters.segmentTags);
+      if (selectedPropertyId) queryParams.append('propertyId', selectedPropertyId);
 
       const [analyticsRes, behaviorRes, performanceRes, lifecycleRes] = await Promise.all([
         fetch(`/api/v1/user-analytics/engagement?${queryParams}`, {
@@ -317,13 +323,31 @@ const AdminUserAnalytics: React.FC = () => {
     );
   }
 
+  // If in single mode and no property selected, show selection prompt
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['Analytics', 'User Analytics']} />
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <p className="text-gray-600 text-lg">Please select a property to view user analytics</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
-      <div className="mb-6">
+      <PropertyBreadcrumb items={['Analytics', 'User Analytics']} />
+      <div className="mb-6 mt-4">
         <div className="flex justify-between items-center mb-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">User Performance & Engagement Analytics</h1>
-            <p className="text-gray-600">Comprehensive user analytics and performance insights</p>
+            <p className="text-gray-600">
+              Comprehensive user analytics and performance insights
+              {selectedProperty && ` - ${selectedProperty.name}`}
+            </p>
           </div>
           <div className="flex space-x-3">
             <button

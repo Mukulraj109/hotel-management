@@ -15,12 +15,14 @@ import {
   removeStaffFromService,
   getAvailableStaff
 } from '../controllers/adminHotelServicesController.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
 // Apply authentication and admin authorization to all routes
 router.use(authenticate);
-router.use(authorize('admin', 'manager'));
+router.use(authorize('admin', 'manager', 'frontdesk'));
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

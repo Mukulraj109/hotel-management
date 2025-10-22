@@ -11,6 +11,8 @@ import {
   ArrowLeft
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import ProfileSettings from './settings/ProfileSettings';
 import HotelSettings from './settings/HotelSettings';
 import NotificationSettings from './settings/NotificationSettings';
@@ -28,6 +30,7 @@ interface TabItem {
 export default function AdminSettings() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
 
   // Get initial tab from URL or default to profile
   const getInitialTab = () => {
@@ -37,6 +40,11 @@ export default function AdminSettings() {
 
   const [activeTab, setActiveTab] = useState(getInitialTab());
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // Early return if no property selected in single mode
+  if (!selectedPropertyId && viewMode === 'single') {
+    return <div className="p-6">Please select a property</div>;
+  }
 
   const tabs: TabItem[] = [
     {
@@ -108,6 +116,9 @@ export default function AdminSettings() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Configuration', 'Settings']} />
+
       {/* Header */}
       <div className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

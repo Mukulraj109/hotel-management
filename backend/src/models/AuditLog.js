@@ -29,7 +29,7 @@ const auditLogSchema = new mongoose.Schema({
     changeType: {
         type: String,
         required: true,
-        enum: ['create', 'update', 'delete', 'sync', 'booking', 'cancellation', 'web_settings_update', 'web_settings_section_update_general', 'web_settings_section_update_booking', 'web_settings_section_update_payment', 'web_settings_section_update_seo', 'web_settings_section_update_integrations', 'web_settings_section_update_theme', 'web_settings_section_update_advanced', 'web_settings_section_update_maintenance', 'web_settings_export', 'web_settings_import', 'web_settings_reset', 'security_event', 'bypass_operation', 'bypass_completed', 'approval_received', 'workflow_escalated'],
+        enum: ['create', 'update', 'delete', 'sync', 'booking', 'cancellation', 'web_settings_update', 'web_settings_section_update_general', 'web_settings_section_update_booking', 'web_settings_section_update_payment', 'web_settings_section_update_seo', 'web_settings_section_update_integrations', 'web_settings_section_update_theme', 'web_settings_section_update_advanced', 'web_settings_section_update_maintenance', 'web_settings_export', 'web_settings_import', 'web_settings_reset', 'security_event', 'bypass_operation', 'bypass_completed', 'approval_received', 'workflow_escalated', 'price_adjustment', 'price_adjustment_reversal'],
         index: true
     },
     // Change details

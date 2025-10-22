@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../ui/Modal';
-import { User, UserPlus, UserMinus, Calculator, IndianRupee, AlertCircle, CheckCircle, Clock, FileText, CreditCard, Receipt, Eye } from 'lucide-react';
+import { User, UserPlus, UserMinus, Calculator, IndianRupee, AlertCircle, CheckCircle, Clock, FileText, CreditCard, Receipt, Eye, Edit } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ExtraPersonChargesPayment } from '../payments/ExtraPersonChargesPayment';
 import { MultiPaymentExtraPersonCharges, PaymentMethod } from '../payments/MultiPaymentExtraPersonCharges';
@@ -84,6 +84,13 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
   // Payment states
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentCharges, setPaymentCharges] = useState<ExtraPersonChargePayment[]>([]);
+
+  // Edit price modal state
+  const [editingCharge, setEditingCharge] = useState<any>(null);
+  const [editedAmount, setEditedAmount] = useState('');
+  const [editReason, setEditReason] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
 
   // Invoice generation states
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
@@ -172,8 +179,8 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
     try {
       const personData: any = {
         name: newPersonName.trim(),
-        type: newPersonType,
-        autoCalculateCharges: true
+        type: newPersonType
+        // REMOVED: autoCalculateCharges: true
       };
 
       if (newPersonType === 'child' && newPersonAge) {
@@ -199,8 +206,10 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
         setNewPersonType('adult');
         setNewPersonAge('');
 
-        setSuccess(`${personData.type} "${personData.name}" added successfully`);
-        setTimeout(() => setSuccess(null), 3000);
+        // NEW: Show pending status in success message
+        const suggestedCharge = result.data.suggestedCharge;
+        setSuccess(`${personData.type} "${personData.name}" added successfully. Suggested charge: ₹${suggestedCharge?.totalCharge || 0} (Pending approval)`);
+        setTimeout(() => setSuccess(null), 5000);
 
         // Refresh settlement data
         fetchSettlementData();
@@ -358,6 +367,100 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
     }
   };
 
+  // Open edit price modal
+  const openEditPriceModal = (charge: any) => {
+    setEditingCharge(charge);
+    setEditedAmount(charge.adjustedAmount?.toString() || charge.calculatedAmount?.toString() || charge.totalCharge?.toString() || '');
+    setEditReason(charge.adjustmentReason || '');
+  };
+
+  // Save edited price
+  const saveEditedPrice = async () => {
+    if (!editingCharge || !booking || !editedAmount || !editReason.trim()) return;
+
+    setIsSavingEdit(true);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `/api/v1/bookings/${booking._id}/extra-persons/${editingCharge.personId}/update-charge`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          },
+          body: JSON.stringify({
+            adjustedAmount: parseFloat(editedAmount),
+            adjustmentReason: editReason.trim()
+          })
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        setCharges(result.data.booking.extraPersonCharges);
+        setSuccess('Price updated successfully');
+        setTimeout(() => setSuccess(null), 3000);
+        setEditingCharge(null);
+
+        if (onBookingUpdated) {
+          onBookingUpdated(result.data.booking);
+        }
+      } else {
+        const errorData = await response.json();
+        setError(errorData.message || 'Failed to update price');
+      }
+    } catch (error) {
+      setError('Failed to update price. Please try again.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  };
+
+  // Approve/Apply charge
+  const approveCharge = async (personId: string) => {
+    if (!booking) return;
+
+    if (!window.confirm('Apply this charge to the booking? Guest will be able to pay after this action.')) {
+      return;
+    }
+
+    setIsApproving(true);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `/api/v1/bookings/${booking._id}/extra-persons/${personId}/approve`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        setCharges(result.data.booking.extraPersonCharges);
+        setSuccess('Charge applied successfully. Guest can now pay.');
+        setTimeout(() => setSuccess(null), 3000);
+        fetchSettlementData();
+
+        if (onBookingUpdated) {
+          onBookingUpdated(result.data.booking);
+        }
+      } else {
+        const errorData = await response.json();
+        setError(errorData.message || 'Failed to apply charge');
+      }
+    } catch (error) {
+      setError('Failed to apply charge. Please try again.');
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
   if (!booking) return null;
 
   if (!hasPermission) {
@@ -371,11 +474,17 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
     );
   }
 
-  // Calculate unpaid charges only
-  const unpaidCharges = charges.filter(charge => !charge.isPaid);
+  // Calculate unpaid charges only (APPLIED or PAID status, not PENDING)
+  const unpaidCharges = charges.filter(charge => charge.status !== 'pending' && !charge.isPaid);
   const totalUnpaidCharges = unpaidCharges.reduce((sum, charge) => sum + (charge.totalCharge - (charge.paidAmount || 0)), 0);
-  const totalExtraCharges = charges.reduce((sum, charge) => sum + charge.totalCharge, 0);
-  const totalPaidCharges = charges.reduce((sum, charge) => sum + (charge.paidAmount || 0), 0);
+
+  // Total charges (only applied/paid, not pending)
+  const appliedCharges = charges.filter(charge => charge.status !== 'pending');
+  const totalExtraCharges = appliedCharges.reduce((sum, charge) => sum + charge.totalCharge, 0);
+  const totalPaidCharges = appliedCharges.reduce((sum, charge) => sum + (charge.paidAmount || 0), 0);
+
+  // Count pending charges
+  const pendingCharges = charges.filter(charge => charge.status === 'pending');
 
   const generateSupplementaryInvoice = async () => {
     console.log('🧾 Generate Invoice button clicked!');
@@ -774,62 +883,164 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
 
             {/* Extra Persons List */}
             {extraPersons.length > 0 && (
-              <div className="border rounded-lg p-4">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-medium">Extra Persons ({extraPersons.length})</h3>
+              <div className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-xl shadow-sm p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900">Extra Persons</h3>
+                    <p className="text-sm text-gray-600 mt-1">{extraPersons.length} additional {extraPersons.length === 1 ? 'guest' : 'guests'} added to booking</p>
+                  </div>
                   <button
                     onClick={recalculateCharges}
                     disabled={isLoading}
-                    className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                    className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium px-4 py-2.5 rounded-lg shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all duration-200"
                   >
                     <Calculator className="w-4 h-4" />
                     Recalculate Charges
                   </button>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {extraPersons.map((person, index) => {
                     const personCharge = charges.find(c => c.personId === person.personId);
 
                     return (
-                      <div key={person.personId || index} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <User className="w-5 h-5 text-gray-400" />
-                          <div>
-                            <p className="font-medium">{person.name}</p>
-                            <p className="text-sm text-gray-500">
-                              {person.type === 'child' ? `Child${person.age ? ` (${person.age} years)` : ''}` : 'Adult'}
-                            </p>
-                          </div>
-                        </div>
+                      <div key={person.personId || index} className="group bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-200">
+                        <div className="p-4">
+                          <div className="flex items-start justify-between gap-4">
+                            {/* Person Info */}
+                            <div className="flex items-start gap-3 flex-1">
+                              <div className="mt-1 flex-shrink-0 w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-sm">
+                                <User className="w-5 h-5 text-white" />
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="font-semibold text-gray-900 text-base">{person.name}</h4>
+                                  <span className="px-2.5 py-0.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-full">
+                                    {person.type === 'child' ? `Child${person.age ? ` (${person.age}y)` : ''}` : 'Adult'}
+                                  </span>
+                                </div>
 
-                        <div className="flex items-center gap-4">
-                          {personCharge && (
-                            <div className="text-right">
-                              <div className="flex items-center gap-2">
-                                <p className="font-medium text-green-600">₹{personCharge.totalCharge.toLocaleString()}</p>
-                                {personCharge.isPaid ? (
-                                  <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">
-                                    Paid ✓
-                                  </span>
-                                ) : (
-                                  <span className="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium">
-                                    ₹{(personCharge.totalCharge - (personCharge.paidAmount || 0)).toLocaleString()} Due
-                                  </span>
+                                {/* Charge Details */}
+                                {personCharge && (
+                                  <div className="mt-3">
+                                    {/* PENDING STATUS */}
+                                    {personCharge.status === 'pending' && (
+                                      <div className="bg-gradient-to-br from-amber-50 to-yellow-50 border-2 border-amber-200 rounded-xl p-4 space-y-3">
+                                        <div className="flex items-start justify-between">
+                                          <div className="flex-1">
+                                            <div className="flex items-baseline gap-2 mb-1">
+                                              <span className="text-xs font-medium text-gray-600 uppercase tracking-wide">Calculated Price</span>
+                                            </div>
+                                            <div className="flex items-baseline gap-2">
+                                              <p className="text-2xl font-bold text-gray-900">₹{personCharge.calculatedAmount?.toLocaleString()}</p>
+                                            </div>
+
+                                            {personCharge.adjustedAmount && personCharge.adjustedAmount !== personCharge.calculatedAmount && (
+                                              <div className="mt-2 space-y-1">
+                                                <div className="flex items-center gap-2">
+                                                  <p className="text-sm text-gray-500 line-through">₹{personCharge.calculatedAmount?.toLocaleString()}</p>
+                                                  <span className="text-xs text-gray-400">→</span>
+                                                  <p className="text-base font-bold text-blue-600">₹{personCharge.adjustedAmount?.toLocaleString()}</p>
+                                                </div>
+                                                {personCharge.adjustmentReason && (
+                                                  <div className="bg-white/60 rounded-lg px-3 py-2 border border-amber-200/50">
+                                                    <p className="text-xs text-gray-600 italic leading-relaxed">{personCharge.adjustmentReason}</p>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            )}
+                                          </div>
+                                          <span className="inline-flex items-center px-3 py-1.5 bg-amber-100 text-amber-800 text-xs font-semibold rounded-full shadow-sm">
+                                            <Clock className="w-3 h-3 mr-1.5" />
+                                            Pending Approval
+                                          </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-2 pt-2">
+                                          <button
+                                            onClick={() => openEditPriceModal(personCharge)}
+                                            className="bg-white hover:bg-blue-50 text-blue-700 font-medium px-4 py-2.5 rounded-lg border-2 border-blue-200 hover:border-blue-300 transition-all duration-200 flex items-center justify-center gap-2 shadow-sm hover:shadow"
+                                            disabled={isApproving}
+                                          >
+                                            <Edit className="w-4 h-4" />
+                                            <span>Edit Price</span>
+                                          </button>
+                                          <button
+                                            onClick={() => approveCharge(personCharge.personId)}
+                                            className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium px-4 py-2.5 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                                            disabled={isApproving}
+                                          >
+                                            {isApproving ? (
+                                              <>
+                                                <Clock className="w-4 h-4 animate-spin" />
+                                                <span>Applying...</span>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <CheckCircle className="w-4 h-4" />
+                                                <span>Apply Charges</span>
+                                              </>
+                                            )}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* APPLIED STATUS */}
+                                    {personCharge.status === 'applied' && (
+                                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-4">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <div>
+                                            <span className="text-xs font-medium text-gray-600 uppercase tracking-wide block mb-1">Charge Amount</span>
+                                            <p className="text-2xl font-bold text-gray-900">₹{personCharge.totalCharge.toLocaleString()}</p>
+                                          </div>
+                                          {personCharge.isPaid ? (
+                                            <span className="inline-flex items-center px-3 py-1.5 bg-green-100 text-green-800 text-xs font-semibold rounded-full shadow-sm">
+                                              <CheckCircle className="w-3 h-3 mr-1.5" />
+                                              Paid
+                                            </span>
+                                          ) : (
+                                            <span className="inline-flex items-center px-3 py-1.5 bg-red-100 text-red-800 text-xs font-semibold rounded-full shadow-sm">
+                                              <AlertCircle className="w-3 h-3 mr-1.5" />
+                                              ₹{(personCharge.totalCharge - (personCharge.paidAmount || 0)).toLocaleString()} Due
+                                            </span>
+                                          )}
+                                        </div>
+                                        <p className="text-xs text-gray-600 bg-white/60 rounded-lg px-3 py-2">{personCharge.description}</p>
+                                      </div>
+                                    )}
+
+                                    {/* PAID STATUS */}
+                                    {personCharge.status === 'paid' && (
+                                      <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-4">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <div>
+                                            <span className="text-xs font-medium text-gray-600 uppercase tracking-wide block mb-1">Paid Amount</span>
+                                            <p className="text-2xl font-bold text-gray-900">₹{personCharge.totalCharge.toLocaleString()}</p>
+                                          </div>
+                                          <span className="inline-flex items-center px-3 py-1.5 bg-green-100 text-green-800 text-xs font-semibold rounded-full shadow-sm">
+                                            <CheckCircle className="w-3 h-3 mr-1.5" />
+                                            Paid
+                                          </span>
+                                        </div>
+                                        <p className="text-xs text-gray-600 bg-white/60 rounded-lg px-3 py-2">{personCharge.description}</p>
+                                      </div>
+                                    )}
+                                  </div>
                                 )}
                               </div>
-                              <p className="text-xs text-gray-500">{personCharge.description}</p>
                             </div>
-                          )}
 
-                          <button
-                            onClick={() => removeExtraPerson(person.personId!, person.name)}
-                            disabled={isLoading}
-                            className="text-red-600 hover:text-red-800 disabled:opacity-50 p-1"
-                            title="Remove person"
-                          >
-                            <UserMinus className="w-4 h-4" />
-                          </button>
+                            {/* Remove Button */}
+                            <button
+                              onClick={() => removeExtraPerson(person.personId!, person.name)}
+                              disabled={isLoading}
+                              className="flex-shrink-0 mt-1 w-8 h-8 flex items-center justify-center text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Remove person"
+                            >
+                              <UserMinus className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -837,26 +1048,49 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
                 </div>
 
                 {totalExtraCharges > 0 && (
-                  <div className="mt-4 pt-4 border-t">
-                    <div className="space-y-2 mb-4">
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium text-gray-700">Total Charges:</span>
-                        <span className="font-semibold">₹{totalExtraCharges.toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium text-gray-700">Paid Amount:</span>
-                        <span className="font-semibold text-green-600">₹{totalPaidCharges.toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-lg border-t pt-2">
-                        <span className="font-semibold">Remaining Due:</span>
-                        <span className={`font-bold ${totalUnpaidCharges > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                          ₹{totalUnpaidCharges.toLocaleString()}
-                        </span>
+                  <div className="mt-6 pt-6 border-t-2 border-gray-200">
+                    <div className="bg-white rounded-xl border-2 border-gray-200 shadow-sm p-5 space-y-3">
+                      <h4 className="font-bold text-gray-900 text-sm uppercase tracking-wide mb-3">Payment Summary</h4>
+
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                          <span className="text-gray-700 font-medium">Total Charges</span>
+                          <span className="text-lg font-bold text-gray-900">₹{totalExtraCharges.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                          <span className="text-gray-700 font-medium">Paid Amount</span>
+                          <span className="text-lg font-bold text-green-600">₹{totalPaidCharges.toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between items-center py-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg px-3 mt-2">
+                          <span className="text-gray-900 font-bold">Remaining Due</span>
+                          <span className={`text-xl font-bold ${totalUnpaidCharges > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            ₹{totalUnpaidCharges.toLocaleString()}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
+                    {/* Pending Charges Notice */}
+                    {pendingCharges.length > 0 && (
+                      <div className="mt-4 bg-gradient-to-br from-amber-50 to-yellow-50 border-2 border-amber-200 rounded-xl p-4 shadow-sm">
+                        <div className="flex items-start gap-3">
+                          <div className="flex-shrink-0 w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center">
+                            <AlertCircle className="w-4 h-4 text-amber-700" />
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-semibold text-amber-900">
+                              {pendingCharges.length} charge{pendingCharges.length > 1 ? 's' : ''} pending approval
+                            </p>
+                            <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+                              These charges must be approved before they can be paid
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Action Buttons */}
-                    <div className={`grid gap-3 ${totalUnpaidCharges > 0 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+                    <div className={`grid gap-3 mt-4 ${totalUnpaidCharges > 0 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
                       {totalUnpaidCharges > 0 && (
                         <button
                           onClick={() => {
@@ -869,17 +1103,17 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
                             setPaymentCharges(paymentData);
                             setShowPaymentModal(true);
                           }}
-                          className="bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2 transition-colors"
+                          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-semibold px-5 py-3.5 rounded-xl shadow-md hover:shadow-lg flex items-center justify-center gap-2 transition-all duration-200"
                         >
                           <CreditCard className="w-5 h-5" />
-                          Process Payment (₹{totalUnpaidCharges.toLocaleString()})
+                          <span>Process Payment (₹{totalUnpaidCharges.toLocaleString()})</span>
                         </button>
                       )}
 
                       {totalUnpaidCharges === 0 && totalPaidCharges > 0 && (
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center justify-center gap-2">
+                        <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-4 flex items-center justify-center gap-2 shadow-sm">
                           <CheckCircle className="w-5 h-5 text-green-600" />
-                          <span className="text-green-800 font-medium">All charges have been paid ✓</span>
+                          <span className="text-green-800 font-semibold">All charges have been paid ✓</span>
                         </div>
                       )}
 
@@ -889,17 +1123,17 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
                           generateSupplementaryInvoice();
                         }}
                         disabled={isGeneratingInvoice}
-                        className="bg-green-600 text-white px-4 py-3 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
+                        className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-semibold px-5 py-3.5 rounded-xl shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-200"
                       >
                         {isGeneratingInvoice ? (
                           <>
                             <Clock className="w-5 h-5 animate-spin" />
-                            Generating...
+                            <span>Generating...</span>
                           </>
                         ) : (
                           <>
                             <Receipt className="w-5 h-5" />
-                            Generate Invoice
+                            <span>Generate Invoice</span>
                           </>
                         )}
                       </button>
@@ -1303,6 +1537,95 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
           }
         }}
       />
+
+      {/* Edit Price Modal */}
+      {editingCharge && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold mb-4">Edit Extra Person Charge</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Person
+                </label>
+                <p className="text-gray-900 font-medium">
+                  {extraPersons.find(p => p.personId === editingCharge.personId)?.name || 'Unknown'}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Calculated Price
+                </label>
+                <p className="text-gray-500">₹{editingCharge.calculatedAmount?.toLocaleString() || editingCharge.totalCharge?.toLocaleString()}</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Adjusted Price *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">₹</span>
+                  <input
+                    type="number"
+                    value={editedAmount}
+                    onChange={(e) => setEditedAmount(e.target.value)}
+                    className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Enter adjusted price"
+                    step="0.01"
+                    min="0"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Reason for Adjustment *
+                </label>
+                <textarea
+                  value={editReason}
+                  onChange={(e) => setEditReason(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="e.g., Loyalty discount, Special arrangement, Group discount"
+                  rows={3}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  This reason will be saved for audit purposes
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => {
+                  setEditingCharge(null);
+                  setEditedAmount('');
+                  setEditReason('');
+                }}
+                className="flex-1 bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors"
+                disabled={isSavingEdit}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveEditedPrice}
+                disabled={!editedAmount || !editReason.trim() || isSavingEdit}
+                className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              >
+                {isSavingEdit ? (
+                  <>
+                    <Clock className="w-4 h-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }

@@ -20,6 +20,8 @@ import { Input } from '@/components/ui/input';
 import reviewsService, { Review, ReviewSummary } from '../../services/reviewsService';
 import { cn } from '../../utils/cn';
 import { useAuth } from '../../context/AuthContext';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface ReviewResponseModalProps {
   review: Review | null;
@@ -194,6 +196,7 @@ function ModerationModal({ review, isOpen, onClose, onSubmit }: ModerationModalP
 
 export default function AdminReviewsManagement() {
   const { user } = useAuth();
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [pendingReviews, setPendingReviews] = useState<Review[]>([]);
   const [summary, setSummary] = useState<ReviewSummary | null>(null);
@@ -205,10 +208,11 @@ export default function AdminReviewsManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRating, setFilterRating] = useState<number | undefined>();
 
-  // Default hotel ID - in real app, this would come from user context
-      const hotelId = user?.hotelId || '68afe8080c02fcbe30092b8e';
+  const hotelId = selectedPropertyId || user?.hotelId || '68afe8080c02fcbe30092b8e';
 
   const loadReviews = async () => {
+    if (!hotelId) return;
+
     try {
       setLoading(true);
       const [allReviews, pendingReviewsData, summaryData] = await Promise.all([
@@ -228,7 +232,9 @@ export default function AdminReviewsManagement() {
   };
 
   useEffect(() => {
-    loadReviews();
+    if (hotelId) {
+      loadReviews();
+    }
   }, [hotelId]);
 
   const handleResponse = async (reviewId: string, content: string) => {
@@ -259,14 +265,27 @@ export default function AdminReviewsManagement() {
     setModerationModalOpen(true);
   };
 
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <PropertyBreadcrumb items={['Reviews Management']} />
+        <div className="text-center py-12">
+          <MessageCircle className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No Property Selected</h3>
+          <p className="text-gray-500">Please select a property to view reviews.</p>
+        </div>
+      </div>
+    );
+  }
+
   const filteredReviews = reviews.filter(review => {
-    const matchesSearch = !searchTerm || 
+    const matchesSearch = !searchTerm ||
       review.guestName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       review.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       review.content.toLowerCase().includes(searchTerm.toLowerCase());
-    
+
     const matchesRating = !filterRating || review.rating === filterRating;
-    
+
     return matchesSearch && matchesRating;
   });
 
@@ -372,6 +391,9 @@ export default function AdminReviewsManagement() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {/* Breadcrumb */}
+      <PropertyBreadcrumb items={['Reviews Management']} />
+
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Reviews Management</h1>

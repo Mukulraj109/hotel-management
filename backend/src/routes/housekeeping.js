@@ -2,13 +2,14 @@ import express from 'express';
 import mongoose from 'mongoose';
 import Housekeeping from '../models/Housekeeping.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
 const router = express.Router();
 
 // Get housekeeping tasks
-router.get('/', authenticate, authorize('admin', 'staff'), catchAsync(async (req, res) => {
+router.get('/', authenticate, authorize('admin', 'staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     status,
     roomId,
@@ -126,7 +127,7 @@ router.get('/', authenticate, authorize('admin', 'staff'), catchAsync(async (req
 }));
 
 // Create housekeeping task
-router.post('/', authenticate, authorize('admin', 'staff'), catchAsync(async (req, res) => {
+router.post('/', authenticate, authorize('admin', 'staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
   console.log('Received housekeeping task data:', req.body);
   console.log('User hotelId:', req.user.hotelId);
   
@@ -161,7 +162,7 @@ router.post('/', authenticate, authorize('admin', 'staff'), catchAsync(async (re
 }));
 
 // Update housekeeping task
-router.patch('/:id', authenticate, authorize('admin', 'staff'), catchAsync(async (req, res) => {
+router.patch('/:id', authenticate, authorize('admin', 'staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const { id } = req.params;
   const updateData = req.body;
 
@@ -203,7 +204,7 @@ router.patch('/:id', authenticate, authorize('admin', 'staff'), catchAsync(async
 }));
 
 // Get task statistics
-router.get('/stats', authenticate, authorize('admin', 'staff'), catchAsync(async (req, res) => {
+router.get('/stats', authenticate, authorize('admin', 'staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const query = req.user.hotelId ? { hotelId: req.user.hotelId } : {};
 
   const stats = await Housekeeping.aggregate([

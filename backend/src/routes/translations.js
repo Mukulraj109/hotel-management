@@ -1,6 +1,7 @@
 import express from 'express';
 import translationController from '../controllers/translationController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validate } from '../middleware/validation.js';
 import { body, param, query } from 'express-validator';
 
@@ -134,6 +135,7 @@ router.post('/batch',
 
 // Protected routes (authentication required)
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * Translate text

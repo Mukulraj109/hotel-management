@@ -1,6 +1,7 @@
 import express from 'express';
 import Notification from '../models/Notification.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
@@ -8,6 +9,7 @@ const router = express.Router();
 
 // All routes require admin authentication
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 router.use(authorize('admin', 'staff'));
 
 /**

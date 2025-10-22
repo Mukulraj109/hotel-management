@@ -12,6 +12,7 @@ import {
   testPersonalizationVariant
 } from '../controllers/personalizationController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import authorize from '../middleware/authorize.js';
 import { crmTrackingMiddleware } from '../middleware/crmTrackingMiddleware.js';
 import { body, param, query } from 'express-validator';
@@ -20,6 +21,7 @@ import { validate } from '../middleware/validation.js';
 const router = express.Router();
 
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 const guestIdValidation = [
   param('guestId').isMongoId().withMessage('Invalid guest ID'),

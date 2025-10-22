@@ -1,12 +1,14 @@
 import express from 'express';
 import dayUseController from '../controllers/dayUseController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import adminAuth from '../middleware/adminAuth.js';
 
 const router = express.Router();
 
 // Public routes (authenticated users)
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Slot availability and information (accessible to all authenticated users)
 router.get('/slots', dayUseController.getSlots);

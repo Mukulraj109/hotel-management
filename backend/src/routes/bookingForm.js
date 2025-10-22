@@ -2,6 +2,7 @@ import express from 'express';
 import { body, param, query } from 'express-validator';
 import bookingFormController from '../controllers/bookingFormController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import rateLimit from 'express-rate-limit';
 
 const router = express.Router();
@@ -221,7 +222,7 @@ const abTestValidation = [
 ];
 
 // Admin routes - require authentication and admin role
-router.use(authenticate, (req, res, next) => {
+router.use(authenticate, ensurePropertyAccess, (req, res, next) => {
   console.log('🔐 BookingForm Route Auth Check');
   console.log('👤 User after authenticate middleware:', req.user ? {
     id: req.user.id,
@@ -229,7 +230,7 @@ router.use(authenticate, (req, res, next) => {
     hotelId: req.user.hotelId,
     name: req.user.name
   } : 'No user');
-  
+
   if (!req.user) {
     console.log('❌ No user found after authentication');
     return res.status(401).json({
@@ -237,7 +238,7 @@ router.use(authenticate, (req, res, next) => {
       error: 'Authentication required'
     });
   }
-  
+
   if (req.user.role !== 'admin') {
     console.log('❌ User role not admin:', req.user.role);
     return res.status(403).json({
@@ -246,7 +247,7 @@ router.use(authenticate, (req, res, next) => {
       userRole: req.user.role
     });
   }
-  
+
   console.log('✅ Authentication and authorization passed');
   next();
 });

@@ -11,10 +11,14 @@ import {
   FileText,
   DollarSign,
   Save,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import toast from 'react-hot-toast';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../../components/settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '../../../hooks/useSettingsInheritance';
+import { useProperty } from '../../../context/PropertyContext';
 
 interface HotelFormData {
   basicInfo: {
@@ -58,6 +62,30 @@ interface HotelSettingsProps {
 }
 
 export default function HotelSettings({ onSettingsChange }: HotelSettingsProps = {}) {
+  const { selectedProperty, selectedPropertyId } = useProperty();
+
+  // Multi-property state
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [operationsScope, setOperationsScope] = useState<ApplyToScope>('single');
+  const [policiesScope, setPoliciesScope] = useState<ApplyToScope>('single');
+  const [showPoliciesSuccess, setShowPoliciesSuccess] = useState(false);
+
+  // Settings inheritance hook
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  // Fetch inheritance status
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+
   const {
     register,
     handleSubmit,
@@ -102,6 +130,17 @@ export default function HotelSettings({ onSettingsChange }: HotelSettingsProps =
       }
     }
   });
+
+  // Get affected properties count
+  const affectedCount = useAffectedPropertiesCount(
+    operationsScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
+
+  const affectedPoliciesCount = useAffectedPropertiesCount(
+    policiesScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
 
   // Fetch hotel settings
   const { data: hotelSettings, isLoading } = useQuery({
@@ -220,15 +259,69 @@ export default function HotelSettings({ onSettingsChange }: HotelSettingsProps =
 
   const onSubmit = async (data: HotelFormData) => {
     try {
-      // Save all sections concurrently
+      // Basic info and contact are always single-property (property-specific)
       await Promise.all([
         saveBasicInfoMutation.mutateAsync(data.basicInfo),
-        saveOperationsMutation.mutateAsync(data.operations),
-        savePoliciesMutation.mutateAsync(data.policies),
         saveTaxesMutation.mutateAsync(data.taxes)
       ]);
 
-      toast.success('Hotel settings updated successfully');
+      // Policies settings use multi-property support
+      const policiesResult = await applySettings({
+        scope: policiesScope,
+        propertyId: selectedPropertyId,
+        settingUpdates: {
+          cancellation: data.policies.cancellation,
+          child: data.policies.child,
+          pet: data.policies.pet,
+          smoking: data.policies.smoking,
+          extraBed: data.policies.extraBed
+        },
+        settingType: 'cancellation_policies',
+      });
+
+      // If confirmation dialog was shown for policies, return early
+      if (!policiesResult) {
+        return;
+      }
+
+      // Operations settings use multi-property support
+      const operationsResult = await applySettings({
+        scope: operationsScope,
+        propertyId: selectedPropertyId,
+        settingUpdates: {
+          checkInTime: data.operations.checkInTime,
+          checkOutTime: data.operations.checkOutTime,
+          currency: data.operations.currency,
+          timezone: data.operations.timezone
+        },
+        settingType: 'operations',
+      });
+
+      // If confirmation dialog was shown for operations, return early
+      if (!operationsResult) {
+        return;
+      }
+
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+
+      if (policiesScope !== 'single') {
+        setShowPoliciesSuccess(true);
+        setTimeout(() => setShowPoliciesSuccess(false), 3000);
+      }
+
+      const totalUpdated = Math.max(
+        policiesResult.propertiesUpdated || 1,
+        operationsResult.propertiesUpdated || 1
+      );
+
+      toast.success(`Hotel settings updated successfully${
+        (operationsScope !== 'single' || policiesScope !== 'single') ? ` for ${totalUpdated} properties` : ''
+      }`);
+
+      // Reset scopes
+      setPoliciesScope('single');
+      setOperationsScope('single');
 
       // Reset form dirty state
       const currentValues = watch();
@@ -241,6 +334,34 @@ export default function HotelSettings({ onSettingsChange }: HotelSettingsProps =
       }
     } catch (error) {
       toast.error('Failed to update hotel settings');
+      console.error('Settings update error:', error);
+    }
+  };
+
+  // Handle confirmation dialog confirm
+  const handleConfirm = async () => {
+    try {
+      const result = await confirmBulkUpdate();
+
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+
+        toast.success(`Settings updated for ${result.propertiesUpdated} properties`);
+
+        // Reset form dirty state
+        const currentValues = watch();
+        Object.keys(currentValues).forEach(key => {
+          setValue(key as keyof HotelFormData, currentValues[key], { shouldDirty: false });
+        });
+
+        if (onSettingsChange) {
+          onSettingsChange(false);
+        }
+      }
+    } catch (error) {
+      toast.error('Failed to update settings');
+      console.error('Bulk update error:', error);
     }
   };
 
@@ -414,7 +535,7 @@ export default function HotelSettings({ onSettingsChange }: HotelSettingsProps =
               <Clock className="h-4 w-4" />
               <span>Operational Settings</span>
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                   Check-in Time
@@ -467,6 +588,19 @@ export default function HotelSettings({ onSettingsChange }: HotelSettingsProps =
                 </select>
               </div>
             </div>
+
+            {/* Multi-Property Scope Selector for Operations */}
+            <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-600">
+              <ApplyToSelector
+                value={operationsScope}
+                onChange={setOperationsScope}
+                isInGroup={inheritanceStatus?.hasGroup || false}
+                groupName={inheritanceStatus?.groupName}
+                totalProperties={5}
+                showWarning={true}
+                warningMessage="These operational settings (check-in/out times, currency, timezone) will be applied to all selected properties. This affects booking availability, pricing display, and guest communications."
+              />
+            </div>
           </div>
 
           {/* Policies */}
@@ -475,6 +609,54 @@ export default function HotelSettings({ onSettingsChange }: HotelSettingsProps =
               <FileText className="h-4 w-4" />
               <span>Hotel Policies</span>
             </h3>
+
+            {/* Policies Success Message */}
+            {showPoliciesSuccess && (
+              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 px-4 py-3 rounded-lg mb-4">
+                <p className="font-medium">Cancellation policies updated successfully!</p>
+                {policiesScope !== 'single' && affectedPoliciesCount > 1 && (
+                  <p className="text-sm mt-1">Changes applied to {affectedPoliciesCount} properties</p>
+                )}
+              </div>
+            )}
+
+            {/* Policies Error Message */}
+            {updateError && (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 px-4 py-3 rounded-lg mb-4">
+                <p className="font-medium">Error: {updateError}</p>
+              </div>
+            )}
+
+            {/* Policies Inheritance Status Card */}
+            {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-4 rounded-lg mb-4">
+                <div className="flex items-start">
+                  <div className="h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-800 flex items-center justify-center mt-0.5 mr-3">
+                    <svg className="h-3 w-3 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path
+                        fillRule="evenodd"
+                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                      This property is part of: {inheritanceStatus.groupName}
+                    </p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                      Cancellation policies are inherited from the property group.
+                      {inheritanceStatus.lastSyncedAt && (
+                        <span className="ml-1">
+                          Last synced: {new Date(inheritanceStatus.lastSyncedAt).toLocaleString()}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -535,6 +717,19 @@ export default function HotelSettings({ onSettingsChange }: HotelSettingsProps =
                   placeholder="Describe your extra bed policy..."
                 />
               </div>
+            </div>
+
+            {/* Multi-Property Scope Selector for Cancellation Policies */}
+            <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+              <ApplyToSelector
+                value={policiesScope}
+                onChange={setPoliciesScope}
+                isInGroup={inheritanceStatus?.hasGroup || false}
+                groupName={inheritanceStatus?.groupName}
+                totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+                showWarning={true}
+                warningMessage="These cancellation policies will be applied to all selected properties. Ensure the policies comply with local regulations for all properties."
+              />
             </div>
           </div>
 
@@ -608,23 +803,103 @@ export default function HotelSettings({ onSettingsChange }: HotelSettingsProps =
             </div>
           </div>
 
+          {/* Success Message */}
+          {showSuccess && (
+            <div className="flex items-center space-x-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+              <div className="h-5 w-5 rounded-full bg-green-100 dark:bg-green-800 flex items-center justify-center">
+                <svg className="h-3 w-3 text-green-600 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path
+                    fillRule="evenodd"
+                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+              <p className="text-sm text-green-800 dark:text-green-400">
+                Settings updated successfully!
+              </p>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {updateError && (
+            <div className="flex items-start space-x-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+              <div className="h-5 w-5 rounded-full bg-red-100 dark:bg-red-800 flex items-center justify-center mt-0.5">
+                <svg className="h-3 w-3 text-red-600 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path
+                    fillRule="evenodd"
+                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-red-900 dark:text-red-400 mb-1">Update Failed</p>
+                <p className="text-xs text-red-800 dark:text-red-500">
+                  {updateError instanceof Error ? updateError.message : 'An error occurred while updating settings'}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Save Button */}
           <div className="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-600">
             <Button
               type="submit"
-              disabled={!isDirty || isAnyLoading}
+              disabled={!isDirty || isAnyLoading || isUpdating}
               className="flex items-center space-x-2"
             >
-              {isAnyLoading ? (
+              {(isAnyLoading || isUpdating) ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <Save className="h-4 w-4" />
               )}
-              <span>Save Changes</span>
+              <span>{(isAnyLoading || isUpdating) ? 'Saving...' : 'Save Changes'}</span>
             </Button>
           </div>
         </form>
+
+        {/* Inheritance Info Card (if applicable) */}
+        {inheritanceStatus?.hasGroup && inheritanceStatus.inheritanceEnabled && (
+          <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <div className="flex items-start space-x-3">
+              <div className="h-5 w-5 rounded-full bg-blue-100 dark:bg-blue-800 flex items-center justify-center mt-0.5">
+                <svg className="h-3 w-3 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path
+                    fillRule="evenodd"
+                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-400 mb-1">
+                  Group Inheritance Enabled
+                </p>
+                <p className="text-xs text-blue-800 dark:text-blue-500">
+                  This property is part of "{inheritanceStatus.groupName}" group and inherits settings automatically.
+                  {inheritanceStatus.lastSyncAt && (
+                    <span className="block mt-1">
+                      Last synced: {new Date(inheritanceStatus.lastSyncAt).toLocaleString()}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Confirmation Dialog for Bulk Updates */}
+      <ApplyToConfirmation
+        isOpen={showConfirmation}
+        scope={pendingUpdate?.scope || 'single'}
+        affectedCount={pendingUpdate?.scope === policiesScope ? affectedPoliciesCount : affectedCount}
+        settingName={pendingUpdate?.settingType === 'cancellation_policies' ? 'Cancellation Policies' : 'operational settings'}
+        groupName={inheritanceStatus?.groupName}
+        onConfirm={handleConfirm}
+        onCancel={cancelBulkUpdate}
+      />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import Booking from '../models/Booking.js';
 import RoomAvailability from '../models/RoomAvailability.js';
@@ -103,8 +104,9 @@ router.use(externalApiLimiter);
  */
 
 // Create booking from external system
-router.post('/', 
+router.post('/',
   authenticate, // Basic authentication
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const {
       hotelId,
@@ -336,6 +338,7 @@ router.post('/',
 // Modify existing booking
 router.put('/:bookingId',
   authenticate,
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { bookingId } = req.params;
     const {
@@ -531,6 +534,7 @@ router.put('/:bookingId',
 // Cancel booking
 router.post('/:bookingId/cancel',
   authenticate,
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { bookingId } = req.params;
     const { reason = 'External cancellation' } = req.body;
@@ -650,6 +654,7 @@ router.post('/:bookingId/cancel',
 // Check availability
 router.get('/availability',
   authenticate,
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { hotelId, roomTypeId, checkIn, checkOut } = req.query;
 

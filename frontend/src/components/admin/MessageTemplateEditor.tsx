@@ -16,12 +16,12 @@ import {
 } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  FileText, 
-  Plus, 
-  Trash2, 
-  Save, 
-  X, 
+import {
+  FileText,
+  Plus,
+  Trash2,
+  Save,
+  X,
   Eye,
   AlertTriangle,
   CheckCircle,
@@ -31,6 +31,9 @@ import {
   Calendar,
   Palette
 } from 'lucide-react';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
+import { useProperty } from '../../context/PropertyContext';
 
 interface BillMessage {
   _id?: string;
@@ -139,6 +142,28 @@ const MessageTemplateEditor: React.FC<MessageTemplateEditorProps> = ({
   const [saving, setSaving] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const [validationWarnings, setValidationWarnings] = useState<string[]>([]);
+
+  // Multi-property support
+  const { selectedProperty, selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
   
   // Form data
   const [formData, setFormData] = useState<BillMessage>({
@@ -289,34 +314,65 @@ const MessageTemplateEditor: React.FC<MessageTemplateEditorProps> = ({
     setSaving(true);
 
     try {
-      const hotelId = localStorage.getItem('currentHotelId') || 'default-hotel-id';
-      const token = localStorage.getItem('token');
+      // If multi-property update, use applySettings
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: {
+            ...formData,
+            messageId: message?._id,
+            operation: message ? 'update' : 'create'
+          },
+          settingType: 'message_templates',
+        });
 
-      const url = message
-        ? `/api/v1/bill-messages/${message._id}`
-        : `/api/v1/bill-messages/hotels/${hotelId}`;
+        if (!result) {
+          setSaving(false);
+          return; // Confirmation dialog shown
+        }
 
-      const method = message ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(formData)
-      });
-
-      if (response.ok) {
-        const result = await response.json();
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
         toast({
           title: 'Success',
-          description: result.message || `Message ${message ? 'updated' : 'created'} successfully`
+          description: `Message template ${message ? 'updated' : 'created'} successfully${
+            applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
+          }`
         });
+        setApplyToScope('single');
         onSuccess();
       } else {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to save message');
+        // Single property update
+        const hotelId = localStorage.getItem('currentHotelId') || 'default-hotel-id';
+        const token = localStorage.getItem('token');
+
+        const url = message
+          ? `/api/v1/bill-messages/${message._id}`
+          : `/api/v1/bill-messages/hotels/${hotelId}`;
+
+        const method = message ? 'PUT' : 'POST';
+
+        const response = await fetch(url, {
+          method,
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(formData)
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          toast({
+            title: 'Success',
+            description: result.message || `Message ${message ? 'updated' : 'created'} successfully`
+          });
+          onSuccess();
+        } else {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to save message');
+        }
       }
     } catch (error) {
       console.error('Error saving message:', error);
@@ -326,6 +382,24 @@ const MessageTemplateEditor: React.FC<MessageTemplateEditorProps> = ({
         variant: 'destructive'
       });
     } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (pendingUpdate) {
+      setSaving(true);
+      const result = await confirmBulkUpdate();
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast({
+          title: 'Success',
+          description: `Settings updated for ${result.propertiesUpdated} properties`
+        });
+        setApplyToScope('single');
+        onSuccess();
+      }
       setSaving(false);
     }
   };
@@ -456,6 +530,53 @@ const MessageTemplateEditor: React.FC<MessageTemplateEditorProps> = ({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Success Message */}
+          {showSuccess && (
+            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 px-4 py-3 rounded-lg">
+              <p className="font-medium flex items-center gap-2">
+                <CheckCircle className="w-4 h-4" />
+                Message template {message ? 'updated' : 'created'} successfully!
+              </p>
+              {applyToScope !== 'single' && affectedCount > 1 && (
+                <p className="text-sm mt-1">Changes applied to {affectedCount} properties</p>
+              )}
+            </div>
+          )}
+
+          {/* Error Message */}
+          {updateError && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 px-4 py-3 rounded-lg">
+              <p className="font-medium flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" />
+                Error: {updateError}
+              </p>
+            </div>
+          )}
+
+          {/* Inheritance Status Card */}
+          {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+            <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+              <CardContent className="p-4">
+                <div className="flex items-start">
+                  <AlertTriangle className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-3 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                      This property is part of: {inheritanceStatus.groupName}
+                    </p>
+                    <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                      Message templates are inherited from the property group.
+                      {inheritanceStatus.lastSyncedAt && (
+                        <span className="ml-1">
+                          Last synced: {new Date(inheritanceStatus.lastSyncedAt).toLocaleString()}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid grid-cols-6 w-full">
               <TabsTrigger value="basic">Basic</TabsTrigger>
@@ -1328,13 +1449,26 @@ const MessageTemplateEditor: React.FC<MessageTemplateEditorProps> = ({
             </TabsContent>
           </Tabs>
 
+          {/* Multi-property selector */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+            <ApplyToSelector
+              value={applyToScope}
+              onChange={setApplyToScope}
+              isInGroup={inheritanceStatus?.hasGroup || false}
+              groupName={inheritanceStatus?.groupName}
+              totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+              showWarning={true}
+              warningMessage="This message template will be applied to all selected properties. Ensure the template content, formatting, and trigger conditions are appropriate for all properties."
+            />
+          </div>
+
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button type="button" variant="outline" onClick={onClose}>
               <X className="w-4 h-4 mr-2" />
               Cancel
             </Button>
-            <Button type="submit" disabled={saving || validationErrors.length > 0}>
-              {saving ? (
+            <Button type="submit" disabled={saving || validationErrors.length > 0 || isUpdating}>
+              {saving || isUpdating ? (
                 'Saving...'
               ) : (
                 <>
@@ -1345,6 +1479,17 @@ const MessageTemplateEditor: React.FC<MessageTemplateEditorProps> = ({
             </Button>
           </div>
         </form>
+
+        {/* Confirmation Dialog */}
+        <ApplyToConfirmation
+          isOpen={showConfirmation}
+          scope={applyToScope}
+          affectedCount={affectedCount}
+          settingName="Message Template"
+          groupName={inheritanceStatus?.groupName}
+          onConfirm={handleConfirm}
+          onCancel={cancelBulkUpdate}
+        />
       </DialogContent>
     </Dialog>
   );

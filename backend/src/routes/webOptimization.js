@@ -1,10 +1,12 @@
 import express from 'express';
 import webOptimizationController from '../controllers/webOptimizationController.js';
 import adminAuth from '../middleware/adminAuth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
 router.use(adminAuth);
+router.use(ensurePropertyAccess);
 
 router.post('/:hotelId/ab-tests', webOptimizationController.createABTest);
 router.get('/:hotelId/ab-tests', webOptimizationController.getABTests);

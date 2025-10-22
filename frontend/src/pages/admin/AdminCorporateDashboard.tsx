@@ -18,6 +18,8 @@ import {
   CalendarDays,
   Receipt
 } from 'lucide-react';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { cn } from '../../utils/cn';
 import { formatCurrency, formatPercentage } from '../../utils/dashboardUtils';
 import { Button } from '@/components/ui/button';
@@ -75,17 +77,18 @@ interface MonthlyTrend {
 }
 
 // API functions
-const fetchCorporateOverview = async (): Promise<{ overview: CorporateOverviewData; topCompanies: TopCompany[] }> => {
-  const response = await api.get('/corporate/admin/dashboard-overview');
+const fetchCorporateOverview = async (propertyId?: string): Promise<{ overview: CorporateOverviewData; topCompanies: TopCompany[] }> => {
+  const response = await api.get('/corporate/admin/dashboard-overview', { params: { propertyId } });
   return response.data.data;
 };
 
-const fetchMonthlyTrends = async (months: number = 12): Promise<{ trends: MonthlyTrend[] }> => {
-  const response = await api.get(`/corporate/admin/monthly-trends?months=${months}`);
+const fetchMonthlyTrends = async (months: number = 12, propertyId?: string): Promise<{ trends: MonthlyTrend[] }> => {
+  const response = await api.get(`/corporate/admin/monthly-trends?months=${months}`, { params: { propertyId } });
   return response.data.data;
 };
 
 export default function AdminCorporateDashboard() {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [refreshing, setRefreshing] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState<6 | 12>(12);
   const [activeTab, setActiveTab] = useState('overview');
@@ -97,9 +100,10 @@ export default function AdminCorporateDashboard() {
     error: overviewError,
     refetch: refetchOverview
   } = useQuery({
-    queryKey: ['corporate-overview'],
-    queryFn: fetchCorporateOverview,
+    queryKey: ['corporate-overview', selectedPropertyId],
+    queryFn: () => fetchCorporateOverview(selectedPropertyId),
     refetchInterval: 5 * 60 * 1000, // Refresh every 5 minutes
+    enabled: !!selectedPropertyId || viewMode === 'portfolio'
   });
 
   // Fetch monthly trends
@@ -108,9 +112,10 @@ export default function AdminCorporateDashboard() {
     isLoading: trendsLoading,
     refetch: refetchTrends
   } = useQuery({
-    queryKey: ['corporate-monthly-trends', selectedPeriod],
-    queryFn: () => fetchMonthlyTrends(selectedPeriod),
+    queryKey: ['corporate-monthly-trends', selectedPeriod, selectedPropertyId],
+    queryFn: () => fetchMonthlyTrends(selectedPeriod, selectedPropertyId),
     refetchInterval: 5 * 60 * 1000,
+    enabled: !!selectedPropertyId || viewMode === 'portfolio'
   });
 
   const handleRefresh = async () => {
@@ -118,6 +123,19 @@ export default function AdminCorporateDashboard() {
     await Promise.all([refetchOverview(), refetchTrends()]);
     setRefreshing(false);
   };
+
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['Corporate Dashboard']} />
+        <div className="text-center py-12">
+          <Building2 className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No Property Selected</h3>
+          <p className="text-gray-500">Please select a property to view corporate dashboard.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (overviewLoading) {
     return (
@@ -169,6 +187,9 @@ export default function AdminCorporateDashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Breadcrumb */}
+      <PropertyBreadcrumb items={['Corporate Dashboard']} />
+
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>

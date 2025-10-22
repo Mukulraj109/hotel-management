@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { useAdminRooms, useRoomMetrics, useUpdateRoomStatus, useBulkUpdateStatus } from '../../hooks/useRooms';
 import { useBulkCheckIn, useBulkCheckOut, useScheduleHousekeeping, useRequestMaintenance, useUpdateRoomStatus as useWorkflowRoomStatus } from '../../hooks/useWorkflow';
 import { MetricCard, RefreshButton, ChartCard, BarChart } from '../../components/dashboard';
@@ -13,6 +15,7 @@ import toast from 'react-hot-toast';
 
 export default function AdminRooms() {
   const { user } = useAuth();
+  const { selectedPropertyId } = useProperty();
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedFloor, setSelectedFloor] = useState<number | null>(null);
   
@@ -49,8 +52,8 @@ export default function AdminRooms() {
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [analyticsView, setAnalyticsView] = useState<'predictive' | 'benchmarking'>('predictive');
   
-  // Use user's hotel ID or fallback
-  const hotelId = user?.hotelId || '68c7ab1242a357d06adbb2aa';
+  // Use PropertyContext's selectedPropertyId
+  const hotelId = selectedPropertyId || user?.hotelId || '';
   
   // Helper function to get room status (computed or fallback to static)
   const getRoomStatus = (room: Room) => {
@@ -580,6 +583,9 @@ export default function AdminRooms() {
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 max-w-7xl mx-auto">
+      {/* Breadcrumb */}
+      <PropertyBreadcrumb items={['Rooms']} />
+
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>

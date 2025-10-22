@@ -51,14 +51,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         // Then fetch fresh user data from server
-        const userData = await authService.getCurrentUser();
-        setUser(userData);
-        localStorage.setItem('user', JSON.stringify(userData));
+        try {
+          const userData = await authService.getCurrentUser();
+          setUser(userData);
+          localStorage.setItem('user', JSON.stringify(userData));
+        } catch (error: any) {
+          // If 401, token is invalid - clear everything and don't retry
+          if (error.response?.status === 401) {
+            console.log('Token invalid during initialization, clearing auth data');
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            localStorage.removeItem('selectedPropertyId');
+            authService.removeToken();
+            setUser(null);
+          } else {
+            // For other errors, keep the stored user data
+            console.error('Failed to fetch fresh user data, using cached:', error);
+          }
+        }
       }
     } catch (error) {
       console.error('Auth initialization failed:', error);
       localStorage.removeItem('token');
       localStorage.removeItem('user');
+      setUser(null);
     } finally {
       setIsLoading(false);
     }

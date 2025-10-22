@@ -28,6 +28,8 @@ import {
   Shield,
   Target
 } from 'lucide-react';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -60,6 +62,8 @@ interface InventoryStats {
 }
 
 export default function AdminInventory() {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+
   // State
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [stats, setStats] = useState<InventoryStats | null>(null);
@@ -139,9 +143,17 @@ export default function AdminInventory() {
 
   // Fetch inventory items
   const fetchItems = async () => {
+    if (!selectedPropertyId) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
-      const response = await adminService.getInventoryItems(filters);
+      const response = await adminService.getInventoryItems({
+        ...filters,
+        hotelId: selectedPropertyId
+      });
       setItems(response.data.items);
       if (response.pagination) {
         setPagination(response.pagination);
@@ -183,8 +195,10 @@ export default function AdminInventory() {
 
   // Load data on mount and filter changes
   useEffect(() => {
-    fetchItems();
-  }, [filters]);
+    if (selectedPropertyId) {
+      fetchItems();
+    }
+  }, [filters, selectedPropertyId]);
 
   useEffect(() => {
     if (items.length > 0) {
@@ -730,8 +744,9 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
         <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-purple-400/20 to-pink-400/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-cyan-400/10 to-blue-400/10 rounded-full blur-3xl animate-pulse delay-500"></div>
       </div>
-      
+
       <div className="relative z-10 p-3 sm:p-4 md:p-6 max-w-7xl mx-auto space-y-6">
+        <PropertyBreadcrumb items={['Inventory']} />
         {/* Ultra-Modern Header with Advanced Glassmorphism */}
         <div className="relative mb-8 group">
           <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-purple-600/10 rounded-3xl blur-3xl group-hover:blur-2xl transition-all duration-500"></div>

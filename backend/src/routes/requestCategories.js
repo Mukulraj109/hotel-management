@@ -2,6 +2,7 @@ import express from 'express';
 import RequestCategory from '../models/RequestCategory.js';
 import RequestTemplate from '../models/RequestTemplate.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 
@@ -9,6 +10,7 @@ const router = express.Router();
 
 // All routes require authentication
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

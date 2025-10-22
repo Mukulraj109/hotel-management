@@ -1,5 +1,8 @@
 import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useProperty } from '../../context/PropertyContext';
+import { useAuth } from '../../context/AuthContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import ChartOfAccounts from '../../components/financial/ChartOfAccounts';
 import GeneralLedger from '../../components/financial/GeneralLedger';
 import InvoiceManagement from '../../components/financial/InvoiceManagement';
@@ -10,8 +13,17 @@ import FinancialReports from '../../components/financial/FinancialReports';
 import AccountingIntegrationDashboard from '../../components/financial/AccountingIntegrationDashboard';
 
 const AdminFinancial: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+  const { user } = useAuth();
+  const readOnly = user?.role === 'frontdesk';
+
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Property Breadcrumb */}
+      <div className="p-6 pb-0">
+        <PropertyBreadcrumb items={['Financial']} />
+      </div>
+
       <Tabs defaultValue="dashboard" className="w-full">
         <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
@@ -25,35 +37,35 @@ const AdminFinancial: React.FC = () => {
         </TabsList>
 
         <TabsContent value="dashboard">
-          <AccountingIntegrationDashboard />
+          <AccountingIntegrationDashboard readOnly={readOnly} />
         </TabsContent>
 
         <TabsContent value="accounts">
-          <ChartOfAccounts />
+          <ChartOfAccounts readOnly={readOnly} />
         </TabsContent>
 
         <TabsContent value="ledger">
-          <GeneralLedger />
+          <GeneralLedger readOnly={readOnly} />
         </TabsContent>
 
         <TabsContent value="invoices">
-          <InvoiceManagement />
+          <InvoiceManagement readOnly={readOnly} />
         </TabsContent>
 
         <TabsContent value="payments">
-          <PaymentManagement />
+          <PaymentManagement readOnly={readOnly} />
         </TabsContent>
 
         <TabsContent value="banks">
-          <BankAccountManagement />
+          <BankAccountManagement readOnly={readOnly} />
         </TabsContent>
 
         <TabsContent value="budgets">
-          <BudgetManagement />
+          <BudgetManagement readOnly={readOnly} />
         </TabsContent>
 
         <TabsContent value="reports">
-          <FinancialReports />
+          <FinancialReports readOnly={readOnly} />
         </TabsContent>
       </Tabs>
     </div>

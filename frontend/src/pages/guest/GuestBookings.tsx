@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { bookingService } from '../../services/bookingService';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -18,7 +19,10 @@ import {
   Mail,
   Key,
   Edit,
-  MessageSquare
+  MessageSquare,
+  Percent,
+  TrendingDown,
+  TrendingUp
 } from 'lucide-react';
 import BookingKeyGenerator from '../../components/ui/BookingKeyGenerator';
 import BookingModificationModal from '../../components/ui/BookingModificationModal';
@@ -80,8 +84,30 @@ const getStatusIcon = (status: string) => {
   }
 };
 
+// Helper function to check if booking has price adjustments
+const hasPriceAdjustments = (booking: BookingWithHotel) => {
+  return booking.priceAdjustments && booking.priceAdjustments.length > 0 &&
+         booking.priceAdjustments.some(adj => !adj.isReversed);
+};
+
+// Helper function to calculate total discount/surcharge
+const calculateAdjustmentAmount = (booking: BookingWithHotel) => {
+  const discount = booking.discountAmount || 0;
+  const surcharge = booking.surchargeAmount || 0;
+  return discount - surcharge; // Positive = discount, Negative = surcharge
+};
+
+// Helper function to calculate savings percentage
+const calculateSavingsPercentage = (booking: BookingWithHotel) => {
+  const original = booking.originalAmount || booking.totalAmount;
+  const adjustment = calculateAdjustmentAmount(booking);
+  if (original === 0) return 0;
+  return Math.round((adjustment / original) * 100);
+};
+
 export default function GuestBookings() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<string>('all');
   const [showKeyGenerator, setShowKeyGenerator] = useState(false);
@@ -250,8 +276,22 @@ export default function GuestBookings() {
         </div>
       ) : (
         <div className="space-y-6">
-          {filteredBookings.map((booking) => (
-            <Card key={booking._id} className="overflow-hidden">
+          {filteredBookings.map((booking) => {
+            // ENHANCED: Add visual indicator for discounted bookings
+            const hasDiscount = hasPriceAdjustments(booking) && calculateAdjustmentAmount(booking) > 0;
+            const hasSurcharge = hasPriceAdjustments(booking) && calculateAdjustmentAmount(booking) < 0;
+
+            return (
+              <Card
+                key={booking._id}
+                className={`overflow-hidden transition-all duration-200 ${
+                  hasDiscount
+                    ? 'border-l-4 border-l-green-500 shadow-lg hover:shadow-xl'
+                    : hasSurcharge
+                    ? 'border-l-4 border-l-red-500 shadow-lg hover:shadow-xl'
+                    : 'hover:shadow-md'
+                }`}
+              >
               <div className="p-4 sm:p-6">
                 {/* Booking Header */}
                 <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4 gap-3 sm:gap-0">
@@ -276,9 +316,58 @@ export default function GuestBookings() {
                     )}
                   </div>
                   <div className="text-left sm:text-right">
+                    {/* ENHANCED: Show price adjustment indicators */}
+                    {hasPriceAdjustments(booking) && (
+                      <div className="mb-2 space-y-1">
+                        {/* Original price with strikethrough */}
+                        <div className="flex items-center justify-start sm:justify-end gap-2">
+                          <span className="text-sm text-gray-500 line-through">
+                            {formatCurrency(booking.originalAmount || booking.totalAmount, booking.currency)}
+                          </span>
+                          {/* Discount/Surcharge badge */}
+                          {calculateAdjustmentAmount(booking) > 0 ? (
+                            <span
+                              className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200"
+                              title={`Discount applied: ${booking.priceAdjustments?.filter(adj => !adj.isReversed).map(adj => adj.reason).join(', ')}`}
+                            >
+                              <TrendingDown className="w-3 h-3 mr-1" />
+                              {calculateSavingsPercentage(booking)}% OFF
+                            </span>
+                          ) : calculateAdjustmentAmount(booking) < 0 ? (
+                            <span
+                              className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200"
+                              title={`Surcharge applied: ${booking.priceAdjustments?.filter(adj => !adj.isReversed).map(adj => adj.reason).join(', ')}`}
+                            >
+                              <TrendingUp className="w-3 h-3 mr-1" />
+                              +{Math.abs(calculateSavingsPercentage(booking))}%
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {/* Savings amount */}
+                        {booking.discountAmount && booking.discountAmount > 0 && (
+                          <div className="text-sm font-medium text-green-600 flex items-center justify-start sm:justify-end gap-1">
+                            <Percent className="w-3 h-3" />
+                            You Save {formatCurrency(booking.discountAmount, booking.currency)}
+                          </div>
+                        )}
+
+                        {/* Surcharge amount */}
+                        {booking.surchargeAmount && booking.surchargeAmount > 0 && (
+                          <div className="text-sm font-medium text-red-600 flex items-center justify-start sm:justify-end gap-1">
+                            <TrendingUp className="w-3 h-3" />
+                            Additional {formatCurrency(booking.surchargeAmount, booking.currency)}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Current total price */}
                     <div className="text-xl sm:text-2xl font-bold text-gray-900">
                       {formatCurrency(booking.totalAmount, booking.currency)}
                     </div>
+
+                    {/* Payment status badge */}
                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium w-fit ${getPaymentStatusColor(booking.paymentStatus)}`}>
                       <CreditCard className="w-3 h-3 mr-1" />
                       {booking.paymentStatus === 'paid' ? 'Paid' : booking.paymentStatus.charAt(0).toUpperCase() + booking.paymentStatus.slice(1)}
@@ -347,12 +436,72 @@ export default function GuestBookings() {
                   </div>
                 )}
 
+                {/* ENHANCED: Price Adjustments Details */}
+                {hasPriceAdjustments(booking) && (
+                  <div className="mb-4">
+                    <h4 className="text-sm font-medium text-gray-900 mb-2 flex items-center gap-2">
+                      <Percent className="w-4 h-4 text-yellow-600" />
+                      Price Adjustments
+                    </h4>
+                    <div className="space-y-2">
+                      {booking.priceAdjustments
+                        ?.filter(adj => !adj.isReversed)
+                        .map((adjustment, index) => (
+                          <div
+                            key={adjustment._id || index}
+                            className={`flex flex-col sm:flex-row sm:items-center sm:justify-between rounded-lg p-3 ${
+                              adjustment.amount < 0
+                                ? 'bg-green-50 border border-green-200'
+                                : 'bg-red-50 border border-red-200'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2 mb-2 sm:mb-0">
+                              {adjustment.amount < 0 ? (
+                                <TrendingDown className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                              ) : (
+                                <TrendingUp className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                              )}
+                              <div>
+                                <p className={`text-sm font-medium ${
+                                  adjustment.amount < 0 ? 'text-green-900' : 'text-red-900'
+                                }`}>
+                                  {adjustment.reason || (adjustment.amount < 0 ? 'Discount Applied' : 'Surcharge Applied')}
+                                </p>
+                                {adjustment.adjustedAt && (
+                                  <p className="text-xs text-gray-500 mt-0.5">
+                                    Applied on {formatDate(adjustment.adjustedAt)}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <p className={`text-sm font-semibold ${
+                              adjustment.amount < 0 ? 'text-green-700' : 'text-red-700'
+                            }`}>
+                              {adjustment.amount < 0 ? '-' : '+'}{formatCurrency(Math.abs(adjustment.amount), booking.currency)}
+                            </p>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Actions */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pt-4 border-t border-gray-200 gap-3 sm:gap-0">
                   <div className="flex items-center space-x-4 text-sm text-gray-500">
                     <span>Booked on {formatDate(booking.createdAt)}</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    {/* View Details button - always visible */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => navigate(`/guest/bookings/${booking._id}`)}
+                      className="text-yellow-600 border-yellow-600 hover:bg-yellow-50"
+                    >
+                      <Eye className="w-4 h-4 mr-1" />
+                      View Details
+                    </Button>
+
                     {booking.hotelId?.contact && (
                       <>
                         {booking.hotelId.contact.phone && (
@@ -434,7 +583,8 @@ export default function GuestBookings() {
                 </div>
               </div>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 

@@ -3,11 +3,16 @@ import Loyalty from '../models/Loyalty.js';
 import Offer from '../models/Offer.js';
 import User from '../models/User.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 
 const router = express.Router();
+
+// Apply authentication and property access to all loyalty routes
+router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger
@@ -50,7 +55,7 @@ const router = express.Router();
  *                       items:
  *                         $ref: '#/components/schemas/Offer'
  */
-router.get('/dashboard', authenticate, catchAsync(async (req, res) => {
+router.get('/dashboard', catchAsync(async (req, res) => {
   // Get user with loyalty data
   const user = await User.findById(req.user._id).select('+loyalty');
   
@@ -103,7 +108,7 @@ router.get('/dashboard', authenticate, catchAsync(async (req, res) => {
  *       200:
  *         description: Available offers
  */
-router.get('/offers', authenticate, catchAsync(async (req, res) => {
+router.get('/offers', catchAsync(async (req, res) => {
   const { category } = req.query;
   const user = await User.findById(req.user._id).select('+loyalty');
   
@@ -151,7 +156,7 @@ router.get('/offers', authenticate, catchAsync(async (req, res) => {
  *       200:
  *         description: Transaction history
  */
-router.get('/transactions', authenticate, catchAsync(async (req, res) => {
+router.get('/transactions', catchAsync(async (req, res) => {
   const { page = 1, limit = 20, type } = req.query;
   const skip = (page - 1) * limit;
   
@@ -212,13 +217,12 @@ router.get('/transactions', authenticate, catchAsync(async (req, res) => {
  *       400:
  *         description: Invalid redemption request
  */
-router.post('/redeem', 
+router.post('/redeem',
   (req, res, next) => {
     console.log('🔥 REQUEST REACHED LOYALTY ROUTE!', req.body);
     console.log('🔥 Headers:', req.headers.authorization);
     next();
   },
-  authenticate, 
   validate(schemas.redeemPoints),
 catchAsync(async (req, res) => {
     console.log('🔥 LOYALTY REDEEM - Starting redemption process');
@@ -357,7 +361,7 @@ catchAsync(async (req, res) => {
  *       200:
  *         description: Transaction history
  */
-router.get('/history', authenticate, catchAsync(async (req, res) => {
+router.get('/history', catchAsync(async (req, res) => {
   const { page = 1, limit = 20, type } = req.query;
   
   const options = {
@@ -389,7 +393,7 @@ router.get('/history', authenticate, catchAsync(async (req, res) => {
  *       200:
  *         description: User's loyalty status
  */
-router.get('/points', authenticate, catchAsync(async (req, res) => {
+router.get('/points', catchAsync(async (req, res) => {
   const user = await User.findById(req.user._id).select('+loyalty');
   
   // Get active points (not expired)
@@ -427,7 +431,7 @@ router.get('/points', authenticate, catchAsync(async (req, res) => {
  *       404:
  *         description: Offer not found
  */
-router.get('/offers/:offerId', authenticate, catchAsync(async (req, res) => {
+router.get('/offers/:offerId', catchAsync(async (req, res) => {
   const { offerId } = req.params;
   
   const offer = await Offer.findById(offerId)

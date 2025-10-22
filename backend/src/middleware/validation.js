@@ -27,7 +27,8 @@ export const schemas = {
 
   login: Joi.object({
     email: Joi.string().email().required(),
-    password: Joi.string().required()
+    password: Joi.string().required(),
+    hotelId: Joi.string().optional()
   }),
 
   createRoom: Joi.object({
@@ -59,7 +60,10 @@ export const schemas = {
     guestDetails: Joi.object({
       adults: Joi.number().min(1).required(),
       children: Joi.number().min(0).default(0),
-      specialRequests: Joi.string().allow('')
+      specialRequests: Joi.string().allow(''),
+      name: Joi.string().optional(),
+      email: Joi.string().email().optional(),
+      phone: Joi.string().optional()
     }),
     totalAmount: Joi.number().optional(), // Allow admin to specify total amount
     currency: Joi.string().optional(),
@@ -77,7 +81,18 @@ export const schemas = {
     ratePerNight: Joi.number().min(0).optional(),
     guestName: Joi.string().optional(),
     guestEmail: Joi.string().email().optional(),
-    guestPhone: Joi.string().optional()
+    guestPhone: Joi.string().optional(),
+    // New payment fields for walk-in booking
+    source: Joi.string().valid('direct', 'walk_in', 'phone', 'email', 'booking_com', 'expedia', 'airbnb').optional(),
+    paymentMethods: Joi.array().items(Joi.object({
+      method: Joi.string().valid('cash', 'card', 'upi', 'online_portal', 'corporate').required(),
+      amount: Joi.number().min(0).required(),
+      reference: Joi.string().allow('').optional(),
+      notes: Joi.string().allow('').optional()
+    })).optional(),
+    paidAmount: Joi.number().min(0).optional(),
+    remainingAmount: Joi.number().min(0).optional(),
+    checkInTime: Joi.date().optional() // For walk-in bookings that are auto-checked-in
   }),
 
   createPaymentIntent: Joi.object({

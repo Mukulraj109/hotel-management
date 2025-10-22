@@ -1,11 +1,13 @@
 import express from 'express';
 import * as userManagementController from '../controllers/userManagementController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Admin/Manager routes only
 router.use(authorize('admin', 'manager'));

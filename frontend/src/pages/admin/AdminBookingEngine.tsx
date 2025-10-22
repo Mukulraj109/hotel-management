@@ -1,5 +1,7 @@
 import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/Tabs';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import MarketingDashboard from '../../components/marketing/MarketingDashboard';
 import BookingWidgetManager from '../../components/marketing/BookingWidgetManager';
 import BookingEngineWidget from '../../components/booking/BookingEngineWidget';
@@ -10,8 +12,18 @@ import PromoCodeManager from '../../components/marketing/PromoCodeManager';
 import ReviewManager from '../../components/marketing/ReviewManager';
 
 const AdminBookingEngine: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
+
+  // Early return if no property selected in single mode
+  if (!selectedPropertyId && viewMode === 'single') {
+    return <div className="p-6">Please select a property</div>;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Configuration', 'Booking Engine']} />
+
       <Tabs defaultValue="dashboard" className="w-full">
         <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="dashboard">Dashboard</TabsTrigger>

@@ -22,9 +22,11 @@ import {
   useDeletePropertyGroup,
   useSyncGroupSettings,
   useAddPropertiesToGroup,
-  useRemovePropertiesFromGroup
+  useRemovePropertiesFromGroup,
+  QUERY_KEYS
 } from '../../hooks/usePropertyQueries';
-import { 
+import { useQueryClient } from '@tanstack/react-query';
+import {
   Building2,
   MapPin,
   Users,
@@ -60,8 +62,10 @@ import {
   Download,
   Upload,
   RefreshCw,
-  MoreVertical
+  MoreVertical,
+  LayoutGrid
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   DropdownMenu, 
@@ -146,6 +150,8 @@ interface PropertyGroup {
 
 export const MultiPropertyManager: React.FC = () => {
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   // UI state
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
@@ -214,6 +220,12 @@ export const MultiPropertyManager: React.FC = () => {
   const [selectedPropertiesForAssignment, setSelectedPropertiesForAssignment] = useState<string[]>([]);
   const [targetGroup, setTargetGroup] = useState<PropertyGroup | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
+
+  // Clear cache on mount to ensure fresh data
+  useEffect(() => {
+    console.log('🔄 [MultiPropertyManager] Invalidating properties cache...');
+    queryClient.invalidateQueries({ queryKey: QUERY_KEYS.properties });
+  }, []); // Empty dependency array = run once on mount
 
   // Update pagination when React Query data changes
   React.useEffect(() => {
@@ -410,6 +422,30 @@ export const MultiPropertyManager: React.FC = () => {
 
   const renderDashboard = () => (
     <div className="space-y-8">
+      {/* Portfolio Analytics Link */}
+      <Card className="border-0 shadow-sm bg-gradient-to-r from-blue-50 to-indigo-50">
+        <CardContent className="p-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="p-3 bg-blue-500 rounded-full">
+                <LayoutGrid className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">Portfolio Analytics</h3>
+                <p className="text-sm text-gray-600">View comprehensive analytics across all properties</p>
+              </div>
+            </div>
+            <Button
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={() => navigate('/admin/portfolio')}
+            >
+              <BarChart3 className="mr-2 h-4 w-4" />
+              View Portfolio Dashboard
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Overview Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
         <Card className="border-0 shadow-sm hover:shadow-md transition-shadow duration-200 bg-gradient-to-br from-blue-50 to-blue-100">

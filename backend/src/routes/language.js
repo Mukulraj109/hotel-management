@@ -2,6 +2,7 @@ import express from 'express';
 import languageController from '../controllers/languageController.js';
 import contentController from '../controllers/contentController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validate } from '../middleware/validation.js';
 import { body, param, query } from 'express-validator';
 
@@ -178,6 +179,7 @@ router.get('/content/stats/overview', contentController.getContentStats);
 
 // Protected routes (authentication required)
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Language management (admin/content manager only)
 router.post('/', 

@@ -41,11 +41,20 @@ export function ProtectedRoute({ children, allowedRoles = [] }: ProtectedRoutePr
       case 'admin':
         redirectPath = '/admin';
         break;
+      case 'frontdesk':
+        redirectPath = '/frontdesk';
+        break;
       case 'staff':
         redirectPath = '/staff';
         break;
       case 'guest':
         redirectPath = '/app';
+        break;
+      case 'travel_agent':
+        redirectPath = '/travel-agent';
+        break;
+      case 'manager':
+        redirectPath = '/admin'; // Managers use admin dashboard
         break;
       default:
         redirectPath = '/';

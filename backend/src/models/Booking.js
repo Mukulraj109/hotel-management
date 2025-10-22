@@ -577,7 +577,53 @@ const bookingSchema = new mongoose.Schema({
         enum: ['admin', 'staff']
       }
     },
-    description: String
+    description: String,
+    // NEW: Approval workflow fields
+    status: {
+      type: String,
+      enum: ['pending', 'applied', 'paid'],
+      default: 'pending',
+      index: true,
+      description: 'Charge status - pending (awaiting approval), applied (approved but unpaid), paid (fully paid)'
+    },
+    calculatedAmount: {
+      type: Number,
+      required: true,
+      min: 0,
+      description: 'Original calculated amount from pricing rules'
+    },
+    adjustedAmount: {
+      type: Number,
+      min: 0,
+      description: 'Admin-adjusted amount (if different from calculated)'
+    },
+    adjustmentReason: {
+      type: String,
+      trim: true,
+      maxLength: 500,
+      description: 'Reason for price adjustment'
+    },
+    adjustedBy: {
+      userId: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User'
+      },
+      userName: String,
+      userRole: String,
+      adjustedAt: Date
+    },
+    approvedBy: {
+      userId: {
+        type: mongoose.Schema.ObjectId,
+        ref: 'User'
+      },
+      userName: String,
+      userRole: String
+    },
+    approvedAt: {
+      type: Date,
+      description: 'When the charge was approved/applied'
+    }
   }],
   cancellationReason: String,
   cancellationPolicy: {
@@ -1009,6 +1055,9 @@ bookingSchema.index({ 'otaAmendments.amendmentStatus': 1 });
 bookingSchema.index({ 'statusHistory.timestamp': -1 });
 bookingSchema.index({ 'otaAmendments.channelAmendmentId': 1 }, { sparse: true });
 
+// Index for extra person charge approval workflow
+bookingSchema.index({ 'extraPersonCharges.status': 1 });
+
 // Enhanced pre-save middleware for status tracking and validation
 bookingSchema.pre('save', function(next) {
   // Protect corporate bookings from TTL deletion
@@ -1238,10 +1287,10 @@ bookingSchema.methods.calculateExtraPersonCharges = async function() {
 
   const chargeResult = await ExtraPersonCharge.calculateExtraPersonCharge(this.hotelId, bookingData);
 
-  // Update extra person charges while preserving payment status
+  // Update extra person charges while preserving payment and approval status
   const existingCharges = this.extraPersonCharges || [];
   this.extraPersonCharges = chargeResult.chargeBreakdown.map(charge => {
-    // Find existing charge for this person to preserve payment status
+    // Find existing charge for this person to preserve payment and approval status
     const existingCharge = existingCharges.find(existing => existing.personId === charge.personId);
 
     return {
@@ -1261,7 +1310,15 @@ bookingSchema.methods.calculateExtraPersonCharges = async function() {
       // Preserve payment status from existing charge, or set defaults for new charges
       paidAmount: existingCharge ? existingCharge.paidAmount : 0,
       isPaid: existingCharge ? existingCharge.isPaid : false,
-      paidAt: existingCharge ? existingCharge.paidAt : undefined
+      paidAt: existingCharge ? existingCharge.paidAt : undefined,
+      // NEW: Approval workflow fields
+      status: existingCharge ? existingCharge.status : 'pending',
+      calculatedAmount: charge.totalCharge, // Store the original calculated amount
+      adjustedAmount: existingCharge ? existingCharge.adjustedAmount : undefined,
+      adjustmentReason: existingCharge ? existingCharge.adjustmentReason : undefined,
+      adjustedBy: existingCharge ? existingCharge.adjustedBy : undefined,
+      approvedBy: existingCharge ? existingCharge.approvedBy : undefined,
+      approvedAt: existingCharge ? existingCharge.approvedAt : undefined
     };
   });
 

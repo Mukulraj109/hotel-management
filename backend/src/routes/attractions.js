@@ -3,6 +3,7 @@ import LocalAttraction from '../models/LocalAttraction.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
@@ -272,9 +273,10 @@ router.get('/:id', catchAsync(async (req, res) => {
  *       201:
  *         description: Attraction created successfully
  */
-router.post('/', 
-  authenticate, 
-  authorize('admin'), 
+router.post('/',
+  authenticate,
+  authorize('admin'),
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const {
       name,
@@ -339,9 +341,10 @@ router.post('/',
  *       200:
  *         description: Attraction updated successfully
  */
-router.patch('/:id', 
-  authenticate, 
-  authorize('admin'), 
+router.patch('/:id',
+  authenticate,
+  authorize('admin'),
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const attraction = await LocalAttraction.findByIdAndUpdate(
       req.params.id,
@@ -380,9 +383,10 @@ router.patch('/:id',
  *       204:
  *         description: Attraction deleted successfully
  */
-router.delete('/:id', 
-  authenticate, 
-  authorize('admin'), 
+router.delete('/:id',
+  authenticate,
+  authorize('admin'),
+  ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const attraction = await LocalAttraction.findByIdAndDelete(req.params.id);
 

@@ -27,6 +27,7 @@ import websocketService from './services/websocketService.js';
 import inventoryScheduler from './services/inventoryScheduler.js';
 import reorderJob from './jobs/reorderJob.js';
 import NotificationScheduler from './services/notificationScheduler.js';
+import { startScheduledUpdatesJob, stopScheduledUpdatesJob } from './jobs/scheduledUpdatesJob.js';
 // import pricingScheduler from './schedulers/pricingScheduler.js'; // Temporarily disabled - requires tensorflow
 import {
     applyEventMiddleware
@@ -76,6 +77,7 @@ import settlementNotificationService from './services/settlementNotificationServ
 import userPreferencesRoutes from './routes/userPreferences.js';
 import hotelSettingsRoutes from './routes/hotelSettings.js';
 import settingsRoutes from './routes/settings.js';
+import scheduledUpdatesRoutes from './routes/scheduledUpdates.js';
 import integrationsRoutes from './routes/integrations.js';
 import uploadRoutes from './routes/upload.js';
 import digitalKeyRoutes from './routes/digitalKeys.js'; // Temporarily disabled
@@ -128,6 +130,7 @@ import translationRoutes from './routes/translations.js';
 import channelLocalizationRoutes from './routes/channelLocalization.js';
 import otaAmendmentRoutes from './routes/otaAmendments.js';
 import auditRoutes from './routes/audit.js';
+import auditLogRoutes from './routes/auditLog.js';
 import laundryRoutes from './routes/laundry.js';
 import aiRoutes from './routes/ai.js';
 import roomTaxRoutes from './routes/roomTax.js';
@@ -156,6 +159,7 @@ import bookingFormRoutes from './routes/bookingForm.js';
 import allotmentRoutes from './routes/allotment.js';
 import centralizedRatesRoutes from './routes/centralizedRates.js';
 import propertyGroupsRoutes from './routes/propertyGroups.js';
+import portfolioRoutes from './routes/portfolio.js';
 import propertyRoomsRoutes from './routes/propertyRooms.js';
 import departmentRoutes from './routes/departments.js';
 import reasonRoutes from './routes/reasons.js';
@@ -196,6 +200,7 @@ import personalizationRoutes from './routes/personalization.js';
 import extraPersonPricingRoutes from './routes/extraPersonPricing.js';
 import settlementsRoutes from './routes/settlements.js';
 import posSettlementIntegrationRoutes from './routes/posSettlementIntegration.js';
+import approvalRoutes from './routes/approvals.js';
 
 const app = express();
 
@@ -457,6 +462,7 @@ app.use('/api/v1/bookings', bookingRoutes);
 app.use('/api/v1/extra-person-pricing', extraPersonPricingRoutes);
 app.use('/api/v1/settlements', settlementsRoutes);
 app.use('/api/v1/pos-settlements', posSettlementIntegrationRoutes);
+app.use('/api/v1/approvals', approvalRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/v1/housekeeping', housekeepingRoutes);
 app.use('/api/v1/inventory', inventoryRoutes);
@@ -465,11 +471,14 @@ app.use('/api/v1/guests', guestRoutes);
 app.use('/api/v1/reports', reportRoutes);
 app.use('/api/v1/ota', otaRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
-app.use('/api/v1/admin', adminRoutes);
+// IMPORTANT: admin/travel-dashboard, admin/hotel-services, admin-bypass-management, and admin-dashboard MUST come BEFORE /admin to avoid being caught by admin-only middleware
+app.use('/api/v1/admin/travel-dashboard', adminTravelDashboardRoutes);
+app.use('/api/v1/admin/hotel-services', adminHotelServicesRoutes);
 app.use('/api/v1/admin-bypass-management', adminBypassManagementRoutes);
 app.use('/api/v1/admin-bypass-management', bypassFinancialAnalyticsRoutes);
-app.use('/api/v1/system-integration', systemIntegrationRoutes);
 app.use('/api/v1/admin-dashboard', adminDashboardRoutes);
+app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/system-integration', systemIntegrationRoutes);
 app.use('/api/v1/staff-dashboard', staffDashboardRoutes);
 app.use('/api/v1/staff/alerts', staffAlertsRoutes);
 app.use('/api/v1/staff-meetups', staffMeetUpRoutes);
@@ -491,7 +500,6 @@ app.use('/api/v1/loyalty', loyaltyRoutes);
 app.use('/api/v1/admin/loyalty', adminLoyaltyRoutes);
 app.use('/api/v1/loyalty/favorites', offerFavoriteRoutes);
 app.use('/api/v1/hotel-services', hotelServicesRoutes);
-app.use('/api/v1/admin/hotel-services', adminHotelServicesRoutes);
 app.use('/api/v1/staff/services', staffServicesRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/settlement-notifications', settlementNotificationRoutes);
@@ -505,7 +513,7 @@ app.use('/api/v1/digital-keys', digitalKeyRoutes);
 app.use('/api/v1/meet-up-requests', meetUpRequestRoutes);
 app.use('/api/v1/meetup-resources', meetUpResourceRoutes);
 app.use('/api/v1/travel-agents', travelAgentRoutes);
-app.use('/api/v1/admin/travel-dashboard', adminTravelDashboardRoutes);
+// admin/travel-dashboard moved to line 475 (before /admin route)
 app.use('/api/v1/dashboard-updates', dashboardUpdatesRoutes);
 app.use('/api/v1/room-inventory', roomInventoryRoutes);
 app.use('/api/v1/photos', photoUploadRoutes);
@@ -514,6 +522,7 @@ app.use('/api/v1/staff-tasks', staffTaskRoutes);
 
 // IMPORTANT: Settings routes MUST come AFTER specific routes to avoid conflicts
 app.use('/api/v1/settings', settingsRoutes); // Settings routes with various endpoints
+app.use('/api/v1/scheduled-updates', scheduledUpdatesRoutes); // Scheduled updates routes (Feature 1 - Phase 5.6)
 app.use('/api/v1/daily-routine-check', dailyRoutineCheckRoutes);
 app.use('/api/v1/test', testCheckoutsRoutes);
 app.use('/api/v1/attractions', attractionsRoutes);
@@ -573,6 +582,7 @@ app.use('/api/v1/translations', translationRoutes);
 app.use('/api/v1/channel-localization', channelLocalizationRoutes);
 app.use('/api/v1/ota-amendments', otaAmendmentRoutes);
 app.use('/api/v1/audit', auditRoutes);
+app.use('/api/v1/audit-log', auditLogRoutes);
 app.use('/api/v1/laundry', laundryRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/room-taxes', roomTaxRoutes);
@@ -596,6 +606,7 @@ app.use('/api/v1/booking-forms', bookingFormRoutes);
 app.use('/api/v1/allotments', allotmentRoutes);
 app.use('/api/v1/centralized-rates', centralizedRatesRoutes);
 app.use('/api/v1/property-groups', propertyGroupsRoutes);
+app.use('/api/v1/portfolio', portfolioRoutes);
 app.use('/api/v1/property-rooms', propertyRoomsRoutes);
 app.use('/api/v1/departments', departmentRoutes);
 app.use('/api/v1/reasons', reasonRoutes);
@@ -686,6 +697,11 @@ const server = app.listen(PORT, async () => {
         reorderJob.startWeeklySummary();
         logger.info('✅ Reorder job started');
 
+        // Start scheduled updates cron job (Feature 1 - Phase 5.6)
+        logger.info('🔄 Starting scheduled updates job...');
+        startScheduledUpdatesJob();
+        logger.info('✅ Scheduled updates job started (runs every 5 minutes)');
+
         // Start pricing scheduler (already auto-starts, but ensure it's initialized)
         // if (!pricingScheduler.isRunning) {
         //   pricingScheduler.start();
@@ -759,6 +775,7 @@ process.on('SIGTERM', async () => {
     logger.info('SIGTERM received, shutting down gracefully');
     inventoryScheduler.stop();
     reorderJob.stop();
+    stopScheduledUpdatesJob(); // Stop scheduled updates job
     // pricingScheduler.stop(); // Temporarily disabled - requires tensorflow
     bookingWorkflowEngine.stop(); // Temporarily disabled
     systemHealthMonitor.stop();
@@ -773,6 +790,7 @@ process.on('SIGINT', async () => {
     logger.info('SIGINT received, shutting down gracefully');
     inventoryScheduler.stop();
     reorderJob.stop();
+    stopScheduledUpdatesJob(); // Stop scheduled updates job
     // pricingScheduler.stop(); // Temporarily disabled - requires tensorflow
     bookingWorkflowEngine.stop(); // Temporarily disabled
     systemHealthMonitor.stop();

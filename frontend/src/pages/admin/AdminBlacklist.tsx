@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  PlusIcon, 
-  PencilIcon, 
-  TrashIcon, 
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import {
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
   EyeIcon,
   FunnelIcon,
   ExclamationTriangleIcon,
@@ -44,6 +46,7 @@ interface BlacklistEntry {
 }
 
 const AdminBlacklist: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [blacklistEntries, setBlacklistEntries] = useState<BlacklistEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -98,17 +101,20 @@ const AdminBlacklist: React.FC = () => {
   ];
 
   useEffect(() => {
-    fetchBlacklistEntries();
-  }, [filters, pagination.current]);
+    if (selectedPropertyId) {
+      fetchBlacklistEntries();
+    }
+  }, [selectedPropertyId, filters, pagination.current]);
 
   const fetchBlacklistEntries = async () => {
     try {
       setLoading(true);
       const queryParams = new URLSearchParams();
-      
+
       queryParams.append('page', pagination.current.toString());
       queryParams.append('limit', '20');
-      
+      queryParams.append('propertyId', selectedPropertyId || '');
+
       if (filters.search) queryParams.append('search', filters.search);
       if (filters.isActive) queryParams.append('isActive', filters.isActive);
       if (filters.type) queryParams.append('type', filters.type);
@@ -338,8 +344,21 @@ const AdminBlacklist: React.FC = () => {
     );
   }
 
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['Compliance', 'Blacklist']} />
+        <div className="mt-8 text-center">
+          <p className="text-gray-500">Please select a property to manage blacklist</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
+      <PropertyBreadcrumb items={['Compliance', 'Blacklist']} />
+
       <div className="mb-6">
         <div className="flex justify-between items-center mb-4">
           <div>

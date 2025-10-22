@@ -1,6 +1,7 @@
 import express from 'express';
 import securityMonitoringController from '../controllers/securityMonitoringController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { requirePermission, requireRoleLevel } from '../middleware/permissionCheck.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
@@ -53,6 +54,7 @@ const reviewActivitySchema = Joi.object({
 
 // Authentication required for all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

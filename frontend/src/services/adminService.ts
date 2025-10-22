@@ -200,6 +200,30 @@ class AdminService {
     }
   }
 
+  // Bookings for frontdesk - skips admin endpoint to avoid 403 errors
+  async getFrontDeskBookings(filters: BookingFilters = {}): Promise<ApiResponse<{ bookings: AdminBooking[] }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    try {
+      // Use regular bookings endpoint directly for frontdesk
+      const response = await api.get(`/bookings?${params.toString()}`);
+      return response.data;
+    } catch (error: any) {
+      if (error.response?.status === 429) {
+        // Wait a bit and retry once for rate limit errors
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const retryResponse = await api.get(`/bookings?${params.toString()}`);
+        return retryResponse.data;
+      }
+      throw error;
+    }
+  }
+
   async getUpcomingBookings(filters: { days?: number; page?: number; limit?: number } = {}): Promise<ApiResponse<AdminBooking[]> & { stats: { todayArrivals: number; tomorrowArrivals: number; totalUpcoming: number } }> {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {
@@ -339,8 +363,9 @@ class AdminService {
         params.append(key, value.toString());
       }
     });
-    
-    const response = await api.get(`/admin/users?${params.toString()}`);
+
+    // Use /users endpoint instead of /admin/users to support frontdesk and staff roles
+    const response = await api.get(`/users?${params.toString()}`);
     return response.data;
   }
 

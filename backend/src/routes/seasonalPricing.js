@@ -1,12 +1,14 @@
 import express from 'express';
 import seasonalPricingController from '../controllers/seasonalPricingController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import adminAuth from '../middleware/adminAuth.js';
 
 const router = express.Router();
 
-// Public routes (accessible by authenticated users)
+// All routes require authentication and property access
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Get seasonal adjustment for a specific date and room type
 router.get('/adjustment', seasonalPricingController.getSeasonalAdjustment);

@@ -9,13 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/Select';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import FormBuilder from '../../components/web/FormBuilder';
 import FormPreview from '../../components/web/FormPreview';
 import { bookingFormService, BookingFormTemplate } from '../../services/bookingFormService';
-import { useAuth } from '../../context/AuthContext';
 
 const AdminBookingFormBuilder: React.FC = () => {
-  const { user } = useAuth();
+  const { selectedPropertyId, selectedProperty } = useProperty();
   const [templates, setTemplates] = useState<BookingFormTemplate[]>([]);
   const [filteredTemplates, setFilteredTemplates] = useState<BookingFormTemplate[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -36,9 +37,16 @@ const AdminBookingFormBuilder: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
+  // Early return if no property selected in single mode
+  if (!selectedPropertyId && viewMode === 'single') {
+    return <div className="p-6">Please select a property</div>;
+  }
+
   useEffect(() => {
-    loadTemplates();
-  }, [searchParams]);
+    if (selectedPropertyId) {
+      loadTemplates();
+    }
+  }, [searchParams, selectedPropertyId]);
 
   useEffect(() => {
     filterTemplates();
@@ -47,8 +55,7 @@ const AdminBookingFormBuilder: React.FC = () => {
   const loadTemplates = async () => {
     try {
       setLoading(true);
-      console.log('🔍 Frontend: Loading templates for user:', user);
-      console.log('🏨 Frontend: User hotelId:', user?.hotelId);
+      console.log('🔍 Frontend: Loading templates for property:', selectedPropertyId);
       
       const params = {
         page: searchParams.get('page') || '1',
@@ -206,6 +213,9 @@ const AdminBookingFormBuilder: React.FC = () => {
 
   return (
     <div className="p-4 sm:p-6">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Configuration', 'Booking Forms']} />
+
       <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-4 mb-6">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Booking Form Builder</h1>

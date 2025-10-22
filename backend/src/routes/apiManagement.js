@@ -3,11 +3,13 @@ import apiManagementController from '../controllers/apiManagementController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { validate, schemas } from '../middleware/validation.js';
 import rateLimit from 'express-rate-limit';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Rate limiting for API management operations
 const apiManagementRateLimit = rateLimit({

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { api } from '../../services/api';
 import { toast } from 'react-hot-toast';
 import UserManagement from '../../components/user/UserManagement';
@@ -20,6 +22,7 @@ interface Guest {
 
 const AdminGuestManagement: React.FC = () => {
   const { user } = useAuth();
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -27,13 +30,21 @@ const AdminGuestManagement: React.FC = () => {
   const [showUserManagement, setShowUserManagement] = useState(false);
 
   useEffect(() => {
-    fetchGuests();
-  }, []);
+    if (selectedPropertyId) {
+      fetchGuests();
+    }
+  }, [selectedPropertyId]);
 
   const fetchGuests = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/admin/users?role=guest&limit=100');
+      const response = await api.get('/admin/users', {
+        params: {
+          role: 'guest',
+          limit: 100,
+          propertyId: selectedPropertyId
+        }
+      });
       const guestData = response.data.data.users || [];
       setGuests(guestData);
     } catch (error: any) {
@@ -58,6 +69,17 @@ const AdminGuestManagement: React.FC = () => {
     fetchGuests(); // Refresh the list
   };
 
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['Guests', 'Guest Management']} />
+        <div className="mt-8 text-center">
+          <p className="text-gray-500">Please select a property to view guest management</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -68,6 +90,9 @@ const AdminGuestManagement: React.FC = () => {
 
   return (
     <div className="w-full max-w-7xl mx-auto space-y-6">
+      {/* Breadcrumb */}
+      <PropertyBreadcrumb items={['Guests', 'Guest Management']} />
+
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>

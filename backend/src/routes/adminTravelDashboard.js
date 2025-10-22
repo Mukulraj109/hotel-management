@@ -13,14 +13,19 @@ import {
   createComprehensiveExport
 } from '../controllers/adminTravelDashboardController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
+
+console.log('🚀 [TRAVEL DASHBOARD ROUTES] Loading with FRONTDESK permission enabled');
 
 // Apply authentication to all routes
 router.use(authenticate);
 
-// Apply authorization - only admin, manager, and staff can access travel dashboard
-router.use(authorize('admin', 'manager', 'staff'));
+// Apply authorization - admin, manager, staff, and frontdesk can access travel dashboard
+console.log('✅ [TRAVEL DASHBOARD ROUTES] Setting authorize middleware: admin, manager, staff, frontdesk');
+router.use(authorize('admin', 'manager', 'staff', 'frontdesk'));
+router.use(ensurePropertyAccess);
 
 // Travel dashboard routes
 router.get('/', getTravelDashboardOverview);

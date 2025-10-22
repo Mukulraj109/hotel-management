@@ -2,6 +2,7 @@ import express from 'express';
 import ExtraPersonCharge from '../models/ExtraPersonCharge.js';
 import extraPersonPricingEngine from '../services/extraPersonPricingEngine.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 
@@ -23,6 +24,7 @@ const router = express.Router();
  */
 router.get('/rules',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
@@ -109,6 +111,7 @@ router.get('/rules',
  */
 router.post('/rules',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin']),
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
@@ -173,6 +176,7 @@ router.post('/rules',
  */
 router.put('/rules/:id',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin']),
   catchAsync(async (req, res) => {
     const { id } = req.params;
@@ -272,6 +276,7 @@ router.put('/rules/:id',
  */
 router.post('/calculate',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
@@ -380,6 +385,7 @@ router.post('/calculate',
  */
 router.post('/preview',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'staff']),
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
@@ -420,6 +426,7 @@ router.post('/preview',
  */
 router.get('/strategies',
   authenticate,
+  ensurePropertyAccess,
   authorize(['admin']),
   catchAsync(async (req, res) => {
     const strategies = [

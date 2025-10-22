@@ -27,6 +27,7 @@ import {
   getMultiBookingAnalytics
 } from '../controllers/multiBookingController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -135,6 +136,7 @@ router.get('/validate-code/:code', validateAgentCode);
 
 // Apply authentication to all other routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // Travel agent specific routes
 router.get('/me', getMyTravelAgentProfile);
@@ -148,12 +150,12 @@ router.post('/',
 );
 
 router.get('/',
-  authorize('admin', 'manager', 'staff'),
+  authorize('admin', 'manager', 'staff', 'frontdesk'),
   getAllTravelAgents
 );
 
 router.get('/:id',
-  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
   getTravelAgentById
 );
 
@@ -170,7 +172,7 @@ router.patch('/:id/status',
 );
 
 router.get('/:id/performance',
-  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
   getTravelAgentPerformance
 );
 
@@ -204,25 +206,25 @@ router.post('/multi-booking',
 );
 
 router.get('/multi-booking',
-  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
   getAgentMultiBookings
 );
 
 router.get('/multi-booking/analytics',
-  authorize('admin', 'manager', 'staff'),
+  authorize('admin', 'manager', 'staff', 'frontdesk'),
   getMultiBookingAnalytics
 );
 
 router.post('/multi-booking/calculate-pricing',
-  authorize('admin', 'manager', 'travel_agent'),
+  authorize('admin', 'manager', 'frontdesk', 'travel_agent'),
   (req, res, next) => {
     // Custom validation for bulk pricing calculation
     const { error } = schemas.calculateBulkPricing.validate(req.body);
-    
+
     if (error) {
       // For travel agents, don't require travelAgentId in request body
       if (req.user.role === 'travel_agent') {
-        const filteredErrors = error.details.filter(detail => 
+        const filteredErrors = error.details.filter(detail =>
           !detail.path.includes('travelAgentId')
         );
         if (filteredErrors.length > 0) {
@@ -235,14 +237,14 @@ router.post('/multi-booking/calculate-pricing',
         return next(new ApplicationError(message, 400));
       }
     }
-    
+
     next();
   },
   calculateBulkPricing
 );
 
 router.get('/multi-booking/:id',
-  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
   getMultiBookingById
 );
 
@@ -260,39 +262,39 @@ router.post('/multi-booking/:id/rollback',
 
 // Export routes
 router.post('/export/bookings',
-  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
   exportBookings
 );
 
 router.post('/export/commission-report',
-  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
   generateCommissionReport
 );
 
 router.post('/export/batch',
-  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
   createBatchExport
 );
 
 // Analytics routes
 router.get('/analytics/trends',
-  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
   getBookingTrends
 );
 
 router.get('/analytics/forecast',
-  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
   getRevenueForecast
 );
 
 router.get('/analytics/performance',
-  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
   getPerformanceMetrics
 );
 
 // Download route
 router.get('/download/:filename',
-  authorize('admin', 'manager', 'staff', 'travel_agent'),
+  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
   downloadFile
 );
 

@@ -8,6 +8,7 @@ import {
   analyzeCustomerJourney
 } from '../controllers/segmentationController.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import authorize from '../middleware/authorize.js';
 import { param, query } from 'express-validator';
 import { validate } from '../middleware/validation.js';
@@ -15,6 +16,7 @@ import { validate } from '../middleware/validation.js';
 const router = express.Router();
 
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 const segmentIdValidation = [
   param('segmentId')

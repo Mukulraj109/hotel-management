@@ -1,6 +1,7 @@
 import express from 'express';
 import roomBlockController from '../controllers/roomBlockController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { body } from 'express-validator';
 
 const router = express.Router();
@@ -44,52 +45,60 @@ const validateRoomBlock = [
 ];
 
 // Routes
-router.post('/', 
-  authenticate, 
-  authorize(['admin', 'staff']), 
-  validateRoomBlock, 
+router.post('/',
+  authenticate,
+  ensurePropertyAccess,
+  authorize(['admin', 'staff']),
+  validateRoomBlock,
   roomBlockController.createRoomBlock
 );
 
-router.get('/', 
-  authenticate, 
-  authorize(['admin', 'staff']), 
+router.get('/',
+  authenticate,
+  ensurePropertyAccess,
+  authorize(['admin', 'staff']),
   roomBlockController.getRoomBlocks
 );
 
-router.get('/stats', 
-  authenticate, 
-  authorize(['admin', 'staff']), 
+router.get('/stats',
+  authenticate,
+  ensurePropertyAccess,
+  authorize(['admin', 'staff']),
   roomBlockController.getRoomBlockStats
 );
 
-router.get('/:id', 
-  authenticate, 
-  authorize(['admin', 'staff']), 
+router.get('/:id',
+  authenticate,
+  ensurePropertyAccess,
+  authorize(['admin', 'staff']),
   roomBlockController.getRoomBlock
 );
 
-router.put('/:id', 
-  authenticate, 
-  authorize(['admin', 'staff']), 
+router.put('/:id',
+  authenticate,
+  ensurePropertyAccess,
+  authorize(['admin', 'staff']),
   roomBlockController.updateRoomBlock
 );
 
-router.post('/:id/rooms/:roomId/release', 
-  authenticate, 
-  authorize(['admin', 'staff']), 
+router.post('/:id/rooms/:roomId/release',
+  authenticate,
+  ensurePropertyAccess,
+  authorize(['admin', 'staff']),
   roomBlockController.releaseRoom
 );
 
-router.post('/:id/rooms/:roomId/book', 
-  authenticate, 
-  authorize(['admin', 'staff']), 
+router.post('/:id/rooms/:roomId/book',
+  authenticate,
+  ensurePropertyAccess,
+  authorize(['admin', 'staff']),
   roomBlockController.bookRoom
 );
 
-router.post('/:id/notes', 
-  authenticate, 
-  authorize(['admin', 'staff']), 
+router.post('/:id/notes',
+  authenticate,
+  ensurePropertyAccess,
+  authorize(['admin', 'staff']),
   roomBlockController.addNote
 );
 

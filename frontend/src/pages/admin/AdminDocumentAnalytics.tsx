@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import {
   FileText,
   TrendingUp,
@@ -137,19 +139,22 @@ const staffDocumentCategories = {
 
 export default function AdminDocumentAnalytics() {
   const { user } = useAuth();
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | '90d' | '1y'>('30d');
   const [selectedUserType, setSelectedUserType] = useState<'all' | 'guest' | 'staff'>('all');
 
   useEffect(() => {
-    fetchAnalytics();
-  }, [selectedPeriod, selectedUserType]);
+    if (selectedPropertyId) {
+      fetchAnalytics();
+    }
+  }, [selectedPropertyId, selectedPeriod, selectedUserType]);
 
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/v1/documents/analytics?period=${selectedPeriod}&userType=${selectedUserType}`, {
+      const response = await fetch(`/api/v1/documents/analytics?period=${selectedPeriod}&userType=${selectedUserType}&propertyId=${selectedPropertyId}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -171,7 +176,7 @@ export default function AdminDocumentAnalytics() {
 
   const exportAnalytics = async () => {
     try {
-      const response = await fetch(`/api/v1/documents/analytics/export?period=${selectedPeriod}&userType=${selectedUserType}`, {
+      const response = await fetch(`/api/v1/documents/analytics/export?period=${selectedPeriod}&userType=${selectedUserType}&propertyId=${selectedPropertyId}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -237,6 +242,17 @@ export default function AdminDocumentAnalytics() {
     return `${days}d ${remainingHours.toFixed(1)}h`;
   };
 
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['Compliance', 'Document Analytics']} />
+        <div className="mt-8 text-center">
+          <p className="text-gray-500">Please select a property to view document analytics</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -260,6 +276,9 @@ export default function AdminDocumentAnalytics() {
 
   return (
     <div className="space-y-6">
+      {/* Breadcrumb */}
+      <PropertyBreadcrumb items={['Compliance', 'Document Analytics']} />
+
       {/* Header */}
       <div className="flex justify-between items-start">
         <div>

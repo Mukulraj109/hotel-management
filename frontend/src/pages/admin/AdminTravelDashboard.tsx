@@ -31,6 +31,8 @@ import { format, subDays, subMonths } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import { travelAgentService, TravelAgent, TravelDashboardOverview } from '../../services/travelAgentService';
 import { toast } from 'sonner';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import AnalyticsChart, { ChartData } from '../../components/analytics/AnalyticsChart';
 import BookingTrendsChart, { BookingTrend } from '../../components/analytics/BookingTrendsChart';
 import CommissionChart, { CommissionData } from '../../components/analytics/CommissionChart';
@@ -44,6 +46,7 @@ import ExportOptionsModal, { ExportOptions } from '../../components/filters/Expo
 
 const AdminTravelDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { selectedPropertyId, viewMode } = useProperty();
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState<TravelDashboardOverview | null>(null);
   const [agents, setAgents] = useState<TravelAgent[]>([]);
@@ -433,6 +436,21 @@ const AdminTravelDashboard: React.FC = () => {
 
   const filteredAgents = applyAgentFilters(agents);
 
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="min-h-screen bg-gray-50 py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <PropertyBreadcrumb items={['Travel Dashboard']} />
+          <div className="text-center py-12">
+            <Users className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Property Selected</h3>
+            <p className="text-gray-500">Please select a property to view travel agent management.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -444,6 +462,7 @@ const AdminTravelDashboard: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-6">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <PropertyBreadcrumb items={['Travel Dashboard']} />
         {/* Header */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="flex justify-between items-center">

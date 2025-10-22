@@ -1,6 +1,7 @@
 import express from 'express';
 import { body, param, query } from 'express-validator';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { createCacheMiddleware, createCacheInvalidationMiddleware } from '../middleware/cache.js';
 import propertyGroupController from '../controllers/propertyGroupController.js';
 
@@ -118,8 +119,9 @@ const syncSettingsValidation = [
  *       500:
  *         description: Server error
  */
-router.post('/', 
-  authenticate, 
+router.post('/',
+  authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'manager']),
   createPropertyGroupValidation,
   propertyGroupInvalidationMiddleware,
@@ -167,8 +169,9 @@ router.post('/',
  *       500:
  *         description: Server error
  */
-router.get('/', 
-  authenticate, 
+router.get('/',
+  authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'manager']),
   query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
   query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
@@ -203,8 +206,9 @@ router.get('/',
  *       500:
  *         description: Server error
  */
-router.get('/:id', 
-  authenticate, 
+router.get('/:id',
+  authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'manager']),
   param('id').isMongoId().withMessage('Invalid property group ID'),
   propertyGroupCacheMiddleware,
@@ -252,8 +256,9 @@ router.get('/:id',
  *       500:
  *         description: Server error
  */
-router.put('/:id', 
-  authenticate, 
+router.put('/:id',
+  authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'manager']),
   updatePropertyGroupValidation,
   propertyGroupInvalidationMiddleware,
@@ -287,8 +292,9 @@ router.put('/:id',
  *       500:
  *         description: Server error
  */
-router.delete('/:id', 
-  authenticate, 
+router.delete('/:id',
+  authenticate,
+  ensurePropertyAccess,
   authorize(['admin']),
   param('id').isMongoId().withMessage('Invalid property group ID'),
   propertyGroupInvalidationMiddleware,
@@ -336,8 +342,9 @@ router.delete('/:id',
  *       500:
  *         description: Server error
  */
-router.post('/:id/properties', 
-  authenticate, 
+router.post('/:id/properties',
+  authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'manager']),
   propertyIdValidation,
   propertyGroupInvalidationMiddleware,
@@ -385,8 +392,9 @@ router.post('/:id/properties',
  *       500:
  *         description: Server error
  */
-router.delete('/:id/properties', 
-  authenticate, 
+router.delete('/:id/properties',
+  authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'manager']),
   propertyIdValidation,
   propertyGroupInvalidationMiddleware,
@@ -428,8 +436,9 @@ router.delete('/:id/properties',
  *       500:
  *         description: Server error
  */
-router.post('/:id/sync', 
-  authenticate, 
+router.post('/:id/sync',
+  authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'manager']),
   syncSettingsValidation,
   propertyGroupInvalidationMiddleware,
@@ -467,8 +476,9 @@ router.post('/:id/sync',
  *       500:
  *         description: Server error
  */
-router.get('/:id/dashboard', 
-  authenticate, 
+router.get('/:id/dashboard',
+  authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'manager']),
   param('id').isMongoId().withMessage('Invalid property group ID'),
   query('period').optional().matches(/^\d+d$/).withMessage('Period must be in format: 7d, 30d, etc.'),
@@ -513,8 +523,9 @@ router.get('/:id/dashboard',
  *       500:
  *         description: Server error
  */
-router.get('/:id/audit-log', 
-  authenticate, 
+router.get('/:id/audit-log',
+  authenticate,
+  ensurePropertyAccess,
   authorize(['admin', 'manager']),
   param('id').isMongoId().withMessage('Invalid property group ID'),
   query('page').optional().isInt({ min: 1 }),

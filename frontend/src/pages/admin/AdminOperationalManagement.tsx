@@ -14,6 +14,8 @@ import CounterManager from '../../components/operational/CounterManager';
 import ArrivalDepartureManager from '../../components/operational/ArrivalDepartureManager';
 import LostFoundManager from '../../components/operational/LostFoundManager';
 import OperationalAnalytics from '../../components/operational/OperationalAnalytics';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface OverviewData {
   summary: {
@@ -27,20 +29,27 @@ interface OverviewData {
 }
 
 const AdminOperationalManagement: React.FC = () => {
+  const { selectedPropertyId, viewMode } = useProperty();
   const [currentTab, setCurrentTab] = useState(0);
   const [overviewData, setOverviewData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchOverviewData();
-  }, []);
+    if (selectedPropertyId || viewMode === 'portfolio') {
+      fetchOverviewData();
+    }
+  }, [selectedPropertyId]);
 
   const fetchOverviewData = async () => {
+    if (!selectedPropertyId && viewMode === 'single') return;
+
     try {
       setLoading(true);
-      // const response = await api.get('/operational-management/overview');
+      // const response = await api.get('/operational-management/overview', {
+      //   params: { propertyId: selectedPropertyId }
+      // });
       // setOverviewData(response.data.overview);
-      
+
       // Mock data for demonstration
       setOverviewData({
         summary: {
@@ -94,8 +103,24 @@ const AdminOperationalManagement: React.FC = () => {
     </Card>
   );
 
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <Box sx={{ p: 3 }}>
+        <PropertyBreadcrumb items={['Operational Management']} />
+        <Box display="flex" flexDirection="column" alignItems="center" justifyContent="center" minHeight="400px">
+          <Business sx={{ fontSize: 64, color: 'text.disabled', mb: 2 }} />
+          <Typography variant="h6" color="text.secondary">No Property Selected</Typography>
+          <Typography variant="body2" color="text.disabled">
+            Please select a property to view operational management.
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ p: 3 }}>
+      <PropertyBreadcrumb items={['Operational Management']} />
       <Typography variant="h4" component="h1" gutterBottom>
         Operational Management
       </Typography>

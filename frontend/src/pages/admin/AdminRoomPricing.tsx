@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../context/AuthContext';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { api } from '../../services/api';
 import { toast } from 'react-hot-toast';
 import {
@@ -48,7 +49,7 @@ interface PriceHistory {
 }
 
 const AdminRoomPricing: React.FC = () => {
-  const { user } = useAuth();
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,17 +73,23 @@ const AdminRoomPricing: React.FC = () => {
     maxPrice: ''
   });
 
+  // Early return if no property selected in single mode
+  if (!selectedPropertyId && viewMode === 'single') {
+    return <div className="p-6">Please select a property</div>;
+  }
+
   useEffect(() => {
-    fetchRooms();
-    fetchRoomTypes();
-  }, []);
+    if (selectedPropertyId) {
+      fetchRooms();
+      fetchRoomTypes();
+    }
+  }, [selectedPropertyId]);
 
   const fetchRooms = async () => {
     try {
       setLoading(true);
-      const hotelId = user?.hotelId || '68cd01414419c17b5f6b4c12';
       // Request more rooms - set limit to 100 to show all rooms for pricing management
-      const response = await api.get(`/rooms?hotelId=${hotelId}&limit=100`);
+      const response = await api.get(`/rooms?hotelId=${selectedPropertyId}&limit=100`);
       // The API returns { data: { rooms: [...], pagination: {...} } }
       const roomsData = response.data.data?.rooms || [];
 
@@ -107,8 +114,7 @@ const AdminRoomPricing: React.FC = () => {
 
   const fetchRoomTypes = async () => {
     try {
-      const hotelId = user?.hotelId || '68cd01414419c17b5f6b4c12';
-      const response = await api.get(`/room-types/hotel/${hotelId}`);
+      const response = await api.get(`/room-types/hotel/${selectedPropertyId}`);
       // The API returns { success: true, data: [...] }
       const roomTypesData = response.data.data || [];
       setRoomTypes(Array.isArray(roomTypesData) ? roomTypesData : []);
@@ -287,6 +293,9 @@ const AdminRoomPricing: React.FC = () => {
 
   return (
     <div className="w-full max-w-7xl mx-auto space-y-6">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Configuration', 'Room Pricing']} />
+
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>

@@ -1,6 +1,7 @@
 import express from 'express';
 import enhancedBookingController from '../controllers/enhancedBookingController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 
@@ -51,7 +52,7 @@ const router = express.Router();
  *       201:
  *         description: Booking created successfully
  */
-router.post('/', authenticate, async (req, res) => {
+router.post('/', authenticate, ensurePropertyAccess, async (req, res) => {
   await enhancedBookingController.createBooking(req, res);
 });
 
@@ -110,7 +111,7 @@ router.post('/', authenticate, async (req, res) => {
  *       200:
  *         description: List of enhanced bookings
  */
-router.get('/', authenticate, async (req, res) => {
+router.get('/', authenticate, ensurePropertyAccess, async (req, res) => {
   await enhancedBookingController.getBookings(req, res);
 });
 
@@ -133,7 +134,7 @@ router.get('/', authenticate, async (req, res) => {
  *       200:
  *         description: Booking updated successfully
  */
-router.put('/:id', authenticate, async (req, res) => {
+router.put('/:id', authenticate, ensurePropertyAccess, async (req, res) => {
   await enhancedBookingController.updateBooking(req, res);
 });
 
@@ -169,7 +170,7 @@ router.put('/:id', authenticate, async (req, res) => {
  *       200:
  *         description: Booking cancelled successfully
  */
-router.post('/:id/cancel', authenticate, async (req, res) => {
+router.post('/:id/cancel', authenticate, ensurePropertyAccess, async (req, res) => {
   await enhancedBookingController.cancelBooking(req, res);
 });
 
@@ -209,7 +210,7 @@ router.post('/:id/cancel', authenticate, async (req, res) => {
  *       200:
  *         description: Booking analytics data
  */
-router.get('/analytics', authenticate, async (req, res) => {
+router.get('/analytics', authenticate, ensurePropertyAccess, async (req, res) => {
   await enhancedBookingController.getBookingAnalytics(req, res);
 });
 
@@ -232,7 +233,7 @@ router.get('/analytics', authenticate, async (req, res) => {
  *       200:
  *         description: Booking history and modifications
  */
-router.get('/:id/history', authenticate, async (req, res) => {
+router.get('/:id/history', authenticate, ensurePropertyAccess, async (req, res) => {
   await enhancedBookingController.getBookingHistory(req, res);
 });
 
@@ -265,7 +266,7 @@ router.get('/:id/history', authenticate, async (req, res) => {
  *       200:
  *         description: Sync results
  */
-router.post('/:id/sync', authenticate, async (req, res) => {
+router.post('/:id/sync', authenticate, ensurePropertyAccess, async (req, res) => {
   await enhancedBookingController.syncBookingWithChannels(req, res);
 });
 
@@ -309,7 +310,7 @@ router.post('/:id/sync', authenticate, async (req, res) => {
  *       200:
  *         description: Channel bookings data
  */
-router.get('/channels', authenticate, async (req, res) => {
+router.get('/channels', authenticate, ensurePropertyAccess, async (req, res) => {
   await enhancedBookingController.getChannelBookings(req, res);
 });
 
@@ -348,7 +349,7 @@ router.get('/channels', authenticate, async (req, res) => {
  *       200:
  *         description: Modification handled successfully
  */
-router.post('/channel-modification', authenticate, async (req, res) => {
+router.post('/channel-modification', authenticate, ensurePropertyAccess, async (req, res) => {
   await enhancedBookingController.handleChannelModification(req, res);
 });
 
@@ -376,7 +377,7 @@ router.post('/channel-modification', authenticate, async (req, res) => {
  *       200:
  *         description: Booking dashboard data
  */
-router.get('/dashboard', authenticate, async (req, res) => {
+router.get('/dashboard', authenticate, ensurePropertyAccess, async (req, res) => {
   await enhancedBookingController.getBookingDashboard(req, res);
 });
 
@@ -431,7 +432,7 @@ router.get('/dashboard', authenticate, async (req, res) => {
  *       404:
  *         description: Booking not found
  */
-router.post('/:id/adjust-price', authenticate, authorize(['admin', 'manager', 'staff']), async (req, res) => {
+router.post('/:id/adjust-price', authenticate, ensurePropertyAccess, authorize(['admin', 'manager', 'staff']), async (req, res) => {
   await enhancedBookingController.adjustBookingPrice(req, res);
 });
 
@@ -478,7 +479,7 @@ router.post('/:id/adjust-price', authenticate, authorize(['admin', 'manager', 's
  *       404:
  *         description: Booking or adjustment not found
  */
-router.post('/:id/adjustments/:adjustmentId/reverse', authenticate, authorize(['admin', 'manager']), async (req, res) => {
+router.post('/:id/adjustments/:adjustmentId/reverse', authenticate, ensurePropertyAccess, authorize(['admin', 'manager']), async (req, res) => {
   await enhancedBookingController.reversePriceAdjustment(req, res);
 });
 
@@ -505,7 +506,7 @@ router.post('/:id/adjustments/:adjustmentId/reverse', authenticate, authorize(['
  *       404:
  *         description: Booking not found
  */
-router.get('/:id/price-history', authenticate, async (req, res) => {
+router.get('/:id/price-history', authenticate, ensurePropertyAccess, async (req, res) => {
   await enhancedBookingController.getPriceAdjustmentHistory(req, res);
 });
 

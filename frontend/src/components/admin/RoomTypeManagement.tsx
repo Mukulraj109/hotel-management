@@ -21,12 +21,17 @@ import { Badge } from '../ui/Badge';
 import { Select } from '../ui/Select';
 import { roomTypeService, type RoomType, type CreateRoomTypeData } from '../../services/roomTypeService';
 import { otaIntegrationService } from '../../services/otaIntegrationService';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
+import { useProperty } from '../../context/PropertyContext';
+import toast from 'react-hot-toast';
 
 interface RoomTypeManagementProps {
   hotelId: string;
+  viewOnly?: boolean;
 }
 
-const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
+const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOnly = false }) => {
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +40,28 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
   const [selectedRoomType, setSelectedRoomType] = useState<RoomType | null>(null);
   const [formData, setFormData] = useState<Partial<CreateRoomTypeData>>({});
   const [migrationStatus, setMigrationStatus] = useState<any>(null);
+
+  // Multi-property support
+  const { selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
 
   useEffect(() => {
     fetchRoomTypes();
@@ -77,14 +104,37 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
     }
 
     try {
-      const newRoomType = await roomTypeService.createRoomType({
+      const roomTypeData = {
         ...formData,
         hotelId,
         maxOccupancy: formData.maxOccupancy || 2,
         basePrice: Number(formData.basePrice),
         totalRooms: Number(formData.totalRooms)
-      } as CreateRoomTypeData);
-      
+      };
+
+      // If multi-property update, use applySettings
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: roomTypeData,
+          settingType: 'room_types',
+        });
+
+        if (!result) return; // Confirmation dialog shown
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`Room type created successfully${
+          applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
+        }`);
+        setApplyToScope('single');
+      } else {
+        // Single property update
+        const newRoomType = await roomTypeService.createRoomType(roomTypeData as CreateRoomTypeData);
+        toast.success('Room type created successfully');
+      }
+
       // Refresh the room types data to get updated statistics
       await fetchRoomTypes();
       setShowCreateModal(false);
@@ -92,6 +142,7 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
       setError(null);
     } catch (err: any) {
       setError(err.message || 'Failed to create room type');
+      toast.error(err.message || 'Failed to create room type');
     }
   };
 
@@ -102,16 +153,42 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
     }
 
     try {
-      const updatedRoomType = await roomTypeService.updateRoomType(
-        selectedRoomType._id,
-        {
-          ...formData,
-          basePrice: Number(formData.basePrice),
-          maxOccupancy: Number(formData.maxOccupancy),
-          totalRooms: Number(formData.totalRooms)
-        }
-      );
-      
+      const updateData = {
+        ...formData,
+        basePrice: Number(formData.basePrice),
+        maxOccupancy: Number(formData.maxOccupancy),
+        totalRooms: Number(formData.totalRooms)
+      };
+
+      // If multi-property update, use applySettings
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: {
+            roomTypeId: selectedRoomType._id,
+            ...updateData
+          },
+          settingType: 'room_types_update',
+        });
+
+        if (!result) return; // Confirmation dialog shown
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`Room type updated successfully${
+          applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
+        }`);
+        setApplyToScope('single');
+      } else {
+        // Single property update
+        const updatedRoomType = await roomTypeService.updateRoomType(
+          selectedRoomType._id,
+          updateData
+        );
+        toast.success('Room type updated successfully');
+      }
+
       // Refresh the room types data to get updated statistics
       await fetchRoomTypes();
       setShowEditModal(false);
@@ -120,6 +197,20 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
       setError(null);
     } catch (err: any) {
       setError(err.message || 'Failed to update room type');
+      toast.error(err.message || 'Failed to update room type');
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (pendingUpdate) {
+      const result = await confirmBulkUpdate();
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        toast.success(`Settings updated for ${result.propertiesUpdated} properties`);
+        setApplyToScope('single');
+        await fetchRoomTypes();
+      }
     }
   };
 
@@ -195,12 +286,55 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
             <RefreshCw className="w-4 h-4 mr-2" />
             Refresh
           </Button>
-          <Button onClick={openCreateModal} className="bg-blue-600 hover:bg-blue-700">
-            <Plus className="w-4 h-4 mr-2" />
-            Add Room Type
-          </Button>
+          {!viewOnly && (
+            <Button onClick={openCreateModal} className="bg-blue-600 hover:bg-blue-700">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Room Type
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* Success Message */}
+      {showSuccess && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 px-4 py-3 rounded-lg">
+          <p className="font-medium">Room type settings updated successfully!</p>
+          {applyToScope !== 'single' && affectedCount > 1 && (
+            <p className="text-sm mt-1">Changes applied to {affectedCount} properties</p>
+          )}
+        </div>
+      )}
+
+      {/* Error Message */}
+      {updateError && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 px-4 py-3 rounded-lg">
+          <p className="font-medium">Error: {updateError}</p>
+        </div>
+      )}
+
+      {/* Inheritance Status Card */}
+      {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+        <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+          <CardContent className="p-4">
+            <div className="flex items-start">
+              <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-3 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                  This property is part of: {inheritanceStatus.groupName}
+                </p>
+                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                  Room type settings are inherited from the property group.
+                  {inheritanceStatus.lastSyncedAt && (
+                    <span className="ml-1">
+                      Last synced: {new Date(inheritanceStatus.lastSyncedAt).toLocaleString()}
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Error Display */}
       {error && (
@@ -360,25 +494,27 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
                 )}
 
                 {/* Actions */}
-                <div className="flex justify-between pt-4 border-t border-gray-200">
-                  <Button
-                    onClick={() => openEditModal(roomType)}
-                    variant="outline"
-                    size="sm"
-                  >
-                    <Edit className="w-4 h-4 mr-2" />
-                    Edit
-                  </Button>
-                  <Button
-                    onClick={() => handleDelete(roomType)}
-                    variant="outline"
-                    size="sm"
-                    className="text-red-600 border-red-200 hover:bg-red-50"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete
-                  </Button>
-                </div>
+                {!viewOnly && (
+                  <div className="flex justify-between pt-4 border-t border-gray-200">
+                    <Button
+                      onClick={() => openEditModal(roomType)}
+                      variant="outline"
+                      size="sm"
+                    >
+                      <Edit className="w-4 h-4 mr-2" />
+                      Edit
+                    </Button>
+                    <Button
+                      onClick={() => handleDelete(roomType)}
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600 border-red-200 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete
+                    </Button>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -392,12 +528,17 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
             <Bed className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No Room Types Found</h3>
             <p className="text-gray-600 mb-4">
-              Create your first room type to start managing your inventory
+              {viewOnly
+                ? 'No room types have been configured yet. Contact an administrator.'
+                : 'Create your first room type to start managing your inventory'
+              }
             </p>
-            <Button onClick={openCreateModal} className="bg-blue-600 hover:bg-blue-700">
-              <Plus className="w-4 h-4 mr-2" />
-              Create Room Type
-            </Button>
+            {!viewOnly && (
+              <Button onClick={openCreateModal} className="bg-blue-600 hover:bg-blue-700">
+                <Plus className="w-4 h-4 mr-2" />
+                Create Room Type
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -506,6 +647,19 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
             />
           </div>
 
+          {/* Multi-property selector */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <ApplyToSelector
+              value={applyToScope}
+              onChange={setApplyToScope}
+              isInGroup={inheritanceStatus?.hasGroup || false}
+              groupName={inheritanceStatus?.groupName}
+              totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+              showWarning={true}
+              warningMessage="This room type configuration will be applied to all selected properties. Ensure the room type settings are appropriate for all properties."
+            />
+          </div>
+
           <div className="flex justify-end gap-3 pt-4">
             <Button
               onClick={() => setShowCreateModal(false)}
@@ -607,6 +761,19 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
             />
           </div>
 
+          {/* Multi-property selector */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <ApplyToSelector
+              value={applyToScope}
+              onChange={setApplyToScope}
+              isInGroup={inheritanceStatus?.hasGroup || false}
+              groupName={inheritanceStatus?.groupName}
+              totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+              showWarning={true}
+              warningMessage="This room type update will be applied to all selected properties. Ensure the changes are appropriate for all properties."
+            />
+          </div>
+
           <div className="flex justify-end gap-3 pt-4">
             <Button
               onClick={() => setShowEditModal(false)}
@@ -623,6 +790,17 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId }) => {
           </div>
         </div>
       </Modal>
+
+      {/* Confirmation Dialog */}
+      <ApplyToConfirmation
+        isOpen={showConfirmation}
+        scope={applyToScope}
+        affectedCount={affectedCount}
+        settingName="Room Type Configuration"
+        groupName={inheritanceStatus?.groupName}
+        onConfirm={handleConfirm}
+        onCancel={cancelBulkUpdate}
+      />
     </div>
   );
 };

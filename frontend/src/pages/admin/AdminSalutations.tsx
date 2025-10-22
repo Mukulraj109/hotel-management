@@ -1,16 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  PlusIcon, 
-  PencilIcon, 
-  TrashIcon, 
+import {
+  PlusIcon,
+  PencilIcon,
+  TrashIcon,
   EyeIcon,
   FunnelIcon,
   ArrowPathIcon,
-  ChartBarIcon
+  ChartBarIcon,
+  ExclamationCircleIcon
 } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
 import SalutationForm from '../../components/admin/SalutationForm';
 import SalutationStats from '../../components/admin/SalutationStats';
+import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../components/settings/ApplyToSelector';
+import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
+import { useProperty } from '../../context/PropertyContext';
 
 interface Salutation {
   _id: string;
@@ -46,6 +50,28 @@ const AdminSalutations: React.FC = () => {
     isActive: '',
     search: ''
   });
+
+  // Multi-property support
+  const { selectedProperty, selectedPropertyId } = useProperty();
+  const [applyToScope, setApplyToScope] = useState<ApplyToScope>('single');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  const {
+    useInheritanceStatus,
+    applySettings,
+    isUpdating,
+    updateError,
+    showConfirmation,
+    pendingUpdate,
+    confirmBulkUpdate,
+    cancelBulkUpdate,
+  } = useSettingsInheritance();
+
+  const { data: inheritanceStatus } = useInheritanceStatus(selectedPropertyId);
+  const affectedCount = useAffectedPropertiesCount(
+    applyToScope,
+    inheritanceStatus?.groupPropertyCount || 0
+  );
 
   const categories = [
     { value: '', label: 'All Categories' },
@@ -129,19 +155,35 @@ const AdminSalutations: React.FC = () => {
     }
 
     try {
-      const response = await fetch(`/api/salutations/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: { id, action: 'delete' },
+          settingType: 'salutations',
+        });
+
+        if (!result) return;
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        setApplyToScope('single');
+        fetchSalutations();
+      } else {
+        const response = await fetch(`/api/salutations/${id}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to delete salutation');
         }
-      });
 
-      if (!response.ok) {
-        throw new Error('Failed to delete salutation');
+        toast.success('Salutation deleted successfully');
+        fetchSalutations();
       }
-
-      toast.success('Salutation deleted successfully');
-      fetchSalutations();
     } catch (error) {
       console.error('Error deleting salutation:', error);
       toast.error('Failed to delete salutation');
@@ -150,22 +192,50 @@ const AdminSalutations: React.FC = () => {
 
   const handleToggleStatus = async (id: string, currentStatus: boolean) => {
     try {
-      const response = await fetch(`/api/salutations/${id}/toggle-status`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+      if (applyToScope !== 'single') {
+        const result = await applySettings({
+          scope: applyToScope,
+          propertyId: selectedPropertyId,
+          settingUpdates: { id, currentStatus },
+          settingType: 'salutations',
+        });
+
+        if (!result) return;
+
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        setApplyToScope('single');
+        fetchSalutations();
+      } else {
+        const response = await fetch(`/api/salutations/${id}/toggle-status`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to toggle salutation status');
         }
-      });
 
-      if (!response.ok) {
-        throw new Error('Failed to toggle salutation status');
+        toast.success(`Salutation ${currentStatus ? 'deactivated' : 'activated'} successfully`);
+        fetchSalutations();
       }
-
-      toast.success(`Salutation ${currentStatus ? 'deactivated' : 'activated'} successfully`);
-      fetchSalutations();
     } catch (error) {
       console.error('Error toggling salutation status:', error);
       toast.error('Failed to toggle salutation status');
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (pendingUpdate) {
+      const result = await confirmBulkUpdate();
+      if (result) {
+        setShowSuccess(true);
+        setTimeout(() => setShowSuccess(false), 3000);
+        setApplyToScope('single');
+        fetchSalutations();
+      }
     }
   };
 
@@ -247,6 +317,45 @@ const AdminSalutations: React.FC = () => {
 
   return (
     <div className="p-6">
+      {/* Success Message */}
+      {showSuccess && (
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 px-4 py-3 rounded-lg mb-4">
+          <p className="font-medium">Settings updated successfully!</p>
+          {applyToScope !== 'single' && affectedCount > 1 && (
+            <p className="text-sm mt-1">Changes applied to {affectedCount} properties</p>
+          )}
+        </div>
+      )}
+
+      {/* Error Message */}
+      {updateError && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 px-4 py-3 rounded-lg mb-4">
+          <p className="font-medium">Error: {updateError}</p>
+        </div>
+      )}
+
+      {/* Inheritance Status */}
+      {inheritanceStatus?.isInheriting && inheritanceStatus?.hasGroup && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
+          <div className="flex items-start">
+            <ExclamationCircleIcon className="w-5 h-5 text-blue-600 dark:text-blue-400 mr-3 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                This property is part of: {inheritanceStatus.groupName}
+              </p>
+              <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                Settings are inherited from the property group.
+                {inheritanceStatus.lastSyncedAt && (
+                  <span className="ml-1">
+                    Last synced: {new Date(inheritanceStatus.lastSyncedAt).toLocaleString()}
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mb-6">
         <div className="flex justify-between items-center mb-4">
           <div>
@@ -345,6 +454,19 @@ const AdminSalutations: React.FC = () => {
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Multi-property selector */}
+        <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+          <ApplyToSelector
+            value={applyToScope}
+            onChange={setApplyToScope}
+            isInGroup={inheritanceStatus?.hasGroup || false}
+            groupName={inheritanceStatus?.groupName}
+            totalProperties={inheritanceStatus?.groupPropertyCount || 0}
+            showWarning={true}
+            warningMessage="These salutation options will be applied to all selected properties. Ensure options are culturally appropriate for all properties."
+          />
         </div>
       </div>
 
@@ -457,6 +579,17 @@ const AdminSalutations: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Confirmation Dialog */}
+      <ApplyToConfirmation
+        isOpen={showConfirmation}
+        scope={applyToScope}
+        affectedCount={affectedCount}
+        settingName="Salutation Options"
+        groupName={inheritanceStatus?.groupName}
+        onConfirm={handleConfirm}
+        onCancel={cancelBulkUpdate}
+      />
     </div>
   );
 };

@@ -2,6 +2,7 @@ import express from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import propertyRoomService from '../services/propertyRoomService.js';
 import { authenticate as protect, authorize as restrictTo } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
@@ -29,6 +30,7 @@ const router = express.Router();
  */
 router.get('/property-groups',
   protect,
+  ensurePropertyAccess,
   async (req, res) => {
     try {
       const propertyGroups = await propertyRoomService.getAvailablePropertyGroups(req.user._id);
@@ -98,6 +100,7 @@ router.get('/property-groups',
  */
 router.post('/create-with-rooms',
   protect,
+  ensurePropertyAccess,
   restrictTo('admin', 'staff'),
   [
     body('property.name')
@@ -218,6 +221,7 @@ router.post('/create-with-rooms',
  */
 router.post('/:propertyId/rooms/bulk',
   protect,
+  ensurePropertyAccess,
   restrictTo('admin', 'staff'),
   [
     param('propertyId')
@@ -328,6 +332,7 @@ router.post('/:propertyId/rooms/bulk',
  */
 router.get('/:propertyId/rooms',
   protect,
+  ensurePropertyAccess,
   [
     param('propertyId')
       .isMongoId()
@@ -408,6 +413,7 @@ router.get('/:propertyId/rooms',
  */
 router.get('/:propertyId/rooms/stats',
   protect,
+  ensurePropertyAccess,
   [
     param('propertyId')
       .isMongoId()
@@ -485,6 +491,7 @@ router.get('/:propertyId/rooms/stats',
  */
 router.patch('/:propertyId/rooms/bulk-update',
   protect,
+  ensurePropertyAccess,
   restrictTo('admin', 'staff'),
   [
     param('propertyId')

@@ -79,12 +79,17 @@ const transformHotelToProperty = async (hotel: any) => {
 // Fetch real hotel metrics using the working occupancy endpoint
 const fetchHotelMetrics = async (hotelId: string) => {
   try {
+    console.log(`   🔍 [fetchHotelMetrics] Calling /admin-dashboard/occupancy for hotel ${hotelId}`);
     // Use the same working occupancy endpoint as the room management modal
     const response = await api.get(`/admin-dashboard/occupancy?hotelId=${hotelId}`);
     const data = response.data.data;
 
+    console.log(`   🔍 [fetchHotelMetrics] API Response:`, data);
+
     if (data && data.overallMetrics) {
       const overallMetrics = data.overallMetrics;
+
+      console.log(`   🔍 [fetchHotelMetrics] overallMetrics:`, overallMetrics);
 
       // Calculate occupancy rate
       const totalRooms = overallMetrics.totalRooms || 0;
@@ -92,6 +97,8 @@ const fetchHotelMetrics = async (hotelId: string) => {
       const availableRooms = overallMetrics.availableRooms || 0;
       const outOfOrderRooms = overallMetrics.outOfOrderRooms || 0;
       const maintenanceRooms = overallMetrics.maintenanceRooms || 0;
+
+      console.log(`   🔍 [fetchHotelMetrics] EXTRACTED: totalRooms=${totalRooms}, occupied=${occupiedRooms}, available=${availableRooms}`);
 
       const occupancyRate = totalRooms > 0
         ? Math.round((occupiedRooms / totalRooms) * 100)
@@ -103,44 +110,48 @@ const fetchHotelMetrics = async (hotelId: string) => {
         oooRooms: outOfOrderRooms + maintenanceRooms, // Combine maintenance and out-of-order
         totalRooms: totalRooms,
         occupancyRate: occupancyRate,
-        averageDailyRate: 3500,
-        revenuePerAvailableRoom: Math.floor(3500 * (occupancyRate / 100)),
-        totalRevenue: Math.floor(occupiedRooms * 3500),
+        averageDailyRate: totalRooms > 0 ? 3500 : 0,
+        revenuePerAvailableRoom: totalRooms > 0 ? Math.floor(3500 * (occupancyRate / 100)) : 0,
+        totalRevenue: totalRooms > 0 ? Math.floor(occupiedRooms * 3500) : 0,
         lastMonth: {
-          occupancyRate: Math.max(0, occupancyRate - 5),
-          averageDailyRate: 3200,
-          revenuePerAvailableRoom: Math.floor(3200 * (Math.max(0, occupancyRate - 5) / 100)),
-          totalRevenue: Math.floor(occupiedRooms * 3200)
+          occupancyRate: totalRooms > 0 ? Math.max(0, occupancyRate - 5) : 0,
+          averageDailyRate: totalRooms > 0 ? 3200 : 0,
+          revenuePerAvailableRoom: totalRooms > 0 ? Math.floor(3200 * (Math.max(0, occupancyRate - 5) / 100)) : 0,
+          totalRevenue: totalRooms > 0 ? Math.floor(occupiedRooms * 3200) : 0
         }
       };
 
+      console.log(`   ✅ [fetchHotelMetrics] Returning metrics:`, metrics);
       return metrics;
     }
 
+    console.log(`   ⚠️ [fetchHotelMetrics] No overallMetrics found, trying analytics API fallback...`);
     // Fallback to analytics API if occupancy API fails
     const analyticsResponse = await api.get(`/analytics/hotel/${hotelId}/metrics`);
+    console.log(`   🔍 [fetchHotelMetrics] Analytics API response:`, analyticsResponse.data);
     return analyticsResponse.data.data || {};
   } catch (error) {
-    // Return fallback metrics based on current time to ensure some data shows
-    const now = new Date();
-    const isWeekend = now.getDay() === 0 || now.getDay() === 6;
-    const baseOccupancy = isWeekend ? 75 : 65; // Higher on weekends
-
-    return {
-      occupiedRooms: Math.floor(100 * (baseOccupancy / 100)),
-      availableRooms: Math.floor(100 * ((100 - baseOccupancy) / 100)),
-      oooRooms: 2,
-      occupancyRate: baseOccupancy,
-      averageDailyRate: 3500,
-      revenuePerAvailableRoom: Math.floor(3500 * (baseOccupancy / 100)),
-      totalRevenue: Math.floor(100 * 3500 * (baseOccupancy / 100)),
+    console.error(`   ❌ [fetchHotelMetrics] Error fetching metrics for hotel ${hotelId}:`, error);
+    // Return zero metrics for new properties with no rooms
+    // Don't assume default room counts - let the property be set up first
+    const fallbackMetrics = {
+      occupiedRooms: 0,
+      availableRooms: 0,
+      oooRooms: 0,
+      totalRooms: 0,
+      occupancyRate: 0,
+      averageDailyRate: 0,
+      revenuePerAvailableRoom: 0,
+      totalRevenue: 0,
       lastMonth: {
-        occupancyRate: baseOccupancy - 5,
-        averageDailyRate: 3200,
-        revenuePerAvailableRoom: Math.floor(3200 * ((baseOccupancy - 5) / 100)),
-        totalRevenue: Math.floor(100 * 3200 * ((baseOccupancy - 5) / 100))
+        occupancyRate: 0,
+        averageDailyRate: 0,
+        revenuePerAvailableRoom: 0,
+        totalRevenue: 0
       }
     };
+    console.log(`   🔍 [fetchHotelMetrics] Returning fallback metrics (all zeros):`, fallbackMetrics);
+    return fallbackMetrics;
   }
 };
 
@@ -149,13 +160,22 @@ export const useProperties = () => {
   return useQuery({
     queryKey: QUERY_KEYS.properties,
     queryFn: async () => {
+      console.log('🔍 [useProperties] Fetching hotels from /admin/hotels...');
       const response = await api.get('/admin/hotels');
       const hotels = response.data.data?.hotels || [];
+      console.log(`🔍 [useProperties] Received ${hotels.length} hotels from API`);
 
       // Transform each hotel to property format with real metrics (async)
       const properties = await Promise.all(
-        hotels.map(async (hotel: any) => {
+        hotels.map(async (hotel: any, index: number) => {
+          console.log(`🔍 [useProperties] Processing hotel ${index + 1}/${hotels.length}: "${hotel.name}"`);
+          console.log(`   - hotel._id: ${hotel._id}`);
+          console.log(`   - hotel.roomCount from API: ${hotel.roomCount}`);
+
           const property = await transformHotelToProperty(hotel);
+
+          console.log(`   - property.rooms.total after transform: ${property.rooms.total}`);
+          console.log(`   - property.rooms breakdown: occupied=${property.rooms.occupied}, available=${property.rooms.available}, outOfOrder=${property.rooms.outOfOrder}`);
 
           // Calculate RevPAR based on real data
           property.performance.revpar = (property.performance.occupancyRate / 100) * property.performance.adr;
@@ -165,9 +185,14 @@ export const useProperties = () => {
         })
       );
 
+      const totalRooms = properties.reduce((sum, p) => sum + (p.rooms?.total || 0), 0);
+      console.log(`🔍 [useProperties] TOTAL ROOMS CALCULATED: ${totalRooms}`);
+      console.log('🔍 [useProperties] Properties breakdown:',  properties.map(p => ({ name: p.name, totalRooms: p.rooms.total })));
+
       return properties;
     },
-    staleTime: 3 * 60 * 1000, // 3 minutes
+    staleTime: 0, // Disable cache for debugging
+    cacheTime: 0, // Don't cache at all
   });
 };
 

@@ -4,6 +4,7 @@ import NotificationPreference from '../models/NotificationPreference.js';
 import NotificationTemplate from '../models/NotificationTemplate.js';
 import User from '../models/User.js';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
@@ -13,8 +14,9 @@ import rateLimiter from '../services/rateLimiter.js';
 
 const router = express.Router();
 
-// Apply authentication middleware to all routes
+// Apply authentication and property access middleware to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 // GET /api/v1/notifications - Get user notifications with pagination and filters
 router.get('/', catchAsync(async (req, res, next) => {

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Filter, Download, Eye, Edit, Send, Package, CheckCircle, XCircle, Clock, AlertTriangle, FileText } from 'lucide-react';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface PurchaseOrder {
   _id: string;
@@ -48,6 +50,7 @@ interface POFilters {
 }
 
 const AdminPurchaseOrders: React.FC = () => {
+  const { selectedPropertyId, selectedProperty } = useProperty();
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -88,8 +91,10 @@ const AdminPurchaseOrders: React.FC = () => {
   const priorityOptions = ['low', 'medium', 'high', 'urgent'];
 
   useEffect(() => {
-    fetchPurchaseOrders();
-  }, [currentPage, filters]);
+    if (selectedPropertyId) {
+      fetchPurchaseOrders();
+    }
+  }, [selectedPropertyId, currentPage, filters]);
 
   const fetchPurchaseOrders = async () => {
     try {
@@ -106,7 +111,7 @@ const AdminPurchaseOrders: React.FC = () => {
         ...(filters.endDate && { endDate: filters.endDate })
       });
 
-      const response = await fetch(`/api/v1/purchase-orders?${queryParams}`, {
+      const response = await fetch(`/api/v1/purchase-orders?${queryParams}&hotelId=${selectedPropertyId}`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -238,6 +243,19 @@ const AdminPurchaseOrders: React.FC = () => {
     );
   };
 
+  // Property validation
+  if (!selectedPropertyId) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">🏨</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Property Selected</h2>
+          <p className="text-gray-600">Please select a property from the header to view purchase orders.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -248,6 +266,9 @@ const AdminPurchaseOrders: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Purchase Orders']} />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

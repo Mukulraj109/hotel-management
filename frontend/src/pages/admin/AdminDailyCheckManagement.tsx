@@ -3,9 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { 
-  ClipboardList, 
-  Users, 
+import {
+  ClipboardList,
+  Users,
   Settings,
   Plus,
   UserCheck,
@@ -25,6 +25,8 @@ import { dailyRoutineCheckService } from '../../services/dailyRoutineCheckServic
 import { useRealTime } from '../../services/realTimeService';
 import { TemplateEditModal } from '../../components/admin/TemplateEditModal';
 import toast from 'react-hot-toast';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface Staff {
   _id: string;
@@ -349,6 +351,7 @@ const TemplatesManagement = () => {
 };
 
 export default function AdminDailyCheckManagement() {
+  const { selectedPropertyId, selectedProperty } = useProperty();
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [unassignedRooms, setUnassignedRooms] = useState<Room[]>([]);
@@ -364,15 +367,17 @@ export default function AdminDailyCheckManagement() {
   const { connectionState, connect, disconnect, on, off, isConnected } = useRealTime();
 
   useEffect(() => {
-    fetchData();
-    
+    if (selectedPropertyId) {
+      fetchData();
+    }
+
     // Connect to real-time updates
     connect().catch(console.error);
-    
+
     return () => {
       disconnect();
     };
-  }, []);
+  }, [selectedPropertyId]);
 
   // Set up real-time event listeners
   useEffect(() => {
@@ -409,28 +414,30 @@ export default function AdminDailyCheckManagement() {
   }, [isConnected, on, off]);
 
   const fetchData = async () => {
+    if (!selectedPropertyId) return;
+
     try {
       setLoading(true);
       const [overviewRes, roomsRes, unassignedRes, staffRes] = await Promise.all([
-        fetch('/api/v1/daily-routine-check/admin/overview', {
+        fetch(`/api/v1/daily-routine-check/admin/overview?hotelId=${selectedPropertyId}`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,
             'Content-Type': 'application/json'
           }
         }),
-        fetch('/api/v1/rooms', {
+        fetch(`/api/v1/rooms?hotelId=${selectedPropertyId}`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,
             'Content-Type': 'application/json'
           }
         }),
-        fetch('/api/v1/daily-routine-check/admin/unassigned-rooms', {
+        fetch(`/api/v1/daily-routine-check/admin/unassigned-rooms?hotelId=${selectedPropertyId}`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,
             'Content-Type': 'application/json'
           }
         }),
-        fetch('/api/v1/admin/users?role=staff', {
+        fetch(`/api/v1/admin/users?role=staff&hotelId=${selectedPropertyId}`, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('token')}`,
             'Content-Type': 'application/json'
@@ -527,6 +534,18 @@ export default function AdminDailyCheckManagement() {
     };
   };
 
+  if (!selectedPropertyId) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-6xl mb-4">🏨</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">No Property Selected</h2>
+          <p className="text-gray-600">Please select a property from the header to view daily check management.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -537,6 +556,9 @@ export default function AdminDailyCheckManagement() {
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
+      {/* Breadcrumb */}
+      <PropertyBreadcrumb items={['Daily Check Management']} />
+
       {/* Header */}
       <div className="mb-8 flex items-center justify-between">
         <div>

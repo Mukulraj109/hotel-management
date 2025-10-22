@@ -17,8 +17,20 @@ export const authenticate = catchAsync(async (req, res, next) => {
   // Verify token
   const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-  // Check if user still exists
-  const currentUser = await User.findById(decoded.id).select('+role');
+  // Check if user still exists and populate multi-property fields
+  const currentUser = await User.findById(decoded.id)
+    .select('+role')
+    .populate({
+      path: 'properties',
+      select: 'name address',
+      populate: { path: 'totalRooms' }
+    })
+    .populate({
+      path: 'primaryProperty',
+      select: 'name address',
+      populate: { path: 'totalRooms' }
+    });
+
   if (!currentUser) {
     return next(new ApplicationError('The user belonging to this token does no longer exist.', 401));
   }
@@ -54,7 +66,19 @@ export const optionalAuth = catchAsync(async (req, res, next) => {
   if (token) {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const currentUser = await User.findById(decoded.id).select('+role');
+      const currentUser = await User.findById(decoded.id)
+        .select('+role')
+        .populate({
+          path: 'properties',
+          select: 'name address',
+          populate: { path: 'totalRooms' }
+        })
+        .populate({
+          path: 'primaryProperty',
+          select: 'name address',
+          populate: { path: 'totalRooms' }
+        });
+
       if (currentUser && currentUser.isActive) {
         req.user = currentUser;
       }

@@ -26,6 +26,8 @@ import {
   Warning as WarningIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { centralizedRatesApi } from '../../services/api';
 import PropertyGroupManager from '../../components/admin/PropertyGroupManager';
 import RateDistribution from '../../components/admin/RateDistribution';
@@ -87,6 +89,7 @@ interface CentralizedRate {
 
 const AdminCentralizedRates: React.FC = () => {
   const navigate = useNavigate();
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [currentTab, setCurrentTab] = useState(0);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -94,9 +97,16 @@ const AdminCentralizedRates: React.FC = () => {
   const [conflicts, setConflicts] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
 
+  // Early return if no property selected in single mode
+  if (!selectedPropertyId && viewMode === 'single') {
+    return <Container><Box p={6}>Please select a property</Box></Container>;
+  }
+
   useEffect(() => {
-    loadDashboardData();
-  }, []);
+    if (selectedPropertyId) {
+      loadDashboardData();
+    }
+  }, [selectedPropertyId]);
 
   const loadDashboardData = async () => {
     try {
@@ -165,6 +175,9 @@ const AdminCentralizedRates: React.FC = () => {
 
   return (
     <Container maxWidth="xl" sx={{ py: 3 }}>
+      {/* Property Breadcrumb */}
+      <PropertyBreadcrumb items={['Configuration', 'Centralized Rates']} />
+
       {/* Header */}
       <Box mb={3}>
         <Breadcrumbs aria-label="breadcrumb" sx={{ mb: 2 }}>

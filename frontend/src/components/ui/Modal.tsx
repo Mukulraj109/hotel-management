@@ -5,18 +5,20 @@ import { cn } from '../../utils/cn';
 
 interface ModalProps {
   isOpen: boolean;
-  onClose: () => void;
+  onClose: (() => void) | null;
   title?: string;
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  className?: string;
+  noPadding?: boolean;
 }
 
-export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, size = 'md', className, noPadding = false }: ModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && onClose) onClose();
     };
 
     if (isOpen) {
@@ -40,11 +42,11 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
   };
 
   const modalContent = (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
+    <div className={cn("fixed inset-0 z-50 overflow-y-auto", className)}>
       <div className="flex min-h-full items-center justify-center p-4">
         <div
-          className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
-          onClick={onClose}
+          className="fixed inset-0 bg-black bg-opacity-60 transition-opacity backdrop-blur-sm"
+          onClick={onClose ? onClose : undefined}
         />
         <div
           ref={modalRef}
@@ -56,15 +58,17 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
           {title && (
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-              <button
-                onClick={onClose}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X className="h-6 w-6" />
-              </button>
+              {onClose && (
+                <button
+                  onClick={onClose}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+              )}
             </div>
           )}
-          <div className="p-6">
+          <div className={noPadding ? '' : 'p-6'}>
             {children}
           </div>
         </div>

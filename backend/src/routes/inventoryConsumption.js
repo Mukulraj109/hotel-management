@@ -1,5 +1,6 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import housekeepingInventoryService from '../services/housekeepingInventoryService.js';
 import guestInventoryService from '../services/guestInventoryService.js';
 import InventoryConsumption from '../models/InventoryConsumption.js';
@@ -7,6 +8,10 @@ import InventoryItem from '../models/InventoryItem.js';
 import GuestService from '../models/GuestService.js';
 
 const router = express.Router();
+
+// Apply authentication and property access to all routes
+router.use(authenticate);
+router.use(ensurePropertyAccess);
 
 /**
  * @swagger

@@ -17,6 +17,8 @@ import { toast } from 'react-hot-toast';
 import VIPForm from '../../components/admin/VIPForm';
 import VIPStatistics from '../../components/admin/VIPStatistics';
 import VIPBenefits from '../../components/admin/VIPBenefits';
+import { useProperty } from '../../context/PropertyContext';
+import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 
 interface VIPGuest {
   _id: string;
@@ -65,6 +67,7 @@ interface VIPGuest {
 }
 
 const AdminVIP: React.FC = () => {
+  const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [vipGuests, setVipGuests] = useState<VIPGuest[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -103,17 +106,22 @@ const AdminVIP: React.FC = () => {
   ];
 
   useEffect(() => {
-    fetchVIPGuests();
-  }, [filters, pagination.current]);
+    if (selectedPropertyId || viewMode === 'portfolio') {
+      fetchVIPGuests();
+    }
+  }, [filters, pagination.current, selectedPropertyId]);
 
   const fetchVIPGuests = async () => {
+    if (!selectedPropertyId && viewMode === 'single') return;
+
     try {
       setLoading(true);
       const queryParams = new URLSearchParams();
-      
+
       queryParams.append('page', pagination.current.toString());
       queryParams.append('limit', '20');
-      
+      if (selectedPropertyId) queryParams.append('propertyId', selectedPropertyId);
+
       if (filters.search) queryParams.append('search', filters.search);
       if (filters.status) queryParams.append('status', filters.status);
       if (filters.vipLevel) queryParams.append('vipLevel', filters.vipLevel);
@@ -284,6 +292,19 @@ const AdminVIP: React.FC = () => {
     }).format(amount);
   };
 
+  if (!selectedPropertyId && viewMode === 'single') {
+    return (
+      <div className="p-6">
+        <PropertyBreadcrumb items={['VIP Management']} />
+        <div className="text-center py-12">
+          <CrownIcon className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">No Property Selected</h3>
+          <p className="text-gray-500">Please select a property to view VIP guests.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (showForm) {
     return (
       <VIPForm
@@ -312,6 +333,7 @@ const AdminVIP: React.FC = () => {
 
   return (
     <div className="p-6">
+      <PropertyBreadcrumb items={['VIP Management']} />
       <div className="mb-6">
         <div className="flex justify-between items-center mb-4">
           <div>
