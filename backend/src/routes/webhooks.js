@@ -5,7 +5,7 @@ import Payment from '../models/Payment.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
 /**
  * @swagger
@@ -24,6 +24,11 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
  *         description: Webhook processed successfully
  */
 router.post('/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!stripe) {
+    logger.error('Stripe is not configured. Set STRIPE_SECRET_KEY.');
+    return res.status(503).json({ error: 'Payment processing is not configured' });
+  }
+
   const sig = req.headers['stripe-signature'];
   let event;
 

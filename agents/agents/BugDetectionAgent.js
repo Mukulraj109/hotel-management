@@ -66,8 +66,6 @@ export class BugDetectionAgent extends BaseAgent {
   }
 
   _checkUnhandledAsync(state, content, lines, file) {
-    return; // Global error handler + catchAsync wrapper handles all unhandled async errors
-
     // Find async functions without try/catch
     const asyncFuncRegex = /async\s+(?:function\s+)?(\w+)?\s*\(/g;
     let match;
@@ -124,8 +122,6 @@ export class BugDetectionAgent extends BaseAgent {
   }
 
   _checkNullSafety(state, content, lines, file) {
-    return; // Global error handler catches null access as 500 — addressed systemically
-
     // Accessing properties on potentially null DB queries without checks
     const dangerousPatterns = [
       {
@@ -187,7 +183,6 @@ export class BugDetectionAgent extends BaseAgent {
   }
 
   _checkPromiseAntiPatterns(state, content, lines, file) {
-    return; // catchAsync/asyncHandler at route level handles all promise anti-patterns
     const forgottenAwait = /(?:const|let|var)\s+\w+\s*=\s*(?!await)\s*\w+\.(find|findOne|findById|create|update|delete|save|remove|aggregate)\s*\(/g;
     let match;
     while ((match = forgottenAwait.exec(content))) {
@@ -272,8 +267,6 @@ export class BugDetectionAgent extends BaseAgent {
   }
 
   _checkUnreachableCode(state, content, lines, file) {
-    return; // Too many false positives with try/catch patterns
-
     // Only flag obvious unreachable code — skip try/catch patterns which are valid
     // This check has high false-positive rate so we keep it very conservative
     for (let i = 0; i < lines.length - 1; i++) {
@@ -316,8 +309,6 @@ export class BugDetectionAgent extends BaseAgent {
   }
 
   _checkMongoosePatterns(state, content, lines, file) {
-    return; // Deprecated method warnings are noise — mongoSanitize middleware handles safety, skip entirely
-
     // Using .save() without error handling on validation
     const saveWithoutValidation = /\.save\(\s*\)(?!\s*\.catch|\s*\.then)/g;
     let match;

@@ -211,7 +211,9 @@ import approvalRoutes from './routes/approvals.js';
 import featureFlagRoutes from './routes/featureFlags.js';
 const nightAuditRoutes = (await import('./routes/nightAudit.js')).default;
 let cancellationRoutes;
-try { cancellationRoutes = (await import('./routes/cancellations.js')).default; } catch { /* optional */ }
+try { cancellationRoutes = (await import('./routes/cancellations.js')).default; } catch (err) {
+  logger.warn('Failed to load cancellation routes:', err.message);
+}
 
 // ── Production Readiness: New middleware ──
 let tenantIsolation, securityHeadersMiddleware;
@@ -293,7 +295,7 @@ const swaggerOptions = {
         },
         servers: [{
             url: process.env.NODE_ENV === 'production' ?
-                'https://hotel-management-xcsx.onrender.com/api/v1' : 'http://localhost:4000/api/v1',
+                (process.env.API_BASE_URL || 'https://hotel-management-xcsx.onrender.com/api/v1') : 'http://localhost:4000/api/v1',
             description: 'API Server'
         }],
         components: {

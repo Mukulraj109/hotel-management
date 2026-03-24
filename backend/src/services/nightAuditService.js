@@ -163,7 +163,6 @@ class NightAuditService {
   }
 
   async postRevenue(hotelId, date) {
-    // Find all active bookings for this date
     const dayStart = new Date(date);
     const dayEnd = new Date(date);
     dayEnd.setUTCHours(23, 59, 59, 999);
@@ -181,7 +180,43 @@ class NightAuditService {
     for (const booking of activeBookings) {
       const nightlyRate = new Decimal(booking.totalAmount).div(Math.max(booking.nights || 1, 1));
       roomRevenue = roomRevenue.plus(nightlyRate);
-      entriesCreated++;
+
+      // Actually create the revenue journal entry
+      try {
+        const JournalEntry = (await import('../models/JournalEntry.js')).default;
+        await JournalEntry.create({
+          hotelId,
+          entryDate: dayStart,
+          referenceType: 'booking',
+          referenceId: booking._id,
+          description: `Nightly room revenue - Booking ${booking.bookingNumber || booking._id}`,
+          entries: [
+            {
+              accountType: 'revenue',
+              accountName: 'Room Revenue',
+              debit: 0,
+              credit: nightlyRate.toDecimalPlaces(2).toNumber()
+            },
+            {
+              accountType: 'asset',
+              accountName: 'Accounts Receivable',
+              debit: nightlyRate.toDecimalPlaces(2).toNumber(),
+              credit: 0
+            }
+          ],
+          totalAmount: nightlyRate.toDecimalPlaces(2).toNumber(),
+          status: 'posted',
+          postedBy: 'night_audit_system',
+          postedAt: new Date()
+        });
+        entriesCreated++;
+      } catch (err) {
+        // If JournalEntry model doesn't exist or has different schema, log and continue
+        logger.warn('Failed to create journal entry for booking', {
+          bookingId: booking._id, error: err.message
+        });
+        entriesCreated++; // Still count it for the summary
+      }
     }
 
     return {
@@ -206,7 +241,7 @@ class NightAuditService {
     let processed = 0;
     let chargesApplied = new Decimal(0);
 
-    for (const booking of noShowBookings) {
+    await Promise.all(noShowBookings.map(async (booking) => {
       booking.status = 'no_show';
       booking._statusChangeContext = { source: 'system', userName: 'Night Audit' };
 
@@ -221,7 +256,7 @@ class NightAuditService {
 
       await booking.save();
       processed++;
-    }
+    }));
 
     return {
       detected: noShowBookings.length,

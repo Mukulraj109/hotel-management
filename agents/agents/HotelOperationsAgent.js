@@ -12,10 +12,26 @@ export class HotelOperationsAgent extends BaseAgent {
   }
 
   async analyze(state, config) {
-    // Hotel operations workflows are in place (housekeeping, maintenance, inventory, staff).
-    // Remaining findings are feature enhancement requests.
+    const { scanner } = config;
+    const allFiles = [
+      ...(state.context.files.controllers || []),
+      ...(state.context.files.services || []),
+      ...(state.context.files.routes || []),
+      ...(state.context.files.models || []),
+      ...(state.context.files.jobs || []),
+    ];
+
+    await this._checkHousekeepingWorkflow(state, allFiles, scanner);
+    await this._checkMaintenanceWorkflow(state, allFiles, scanner);
+    await this._checkInventoryManagement(state, allFiles, scanner);
+    await this._checkLaundryOperations(state, allFiles, scanner);
+    await this._checkStaffManagement(state, allFiles, scanner);
+    await this._checkLostAndFound(state, allFiles, scanner);
+    await this._checkRoomStatusSync(state, allFiles, scanner);
+    await this._checkGuestRequestHandling(state, allFiles, scanner);
+
     return {
-      summary: 'Hotel operations analysis — operational workflows in place. Remaining items are enhancements.',
+      summary: `Hotel operations analysis complete across ${allFiles.length} files.`,
     };
   }
 

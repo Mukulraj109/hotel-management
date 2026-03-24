@@ -16,11 +16,19 @@ export class BusinessLogicCompletenessAgent extends BaseAgent {
   }
 
   async analyze(state, config) {
-    // Business logic completeness features are built:
-    // - Booking journey, night audit, approval workflows, notification system in place
-    // - Remaining findings are enhancement requests, not bugs
+    await this._checkBookingJourney(state, config);
+    await this._checkNotificationCoverage(state, config);
+    await this._checkRoleAccessCompleteness(state, config);
+    await this._checkCRUDCompleteness(state, config);
+    await this._checkReportingCompleteness(state, config);
+    await this._checkSearchCapabilities(state, config);
+    await this._checkWorkflowCompleteness(state, config);
+    await this._checkNightAudit(state, config);
+    await this._checkMultiPropertyOps(state, config);
+    await this._checkGuestCommunication(state, config);
+
     return {
-      summary: 'Business logic completeness — core features built. Remaining items are enhancement requests.',
+      summary: 'Business logic completeness analysis complete.',
     };
   }
 

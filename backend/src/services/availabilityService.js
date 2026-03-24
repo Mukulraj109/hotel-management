@@ -6,6 +6,7 @@ import RoomType from '../models/RoomType.js';
 import AuditLog from '../models/AuditLog.js';
 import mongoose from 'mongoose';
 import logger from '../utils/logger.js';
+import { withTransaction } from '../utils/transactionHelper.js';
 
 class AvailabilityService {
   /**
@@ -467,49 +468,52 @@ class AvailabilityService {
     try {
       const checkInDate = new Date(checkIn);
       const checkOutDate = new Date(checkOut);
-      
-      // Get all availability records for the date range
-      const availabilityRecords = await RoomAvailability.find({
-        hotelId,
-        roomTypeId,
-        date: { $gte: checkInDate, $lt: checkOutDate }
-      }).sort({ date: 1 });
-      
-      // Check if reservation is possible
-      const canReserve = availabilityRecords.every(record => 
-        record.availableRooms >= roomsCount
-      );
-      
-      if (!canReserve) {
-        throw new Error('Insufficient availability for requested dates');
-      }
-      
-      // Update each day's availability
-      const updatedRecords = [];
-      for (const record of availabilityRecords) {
-        // Book the rooms
-        await record.bookRooms(roomsCount, bookingId, source);
-        updatedRecords.push(record);
-        
-        // Log the inventory change
-        await AuditLog.logInventoryChange(record, 'booking', userId, {
-          source: 'booking_service',
-          bookingDetails: {
-            bookingId,
-            roomsBooked: roomsCount,
-            source
-          }
-        });
-      }
-      
-      return {
-        success: true,
-        message: 'Rooms reserved successfully',
-        reservedRooms: roomsCount,
-        nights: availabilityRecords.length,
-        updatedRecords: updatedRecords.length
-      };
-      
+
+      return await withTransaction(async (session) => {
+        // Get all availability records for the date range
+        const availabilityRecords = await RoomAvailability.find({
+          hotelId,
+          roomTypeId,
+          date: { $gte: checkInDate, $lt: checkOutDate }
+        }).sort({ date: 1 }).session(session);
+
+        // Check if reservation is possible
+        const canReserve = availabilityRecords.every(record =>
+          record.availableRooms >= roomsCount
+        );
+
+        if (!canReserve) {
+          throw new Error('Insufficient availability for requested dates');
+        }
+
+        // Update each day's availability
+        const updatedRecords = [];
+        for (const record of availabilityRecords) {
+          // Book the rooms
+          await record.bookRooms(roomsCount, bookingId, source, { session });
+          updatedRecords.push(record);
+
+          // Log the inventory change
+          await AuditLog.logInventoryChange(record, 'booking', userId, {
+            source: 'booking_service',
+            bookingDetails: {
+              bookingId,
+              roomsBooked: roomsCount,
+              source
+            },
+            session
+          });
+        }
+
+        return {
+          success: true,
+          message: 'Rooms reserved successfully',
+          reservedRooms: roomsCount,
+          nights: availabilityRecords.length,
+          updatedRecords: updatedRecords.length
+        };
+      });
+
     } catch (error) {
       logger.error('Room reservation failed:', error);
       return {

@@ -4,6 +4,7 @@ import MeetUpRequest from '../models/MeetUpRequest.js';
 import Hotel from '../models/Hotel.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import logger from '../utils/logger.js';
+import { withTransaction } from '../utils/transactionHelper.js';
 
 /**
  * Room Booking Service for Meet-Up Management
@@ -115,85 +116,97 @@ class RoomBookingService {
     const { meetUpId, roomId, userId, equipment = [], services = [] } = params;
 
     try {
-      // Get meet-up details
-      const meetUp = await MeetUpRequest.findById(meetUpId);
-      if (!meetUp) {
-        throw new ApplicationError('Meet-up request not found', 404);
-      }
+      return await withTransaction(async (session) => {
+        // Get meet-up details
+        const meetUp = await MeetUpRequest.findById(meetUpId).session(session);
+        if (!meetUp) {
+          throw new ApplicationError('Meet-up request not found', 404);
+        }
 
-      // Verify room exists and is available
-      const room = await Room.findById(roomId);
-      if (!room) {
-        throw new ApplicationError('Room not found', 404);
-      }
+        // Verify room exists and is available
+        const room = await Room.findById(roomId).session(session);
+        if (!room) {
+          throw new ApplicationError('Room not found', 404);
+        }
 
-      if (room.hotelId.toString() !== meetUp.hotelId.toString()) {
-        throw new ApplicationError('Room does not belong to the meet-up hotel', 400);
-      }
+        if (room.hotelId.toString() !== meetUp.hotelId.toString()) {
+          throw new ApplicationError('Room does not belong to the meet-up hotel', 400);
+        }
 
-      // Check availability one more time
-      const startDateTime = this._createDateTime(meetUp.proposedDate, meetUp.proposedTime.start);
-      const endDateTime = this._createDateTime(meetUp.proposedDate, meetUp.proposedTime.end);
+        // Check availability one more time (within transaction for consistency)
+        const startDateTime = this._createDateTime(meetUp.proposedDate, meetUp.proposedTime.start);
+        const endDateTime = this._createDateTime(meetUp.proposedDate, meetUp.proposedTime.end);
 
-      const availabilityCheck = await this.checkRoomAvailability({
-        hotelId: meetUp.hotelId,
-        date: meetUp.proposedDate,
-        timeSlot: meetUp.proposedTime,
-        capacity: meetUp.participants.maxParticipants
+        // Find conflicting bookings within the transaction
+        const roomIds = [room._id];
+        const conflictingBookings = await ServiceBooking.find({
+          'rooms.roomId': { $in: roomIds },
+          status: { $in: ['confirmed', 'checked_in'] },
+          $or: [
+            {
+              bookingDate: { $lt: endDateTime },
+              $expr: {
+                $gt: [
+                  { $add: ['$bookingDate', { $multiply: [2, 60, 60, 1000] }] },
+                  startDateTime
+                ]
+              }
+            }
+          ]
+        }).session(session);
+
+        const conflictingMeetUps = await MeetUpRequest.find({
+          'meetingRoomBooking.roomId': { $in: roomIds },
+          status: { $in: ['accepted', 'confirmed'] },
+          proposedDate: {
+            $gte: new Date(startDateTime.getFullYear(), startDateTime.getMonth(), startDateTime.getDate()),
+            $lt: new Date(endDateTime.getFullYear(), endDateTime.getMonth(), endDateTime.getDate() + 1)
+          }
+        }).session(session);
+
+        if (conflictingBookings.length > 0 || conflictingMeetUps.length > 0) {
+          throw new ApplicationError('Room is no longer available for the requested time slot', 409);
+        }
+
+        // Calculate total cost
+        const bookingCost = await this._calculateBookingCost(room, equipment, services, startDateTime, endDateTime);
+
+        // Create service booking for the room
+        const [serviceBooking] = await ServiceBooking.create([{
+          userId,
+          serviceId: null,
+          hotelId: meetUp.hotelId,
+          bookingDate: startDateTime,
+          numberOfPeople: meetUp.participants.maxParticipants,
+          totalAmount: bookingCost.total,
+          status: 'confirmed',
+          specialRequests: `Meet-up room booking: ${meetUp.title}`,
+          paymentStatus: 'pending',
+          notes: `Automated room booking for meet-up: ${meetUp.title}. Equipment: ${equipment.join(', ')}. Services: ${services.join(', ')}`
+        }], { session });
+
+        // Update meet-up with room booking details
+        meetUp.meetingRoomBooking = {
+          roomId: roomId,
+          bookingId: serviceBooking._id,
+          isRequired: true,
+          equipment: equipment,
+          services: services,
+          cost: bookingCost,
+          confirmedAt: new Date()
+        };
+
+        await meetUp.save({ session });
+
+        return {
+          success: true,
+          booking: serviceBooking,
+          room: room,
+          meetUp: meetUp,
+          cost: bookingCost,
+          bookingReference: serviceBooking._id
+        };
       });
-
-      if (!availabilityCheck.available) {
-        throw new ApplicationError('Room is no longer available for the requested time slot', 409);
-      }
-
-      const isSelectedRoomAvailable = availabilityCheck.allAvailableRooms.some(
-        r => r._id.toString() === roomId
-      );
-
-      if (!isSelectedRoomAvailable) {
-        throw new ApplicationError('Selected room is not available for the requested time slot', 409);
-      }
-
-      // Calculate total cost
-      const bookingCost = await this._calculateBookingCost(room, equipment, services, startDateTime, endDateTime);
-
-      // Create service booking for the room
-      const serviceBooking = new ServiceBooking({
-        userId,
-        serviceId: null, // We'll use custom booking logic for rooms
-        hotelId: meetUp.hotelId,
-        bookingDate: startDateTime,
-        numberOfPeople: meetUp.participants.maxParticipants,
-        totalAmount: bookingCost.total,
-        status: 'confirmed',
-        specialRequests: `Meet-up room booking: ${meetUp.title}`,
-        paymentStatus: 'pending',
-        notes: `Automated room booking for meet-up: ${meetUp.title}. Equipment: ${equipment.join(', ')}. Services: ${services.join(', ')}`
-      });
-
-      await serviceBooking.save();
-
-      // Update meet-up with room booking details
-      meetUp.meetingRoomBooking = {
-        roomId: roomId,
-        bookingId: serviceBooking._id,
-        isRequired: true,
-        equipment: equipment,
-        services: services,
-        cost: bookingCost,
-        confirmedAt: new Date()
-      };
-
-      await meetUp.save();
-
-      return {
-        success: true,
-        booking: serviceBooking,
-        room: room,
-        meetUp: meetUp,
-        cost: bookingCost,
-        bookingReference: serviceBooking._id
-      };
 
     } catch (error) {
       logger.error('Room booking creation error:', error);

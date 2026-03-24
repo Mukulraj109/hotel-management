@@ -319,7 +319,6 @@ export class SecurityAuditAgent extends BaseAgent {
   }
 
   _checkRateLimiting(state, content, file) {
-    return; // financialLimiter added to payments/settlements/financial routes
     // Sensitive operations without rate limiting
     const sensitiveOps = ['payment', 'charge', 'refund', 'transfer', 'withdraw'];
     for (const op of sensitiveOps) {

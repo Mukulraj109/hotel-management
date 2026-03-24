@@ -12,13 +12,23 @@ export class APIDesignAgent extends BaseAgent {
   }
 
   async analyze(state, config) {
+    const { scanner } = config;
     const routeFiles = state.context.files.routes || [];
     const controllerFiles = state.context.files.controllers || [];
 
-    // API design findings are style/convention issues (pagination, error format, POST for reads, naming).
-    // These do not represent bugs or security issues. Skip automated checks.
+    await this._checkVersioning(state, config);
+    await this._checkResponseConsistency(state, controllerFiles, scanner);
+    await this._checkErrorFormat(state, controllerFiles, scanner);
+    await this._checkPagination(state, routeFiles, controllerFiles, scanner);
+    await this._checkHTTPSemantics(state, routeFiles, scanner);
+    await this._checkNamingConventions(state, routeFiles, scanner);
+    await this._checkDocumentation(state, routeFiles, scanner);
+    await this._checkSizeLimits(state, config);
+    await this._checkPartialUpdates(state, routeFiles, scanner);
+    await this._checkStatusCodes(state, controllerFiles, scanner);
+
     return {
-      summary: `API design audit — ${routeFiles.length} routes, ${controllerFiles.length} controllers. Convention findings deferred to manual review.`,
+      summary: `API design audit complete — ${routeFiles.length} routes, ${controllerFiles.length} controllers analyzed.`,
     };
   }
 

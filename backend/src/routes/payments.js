@@ -13,8 +13,15 @@ import { CircuitBreaker } from '../utils/circuitBreaker.js';
 import rateLimit from 'express-rate-limit';
 
 const router = express.Router();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 const stripeBreaker = new CircuitBreaker({ name: 'stripe', failureThreshold: 5, resetTimeout: 30000, timeout: 30000 });
+
+function requireStripe() {
+  if (!stripe) {
+    throw new ApplicationError('Payment processing is not configured. Set STRIPE_SECRET_KEY.', 503);
+  }
+  return stripe;
+}
 
 // Rate limiting for payment operations
 const financialLimiter = rateLimit({
@@ -93,7 +100,7 @@ router.post('/intent',
 
     // Create Stripe Payment Intent (with circuit breaker)
     const paymentIntent = await stripeBreaker.execute(
-      () => stripe.paymentIntents.create({
+      () => requireStripe().paymentIntents.create({
         amount: Math.round(paymentAmount),
         currency: currency.toLowerCase(),
         metadata: {
@@ -163,7 +170,7 @@ router.post('/confirm',
 
     // Retrieve payment intent from Stripe (with circuit breaker)
     const paymentIntent = await stripeBreaker.execute(
-      () => stripe.paymentIntents.retrieve(paymentIntentId),
+      () => requireStripe().paymentIntents.retrieve(paymentIntentId),
       () => { throw new Error('Payment service temporarily unavailable. Please try again.'); }
     );
 
@@ -342,7 +349,7 @@ router.post('/extra-person-charges/intent',
 
     // Create Stripe Payment Intent (with circuit breaker)
     const paymentIntent = await stripeBreaker.execute(
-      () => stripe.paymentIntents.create({
+      () => requireStripe().paymentIntents.create({
         amount: Math.round(totalExtraCharges * 100), // Convert to cents
         currency: currency.toLowerCase(),
         metadata: {
@@ -470,7 +477,7 @@ router.post('/settlement/intent',
 
     // Create Stripe Payment Intent (with circuit breaker)
     const paymentIntent = await stripeBreaker.execute(
-      () => stripe.paymentIntents.create({
+      () => requireStripe().paymentIntents.create({
         amount: amountInPaisa,
         currency: currency.toLowerCase(),
         metadata: {
@@ -569,7 +576,7 @@ router.post('/refund',
 
     // Create refund in Stripe (with circuit breaker)
     const refund = await stripeBreaker.execute(
-      () => stripe.refunds.create({
+      () => requireStripe().refunds.create({
         payment_intent: paymentIntentId,
         amount: amount ? Math.round(amount * 100) : undefined, // Partial or full refund
         reason: reason || 'requested_by_customer',

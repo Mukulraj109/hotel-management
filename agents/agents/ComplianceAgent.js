@@ -100,8 +100,6 @@ export class ComplianceAgent extends BaseAgent {
   }
 
   _checkRightToDeletion(state, content, file) {
-    return; // GDPR deletion infrastructure in place (User model has anonymized/accountDeletionRequested fields, gdprController exists)
-
     // Check if right-to-deletion actually deletes from all related collections
     if (content.includes('deleteOne') || content.includes('deleteMany') || content.includes('remove')) {
       const deletesRelated = /(?:Booking|Payment|Invoice|Review|Communication|Notification).*(?:delete|remove|update)/gi.test(content);
@@ -121,7 +119,6 @@ export class ComplianceAgent extends BaseAgent {
   }
 
   _checkDataRetention(state, content, file) {
-    return; // Data retention TTL policies already added to temporal models
     // Check if any TTL or data retention policy exists for sensitive data
     if (file.relativePath.includes('model')) {
       const hasTTL = /expires|TTL|ttl|expireAt|createdAt.*index.*expires/i.test(content);
@@ -142,7 +139,6 @@ export class ComplianceAgent extends BaseAgent {
   }
 
   _checkConsentTracking(state, content, file) {
-    return; // Consent tracking narrowed — handled by User model GDPR fields
     if (!/register|signup|auth/i.test(file.name)) return;
 
     // Check if consent is captured during registration/booking
@@ -223,11 +219,9 @@ export class ComplianceAgent extends BaseAgent {
   _checkAuditTrailCoverage(state, content, file) {
     // The enhancedAuditLogger middleware is wired globally in server.js
     // covering ALL /api/v1 routes automatically. Individual controller checks are redundant.
-    return;
   }
 
   _checkDataMinimization(state, content, file) {
-    return; // Data minimization reviewed — field counts are within acceptable range
     // Collecting more data than necessary (GDPR principle)
     if (file.relativePath.includes('model') && /Guest|User/i.test(file.name)) {
       const fieldCount = (content.match(/\w+\s*:\s*\{[^}]*type\s*:/g) || []).length;
@@ -266,7 +260,6 @@ export class ComplianceAgent extends BaseAgent {
   }
 
   _checkModelCompliance(state) {
-    return; // User model now has 9 GDPR consent fields (gdprConsent, marketingConsent, anonymized, etc.)
     // Check if Guest/User models have GDPR-required fields
     // Find the User model specifically (not UserAnalytics, UserPreference, etc.)
     let guestModel = null;

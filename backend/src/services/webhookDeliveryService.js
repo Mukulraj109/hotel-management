@@ -18,18 +18,23 @@ class WebhookDeliveryService extends EventEmitter {
    */
   startRetryProcessor() {
     // Process retry queue every 30 seconds
-    setInterval(() => {
+    this.retryIntervalId = setInterval(() => {
       if (!this.processing) {
         this.processRetryQueue();
       }
     }, 30000);
 
     // Clean up old retry entries every hour
-    setInterval(() => {
+    this.cleanupIntervalId = setInterval(() => {
       this.cleanupRetryQueue();
     }, 60 * 60 * 1000);
 
     logger.info('Webhook Delivery Service started');
+  }
+
+  stop() {
+    if (this.retryIntervalId) clearInterval(this.retryIntervalId);
+    if (this.cleanupIntervalId) clearInterval(this.cleanupIntervalId);
   }
 
   /**

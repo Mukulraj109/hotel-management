@@ -4,6 +4,7 @@ import Booking from '../models/Booking.js';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import logger from '../utils/logger.js';
+import { withTransaction } from '../utils/transactionHelper.js';
 
 class ChannelManagerService {
   constructor() {
@@ -291,6 +292,7 @@ class ChannelManagerService {
 
   /**
    * Create hotel booking from channel reservation
+   * Uses a transaction to prevent double-booking race conditions
    */
   async createHotelBooking(channelReservation, channel) {
     // Find room mapping
@@ -302,43 +304,44 @@ class ChannelManagerService {
       throw new Error(`Room mapping not found for channel room type ${channelReservation.roomTypeId}`);
     }
 
-    // Find available room of the mapped type
-    const availableRoom = await Room.findOne({
-      roomType: roomMapping.hotelRoomTypeId,
-      isActive: true
+    return await withTransaction(async (session) => {
+      // Find available room of the mapped type
+      const availableRoom = await Room.findOne({
+        roomType: roomMapping.hotelRoomTypeId,
+        isActive: true
+      }).session(session);
+
+      if (!availableRoom) {
+        throw new Error(`No available room found for room type ${roomMapping.hotelRoomTypeId}`);
+      }
+
+      // Create booking
+      const [booking] = await Booking.create([{
+        bookingId: uuidv4(),
+        roomId: availableRoom._id,
+        roomType: roomMapping.hotelRoomTypeId,
+        checkInDate: new Date(channelReservation.checkIn),
+        checkOutDate: new Date(channelReservation.checkOut),
+        totalAmount: channelReservation.totalAmount,
+        status: 'confirmed',
+        channel: 'ota',
+        channelName: channel.name,
+        guest: {
+          firstName: channelReservation.guest.firstName,
+          lastName: channelReservation.guest.lastName,
+          email: channelReservation.guest.email,
+          phone: channelReservation.guest.phone
+        },
+        payment: {
+          method: 'channel',
+          status: 'paid',
+          paidAmount: channelReservation.totalAmount
+        },
+        specialRequests: channelReservation.specialRequests || []
+      }], { session });
+
+      return booking;
     });
-
-    if (!availableRoom) {
-      throw new Error(`No available room found for room type ${roomMapping.hotelRoomTypeId}`);
-    }
-
-    // Create booking
-    const booking = new Booking({
-      bookingId: uuidv4(),
-      roomId: availableRoom._id,
-      roomType: roomMapping.hotelRoomTypeId,
-      checkInDate: new Date(channelReservation.checkIn),
-      checkOutDate: new Date(channelReservation.checkOut),
-      totalAmount: channelReservation.totalAmount,
-      status: 'confirmed',
-      channel: 'ota',
-      channelName: channel.name,
-      guest: {
-        firstName: channelReservation.guest.firstName,
-        lastName: channelReservation.guest.lastName,
-        email: channelReservation.guest.email,
-        phone: channelReservation.guest.phone
-      },
-      payment: {
-        method: 'channel',
-        status: 'paid',
-        paidAmount: channelReservation.totalAmount
-      },
-      specialRequests: channelReservation.specialRequests || []
-    });
-
-    await booking.save();
-    return booking;
   }
 
   /**

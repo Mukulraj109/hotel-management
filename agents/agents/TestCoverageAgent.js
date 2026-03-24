@@ -13,14 +13,71 @@ export class TestCoverageAgent extends BaseAgent {
   }
 
   async analyze(state, config) {
-    // Test coverage findings are valid but require writing actual tests.
-    // Skipping automated checks — test gaps are tracked separately.
+    const { scanner, projectRoot } = config;
+
+    // Find all test files
+    let allTests = [];
+    let backendTests = [];
+    let e2eTests = [];
+    let frontendTests = [];
+
+    const testDirs = [
+      join(projectRoot, 'backend', 'tests'),
+      join(projectRoot, 'backend', 'test'),
+      join(projectRoot, 'backend', '__tests__'),
+      join(projectRoot, 'tests'),
+      join(projectRoot, 'test'),
+    ];
+
+    for (const dir of testDirs) {
+      try {
+        const files = await scanner.scanDirectory(dir, {
+          extensions: ['.js', '.ts', '.jsx', '.tsx'],
+        });
+        allTests.push(...files);
+
+        for (const f of files) {
+          if (/e2e|integration|playwright|cypress/i.test(f.relativePath)) {
+            e2eTests.push(f);
+          } else {
+            backendTests.push(f);
+          }
+        }
+      } catch {
+        // Directory not found
+      }
+    }
+
+    // Frontend tests
+    try {
+      const frontendTestDir = join(projectRoot, 'frontend', 'src');
+      const frontendFiles = await scanner.scanDirectory(frontendTestDir, {
+        extensions: ['.test.js', '.test.ts', '.test.tsx', '.test.jsx', '.spec.js', '.spec.ts', '.spec.tsx'],
+      });
+      frontendTests = frontendFiles.filter((f) => /\.(?:test|spec)\./i.test(f.name));
+      allTests.push(...frontendTests);
+    } catch {
+      // Frontend not found
+    }
+
+    const testFileNames = new Set(allTests.map((t) => t.name));
+
+    this._checkCriticalModuleCoverage(state, testFileNames);
+    this._checkControllerCoverage(state, testFileNames);
+    this._checkServiceCoverage(state, testFileNames);
+    this._checkModelValidationTests(state, testFileNames);
+    this._checkMiddlewareCoverage(state, testFileNames);
+    this._checkE2ECoverage(state, e2eTests);
+    this._checkFrontendCoverage(state, frontendTests, config);
+    await this._checkTestQuality(state, allTests, scanner);
+    this._checkTestCodeRatio(state, allTests);
+
     return {
-      summary: 'Test coverage analysis deferred — test gaps tracked in project backlog.',
-      totalTests: 0,
-      backendTests: 0,
-      e2eTests: 0,
-      frontendTests: 0,
+      summary: `Test coverage analysis complete — ${allTests.length} test files found.`,
+      totalTests: allTests.length,
+      backendTests: backendTests.length,
+      e2eTests: e2eTests.length,
+      frontendTests: frontendTests.length,
     };
   }
 

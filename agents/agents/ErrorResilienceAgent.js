@@ -12,15 +12,33 @@ export class ErrorResilienceAgent extends BaseAgent {
   }
 
   async analyze(state, config) {
-    // Resilience infrastructure is in place:
-    // - Circuit breakers on Stripe calls
-    // - Redis fallback patterns
-    // - Graceful shutdown handlers
-    // - Queue retry logic with dead letter handling
-    // Remaining findings are low-priority individual service improvements.
+    const { scanner } = config;
+    const allFiles = [
+      ...(state.context.files.controllers || []),
+      ...(state.context.files.services || []),
+      ...(state.context.files.config || []),
+      ...(state.context.files.jobs || []),
+    ];
+
+    for (const file of allFiles) {
+      const content = await scanner.readFileContent(file.path);
+      if (!content) continue;
+
+      this._checkRedisFailover(state, content, file);
+      this._checkExternalAPIDegradation(state, content, file);
+      this._checkDatabaseResilience(state, content, file);
+      this._checkQueueResilience(state, content, file);
+      this._checkEmailFailover(state, content, file);
+      this._checkGracefulShutdown(state, content, file);
+      this._checkCircuitBreaker(state, content, file);
+      this._checkRetryLogic(state, content, file);
+      this._checkTimeouts(state, content, file);
+      this._checkHealthCheck(state, content, file);
+    }
+
     return {
-      summary: 'Resilience analysis — circuit breakers, Redis fallbacks, graceful shutdown in place. Remaining items are per-service improvements.',
-      filesAnalyzed: 0,
+      summary: `Resilience analysis complete across ${allFiles.length} files.`,
+      filesAnalyzed: allFiles.length,
     };
   }
 

@@ -170,24 +170,31 @@ class DayUseService {
   async createBooking(bookingData) {
     const session = await mongoose.startSession();
     session.startTransaction();
-    
+
     try {
-      // Validate slot availability
-      const availability = await this.getSlotAvailability(
-        bookingData.bookingDetails.slotId,
-        bookingData.bookingDetails.bookingDate
-      );
-      
-      if (!availability.isAvailable) {
+      // Validate slot availability within the transaction to prevent double-booking
+      const slot = await DayUseSlot.findById(bookingData.bookingDetails.slotId).session(session);
+      if (!slot) {
+        throw new Error('Slot not found');
+      }
+
+      // Get existing bookings for this slot and date within the transaction
+      const existingBookings = await DayUseBooking.find({
+        'bookingDetails.slotId': bookingData.bookingDetails.slotId,
+        'bookingDetails.bookingDate': new Date(bookingData.bookingDetails.bookingDate),
+        'status.bookingStatus': { $nin: ['cancelled', 'no_show'] }
+      }).session(session);
+
+      const totalBooked = existingBookings.reduce((sum, booking) => sum + booking.guestInfo.totalGuests, 0);
+      const availableCapacity = Math.max(0, slot.capacity.maxGuests - totalBooked);
+
+      if (availableCapacity <= 0) {
         throw new Error('Slot not available');
       }
-      
-      if (bookingData.guestInfo.totalGuests > availability.availableCapacity) {
-        throw new Error(`Insufficient capacity. Available: ${availability.availableCapacity}`);
+
+      if (bookingData.guestInfo.totalGuests > availableCapacity) {
+        throw new Error(`Insufficient capacity. Available: ${availableCapacity}`);
       }
-      
-      // Get slot details
-      const slot = await DayUseSlot.findById(bookingData.bookingDetails.slotId).session(session);
       
       // Calculate pricing
       const pricing = await this.calculateBookingPricing(bookingData, slot);

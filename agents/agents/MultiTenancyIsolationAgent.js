@@ -13,17 +13,12 @@ export class MultiTenancyIsolationAgent extends BaseAgent {
   }
 
   async analyze(state, config) {
-    // Multi-tenancy infrastructure is fully in place:
-    // - ensureTenantContext middleware wired into 100/108 controllers
-    // - ensureTenantContext wired into 10 critical route files
-    // - hotelId added to POSOrder, DayUseBooking, CheckoutInventory, POSMenu, POSOutlet, BookingEngine, ChannelManager
-    // - requireTenantInBulkOps on bulk operation routes
-    // - All controllers import ensureTenantContext
-    // Remaining findings are in services that receive hotelId as parameter from controllers.
-    return {
-      summary: 'Multi-tenancy isolation fully in place — ensureTenantContext on 100/108 controllers, 10 route files, hotelId added to 7 models.',
-      filesAnalyzed: 0,
-    };
+    const { scanner } = config;
+    const allFiles = [
+      ...(state.context.files.controllers || []),
+      ...(state.context.files.services || []),
+      ...(state.context.files.routes || []),
+    ];
 
     const tenantSensitiveModels = [
       'Booking', 'Room', 'RoomType', 'Payment', 'Invoice', 'Guest', 'Housekeeping',

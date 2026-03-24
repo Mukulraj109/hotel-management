@@ -29,14 +29,28 @@ export class FrontendQualityAgent extends BaseAgent {
     const pages = allFiles.filter((f) => f.relativePath.replace(/\\/g, '/').includes('/pages/'));
     const components = allFiles.filter((f) => f.relativePath.replace(/\\/g, '/').includes('/components/'));
 
-    // Frontend quality infrastructure is in place:
-    // - PageWrapper with ErrorBoundary wraps critical admin routes
-    // - useA11y hook provides accessibility utilities
-    // - Console.log cleaned from major admin pages
-    // - React Query handles API error states
-    // Remaining findings are low-priority individual component improvements.
+    for (const file of allFiles) {
+      const content = await scanner.readFileContent(file.path);
+      if (!content) continue;
+
+      this._checkErrorBoundaries(state, content, file);
+      this._checkLoadingStates(state, content, file);
+      this._checkAccessibility(state, content, file);
+      this._checkTypeScript(state, content, file);
+      this._checkMemoryLeaks(state, content, file);
+      this._checkFormHandling(state, content, file);
+      this._checkAPIErrorHandling(state, content, file);
+      this._checkResponsiveness(state, content, file);
+      this._checkHardcodedStrings(state, content, file);
+      this._checkConsoleStatements(state, content, file);
+    }
+
+    await this._checkRouteProtection(state, allFiles, scanner);
+    await this._checkBundleSize(state, config);
+    await this._checkI18nCoverage(state, pages, scanner);
+
     return {
-      summary: `Frontend quality infrastructure in place. ${pages.length} pages, ${components.length} components — PageWrapper, useA11y, error handling patterns established.`,
+      summary: `Frontend quality analysis complete. ${pages.length} pages, ${components.length} components analyzed.`,
       pages: pages.length,
       components: components.length,
     };

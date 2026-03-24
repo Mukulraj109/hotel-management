@@ -436,6 +436,55 @@ router.get('/room/:roomId', authenticate, ensureTenantContext, authorize('admin'
   });
 }));
 
+// Check room availability for given dates
+router.post('/check-availability', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
+  const { roomIds, checkIn, checkOut, hotelId } = req.body;
+
+  if (!roomIds || !checkIn || !checkOut) {
+    throw new ApplicationError('roomIds, checkIn, and checkOut are required', 400);
+  }
+
+  const checkInDate = new Date(checkIn);
+  const checkOutDate = new Date(checkOut);
+
+  if (checkOutDate <= checkInDate) {
+    throw new ApplicationError('Check-out must be after check-in', 400);
+  }
+
+  // Find overlapping bookings for the requested rooms and dates
+  const overlappingBookings = await Booking.find({
+    hotelId: hotelId || req.user.hotelId,
+    'rooms.roomId': { $in: roomIds },
+    status: { $nin: ['cancelled', 'no_show'] },
+    $or: [
+      { checkIn: { $lt: checkOutDate }, checkOut: { $gt: checkInDate } }
+    ]
+  }).select('rooms checkIn checkOut status bookingNumber');
+
+  const unavailableRoomIds = new Set();
+  for (const booking of overlappingBookings) {
+    for (const room of booking.rooms) {
+      if (roomIds.includes(room.roomId?.toString())) {
+        unavailableRoomIds.add(room.roomId.toString());
+      }
+    }
+  }
+
+  const availability = roomIds.map(roomId => ({
+    roomId,
+    available: !unavailableRoomIds.has(roomId.toString())
+  }));
+
+  res.json({
+    status: 'success',
+    data: {
+      available: unavailableRoomIds.size === 0,
+      rooms: availability,
+      conflicts: overlappingBookings.length
+    }
+  });
+}));
+
 /**
  * @swagger
  * /bookings/{id}:
@@ -544,7 +593,7 @@ router.post('/',
       currency,
       paymentStatus,
       status,
-      idempotencyKey,
+      idempotencyKey: clientIdempotencyKey,
       roomType, // Add roomType field for room-type bookings
       // Payment information for walk-in bookings
       paymentMethod,
@@ -557,10 +606,20 @@ router.post('/',
       guestPhone
     } = req.body;
 
+    let idempotencyKey = clientIdempotencyKey;
+
     logger.debug('Booking payment fields', { paymentMethod, hasAdvanceAmount: !!advanceAmount });
 
+    // Generate server-side idempotency key if client didn't provide one
+    if (!idempotencyKey) {
+      const crypto = await import('crypto');
+      idempotencyKey = crypto.default.createHash('sha256')
+        .update(`${userId || ''}-${JSON.stringify(roomIds || [])}-${checkIn}-${checkOut}-${totalAmount}`)
+        .digest('hex');
+    }
+
     const session = await mongoose.startSession();
-    
+
     try {
       await session.withTransaction(async () => {
         // Check for duplicate booking with same idempotency key (with intelligent expiration)
@@ -1406,11 +1465,14 @@ router.post('/:id/modification-request',
           requestedChanges,
           reason,
           requestedBy: req.user.name,
-          hotelId: booking.hotelId._id
+          hotelId: (booking.hotelId?._id || booking.hotelId)
         };
 
         // Notify hotel staff and admins
-        await websocketService.broadcastToHotel(booking.hotelId._id, 'booking:modification_requested', notificationData);
+        const hotelIdStr = booking.hotelId?._id?.toString() || booking.hotelId?.toString();
+        if (hotelIdStr) {
+          await websocketService.broadcastToHotel(hotelIdStr, 'booking:modification_requested', notificationData);
+        }
         await websocketService.broadcastToRole('admin', 'booking:modification_requested', notificationData);
         await websocketService.broadcastToRole('staff', 'booking:modification_requested', notificationData);
       }
@@ -1621,7 +1683,7 @@ router.patch('/:id/modification-requests/:requestId/review',
           status: modificationRequest.status,
           reviewNotes,
           reviewedBy: req.user.name,
-          hotelId: booking.hotelId._id
+          hotelId: (booking.hotelId?._id || booking.hotelId)
         };
 
         // Notify the guest
@@ -1707,6 +1769,11 @@ router.patch('/:id/check-in',
     // Validate booking status - allow pending and confirmed for frontdesk operations
     if (booking.status !== 'confirmed' && booking.status !== 'pending') {
       throw new ApplicationError(`Cannot check-in booking with status '${booking.status}'. Only pending or confirmed bookings can be checked in.`, 400);
+    }
+
+    // Verify at least one room is assigned
+    if (!booking.rooms || booking.rooms.length === 0 || !booking.rooms.some(r => r.roomId)) {
+      throw new ApplicationError('Cannot check in: no room assigned to this booking. Please assign a room first.', 400);
     }
 
     const { paymentDetails } = req.body;
@@ -1806,6 +1873,18 @@ router.patch('/:id/check-in',
 
     // Save the booking - this will trigger pre-save hooks to calculate paymentDetails.totalPaid
     await updatedBooking.save();
+
+    // Update room status to 'occupied' in database
+    if (updatedBooking.rooms && updatedBooking.rooms.length > 0) {
+      for (const room of updatedBooking.rooms) {
+        if (room.roomId) {
+          await Room.findByIdAndUpdate(room.roomId, {
+            status: 'occupied',
+            currentBookingId: updatedBooking._id
+          });
+        }
+      }
+    }
 
     logger.debug('Post-save payment status', { bookingNumber: updatedBooking.bookingNumber, paymentStatus: updatedBooking.paymentStatus });
 

@@ -50,8 +50,6 @@ export class BookingSystemAgent extends BaseAgent {
   }
 
   _checkBookingLifecycle(state, content, file) {
-    return; // bookingStateMachine.js handles all status transitions atomically
-
     // Verify proper status transitions
     const validTransitions = {
       pending: ['confirmed', 'cancelled'],
@@ -82,7 +80,6 @@ export class BookingSystemAgent extends BaseAgent {
   }
 
   _checkRoomAssignment(state, content, file) {
-    return; // Room assignment availability checks are in place
     if (!/room|assign/i.test(content)) return;
 
     // Check for room assignment without availability verification
@@ -111,7 +108,6 @@ export class BookingSystemAgent extends BaseAgent {
   }
 
   _checkRateCalculation(state, content, file) {
-    return; // Infrastructure handles this — bookingStateMachine, cancellationRefundService
     if (!/rate|price|tariff|charge|amount|total/i.test(content)) return;
 
     // Floating point arithmetic for money
@@ -156,7 +152,6 @@ export class BookingSystemAgent extends BaseAgent {
   }
 
   _checkDateHandling(state, content, file) {
-    return; // UTC date handling validated — toISOString/UTC patterns in place
     if (!/date|checkin|checkout|check.?in|check.?out/i.test(content)) return;
 
     // Skip if file uses UTC dates consistently or uses date-fns/moment
@@ -196,7 +191,6 @@ export class BookingSystemAgent extends BaseAgent {
   }
 
   _checkGuestDataHandling(state, content, file) {
-    return; // Handled by compliance agent and PII encryption infrastructure
     if (!/guest|customer|visitor/i.test(file.name)) return;
 
     // PII without encryption
@@ -220,7 +214,6 @@ export class BookingSystemAgent extends BaseAgent {
   }
 
   _checkCancellation(state, content, file) {
-    return; // Handled by cancellationRefundService + releaseRoomInventory
     if (!file.relativePath.includes('controller') && !file.relativePath.includes('route')) return;
     if (!/cancel/i.test(content)) return;
 
@@ -258,7 +251,6 @@ export class BookingSystemAgent extends BaseAgent {
   }
 
   _checkNoShowHandling(state, content, file) {
-    return; // Handled by nightAuditService
     if (!/no.?show|noshow/i.test(content)) return;
 
     // No-show without charging penalty
@@ -277,7 +269,6 @@ export class BookingSystemAgent extends BaseAgent {
   }
 
   _checkOverbooking(state, content, file) {
-    return; // Handled by overbookingManager
     if (!/overbook|over.?book|capacity|maxOccupancy/i.test(content)) return;
 
     // Overbooking without management strategy
@@ -298,7 +289,6 @@ export class BookingSystemAgent extends BaseAgent {
   }
 
   _checkBookingModel(state) {
-    return; // Booking model has been validated — essential fields are present
     const bookingModel = state.context.models.get('Booking');
     if (!bookingModel) return;
 

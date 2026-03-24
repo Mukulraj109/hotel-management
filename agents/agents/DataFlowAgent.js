@@ -64,8 +64,30 @@ export class DataFlowAgent extends BaseAgent {
         }
       }
 
-      // Dead endpoint detection — disabled (too many false positives with middleware chains)
-      // Handlers are imported via destructuring which the regex doesn't detect
+      // Dead endpoint detection
+      // Check for route handlers that reference non-existent controller methods
+      const routeHandlers = content.match(/(?:router\.\w+\s*\(\s*['"][^'"]+['"]\s*,\s*)(\w+\.\w+)/g) || [];
+      for (const handler of routeHandlers) {
+        const methodMatch = handler.match(/(\w+)\.(\w+)\s*$/);
+        if (methodMatch) {
+          const [, controllerVar, methodName] = methodMatch;
+          // Check if the controller variable is imported and if the method exists
+          const importPattern = new RegExp(`(?:const|let|var)\\s*(?:\\{[^}]*${controllerVar}[^}]*\\}|${controllerVar})\\s*=\\s*require`);
+          if (!importPattern.test(content) && !content.includes(`import`)) {
+            const lineNum = content.substring(0, content.indexOf(handler)).split('\n').length;
+            this.addFinding(state, {
+              severity: 'medium',
+              category: 'data-flow',
+              title: `Possibly dead endpoint: ${methodName} on ${controllerVar}`,
+              description: `Route handler references ${controllerVar}.${methodName} but the controller variable may not be properly imported.`,
+              file: routeInfo.file,
+              line: lineNum,
+              suggestion: 'Verify the controller import and method exist.',
+              fixable: true,
+            });
+          }
+        }
+      }
     }
 
     // Detect orphaned services (services not referenced by any controller)

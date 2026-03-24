@@ -41,10 +41,6 @@ export class PerformanceAgent extends BaseAgent {
   }
 
   _checkNPlusOne(state, content, file) {
-    // Major N+1 patterns were fixed. Remaining are in services with complex iteration logic.
-    // Skip to reduce noise — address in code review.
-    return;
-
     // Detect queries inside loops
     const loopPatterns = [
       /for\s*\([^)]*\)\s*\{[\s\S]*?(?:\.find|\.findOne|\.findById|\.aggregate)\s*\(/g,
@@ -77,8 +73,6 @@ export class PerformanceAgent extends BaseAgent {
   }
 
   _checkUnboundedQueries(state, content, file) {
-    return; // paginationBounds middleware in server.js caps all queries
-
     // Skip files using pagination middleware or helpers
     if (/paginat|\.skip\s*\(|\.limit\s*\(|pageSize|perPage|pagination/i.test(content)) return;
 
@@ -108,9 +102,6 @@ export class PerformanceAgent extends BaseAgent {
   }
 
   _checkMissingLean(state, content, file) {
-    // .lean() is an optimization, not a bug — skip this check entirely for now
-    return;
-
     // If file already uses .lean() in some queries, it's aware of the pattern — skip
     const leanUsage = (content.match(/\.lean\s*\(\s*\)/g) || []).length;
     if (leanUsage > 2) return; // File already uses lean extensively
@@ -141,8 +132,6 @@ export class PerformanceAgent extends BaseAgent {
   }
 
   _checkMemoryLeaks(state, content, file) {
-    return; // High false-positive rate — address in manual code review
-
     // Growing arrays/objects without bounds
     const unboundedGrowth = /(?:push|unshift)\s*\([^)]*\)[\s\S]{0,50}(?:while|for|setInterval)/g;
     if (unboundedGrowth.test(content)) {
@@ -193,8 +182,6 @@ export class PerformanceAgent extends BaseAgent {
   }
 
   _checkSyncOperations(state, content, file) {
-    return; // Sync ops are only in startup/config — acceptable
-
     // Skip config/script/migration files — they run once at startup
     if (file.relativePath.includes('config') || file.relativePath.includes('script') || file.relativePath.includes('migration')) return;
 
@@ -224,8 +211,6 @@ export class PerformanceAgent extends BaseAgent {
   }
 
   _checkCaching(state, content, file) {
-    return; // These are optimization suggestions — skip to reduce noise
-
     // Expensive operations that could benefit from caching
     const expensiveOps = [
       { regex: /\.aggregate\s*\(\s*\[/g, op: 'aggregation pipeline' },
@@ -252,8 +237,6 @@ export class PerformanceAgent extends BaseAgent {
   }
 
   _checkAggregation(state, content, file) {
-    return; // Services legitimately process full collections — skip to reduce noise
-
     // Only flag in controller/route files, not analytics services
     if (!file.relativePath.includes('controller') && !file.relativePath.includes('route')) return;
 
@@ -273,8 +256,6 @@ export class PerformanceAgent extends BaseAgent {
   }
 
   _checkModelIndexes(state) {
-    return; // Critical model indexes have been added
-
     // Check models for common query patterns without indexes
     for (const [modelName, modelInfo] of state.context.models) {
       if (modelInfo.indexes.length === 0 && modelInfo.fields.length > 5) {

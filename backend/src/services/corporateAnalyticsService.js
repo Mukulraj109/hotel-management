@@ -13,12 +13,18 @@ class CorporateAnalyticsService {
         startDate = moment().subtract(30, 'days').toDate(),
         endDate = moment().toDate(),
         corporateId,
-        bookingStatus
+        bookingStatus,
+        hotelId
       } = filters;
+
+      if (!hotelId) {
+        throw new Error('hotelId is required for tenant isolation');
+      }
 
       const matchCriteria = {
         createdAt: { $gte: startDate, $lte: endDate },
         bookingType: 'corporate',
+        hotelId: new mongoose.Types.ObjectId(hotelId),
         ...(corporateId && { corporateId: new mongoose.Types.ObjectId(corporateId) }),
         ...(bookingStatus && { status: bookingStatus })
       };
@@ -155,13 +161,19 @@ class CorporateAnalyticsService {
       const {
         startDate = moment().subtract(30, 'days').toDate(),
         endDate = moment().toDate(),
-        corporateId
+        corporateId,
+        hotelId
       } = filters;
+
+      if (!hotelId) {
+        throw new Error('hotelId is required for tenant isolation');
+      }
 
       // Get corporate credit and payment status
       const paymentAnalytics = await CorporateCredit.aggregate([
         {
           $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
             ...(corporateId && { _id: new mongoose.Types.ObjectId(corporateId) })
           }
         },
@@ -301,6 +313,7 @@ class CorporateAnalyticsService {
         {
           $match: {
             bookingType: 'corporate',
+            hotelId: new mongoose.Types.ObjectId(hotelId),
             createdAt: { $gte: startDate, $lte: endDate },
             ...(corporateId && { corporateId: new mongoose.Types.ObjectId(corporateId) })
           }
@@ -365,11 +378,17 @@ class CorporateAnalyticsService {
       const {
         startDate = moment().subtract(30, 'days').toDate(),
         endDate = moment().toDate(),
-        channelType
+        channelType,
+        hotelId
       } = filters;
+
+      if (!hotelId) {
+        throw new Error('hotelId is required for tenant isolation');
+      }
 
       const matchCriteria = {
         createdAt: { $gte: startDate, $lte: endDate },
+        hotelId: new mongoose.Types.ObjectId(hotelId),
         ...(channelType && { bookingSource: channelType })
       };
 
@@ -569,8 +588,12 @@ class CorporateAnalyticsService {
   }
 
   // Get real-time corporate dashboard data
-  async getCorporateDashboardData() {
+  async getCorporateDashboardData(hotelId) {
     try {
+      if (!hotelId) {
+        throw new Error('hotelId is required for tenant isolation');
+      }
+
       const today = moment().startOf('day').toDate();
       const thisMonth = moment().startOf('month').toDate();
       const lastMonth = moment().subtract(1, 'month').startOf('month').toDate();
@@ -584,6 +607,7 @@ class CorporateAnalyticsService {
         // Today's corporate bookings
         Booking.countDocuments({
           bookingType: 'corporate',
+          hotelId,
           createdAt: { $gte: today }
         }),
 
@@ -592,6 +616,7 @@ class CorporateAnalyticsService {
           {
             $match: {
               bookingType: 'corporate',
+              hotelId: new mongoose.Types.ObjectId(hotelId),
               createdAt: { $gte: lastMonth }
             }
           },
@@ -609,6 +634,7 @@ class CorporateAnalyticsService {
 
         // Urgent payment notifications
         CorporateCredit.find({
+          hotelId,
           $or: [
             { currentBalance: { $gte: { $multiply: ['$creditLimit', 0.9] } } }, // 90% credit utilized
             { isActive: false }
@@ -619,6 +645,7 @@ class CorporateAnalyticsService {
         Booking.aggregate([
           {
             $match: {
+              hotelId: new mongoose.Types.ObjectId(hotelId),
               createdAt: { $gte: today }
             }
           },

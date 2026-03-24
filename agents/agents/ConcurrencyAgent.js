@@ -37,8 +37,6 @@ export class ConcurrencyAgent extends BaseAgent {
   }
 
   _checkReadModifyWrite(state, content, file) {
-    return; // Atomic operations (findOneAndUpdate, $inc, $set) are now used in all critical controllers
-
     // Skip service files — controllers are the entry points where RMW matters
     if (file.relativePath.includes('service')) return;
     // Skip files already using transactions or atomic operations
@@ -87,8 +85,6 @@ export class ConcurrencyAgent extends BaseAgent {
   }
 
   _checkMissingTransactions(state, content, file) {
-    return; // withTransaction utility is used in all critical multi-write operations
-
     // Multiple write operations that should be atomic
     const multiWritePattern = /(?:await\s+\w+\.(?:create|save|update|delete|remove|findOneAndUpdate)\s*\([^)]*\)[\s\S]{1,300}?){2,}/g;
 
@@ -122,8 +118,6 @@ export class ConcurrencyAgent extends BaseAgent {
   }
 
   _checkDoubleBooking(state, content, file) {
-    return; // Double booking prevention is handled by transactionHelper + bookingStateMachine at controller level
-
     if (!/book|reserv/i.test(file.name) && !/book|reserv/i.test(content)) return;
     // Skip files already using transactions
     if (/withTransaction|session\.withTransaction|startSession/.test(content)) return;
@@ -160,8 +154,6 @@ export class ConcurrencyAgent extends BaseAgent {
   }
 
   _checkInventoryRace(state, content, file) {
-    return; // Inventory race conditions addressed with atomic operations
-
     if (!/inventor|stock|quantity|supply/i.test(content)) return;
 
     // Check for non-atomic inventory decrements
@@ -193,8 +185,6 @@ export class ConcurrencyAgent extends BaseAgent {
   }
 
   _checkPaymentRace(state, content, file) {
-    return; // Payment race conditions addressed with idempotency and transactions
-
     if (!/pay|charge|refund|billing|invoice|settlement/i.test(file.name)) return;
 
     // Payment status updates without idempotency
@@ -227,8 +217,6 @@ export class ConcurrencyAgent extends BaseAgent {
   }
 
   _checkCounterIncrement(state, content, file) {
-    return; // Counter increments addressed with $inc atomic operations
-
     // Non-atomic counter increments (e.g., booking numbers, invoice numbers)
     const counterPattern = /(?:counter|sequence|number|nextId)\s*(?:\+\+|=\s*\w+\s*\+\s*1|\+=\s*1)/gi;
 
@@ -257,8 +245,6 @@ export class ConcurrencyAgent extends BaseAgent {
   }
 
   _checkStatusTransition(state, content, file) {
-    return; // bookingStateMachine.js handles all booking status transitions atomically
-
     // Status transitions without checking current state
     const statusUpdate = /(?:\.status|\.bookingStatus|\.paymentStatus)\s*=\s*['"]\w+['"]/g;
 

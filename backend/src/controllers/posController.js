@@ -48,7 +48,8 @@ export const getOutlets = async (req, res) => {
   try {
     console.log('Fetching all outlets...');
     
-    const outlets = await POSOutlet.find({ isActive: true })
+    const { hotelId } = req.user;
+    const outlets = await POSOutlet.find({ isActive: true, hotelId })
       .populate('manager', 'name email')
       .populate('staff', 'name email role');
     
@@ -69,8 +70,9 @@ export const getOutlets = async (req, res) => {
 
 export const updateOutlet = async (req, res) => {
   try {
-    const outlet = await POSOutlet.findByIdAndUpdate(
-      req.params.id,
+    const { hotelId } = req.user;
+    const outlet = await POSOutlet.findOneAndUpdate(
+      { _id: req.params.id, hotelId },
       req.body,
       { new: true, runValidators: true }
     );
@@ -119,9 +121,11 @@ export const createMenu = async (req, res) => {
 
 export const getMenusByOutlet = async (req, res) => {
   try {
+    const { hotelId } = req.user;
     const menus = await POSMenu.find({
       outlet: req.params.outletId,
-      isActive: true
+      isActive: true,
+      hotelId
     }).populate('outlet', 'name type');
     
     res.json({
@@ -143,8 +147,9 @@ export const addMenuItem = async (req, res) => {
       itemId: uuidv4()
     };
 
+    const { hotelId } = req.user;
     const menu = await POSMenu.findOneAndUpdate(
-      { _id: req.params.menuId },
+      { _id: req.params.menuId, hotelId },
       { $push: { items: menuItem } },
       { new: true, runValidators: true }
     );
@@ -226,7 +231,7 @@ export const createOrder = async (req, res) => {
     } catch (taxError) {
       // Fallback to legacy tax calculation if new service fails
       console.warn('Tax calculation service failed, using legacy calculation:', taxError.message);
-      const outlet = await POSOutlet.findById(orderData.outlet);
+      const outlet = await POSOutlet.findOne({ _id: orderData.outlet, hotelId: req.user.hotelId });
       const serviceTax = subtotal * (outlet.taxSettings.serviceTaxRate / 100);
       const gst = subtotal * (outlet.taxSettings.gstRate / 100);
       const totalTax = serviceTax + gst;
@@ -263,7 +268,8 @@ export const createOrder = async (req, res) => {
       const today = new Date();
       const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
       const count = await POSOrder.countDocuments({
-        orderNumber: new RegExp(`^${dateStr}`)
+        orderNumber: new RegExp(`^${dateStr}`),
+        hotelId: req.user.hotelId
       });
       orderData.orderNumber = `${dateStr}${(count + 1).toString().padStart(4, '0')}`;
     }
@@ -286,8 +292,9 @@ export const createOrder = async (req, res) => {
 export const getOrders = async (req, res) => {
   try {
     const { outlet, status, date } = req.query;
-    const filter = {};
-    
+    const { hotelId } = req.user;
+    const filter = { hotelId };
+
     if (outlet) filter.outlet = outlet;
     if (status) {
       // Handle comma-separated status values for multiple statuses
@@ -344,8 +351,9 @@ export const updateOrderStatus = async (req, res) => {
         break;
     }
 
+    const { hotelId } = req.user;
     const order = await POSOrder.findOneAndUpdate(
-      { _id: req.params.id },
+      { _id: req.params.id, hotelId },
       { $set: { status, ...timestampUpdate } },
       { new: true, runValidators: true }
     );
@@ -376,7 +384,8 @@ export const processPayment = async (req, res) => {
     // First read to compute change, then atomically update with a
     // precondition on totalAmount to prevent a concurrent modification
     // from causing an incorrect change calculation.
-    const existingOrder = await POSOrder.findById(req.params.id).select('totalAmount status');
+    const { hotelId } = req.user;
+    const existingOrder = await POSOrder.findOne({ _id: req.params.id, hotelId }).select('totalAmount status');
 
     if (!existingOrder) {
       return res.status(404).json({
@@ -399,7 +408,7 @@ export const processPayment = async (req, res) => {
     // Atomic update: only succeeds if totalAmount has not been changed
     // by another concurrent request since we read it.
     const order = await POSOrder.findOneAndUpdate(
-      { _id: req.params.id, totalAmount: existingOrder.totalAmount },
+      { _id: req.params.id, hotelId, totalAmount: existingOrder.totalAmount },
       {
         $set: {
           payment,
@@ -436,15 +445,19 @@ export const getDashboardStats = async (req, res) => {
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
 
+    const { hotelId } = req.user;
+
     // Today's completed orders
     const completedOrders = await POSOrder.find({
       status: 'completed',
-      completedTime: { $gte: startOfDay, $lt: endOfDay }
+      completedTime: { $gte: startOfDay, $lt: endOfDay },
+      hotelId
     });
 
     // Active orders
     const activeOrders = await POSOrder.countDocuments({
-      status: { $in: ['preparing', 'ready'] }
+      status: { $in: ['preparing', 'ready'] },
+      hotelId
     });
 
     // Calculate stats
@@ -484,9 +497,10 @@ export const calculateOrderTotals = async (req, res) => {
     }
 
     // Get outlet for tax settings
+    const { hotelId } = req.user;
     let outlet;
     if (outletId) {
-      outlet = await POSOutlet.findById(outletId);
+      outlet = await POSOutlet.findOne({ _id: outletId, hotelId });
     }
 
     // Default tax rates if outlet not found
@@ -608,12 +622,14 @@ export const calculateBillingTotals = async (req, res) => {
 export const getSalesReport = async (req, res) => {
   try {
     const { outlet, startDate, endDate } = req.query;
+    const { hotelId } = req.user;
     const matchStage = {
       status: 'completed',
-      'payment.status': 'paid'
+      'payment.status': 'paid',
+      hotelId: new mongoose.Types.ObjectId(hotelId)
     };
-    
-    if (outlet) matchStage.outlet = mongoose.Types.ObjectId(outlet);
+
+    if (outlet) matchStage.outlet = new mongoose.Types.ObjectId(outlet);
     if (startDate && endDate) {
       matchStage.completedTime = {
         $gte: new Date(startDate),

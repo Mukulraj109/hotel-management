@@ -2,7 +2,7 @@ import Decimal from 'decimal.js';
 import Stripe from 'stripe';
 import logger from '../utils/logger.js';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
 class CancellationService {
   /**
@@ -48,6 +48,11 @@ class CancellationService {
   async processStripeRefund(booking, refundAmount) {
     if (!booking.stripePaymentIntentId || refundAmount <= 0) {
       return null;
+    }
+
+    if (!stripe) {
+      logger.error('Stripe is not configured. Set STRIPE_SECRET_KEY.');
+      throw new Error('Payment processing is not configured. Set STRIPE_SECRET_KEY.');
     }
 
     try {

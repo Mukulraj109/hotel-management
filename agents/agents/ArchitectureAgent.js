@@ -10,12 +10,17 @@ export class ArchitectureAgent extends BaseAgent {
   }
 
   async analyze(state, config) {
-    // Architecture findings require manual refactoring decisions. Skip automated checks.
-    // Infrastructure improvements in place: tenantIsolation, transactionHelper, bookingStateMachine.
-    // Remaining findings (large files, complex models, route business logic) are structural
-    // and cannot be resolved without major refactoring.
+    const { scanner } = config;
+
+    this._checkGodFiles(state);
+    this._checkModelComplexity(state);
+    await this._checkCircularDependencies(state, config);
+    await this._checkCodeDuplication(state, config);
+    await this._checkErrorHandlingConsistency(state, config);
+    await this._checkResponsibilityMixing(state, config);
+
     return {
-      summary: 'Architecture analysis — infrastructure improvements in place (tenantIsolation, transactionHelper, bookingStateMachine). Remaining findings require manual refactoring.',
+      summary: 'Architecture analysis complete.',
     };
   }
 

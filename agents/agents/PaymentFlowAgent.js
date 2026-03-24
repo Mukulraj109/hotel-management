@@ -45,8 +45,6 @@ export class PaymentFlowAgent extends BaseAgent {
   }
 
   _checkStripeIntegration(state, content, file) {
-    return; // Circuit breaker wraps all Stripe calls with error handling + fallback
-
     // Check for proper error handling on Stripe API calls
     const stripeCallPattern = /stripe\.\w+\.\w+\s*\(/g;
     let match;
@@ -128,7 +126,6 @@ export class PaymentFlowAgent extends BaseAgent {
   }
 
   _checkRefundFlow(state, content, file) {
-    return; // Handled by cancellationRefundService — refund + booking status update
     if (!/refund/i.test(content)) return;
 
     // Refund without amount validation
@@ -186,7 +183,6 @@ export class PaymentFlowAgent extends BaseAgent {
   }
 
   _checkFinancialConsistency(state, content, file) {
-    return; // Financial consistency handled by transactionHelper and settlement reconciliation
     // Only check service and model files, not routes
     if (!file.relativePath.includes('service') && !file.relativePath.includes('model') && !file.relativePath.includes('controller')) return;
 
@@ -224,7 +220,6 @@ export class PaymentFlowAgent extends BaseAgent {
   }
 
   _checkIdempotency(state, content, file) {
-    return; // Idempotency keys added to payments.js
     // Payment creation without idempotency key
     if (/\.create\s*\(|paymentIntent/i.test(content)) {
       const hasIdempotencyKey = /idempotency|idempotent|idempotencyKey|nonce/i.test(content);
@@ -244,7 +239,6 @@ export class PaymentFlowAgent extends BaseAgent {
   }
 
   _checkPartialPayments(state, content, file) {
-    return; // Partial payment infrastructure is in place
     if (!/partial|split|installment/i.test(content) && /pay/i.test(file.name)) {
       // Check if partial payments are handled
       const hasPartialPayment = /partial|remaining|balance|outstanding|paid.*total|amount.*due/i.test(content);
@@ -263,7 +257,6 @@ export class PaymentFlowAgent extends BaseAgent {
   }
 
   _checkCurrencyHandling(state, content, file) {
-    return; // Currency handling is configured per property
     if (!/currency|forex|exchange/i.test(content) && /pay|invoice|billing/i.test(file.name)) {
       // Check for hardcoded currency
       const hardcodedCurrency = /currency\s*[:=]\s*['"](?:INR|USD|EUR|GBP)['"]/g;
