@@ -13,6 +13,57 @@ import { Room } from '../../services/roomsService';
 import analyticsService, { ProfitabilityData } from '../../services/analyticsService';
 import toast from 'react-hot-toast';
 
+const RoomCard = React.memo(({ room, status, isSelected, isChanged, onSelect, onMultiSelect }: {
+  room: Room;
+  status: string;
+  isSelected: boolean;
+  isChanged: boolean;
+  onSelect: (id: string) => void;
+  onMultiSelect: (id: string) => void;
+}) => (
+  <div
+    className={[
+      'relative aspect-square rounded-xl border-2 cursor-pointer transition-all duration-300',
+      status === 'vacant' ? 'bg-green-500 border-green-600 hover:bg-green-600' :
+      status === 'occupied' ? 'bg-red-500 border-red-600 hover:bg-red-600' :
+      status === 'reserved' ? 'bg-purple-500 border-purple-600 hover:bg-purple-600' :
+      status === 'dirty' ? 'bg-yellow-500 border-yellow-600 hover:bg-yellow-600' :
+      status === 'maintenance' ? 'bg-orange-500 border-orange-600 hover:bg-orange-600' :
+      status === 'out_of_order' ? 'bg-gray-500 border-gray-600 hover:bg-gray-600' :
+      'bg-gray-300 border-gray-400 hover:bg-gray-400',
+      isSelected ? 'ring-4 ring-blue-500 ring-offset-2 shadow-xl' : '',
+      isChanged ? 'animate-pulse ring-4 ring-yellow-400 shadow-lg' : '',
+      'group hover:scale-110 hover:shadow-2xl transform-gpu'
+    ].filter(Boolean).join(' ')}
+    onClick={(e) => {
+      if (e.ctrlKey || e.metaKey) {
+        onMultiSelect(room._id);
+      } else {
+        onSelect(room._id);
+      }
+    }}
+    title={`Click to change status \u2022 Ctrl+Click for bulk selection \u2022 Room ${room.roomNumber} - ${status} - ${room.type} - \u20B9${room.currentRate}`}
+  >
+    <div className="absolute inset-0 flex flex-col items-center justify-center text-white font-medium">
+      <div className="text-lg mb-1 drop-shadow-lg">
+        {room.type === 'suite' ? '\uD83D\uDC51' : room.type === 'deluxe' ? '\u2B50' : room.type === 'double' ? '\uD83D\uDC65' : '\uD83D\uDC64'}
+      </div>
+      <div className="text-lg font-bold drop-shadow-lg">{room.roomNumber}</div>
+      <div className="text-xs opacity-90 mt-1 capitalize">{room.type}</div>
+    </div>
+    {isSelected && (
+      <div className="absolute -top-2 -left-2">
+        <div className="w-5 h-5 bg-blue-500 rounded-full border-2 border-white flex items-center justify-center">
+          <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+          </svg>
+        </div>
+      </div>
+    )}
+  </div>
+));
+RoomCard.displayName = 'RoomCard';
+
 export default function AdminRooms() {
   const { user } = useAuth();
   const { selectedPropertyId } = useProperty();
@@ -1589,48 +1640,15 @@ export default function AdminRooms() {
                 <div className="p-4 sm:p-6">
                   <div className="grid gap-2 sm:gap-3 grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12">
                     {floorRooms.map(room => (
-                      <div
+                      <RoomCard
                         key={room._id}
-                        className={[
-                          'relative aspect-square rounded-xl border-2 cursor-pointer transition-all duration-300',
-                          getRoomStatus(room) === 'vacant' ? 'bg-green-500 border-green-600 hover:bg-green-600' :
-                          getRoomStatus(room) === 'occupied' ? 'bg-red-500 border-red-600 hover:bg-red-600' :
-                          getRoomStatus(room) === 'reserved' ? 'bg-purple-500 border-purple-600 hover:bg-purple-600' :
-                          getRoomStatus(room) === 'dirty' ? 'bg-yellow-500 border-yellow-600 hover:bg-yellow-600' :
-                          getRoomStatus(room) === 'maintenance' ? 'bg-orange-500 border-orange-600 hover:bg-orange-600' :
-                          getRoomStatus(room) === 'out_of_order' ? 'bg-gray-500 border-gray-600 hover:bg-gray-600' :
-                          'bg-gray-300 border-gray-400 hover:bg-gray-400',
-                          selectedRooms.has(room._id) ? 'ring-4 ring-blue-500 ring-offset-2 shadow-xl' : '',
-                          changedRooms.has(room._id) ? 'animate-pulse ring-4 ring-yellow-400 shadow-lg' : '',
-                          'group hover:scale-110 hover:shadow-2xl transform-gpu'
-                        ].filter(Boolean).join(' ')}
-                        onClick={(e) => {
-                          // Support bulk selection with Ctrl/Cmd key
-                          if (e.ctrlKey || e.metaKey) {
-                            handleRoomMultiSelect(room._id);
-                          } else {
-                            handleRoomSelect(room._id);
-                          }
-                        }}
-                        title={`Click to change status • Ctrl+Click for bulk selection • Room ${room.roomNumber} - ${getRoomStatus(room)} - ${room.type} - ₹${room.currentRate}`}
-                      >
-                        <div className="absolute inset-0 flex flex-col items-center justify-center text-white font-medium">
-                          <div className="text-lg mb-1 drop-shadow-lg">
-                            {room.type === 'suite' ? '👑' : room.type === 'deluxe' ? '⭐' : room.type === 'double' ? '👥' : '👤'}
-                          </div>
-                          <div className="text-lg font-bold drop-shadow-lg">{room.roomNumber}</div>
-                          <div className="text-xs opacity-90 mt-1 capitalize">{room.type}</div>
-                        </div>
-                        {selectedRooms.has(room._id) && (
-                          <div className="absolute -top-2 -left-2">
-                            <div className="w-5 h-5 bg-blue-500 rounded-full border-2 border-white flex items-center justify-center">
-                              <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                        room={room}
+                        status={getRoomStatus(room)}
+                        isSelected={selectedRooms.has(room._id)}
+                        isChanged={changedRooms.has(room._id)}
+                        onSelect={handleRoomSelect}
+                        onMultiSelect={handleRoomMultiSelect}
+                      />
                     ))}
                   </div>
                 </div>

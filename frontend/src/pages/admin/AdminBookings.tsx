@@ -12,6 +12,7 @@ import { bookingEditingService } from '../../services/bookingEditingService';
 import { api } from '../../services/api';
 import { AdminBooking, BookingFilters, BookingStats } from '../../types/admin';
 import { formatCurrency, formatNumber, getStatusColor } from '../../utils/dashboardUtils';
+import EmptyState from '../../components/ui/EmptyState';
 import { format, parseISO } from 'date-fns';
 import WalkInBooking from './WalkInBooking';
 import PaymentCollectionModal from '../../components/admin/PaymentCollectionModal';
@@ -1230,19 +1231,28 @@ export default function AdminBookings() {
       </Card>
 
       {/* Bookings Table */}
-      <DataTable
-        title="All Bookings"
-        data={bookings}
-        columns={columns}
-        loading={loading}
-        searchable={false}
-        pagination={false}
-        emptyMessage="No bookings found"
-        onRowClick={(booking) => {
-          setSelectedBooking(booking);
-          setShowDetailsModal(true);
-        }}
-      />
+      {!loading && bookings.length === 0 ? (
+        <EmptyState
+          title="No bookings found"
+          description="There are no bookings matching your current filters. Try adjusting your search criteria or create a new booking."
+          icon={<Calendar className="w-16 h-16" />}
+          action={{ label: 'Create Booking', onClick: () => setShowWalkInModal(true) }}
+        />
+      ) : (
+        <DataTable
+          title="All Bookings"
+          data={bookings}
+          columns={columns}
+          loading={loading}
+          searchable={false}
+          pagination={false}
+          emptyMessage="No bookings found"
+          onRowClick={(booking) => {
+            setSelectedBooking(booking);
+            setShowDetailsModal(true);
+          }}
+        />
+      )}
 
       {/* Booking Details Modal */}
       {selectedBooking && (

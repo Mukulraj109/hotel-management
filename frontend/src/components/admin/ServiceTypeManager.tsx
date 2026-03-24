@@ -22,6 +22,49 @@ import { useAuth } from '../../context/AuthContext';
 
 // Using imported types from serviceTypeService
 
+const ServiceTypeCardInfo = React.memo(({ service }: { service: ServiceType }) => (
+  <CardContent>
+    <div className="space-y-3">
+      <p className="text-sm text-gray-700">{service.description}</p>
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="flex items-center">
+          <DollarSign className="w-4 h-4 text-green-600 mr-1" />
+          <span>{'\u20B9'}{service.basePrice}</span>
+        </div>
+        <div className="flex items-center">
+          <Clock className="w-4 h-4 text-blue-600 mr-1" />
+          <span>{service.estimatedDuration}m</span>
+        </div>
+      </div>
+      <div className="flex items-center text-sm">
+        <AlertCircle className="w-4 h-4 text-orange-600 mr-1" />
+        <span>SLA: {service.slaTime} minutes</span>
+      </div>
+      {service.variations.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-gray-700 mb-1">Variations:</p>
+          <div className="flex flex-wrap gap-1">
+            {service.variations.slice(0, 2).map((variation, index) => (
+              <span
+                key={`variation-${index}-${variation.name}`}
+                className="inline-block px-2 py-1 bg-gray-100 text-xs rounded"
+              >
+                {variation.name}
+              </span>
+            ))}
+            {service.variations.length > 2 && (
+              <span className="inline-block px-2 py-1 bg-gray-100 text-xs rounded">
+                +{service.variations.length - 2} more
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  </CardContent>
+));
+ServiceTypeCardInfo.displayName = 'ServiceTypeCardInfo';
+
 const ServiceTypeManager: React.FC = () => {
   const { user } = useAuth();
   const [serviceTypes, setServiceTypes] = useState<ServiceType[]>([]);
@@ -294,61 +337,7 @@ const ServiceTypeManager: React.FC = () => {
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    <p className="text-sm text-gray-700">{service.description}</p>
-
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <div className="flex items-center">
-                        <DollarSign className="w-4 h-4 text-green-600 mr-1" />
-                        <span>₹{service.basePrice}</span>
-                      </div>
-                      <div className="flex items-center">
-                        <Clock className="w-4 h-4 text-blue-600 mr-1" />
-                        <span>{service.estimatedDuration}m</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center text-sm">
-                      <AlertCircle className="w-4 h-4 text-orange-600 mr-1" />
-                      <span>SLA: {service.slaTime} minutes</span>
-                    </div>
-
-                    {service.variations.length > 0 && (
-                      <div>
-                        <p className="text-xs font-medium text-gray-700 mb-1">Variations:</p>
-                        <div className="flex flex-wrap gap-1">
-                          {service.variations.slice(0, 2).map((variation, index) => (
-                            <span
-                              key={`-${index}-${variation.name}`}
-                              className="inline-block px-2 py-1 bg-gray-100 text-xs rounded"
-                            >
-                              {variation.name}
-                            </span>
-                          ))}
-                          {service.variations.length > 2 && (
-                            <span className="inline-block px-2 py-1 bg-gray-100 text-xs rounded">
-                              +{service.variations.length - 2} more
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center">
-                        {service.isActive ? (
-                          <CheckCircle className="w-4 h-4 text-green-600 mr-1" />
-                        ) : (
-                          <X className="w-4 h-4 text-red-600 mr-1" />
-                        )}
-                        <span className="text-xs">
-                          {service.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
+                <ServiceTypeCardInfo service={service} />
               </Card>
             ))}
           </div>

@@ -18,6 +18,7 @@ import GuestAdvancedSearch from '../../components/admin/GuestAdvancedSearch';
 import GuestBulkOperations from '../../components/admin/GuestBulkOperations';
 import GuestAnalytics from '../../components/admin/GuestAnalytics';
 import { api } from '../../services/api';
+import EmptyState from '../../components/ui/EmptyState';
 
 interface Guest {
   _id: string;
@@ -47,6 +48,106 @@ interface Guest {
   };
   createdAt: string;
 }
+
+const getLoyaltyTierColor = (tier: string) => {
+  const colors: Record<string, string> = {
+    bronze: 'bg-orange-100 text-orange-800',
+    silver: 'bg-gray-100 text-gray-800',
+    gold: 'bg-yellow-100 text-yellow-800',
+    platinum: 'bg-purple-100 text-purple-800'
+  };
+  return colors[tier] || 'bg-gray-100 text-gray-800';
+};
+
+const getGuestTypeColor = (type: string) => {
+  const colors: Record<string, string> = {
+    normal: 'bg-blue-100 text-blue-800',
+    corporate: 'bg-green-100 text-green-800'
+  };
+  return colors[type] || 'bg-gray-100 text-gray-800';
+};
+
+const GuestRow = React.memo(({ guest, isSelected, onSelect, onEdit, onDelete }: {
+  guest: Guest;
+  isSelected: boolean;
+  onSelect: (id: string) => void;
+  onEdit: (guest: Guest) => void;
+  onDelete: (id: string) => void;
+}) => (
+  <tr className="hover:bg-gray-50">
+    <td className="px-6 py-4 whitespace-nowrap">
+      <input
+        type="checkbox"
+        checked={isSelected}
+        onChange={() => onSelect(guest._id)}
+        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+      />
+    </td>
+    <td className="px-6 py-4 whitespace-nowrap">
+      <div className="flex items-center">
+        <div className="flex-shrink-0 h-10 w-10">
+          <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
+            <UserGroupIcon className="h-6 w-6 text-gray-600" />
+          </div>
+        </div>
+        <div className="ml-4">
+          <div className="text-sm font-medium text-gray-900">
+            {guest.salutationId?.title && `${guest.salutationId.title} `}{guest.name}
+          </div>
+          <div className="text-sm text-gray-500">
+            ID: {guest._id.slice(-8)}
+          </div>
+        </div>
+      </div>
+    </td>
+    <td className="px-6 py-4 whitespace-nowrap">
+      <div className="text-sm text-gray-900">{guest.email}</div>
+      <div className="text-sm text-gray-500">{guest.phone || 'No phone'}</div>
+    </td>
+    <td className="px-6 py-4 whitespace-nowrap">
+      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getLoyaltyTierColor(guest.loyalty.tier)}`}>
+        {guest.loyalty.tier}
+      </span>
+      <div className="text-xs text-gray-500">
+        {guest.loyalty.points} points
+      </div>
+    </td>
+    <td className="px-6 py-4 whitespace-nowrap">
+      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getGuestTypeColor(guest.guestType)}`}>
+        {guest.guestType}
+      </span>
+    </td>
+    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+      <div>{guest.stats.bookings.totalBookings} bookings</div>
+      <div className="text-xs text-gray-500">
+        ${guest.stats.bookings.totalSpent?.toFixed(2) || '0.00'} spent
+      </div>
+    </td>
+    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+      <div>{guest.stats.reviews.totalReviews} reviews</div>
+      <div className="text-xs text-gray-500">
+        {guest.stats.reviews.averageRating?.toFixed(1) || '0.0'} avg rating
+      </div>
+    </td>
+    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+      <div className="flex space-x-2">
+        <button
+          onClick={() => onEdit(guest)}
+          className="text-blue-600 hover:text-blue-900"
+        >
+          <PencilIcon className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => onDelete(guest._id)}
+          className="text-red-600 hover:text-red-900"
+        >
+          <TrashIcon className="w-4 h-4" />
+        </button>
+      </div>
+    </td>
+  </tr>
+));
+GuestRow.displayName = 'GuestRow';
 
 const AdminGuestList: React.FC = () => {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
@@ -221,23 +322,7 @@ const AdminGuestList: React.FC = () => {
     fetchGuests();
   };
 
-  const getLoyaltyTierColor = (tier: string) => {
-    const colors = {
-      bronze: 'bg-orange-100 text-orange-800',
-      silver: 'bg-gray-100 text-gray-800',
-      gold: 'bg-yellow-100 text-yellow-800',
-      platinum: 'bg-purple-100 text-purple-800'
-    };
-    return colors[tier as keyof typeof colors] || 'bg-gray-100 text-gray-800';
-  };
-
-  const getGuestTypeColor = (type: string) => {
-    const colors = {
-      normal: 'bg-blue-100 text-blue-800',
-      corporate: 'bg-green-100 text-green-800'
-    };
-    return colors[type as keyof typeof colors] || 'bg-gray-100 text-gray-800';
-  };
+  // getLoyaltyTierColor and getGuestTypeColor moved outside component for GuestRow memo
 
   if (showForm) {
     return (
@@ -487,78 +572,14 @@ const AdminGuestList: React.FC = () => {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {guests.map((guest) => (
-                  <tr key={guest._id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <input
-                        type="checkbox"
-                        checked={selectedGuests.includes(guest._id)}
-                        onChange={() => handleSelectGuest(guest._id)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                      />
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0 h-10 w-10">
-                          <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
-                            <UserGroupIcon className="h-6 w-6 text-gray-600" />
-                          </div>
-                        </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            {guest.salutationId?.title && `${guest.salutationId.title} `}{guest.name}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            ID: {guest._id.slice(-8)}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">{guest.email}</div>
-                      <div className="text-sm text-gray-500">{guest.phone || 'No phone'}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getLoyaltyTierColor(guest.loyalty.tier)}`}>
-                        {guest.loyalty.tier}
-                      </span>
-                      <div className="text-xs text-gray-500">
-                        {guest.loyalty.points} points
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getGuestTypeColor(guest.guestType)}`}>
-                        {guest.guestType}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      <div>{guest.stats.bookings.totalBookings} bookings</div>
-                      <div className="text-xs text-gray-500">
-                        ${guest.stats.bookings.totalSpent?.toFixed(2) || '0.00'} spent
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      <div>{guest.stats.reviews.totalReviews} reviews</div>
-                      <div className="text-xs text-gray-500">
-                        {guest.stats.reviews.averageRating?.toFixed(1) || '0.0'} avg rating
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handleEdit(guest)}
-                          className="text-blue-600 hover:text-blue-900"
-                        >
-                          <PencilIcon className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(guest._id)}
-                          className="text-red-600 hover:text-red-900"
-                        >
-                          <TrashIcon className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                  <GuestRow
+                    key={guest._id}
+                    guest={guest}
+                    isSelected={selectedGuests.includes(guest._id)}
+                    onSelect={handleSelectGuest}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                  />
                 ))}
               </tbody>
             </table>
@@ -566,15 +587,12 @@ const AdminGuestList: React.FC = () => {
         )}
 
         {!loading && guests.length === 0 && (
-          <div className="p-8 text-center">
-            <p className="text-gray-500">No guests found</p>
-            <button
-              onClick={handleCreate}
-              className="mt-2 text-blue-600 hover:text-blue-800"
-            >
-              Create your first guest
-            </button>
-          </div>
+          <EmptyState
+            title="No guests found"
+            description="No guests match your current filters. Try adjusting your search criteria or add a new guest."
+            icon={<UserGroupIcon className="w-16 h-16" />}
+            action={{ label: 'Add Guest', onClick: handleCreate }}
+          />
         )}
 
         {/* Pagination */}

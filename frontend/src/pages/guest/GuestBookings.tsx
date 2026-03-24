@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatCurrency, formatDate } from '../../utils/formatters';
+import EmptyState from '../../components/ui/EmptyState';
 import toast from 'react-hot-toast';
 
 // Extended interface for bookings with populated hotel data
@@ -104,6 +105,236 @@ const calculateSavingsPercentage = (booking: BookingWithHotel) => {
   if (original === 0) return 0;
   return Math.round((adjustment / original) * 100);
 };
+
+const GuestBookingCard = React.memo(({ booking, hasDiscount, hasSurcharge, onNavigate, onCancel, onGenerateKey, onRequestModification, onStartConversation }: {
+  booking: BookingWithHotel;
+  hasDiscount: boolean;
+  hasSurcharge: boolean;
+  onNavigate: (id: string) => void;
+  onCancel: (id: string) => void;
+  onGenerateKey: (booking: BookingWithHotel) => void;
+  onRequestModification: (booking: BookingWithHotel) => void;
+  onStartConversation: (booking: BookingWithHotel) => void;
+}) => (
+  <Card
+    className={`overflow-hidden transition-all duration-200 ${
+      hasDiscount
+        ? 'border-l-4 border-l-green-500 shadow-lg hover:shadow-xl'
+        : hasSurcharge
+        ? 'border-l-4 border-l-red-500 shadow-lg hover:shadow-xl'
+        : 'hover:shadow-md'
+    }`}
+  >
+    <div className="p-4 sm:p-6">
+      {/* Booking Header */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4 gap-3 sm:gap-0">
+        <div>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
+            <h3 className="text-lg sm:text-xl font-semibold text-gray-900">
+              {booking.hotelId?.name || 'Hotel'}
+            </h3>
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium w-fit ${getStatusColor(booking.status)}`}>
+              {getStatusIcon(booking.status)}
+              <span className="ml-1 capitalize">{booking.status.replace('_', ' ')}</span>
+            </span>
+          </div>
+          <p className="text-sm text-gray-600 mb-1">Booking #{booking.bookingNumber}</p>
+          {booking.hotelId?.address && (
+            <div className="flex items-center text-sm text-gray-500">
+              <MapPin className="w-4 h-4 mr-1" />
+              {booking.hotelId.address.street}, {booking.hotelId.address.city}, {booking.hotelId.address.state}
+            </div>
+          )}
+        </div>
+        <div className="text-left sm:text-right">
+          {hasPriceAdjustments(booking) && (
+            <div className="mb-2 space-y-1">
+              <div className="flex items-center justify-start sm:justify-end gap-2">
+                <span className="text-sm text-gray-500 line-through">
+                  {formatCurrency(booking.originalAmount || booking.totalAmount, booking.currency)}
+                </span>
+                {calculateAdjustmentAmount(booking) > 0 ? (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                    <TrendingDown className="w-3 h-3 mr-1" />
+                    {calculateSavingsPercentage(booking)}% OFF
+                  </span>
+                ) : calculateAdjustmentAmount(booking) < 0 ? (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200">
+                    <TrendingUp className="w-3 h-3 mr-1" />
+                    +{Math.abs(calculateSavingsPercentage(booking))}%
+                  </span>
+                ) : null}
+              </div>
+              {booking.discountAmount && booking.discountAmount > 0 && (
+                <div className="text-sm font-medium text-green-600 flex items-center justify-start sm:justify-end gap-1">
+                  <Percent className="w-3 h-3" />
+                  You Save {formatCurrency(booking.discountAmount, booking.currency)}
+                </div>
+              )}
+              {booking.surchargeAmount && booking.surchargeAmount > 0 && (
+                <div className="text-sm font-medium text-red-600 flex items-center justify-start sm:justify-end gap-1">
+                  <TrendingUp className="w-3 h-3" />
+                  Additional {formatCurrency(booking.surchargeAmount, booking.currency)}
+                </div>
+              )}
+            </div>
+          )}
+          <div className="text-xl sm:text-2xl font-bold text-gray-900">
+            {formatCurrency(booking.totalAmount, booking.currency)}
+          </div>
+          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium w-fit ${getPaymentStatusColor(booking.paymentStatus)}`}>
+            <CreditCard className="w-3 h-3 mr-1" />
+            {booking.paymentStatus === 'paid' ? 'Paid' : booking.paymentStatus.charAt(0).toUpperCase() + booking.paymentStatus.slice(1)}
+          </span>
+        </div>
+      </div>
+
+      {/* Details Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-4">
+        <div className="flex items-center space-x-3">
+          <Calendar className="w-5 h-5 text-yellow-600" />
+          <div>
+            <p className="text-sm font-medium text-gray-900">Check-in</p>
+            <p className="text-sm text-gray-600">{formatDate(booking.checkIn)}</p>
+          </div>
+        </div>
+        <div className="flex items-center space-x-3">
+          <Calendar className="w-5 h-5 text-yellow-600" />
+          <div>
+            <p className="text-sm font-medium text-gray-900">Check-out</p>
+            <p className="text-sm text-gray-600">{formatDate(booking.checkOut)}</p>
+          </div>
+        </div>
+        <div className="flex items-center space-x-3">
+          <Users className="w-5 h-5 text-yellow-600" />
+          <div>
+            <p className="text-sm font-medium text-gray-900">Guests</p>
+            <p className="text-sm text-gray-600">
+              {booking.guestDetails.adults} adults
+              {booking.guestDetails.children > 0 && `, ${booking.guestDetails.children} children`}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Rooms */}
+      <div className="mb-4">
+        <h4 className="text-sm font-medium text-gray-900 mb-2">Rooms ({booking.rooms.length})</h4>
+        <div className="space-y-2">
+          {booking.rooms.map((room, index) => (
+            <div key={room.roomId || index} className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-gray-50 rounded-lg p-3 gap-2 sm:gap-0">
+              <div>
+                <p className="text-sm font-medium text-gray-900">
+                  Room {room.roomId?.roomNumber || index + 1} - {room.roomId?.type || 'Standard'}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {booking.nights} nights x {formatCurrency(room.rate, booking.currency)}/night
+                </p>
+              </div>
+              <p className="text-sm font-semibold text-gray-900">
+                {formatCurrency(room.rate * booking.nights, booking.currency)}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Special Requests */}
+      {booking.guestDetails.specialRequests && (
+        <div className="mb-4">
+          <h4 className="text-sm font-medium text-gray-900 mb-1">Special Requests</h4>
+          <p className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
+            {booking.guestDetails.specialRequests}
+          </p>
+        </div>
+      )}
+
+      {/* Price Adjustments */}
+      {hasPriceAdjustments(booking) && (
+        <div className="mb-4">
+          <h4 className="text-sm font-medium text-gray-900 mb-2 flex items-center gap-2">
+            <Percent className="w-4 h-4 text-yellow-600" />
+            Price Adjustments
+          </h4>
+          <div className="space-y-2">
+            {booking.priceAdjustments
+              ?.filter(adj => !adj.isReversed)
+              .map((adjustment, index) => (
+                <div
+                  key={adjustment._id || index}
+                  className={`flex flex-col sm:flex-row sm:items-center sm:justify-between rounded-lg p-3 ${
+                    adjustment.amount < 0
+                      ? 'bg-green-50 border border-green-200'
+                      : 'bg-red-50 border border-red-200'
+                  }`}
+                >
+                  <div className="flex items-start gap-2 mb-2 sm:mb-0">
+                    {adjustment.amount < 0 ? (
+                      <TrendingDown className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                    ) : (
+                      <TrendingUp className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+                    )}
+                    <div>
+                      <p className={`text-sm font-medium ${adjustment.amount < 0 ? 'text-green-900' : 'text-red-900'}`}>
+                        {adjustment.reason || (adjustment.amount < 0 ? 'Discount Applied' : 'Surcharge Applied')}
+                      </p>
+                      {adjustment.adjustedAt && (
+                        <p className="text-xs text-gray-500 mt-0.5">Applied on {formatDate(adjustment.adjustedAt)}</p>
+                      )}
+                    </div>
+                  </div>
+                  <p className={`text-sm font-semibold ${adjustment.amount < 0 ? 'text-green-700' : 'text-red-700'}`}>
+                    {adjustment.amount < 0 ? '-' : '+'}{formatCurrency(Math.abs(adjustment.amount), booking.currency)}
+                  </p>
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pt-4 border-t border-gray-200 gap-3 sm:gap-0">
+        <div className="flex items-center space-x-4 text-sm text-gray-500">
+          <span>Booked on {formatDate(booking.createdAt)}</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <Button variant="ghost" size="sm" onClick={() => onNavigate(booking._id)} className="text-yellow-600 border-yellow-600 hover:bg-yellow-50">
+            <Eye className="w-4 h-4 mr-1" /> View Details
+          </Button>
+          {booking.hotelId?.contact?.phone && (
+            <Button variant="ghost" size="sm" onClick={() => window.open(`tel:${booking.hotelId.contact!.phone}`)}>
+              <Phone className="w-4 h-4 mr-1" /> Call Hotel
+            </Button>
+          )}
+          {booking.hotelId?.contact?.email && (
+            <Button variant="ghost" size="sm" onClick={() => window.open(`mailto:${booking.hotelId.contact!.email}`)}>
+              <Mail className="w-4 h-4 mr-1" /> Email Hotel
+            </Button>
+          )}
+          {['pending', 'confirmed'].includes(booking.status) && new Date(booking.checkIn) > new Date() && (
+            <Button variant="ghost" size="sm" onClick={() => onRequestModification(booking)} className="text-yellow-600 border-yellow-600 hover:bg-yellow-50">
+              <Edit className="w-4 h-4 mr-1" /> Request Changes
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => onStartConversation(booking)} className="text-blue-600 border-blue-600 hover:bg-blue-50">
+            <MessageSquare className="w-4 h-4 mr-1" /> Contact Hotel
+          </Button>
+          {['confirmed', 'checked_in'].includes(booking.status) && new Date(booking.checkOut) > new Date() && (
+            <Button variant="ghost" size="sm" onClick={() => onGenerateKey(booking)} className="text-blue-600 border-blue-600 hover:bg-blue-50">
+              <Key className="w-4 h-4 mr-1" /> Digital Key
+            </Button>
+          )}
+          {['pending', 'confirmed'].includes(booking.status) && new Date(booking.checkIn) > new Date(Date.now() + 24 * 60 * 60 * 1000) && (
+            <Button variant="ghost" size="sm" onClick={() => onCancel(booking._id)} className="text-red-600 border-red-600 hover:bg-red-50">
+              <XCircle className="w-4 h-4 mr-1" /> Cancel
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  </Card>
+));
+GuestBookingCard.displayName = 'GuestBookingCard';
 
 export default function GuestBookings() {
   const { user } = useAuth();
@@ -258,334 +489,37 @@ export default function GuestBookings() {
 
       {/* Bookings List */}
       {filteredBookings.length === 0 ? (
-        <div className="text-center py-12">
-          <Calendar className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No bookings found</h3>
-          <p className="text-gray-500 mb-4">
-            {filter === 'all' 
-              ? "You haven't made any bookings yet." 
-              : `No ${filter} bookings found.`}
-          </p>
-          <Button 
-            onClick={() => window.location.href = '/rooms'}
-            className="bg-yellow-600 hover:bg-yellow-700"
-          >
-            Browse Rooms
-          </Button>
-        </div>
+        <EmptyState
+          title="No bookings found"
+          description={filter === 'all'
+            ? "You haven't made any bookings yet. Browse rooms to get started."
+            : `No ${filter} bookings found. Try a different filter.`}
+          icon={<Calendar className="w-16 h-16" />}
+          action={{ label: 'Browse Rooms', onClick: () => { window.location.href = '/rooms'; } }}
+        />
       ) : (
         <div className="space-y-6">
           {filteredBookings.map((booking) => {
-            // ENHANCED: Add visual indicator for discounted bookings
             const hasDiscount = hasPriceAdjustments(booking) && calculateAdjustmentAmount(booking) > 0;
             const hasSurcharge = hasPriceAdjustments(booking) && calculateAdjustmentAmount(booking) < 0;
 
             return (
-              <Card
+              <GuestBookingCard
                 key={booking._id}
-                className={`overflow-hidden transition-all duration-200 ${
-                  hasDiscount
-                    ? 'border-l-4 border-l-green-500 shadow-lg hover:shadow-xl'
-                    : hasSurcharge
-                    ? 'border-l-4 border-l-red-500 shadow-lg hover:shadow-xl'
-                    : 'hover:shadow-md'
-                }`}
-              >
-              <div className="p-4 sm:p-6">
-                {/* Booking Header */}
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4 gap-3 sm:gap-0">
-                  <div>
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
-                      <h3 className="text-lg sm:text-xl font-semibold text-gray-900">
-                        {booking.hotelId?.name || 'Hotel'}
-                      </h3>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium w-fit ${getStatusColor(booking.status)}`}>
-                        {getStatusIcon(booking.status)}
-                        <span className="ml-1 capitalize">{booking.status.replace('_', ' ')}</span>
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-600 mb-1">
-                      Booking #{booking.bookingNumber}
-                    </p>
-                    {booking.hotelId?.address && (
-                      <div className="flex items-center text-sm text-gray-500">
-                        <MapPin className="w-4 h-4 mr-1" />
-                        {booking.hotelId.address.street}, {booking.hotelId.address.city}, {booking.hotelId.address.state}
-                      </div>
-                    )}
-                  </div>
-                  <div className="text-left sm:text-right">
-                    {/* ENHANCED: Show price adjustment indicators */}
-                    {hasPriceAdjustments(booking) && (
-                      <div className="mb-2 space-y-1">
-                        {/* Original price with strikethrough */}
-                        <div className="flex items-center justify-start sm:justify-end gap-2">
-                          <span className="text-sm text-gray-500 line-through">
-                            {formatCurrency(booking.originalAmount || booking.totalAmount, booking.currency)}
-                          </span>
-                          {/* Discount/Surcharge badge */}
-                          {calculateAdjustmentAmount(booking) > 0 ? (
-                            <span
-                              className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200"
-                              title={`Discount applied: ${booking.priceAdjustments?.filter(adj => !adj.isReversed).map(adj => adj.reason).join(', ')}`}
-                            >
-                              <TrendingDown className="w-3 h-3 mr-1" />
-                              {calculateSavingsPercentage(booking)}% OFF
-                            </span>
-                          ) : calculateAdjustmentAmount(booking) < 0 ? (
-                            <span
-                              className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200"
-                              title={`Surcharge applied: ${booking.priceAdjustments?.filter(adj => !adj.isReversed).map(adj => adj.reason).join(', ')}`}
-                            >
-                              <TrendingUp className="w-3 h-3 mr-1" />
-                              +{Math.abs(calculateSavingsPercentage(booking))}%
-                            </span>
-                          ) : null}
-                        </div>
-
-                        {/* Savings amount */}
-                        {booking.discountAmount && booking.discountAmount > 0 && (
-                          <div className="text-sm font-medium text-green-600 flex items-center justify-start sm:justify-end gap-1">
-                            <Percent className="w-3 h-3" />
-                            You Save {formatCurrency(booking.discountAmount, booking.currency)}
-                          </div>
-                        )}
-
-                        {/* Surcharge amount */}
-                        {booking.surchargeAmount && booking.surchargeAmount > 0 && (
-                          <div className="text-sm font-medium text-red-600 flex items-center justify-start sm:justify-end gap-1">
-                            <TrendingUp className="w-3 h-3" />
-                            Additional {formatCurrency(booking.surchargeAmount, booking.currency)}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Current total price */}
-                    <div className="text-xl sm:text-2xl font-bold text-gray-900">
-                      {formatCurrency(booking.totalAmount, booking.currency)}
-                    </div>
-
-                    {/* Payment status badge */}
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium w-fit ${getPaymentStatusColor(booking.paymentStatus)}`}>
-                      <CreditCard className="w-3 h-3 mr-1" />
-                      {booking.paymentStatus === 'paid' ? 'Paid' : booking.paymentStatus.charAt(0).toUpperCase() + booking.paymentStatus.slice(1)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Booking Details Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-4">
-                  {/* Check-in/out */}
-                  <div className="flex items-center space-x-3">
-                    <Calendar className="w-5 h-5 text-yellow-600" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Check-in</p>
-                      <p className="text-sm text-gray-600">{formatDate(booking.checkIn)}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <Calendar className="w-5 h-5 text-yellow-600" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Check-out</p>
-                      <p className="text-sm text-gray-600">{formatDate(booking.checkOut)}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <Users className="w-5 h-5 text-yellow-600" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">Guests</p>
-                      <p className="text-sm text-gray-600">
-                        {booking.guestDetails.adults} adults
-                        {booking.guestDetails.children > 0 && `, ${booking.guestDetails.children} children`}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Rooms */}
-                <div className="mb-4">
-                  <h4 className="text-sm font-medium text-gray-900 mb-2">Rooms ({booking.rooms.length})</h4>
-                  <div className="space-y-2">
-                    {booking.rooms.map((room, index) => (
-                      <div key={room.roomId} className="flex flex-col sm:flex-row sm:items-center sm:justify-between bg-gray-50 rounded-lg p-3 gap-2 sm:gap-0">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">
-                            Room {room.roomId?.roomNumber || index + 1} - {room.roomId?.type || 'Standard'}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            {booking.nights} nights × {formatCurrency(room.rate, booking.currency)}/night
-                          </p>
-                        </div>
-                        <p className="text-sm font-semibold text-gray-900">
-                          {formatCurrency(room.rate * booking.nights, booking.currency)}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Special Requests */}
-                {booking.guestDetails.specialRequests && (
-                  <div className="mb-4">
-                    <h4 className="text-sm font-medium text-gray-900 mb-1">Special Requests</h4>
-                    <p className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
-                      {booking.guestDetails.specialRequests}
-                    </p>
-                  </div>
-                )}
-
-                {/* ENHANCED: Price Adjustments Details */}
-                {hasPriceAdjustments(booking) && (
-                  <div className="mb-4">
-                    <h4 className="text-sm font-medium text-gray-900 mb-2 flex items-center gap-2">
-                      <Percent className="w-4 h-4 text-yellow-600" />
-                      Price Adjustments
-                    </h4>
-                    <div className="space-y-2">
-                      {booking.priceAdjustments
-                        ?.filter(adj => !adj.isReversed)
-                        .map((adjustment, index) => (
-                          <div
-                            key={adjustment._id || index}
-                            className={`flex flex-col sm:flex-row sm:items-center sm:justify-between rounded-lg p-3 ${
-                              adjustment.amount < 0
-                                ? 'bg-green-50 border border-green-200'
-                                : 'bg-red-50 border border-red-200'
-                            }`}
-                          >
-                            <div className="flex items-start gap-2 mb-2 sm:mb-0">
-                              {adjustment.amount < 0 ? (
-                                <TrendingDown className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
-                              ) : (
-                                <TrendingUp className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
-                              )}
-                              <div>
-                                <p className={`text-sm font-medium ${
-                                  adjustment.amount < 0 ? 'text-green-900' : 'text-red-900'
-                                }`}>
-                                  {adjustment.reason || (adjustment.amount < 0 ? 'Discount Applied' : 'Surcharge Applied')}
-                                </p>
-                                {adjustment.adjustedAt && (
-                                  <p className="text-xs text-gray-500 mt-0.5">
-                                    Applied on {formatDate(adjustment.adjustedAt)}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                            <p className={`text-sm font-semibold ${
-                              adjustment.amount < 0 ? 'text-green-700' : 'text-red-700'
-                            }`}>
-                              {adjustment.amount < 0 ? '-' : '+'}{formatCurrency(Math.abs(adjustment.amount), booking.currency)}
-                            </p>
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Actions */}
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pt-4 border-t border-gray-200 gap-3 sm:gap-0">
-                  <div className="flex items-center space-x-4 text-sm text-gray-500">
-                    <span>Booked on {formatDate(booking.createdAt)}</span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                    {/* View Details button - always visible */}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => navigate(`/guest/bookings/${booking._id}`)}
-                      className="text-yellow-600 border-yellow-600 hover:bg-yellow-50"
-                    >
-                      <Eye className="w-4 h-4 mr-1" />
-                      View Details
-                    </Button>
-
-                    {booking.hotelId?.contact && (
-                      <>
-                        {booking.hotelId.contact.phone && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => window.open(`tel:${booking.hotelId.contact!.phone}`)}
-                          >
-                            <Phone className="w-4 h-4 mr-1" />
-                            Call Hotel
-                          </Button>
-                        )}
-                        {booking.hotelId.contact.email && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => window.open(`mailto:${booking.hotelId.contact!.email}`)}
-                          >
-                            <Mail className="w-4 h-4 mr-1" />
-                            Email Hotel
-                          </Button>
-                        )}
-                      </>
-                    )}
-
-                    {/* Request Changes button for eligible bookings */}
-                    {['pending', 'confirmed'].includes(booking.status) &&
-                     new Date(booking.checkIn) > new Date() && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRequestModification(booking)}
-                        className="text-yellow-600 border-yellow-600 hover:bg-yellow-50"
-                      >
-                        <Edit className="w-4 h-4 mr-1" />
-                        Request Changes
-                      </Button>
-                    )}
-
-                    {/* Contact Hotel button - available for all bookings */}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleStartConversation(booking)}
-                      className="text-blue-600 border-blue-600 hover:bg-blue-50"
-                    >
-                      <MessageSquare className="w-4 h-4 mr-1" />
-                      Contact Hotel
-                    </Button>
-
-                    {/* Generate Digital Key button for confirmed bookings */}
-                    {['confirmed', 'checked_in'].includes(booking.status) &&
-                     new Date(booking.checkOut) > new Date() && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleGenerateKey(booking)}
-                        className="text-blue-600 border-blue-600 hover:bg-blue-50"
-                      >
-                        <Key className="w-4 h-4 mr-1" />
-                        Digital Key
-                      </Button>
-                    )}
-
-                    {/* Cancel button for eligible bookings */}
-                    {['pending', 'confirmed'].includes(booking.status) && 
-                     new Date(booking.checkIn) > new Date(Date.now() + 24 * 60 * 60 * 1000) && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleCancelBooking(booking._id)}
-                        className="text-red-600 border-red-600 hover:bg-red-50"
-                      >
-                        <XCircle className="w-4 h-4 mr-1" />
-                        Cancel
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </Card>
+                booking={booking}
+                hasDiscount={hasDiscount}
+                hasSurcharge={hasSurcharge}
+                onNavigate={(id) => navigate(`/guest/bookings/${id}`)}
+                onCancel={handleCancelBooking}
+                onGenerateKey={handleGenerateKey}
+                onRequestModification={handleRequestModification}
+                onStartConversation={handleStartConversation}
+              />
             );
           })}
         </div>
       )}
+      {/* Old inline card removed - now using GuestBookingCard memo component */}
 
       {/* Digital Key Generator Modal */}
       {showKeyGenerator && selectedBooking && (

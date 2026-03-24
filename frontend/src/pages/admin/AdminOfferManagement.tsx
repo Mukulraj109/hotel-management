@@ -139,6 +139,51 @@ const getCategoryColor = (category: string) => {
   return colors[category as keyof typeof colors] || 'bg-gray-100 text-gray-800';
 };
 
+const OfferCardInfo = React.memo(({ offer, getTypeColor, getCategoryColor }: {
+  offer: Offer;
+  getTypeColor: (type: string) => string;
+  getCategoryColor: (category: string) => string;
+}) => (
+  <div className="flex-1 min-w-0">
+    <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+      <h3 className="text-base sm:text-lg font-semibold truncate">{offer.title}</h3>
+      <div className="flex flex-wrap gap-1 sm:gap-2">
+        <Badge className={`${getTypeColor(offer.type)} text-xs`}>
+          {offer.type.replace('_', ' ')}
+        </Badge>
+        <Badge className={`${getCategoryColor(offer.category)} text-xs`}>
+          {offer.category}
+        </Badge>
+        <Badge variant={offer.isActive ? "default" : "secondary"} className="text-xs">
+          {offer.isActive ? 'Active' : 'Inactive'}
+        </Badge>
+      </div>
+    </div>
+    <p className="text-sm sm:text-base text-gray-600 mb-3 line-clamp-2">{offer.description}</p>
+    <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 sm:gap-4 text-xs sm:text-sm text-gray-600">
+      <span className="font-medium">{offer.pointsRequired} points</span>
+      {offer.type === 'discount' && (
+        <span className="text-green-600 font-medium">
+          {offer.discountPercentage
+            ? `${offer.discountPercentage}% off`
+            : `\u20B9${offer.discountAmount} off`
+          }
+        </span>
+      )}
+      <span className="capitalize">Min: {offer.minTier}</span>
+      {offer.maxRedemptions && (
+        <span className="text-blue-600">
+          {offer.maxRedemptions - offer.currentRedemptions} left
+        </span>
+      )}
+      <span className="col-span-2 sm:col-span-1">
+        {new Date(offer.createdAt).toLocaleDateString()}
+      </span>
+    </div>
+  </div>
+));
+OfferCardInfo.displayName = 'OfferCardInfo';
+
 export default function AdminOfferManagement() {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [activeTab, setActiveTab] = useState('offers');
@@ -507,43 +552,7 @@ export default function AdminOfferManagement() {
                         onCheckedChange={() => toggleOfferSelection(offer._id)}
                         className="mt-1"
                       />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
-                          <h3 className="text-base sm:text-lg font-semibold truncate">{offer.title}</h3>
-                          <div className="flex flex-wrap gap-1 sm:gap-2">
-                            <Badge className={`${getTypeColor(offer.type)} text-xs`}>
-                              {offer.type.replace('_', ' ')}
-                            </Badge>
-                            <Badge className={`${getCategoryColor(offer.category)} text-xs`}>
-                              {offer.category}
-                            </Badge>
-                            <Badge variant={offer.isActive ? "default" : "secondary"} className="text-xs">
-                              {offer.isActive ? 'Active' : 'Inactive'}
-                            </Badge>
-                          </div>
-                        </div>
-                        <p className="text-sm sm:text-base text-gray-600 mb-3 line-clamp-2">{offer.description}</p>
-                        <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 sm:gap-4 text-xs sm:text-sm text-gray-600">
-                          <span className="font-medium">{offer.pointsRequired} points</span>
-                          {offer.type === 'discount' && (
-                            <span className="text-green-600 font-medium">
-                              {offer.discountPercentage 
-                                ? `${offer.discountPercentage}% off`
-                                : `₹${offer.discountAmount} off`
-                              }
-                            </span>
-                          )}
-                          <span className="capitalize">Min: {offer.minTier}</span>
-                          {offer.maxRedemptions && (
-                            <span className="text-blue-600">
-                              {offer.maxRedemptions - offer.currentRedemptions} left
-                            </span>
-                          )}
-                          <span className="col-span-2 sm:col-span-1">
-                            {new Date(offer.createdAt).toLocaleDateString()}
-                          </span>
-                        </div>
-                      </div>
+                      <OfferCardInfo offer={offer} getTypeColor={getTypeColor} getCategoryColor={getCategoryColor} />
                     </div>
                     <div className="flex items-center justify-end sm:justify-start space-x-2">
                       <Button

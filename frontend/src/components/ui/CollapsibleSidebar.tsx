@@ -64,7 +64,7 @@ const CollapsibleSidebar: React.FC<CollapsibleSidebarProps> = ({
       id: 'dashboard',
       label: 'Dashboard',
       icon: <Home className="w-4 h-4" />,
-      onClick: () =>
+      onClick: () => {}
     },
     {
       id: 'frontdesk',
@@ -78,14 +78,14 @@ const CollapsibleSidebar: React.FC<CollapsibleSidebarProps> = ({
           label: 'Check-in',
           icon: <UserCheck className="w-3 h-3" />,
           badge: counts?.frontDesk.checkIn.toString() || '0',
-          onClick: () =>
+          onClick: () => {}
         },
         {
           id: 'checkout',
           label: 'Check-out',
           icon: <UserCheck className="w-3 h-3" />,
           badge: counts?.frontDesk.checkOut.toString() || '0',
-          onClick: () =>
+          onClick: () => {}
         }
       ]
     },
@@ -100,14 +100,14 @@ const CollapsibleSidebar: React.FC<CollapsibleSidebarProps> = ({
           label: 'Confirmed',
           icon: <CheckCircle className="w-3 h-3" />,
           badge: counts?.reservations.confirmed.toString() || '0',
-          onClick: () =>
+          onClick: () => {}
         },
         {
           id: 'pending',
           label: 'Pending',
           icon: <Clock className="w-3 h-3" />,
           badge: counts?.reservations.pending.toString() || '0',
-          onClick: () =>
+          onClick: () => {}
         }
       ]
     },
@@ -124,7 +124,7 @@ const CollapsibleSidebar: React.FC<CollapsibleSidebarProps> = ({
           icon: <AlertTriangle className="w-3 h-3" />,
           badge: counts?.housekeeping.dirty.toString() || '0',
           badgeVariant: (counts?.housekeeping.dirty || 0) > 0 ? 'destructive' : 'secondary',
-          onClick: () =>
+          onClick: () => {}
         },
         {
           id: 'maintenance',
@@ -132,7 +132,7 @@ const CollapsibleSidebar: React.FC<CollapsibleSidebarProps> = ({
           icon: <AlertTriangle className="w-3 h-3" />,
           badge: counts?.housekeeping.maintenance.toString() || '0',
           badgeVariant: (counts?.housekeeping.maintenance || 0) > 0 ? 'destructive' : 'secondary',
-          onClick: () =>
+          onClick: () => {}
         }
       ]
     },
@@ -147,14 +147,14 @@ const CollapsibleSidebar: React.FC<CollapsibleSidebarProps> = ({
           label: 'VIP Guests',
           icon: <Star className="w-3 h-3" />,
           badge: counts?.guestServices.vipGuests.toString() || '0',
-          onClick: () =>
+          onClick: () => {}
         },
         {
           id: 'corporate',
           label: 'Corporate',
           icon: <Coffee className="w-3 h-3" />,
           badge: counts?.guestServices.corporate.toString() || '0',
-          onClick: () =>
+          onClick: () => {}
         }
       ]
     },
@@ -167,19 +167,19 @@ const CollapsibleSidebar: React.FC<CollapsibleSidebarProps> = ({
           id: 'occupancy',
           label: 'Occupancy',
           icon: <BarChart3 className="w-3 h-3" />,
-          onClick: () =>
+          onClick: () => {}
         },
         {
           id: 'revenue',
           label: 'Revenue',
           icon: <IndianRupee className="w-3 h-3" />,
-          onClick: () =>
+          onClick: () => {}
         },
         {
           id: 'guest-history',
           label: 'Guest History',
           icon: <FileText className="w-3 h-3" />,
-          onClick: () =>
+          onClick: () => {}
         }
       ]
     },
@@ -187,7 +187,7 @@ const CollapsibleSidebar: React.FC<CollapsibleSidebarProps> = ({
       id: 'settings',
       label: 'Settings',
       icon: <Settings className="w-4 h-4" />,
-      onClick: () =>
+      onClick: () => {}
     }
   ];
 

@@ -1010,7 +1010,7 @@ interface AdminMeetUpCardProps {
   onForceCancel: () => void;
 }
 
-function AdminMeetUpCard({ meetUp, onViewDetails, onForceCancel }: AdminMeetUpCardProps) {
+const AdminMeetUpCard = React.memo(function AdminMeetUpCard({ meetUp, onViewDetails, onForceCancel }: AdminMeetUpCardProps) {
   const typeInfo = meetUpRequestService.getMeetUpTypeInfo(meetUp.type);
   const statusInfo = meetUpRequestService.getStatusInfo(meetUp.status);
   const locationInfo = meetUpRequestService.getLocationTypeInfo(meetUp.location.type);
@@ -1110,7 +1110,8 @@ function AdminMeetUpCard({ meetUp, onViewDetails, onForceCancel }: AdminMeetUpCa
       </div>
     </Card>
   );
-}
+});
+AdminMeetUpCard.displayName = 'AdminMeetUpCard';
 
 // Stats Card Component
 interface StatsCardProps {

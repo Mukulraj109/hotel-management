@@ -99,6 +99,108 @@ interface ServiceStats {
   avgCompletionTime: number;
 }
 
+const ServiceRequestCardInfo = React.memo(({ request, getServiceTypeIcon, getStatusColor, getStatusIcon, getPriorityColor, formatDate }: {
+  request: ServiceRequest;
+  getServiceTypeIcon: (type: string) => string;
+  getStatusColor: (status: string) => string;
+  getStatusIcon: (status: string) => React.ReactNode;
+  getPriorityColor: (priority: string) => string;
+  formatDate: (date: string) => string;
+}) => (
+  <div className="flex-1">
+    <div className="flex items-center space-x-3 mb-3">
+      <div className="p-2 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg shadow-md">
+        <span className="text-lg">{getServiceTypeIcon(request.serviceType)}</span>
+      </div>
+      <div className="flex-1">
+        <h3 className="text-lg font-bold text-gray-800 mb-1">
+          {request.serviceVariations && request.serviceVariations.length > 1
+            ? `${request.serviceVariations.length} ${request.serviceType.replace('_', ' ')} services`
+            : request.serviceVariation === 'multiple_services'
+            ? `Multiple ${request.serviceType.replace('_', ' ')} services`
+            : request.serviceVariations?.[0] || request.title || `${request.serviceType.replace('_', ' ')} Service`}
+        </h3>
+        <div className="flex items-center space-x-4 text-sm text-gray-600">
+          {request.bookingId?.bookingNumber && (
+            <div className="flex items-center space-x-1">
+              <Package className="w-4 h-4" />
+              <span>Booking #{request.bookingId.bookingNumber}</span>
+            </div>
+          )}
+          <div className="flex items-center space-x-1">
+            <Users className="w-4 h-4" />
+            <span>{request.userId.name} ({request.userId.email})</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div className="flex flex-wrap gap-2 mb-3">
+      <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold ${getStatusColor(request.status)}`}>
+        {getStatusIcon(request.status)}
+        <span className="ml-1 capitalize">{request.status.replace('_', ' ')}</span>
+      </span>
+      <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold ${getPriorityColor(request.priority)}`}>
+        <Target className="w-3 h-3 mr-1" />
+        {request.priority === 'now' ? 'Now' : request.priority === 'later' ? 'Scheduled' : `${request.priority.charAt(0).toUpperCase() + request.priority.slice(1)} Priority`}
+      </span>
+    </div>
+
+    {request.description && (
+      <p className="text-sm text-gray-700 mb-3">{request.description}</p>
+    )}
+
+    {request.serviceVariations && request.serviceVariations.length > 1 && (
+      <div className="mb-3">
+        <p className="text-sm font-medium text-gray-700 mb-2">Selected Services:</p>
+        <div className="flex flex-wrap gap-1">
+          {request.serviceVariations.map((variation, index) => (
+            <span key={`variation-${index}-${variation}`} className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+              {variation}
+            </span>
+          ))}
+        </div>
+      </div>
+    )}
+
+    <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500 mb-3">
+      <div className="flex items-center space-x-1">
+        <Calendar className="w-4 h-4" />
+        <span>Created {formatDate(request.createdAt)}</span>
+      </div>
+      {request.scheduledTime && (
+        <div className="flex items-center space-x-1">
+          <Clock className="w-4 h-4" />
+          <span>Scheduled {formatDate(request.scheduledTime)}</span>
+        </div>
+      )}
+      {request.assignedTo && (
+        <div className="flex items-center space-x-1">
+          <Users className="w-4 h-4" />
+          <span>Assigned to {request.assignedTo.name}</span>
+        </div>
+      )}
+    </div>
+
+    {request.specialInstructions && (
+      <div className="mb-3 p-3 bg-blue-50 rounded-lg">
+        <p className="text-sm text-blue-800">
+          <strong>Special Instructions:</strong> {request.specialInstructions}
+        </p>
+      </div>
+    )}
+
+    {request.notes && (
+      <div className="mb-3 p-3 bg-gray-50 rounded-lg">
+        <p className="text-sm text-gray-700">
+          <strong>Notes:</strong> {request.notes}
+        </p>
+      </div>
+    )}
+  </div>
+));
+ServiceRequestCardInfo.displayName = 'ServiceRequestCardInfo';
+
 export default function AdminServiceRequests() {
   const { user } = useAuth();
   const { selectedPropertyId, selectedProperty } = useProperty();

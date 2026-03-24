@@ -34,6 +34,7 @@ import { adminService } from '../../services/adminService';
 import { api } from '../../services/api';
 import { HousekeepingTask } from '../../types/admin';
 import { formatNumber, getStatusColor } from '../../utils/dashboardUtils';
+import EmptyState from '../../components/ui/EmptyState';
 import { useRealTime } from '../../services/realTimeService';
 import { toast } from 'react-hot-toast';
 import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../components/settings/ApplyToSelector';
@@ -74,6 +75,36 @@ interface StaffMember {
   email: string;
   role: string;
 }
+
+interface HousekeepingColumn {
+  key: string;
+  header: string;
+  render?: (value: unknown, task: HousekeepingTask) => React.ReactNode;
+}
+
+const HousekeepingTaskRow = React.memo(({ task, columns, onSelect }: {
+  task: HousekeepingTask;
+  columns: HousekeepingColumn[];
+  onSelect: (task: HousekeepingTask) => void;
+}) => (
+  <tr
+    className="hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 cursor-pointer transition-all duration-200 border-b border-gray-100"
+    onClick={() => onSelect(task)}
+  >
+    {columns.map((column, colIndex) => {
+      const value = column.key === 'actions' ? null : task[column.key as keyof HousekeepingTask];
+      return (
+        <td
+          key={colIndex}
+          className="px-4 sm:px-6 py-4 text-xs sm:text-sm text-gray-900"
+        >
+          {column.render ? column.render(value, task) : (value ? String(value) : '')}
+        </td>
+      );
+    })}
+  </tr>
+));
+HousekeepingTaskRow.displayName = 'HousekeepingTaskRow';
 
 export default function AdminHousekeeping() {
   // Property Context
@@ -1212,37 +1243,26 @@ export default function AdminHousekeeping() {
                   </tr>
                 ) : tasks.length === 0 ? (
                   <tr>
-                    <td colSpan={columns.length} className="px-4 sm:px-6 py-12 text-center">
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="p-3 bg-gray-100 rounded-full">
-                          <Calendar className="h-6 w-6 text-gray-400" />
-                        </div>
-                        <p className="text-sm text-gray-500">No housekeeping tasks found</p>
-                      </div>
+                    <td colSpan={columns.length} className="px-4 sm:px-6 py-0">
+                      <EmptyState
+                        title="No housekeeping tasks found"
+                        description="There are no tasks matching your current filters. Try adjusting your filters or create a new task."
+                        icon={<Calendar className="w-16 h-16" />}
+                        action={{ label: 'Create Task', onClick: () => setShowCreateModal(true) }}
+                      />
                     </td>
                   </tr>
                 ) : (
-                  tasks.map((task, index) => (
-                    <tr
+                  tasks.map((task) => (
+                    <HousekeepingTaskRow
                       key={task._id}
-                      className="hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 cursor-pointer transition-all duration-200 border-b border-gray-100"
-                      onClick={() => {
-          setSelectedTask(task);
-          setShowDetailsModal(true);
-        }}
-                    >
-                      {columns.map((column, colIndex) => {
-                        const value = column.key === 'actions' ? null : task[column.key as keyof HousekeepingTask];
-                        return (
-                          <td
-                            key={colIndex}
-                            className="px-4 sm:px-6 py-4 text-xs sm:text-sm text-gray-900"
-                          >
-                            {column.render ? column.render(value, task) : (value ? String(value) : '')}
-                          </td>
-                        );
-                      })}
-                    </tr>
+                      task={task}
+                      columns={columns}
+                      onSelect={(t) => {
+                        setSelectedTask(t);
+                        setShowDetailsModal(true);
+                      }}
+                    />
                   ))
                 )}
               </tbody>

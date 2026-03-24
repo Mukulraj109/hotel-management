@@ -204,6 +204,52 @@ const toggleCompanyStatus = async (id: string): Promise<CorporateCompany> => {
   return data.data.company;
 };
 
+const CompanyRowInfo = React.memo(({ company }: { company: CorporateCompany }) => (
+  <>
+    <td className="px-6 py-4 whitespace-nowrap">
+      <div className="flex items-center">
+        <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
+          <Building2 className="h-6 w-6 text-blue-600" />
+        </div>
+        <div className="ml-4">
+          <div className="text-sm font-medium text-gray-900">{company.name}</div>
+          <div className="text-sm text-gray-500">GST: {company.gstNumber}</div>
+        </div>
+      </div>
+    </td>
+    <td className="px-6 py-4 whitespace-nowrap">
+      <div className="text-sm text-gray-900 flex items-center">
+        <Mail className="h-4 w-4 mr-1 text-gray-400" />
+        {company.email}
+      </div>
+      {company.phone && (
+        <div className="text-sm text-gray-500 flex items-center mt-1">
+          <Phone className="h-4 w-4 mr-1 text-gray-400" />
+          {company.phone}
+        </div>
+      )}
+    </td>
+    <td className="px-6 py-4 whitespace-nowrap">
+      <div className="text-sm text-gray-900">Limit: {formatCurrency(company.creditLimit)}</div>
+      <div className="text-sm text-gray-500">Terms: {company.paymentTerms} days</div>
+    </td>
+    <td className="px-6 py-4 whitespace-nowrap">
+      <Badge
+        variant={company.isActive ? "success" : "secondary"}
+        className="flex items-center"
+      >
+        {company.isActive ? (
+          <CheckCircle className="w-3 h-3 mr-1" />
+        ) : (
+          <AlertTriangle className="w-3 h-3 mr-1" />
+        )}
+        {company.isActive ? 'Active' : 'Inactive'}
+      </Badge>
+    </td>
+  </>
+));
+CompanyRowInfo.displayName = 'CompanyRowInfo';
+
 export default function CorporateCompanyManagement() {
   const [showForm, setShowForm] = useState(false);
   const [editingCompany, setEditingCompany] = useState<CorporateCompany | null>(null);
@@ -744,54 +790,7 @@ export default function CorporateCompanyManagement() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredCompanies.map((company) => (
                   <tr key={company._id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="flex-shrink-0 h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                          <Building2 className="h-6 w-6 text-blue-600" />
-                        </div>
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            {company.name}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            GST: {company.gstNumber}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900 flex items-center">
-                        <Mail className="h-4 w-4 mr-1 text-gray-400" />
-                        {company.email}
-                      </div>
-                      {company.phone && (
-                        <div className="text-sm text-gray-500 flex items-center mt-1">
-                          <Phone className="h-4 w-4 mr-1 text-gray-400" />
-                          {company.phone}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-gray-900">
-                        Limit: {formatCurrency(company.creditLimit)}
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Terms: {company.paymentTerms} days
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <Badge
-                        variant={company.isActive ? "success" : "secondary"}
-                        className="flex items-center"
-                      >
-                        {company.isActive ? (
-                          <CheckCircle className="w-3 h-3 mr-1" />
-                        ) : (
-                          <AlertTriangle className="w-3 h-3 mr-1" />
-                        )}
-                        {company.isActive ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </td>
+                    <CompanyRowInfo company={company} />
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center space-x-2">
                         <Button

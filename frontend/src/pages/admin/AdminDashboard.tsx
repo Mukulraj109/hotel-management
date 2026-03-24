@@ -431,14 +431,14 @@ export default function AdminDashboard() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => navigate('/admin/analytics/multi-property')}
+                  onClick={() => navigate('/admin/multi-property')}
                 >
                   View Analytics
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => navigate('/admin/audit-log')}
+                  onClick={() => navigate('/admin/reports')}
                 >
                   View All
                 </Button>
@@ -566,7 +566,7 @@ export default function AdminDashboard() {
                   key={alert.id}
                   alert={alert}
                   compact={true}
-                  onViewDetails={(alert) => {}}
+                  onViewDetails={() => navigate('/admin/notifications')}
                 />
               ))
             )}

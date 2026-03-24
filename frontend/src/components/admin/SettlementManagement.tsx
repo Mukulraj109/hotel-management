@@ -57,6 +57,72 @@ interface SettlementAnalytics {
   totalOutstanding: number;
 }
 
+const getSettlementStatusColor = (status: string) => {
+  const colors: Record<string, string> = {
+    pending: 'bg-yellow-100 text-yellow-800',
+    partial: 'bg-blue-100 text-blue-800',
+    completed: 'bg-green-100 text-green-800',
+    overdue: 'bg-red-100 text-red-800',
+    cancelled: 'bg-gray-100 text-gray-800',
+    refunded: 'bg-purple-100 text-purple-800'
+  };
+  return colors[status] || 'bg-gray-100 text-gray-800';
+};
+
+const getSettlementEscalationColor = (level: number) => {
+  if (level >= 3) return 'bg-red-100 text-red-800';
+  if (level === 2) return 'bg-orange-100 text-orange-800';
+  if (level === 1) return 'bg-yellow-100 text-yellow-800';
+  return 'bg-green-100 text-green-800';
+};
+
+const SettlementRowInfo = React.memo(({ settlement }: { settlement: Settlement }) => (
+  <>
+    <td className="px-6 py-4">
+      <div>
+        <p className="text-sm font-medium text-gray-900">{settlement.settlementNumber}</p>
+        <p className="text-sm text-gray-500">{settlement.bookingDetails.bookingNumber}</p>
+      </div>
+    </td>
+    <td className="px-6 py-4">
+      <div>
+        <p className="text-sm font-medium text-gray-900">{settlement.guestDetails.guestName}</p>
+        <p className="text-sm text-gray-500">{settlement.guestDetails.guestEmail}</p>
+      </div>
+    </td>
+    <td className="px-6 py-4">
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getSettlementStatusColor(settlement.status)}`}>
+            {settlement.status}
+          </span>
+        </div>
+        <p className="text-sm text-gray-900">{'\u20B9'}{settlement.finalAmount.toLocaleString()}</p>
+        {settlement.outstandingBalance > 0 && (
+          <p className="text-sm text-red-600">Outstanding: {'\u20B9'}{settlement.outstandingBalance.toLocaleString()}</p>
+        )}
+        {settlement.refundAmount > 0 && (
+          <p className="text-sm text-green-600">Refund: {'\u20B9'}{settlement.refundAmount.toLocaleString()}</p>
+        )}
+      </div>
+    </td>
+    <td className="px-6 py-4">
+      <p className="text-sm text-gray-900">
+        {new Date(settlement.dueDate).toLocaleDateString()}
+      </p>
+      {new Date(settlement.dueDate) < new Date() && settlement.status !== 'completed' && (
+        <p className="text-xs text-red-600">Overdue</p>
+      )}
+    </td>
+    <td className="px-6 py-4">
+      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getSettlementEscalationColor(settlement.escalationLevel)}`}>
+        Level {settlement.escalationLevel}
+      </span>
+    </td>
+  </>
+));
+SettlementRowInfo.displayName = 'SettlementRowInfo';
+
 export function SettlementManagement() {
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [analytics, setAnalytics] = useState<SettlementAnalytics | null>(null);
@@ -485,47 +551,7 @@ export function SettlementManagement() {
               ) : (
                 filteredSettlements.map((settlement) => (
                   <tr key={settlement._id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{settlement.settlementNumber}</p>
-                        <p className="text-sm text-gray-500">{settlement.bookingDetails.bookingNumber}</p>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{settlement.guestDetails.guestName}</p>
-                        <p className="text-sm text-gray-500">{settlement.guestDetails.guestEmail}</p>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(settlement.status)}`}>
-                            {settlement.status}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-900">₹{settlement.finalAmount.toLocaleString()}</p>
-                        {settlement.outstandingBalance > 0 && (
-                          <p className="text-sm text-red-600">Outstanding: ₹{settlement.outstandingBalance.toLocaleString()}</p>
-                        )}
-                        {settlement.refundAmount > 0 && (
-                          <p className="text-sm text-green-600">Refund: ₹{settlement.refundAmount.toLocaleString()}</p>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-sm text-gray-900">
-                        {new Date(settlement.dueDate).toLocaleDateString()}
-                      </p>
-                      {new Date(settlement.dueDate) < new Date() && settlement.status !== 'completed' && (
-                        <p className="text-xs text-red-600">Overdue</p>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getEscalationColor(settlement.escalationLevel)}`}>
-                        Level {settlement.escalationLevel}
-                      </span>
-                    </td>
+                    <SettlementRowInfo settlement={settlement} />
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
                         <button

@@ -13,6 +13,53 @@ interface Column<T> {
   align?: 'left' | 'center' | 'right';
 }
 
+const DataTableRow = React.memo(function DataTableRow<T extends Record<string, unknown>>({
+  row,
+  columns,
+  onRowClick,
+}: {
+  row: T;
+  columns: Column<T>[];
+  onRowClick?: (row: T) => void;
+}) {
+  return (
+    <tr
+      className={cn(
+        'hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-indigo-50/50 transition-all duration-200 hover:shadow-sm border-l-2 border-transparent hover:border-blue-400',
+        onRowClick && 'cursor-pointer transform hover:scale-[1.001]'
+      )}
+      onClick={() => onRowClick && onRowClick(row)}
+    >
+      {columns.map((column, colIndex) => {
+        const value = row[column.key];
+        return (
+          <td
+            key={colIndex}
+            className={cn(
+              'px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-900',
+              column.key === 'actions' ? '' : 'max-w-0 truncate',
+              column.align === 'center' && 'text-center',
+              column.align === 'right' && 'text-right'
+            )}
+            style={{
+              maxWidth: column.key === 'actions' ? '300px' : '200px',
+              minWidth: column.key === 'actions' ? '250px' : 'auto'
+            }}
+          >
+            <div className={column.key === 'actions' ? '' : 'truncate'} title={String(column.render ? column.render(value, row) : value)}>
+              {column.render ? column.render(value, row) : value}
+            </div>
+          </td>
+        );
+      })}
+    </tr>
+  );
+}) as <T extends Record<string, unknown>>(props: {
+  row: T;
+  columns: Column<T>[];
+  onRowClick?: (row: T) => void;
+}) => React.ReactElement;
+
 interface DataTableProps<T> {
   title?: string;
   data: T[];
@@ -195,40 +242,12 @@ export function DataTable<T extends Record<string, unknown>>({
                 </tr>
               ) : (
                 paginatedData.map((row, rowIndex) => (
-                  <tr
+                  <DataTableRow
                     key={rowIndex}
-                    className={cn(
-                      'hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-indigo-50/50 transition-all duration-200 hover:shadow-sm border-l-2 border-transparent hover:border-blue-400',
-                      onRowClick && 'cursor-pointer transform hover:scale-[1.001]'
-                    )}
-                    onClick={() => onRowClick && onRowClick(row)}
-                  >
-                    {columns.map((column, colIndex) => {
-                      const value = row[column.key];
-                      return (
-                        <td
-                          key={colIndex}
-                          className={cn(
-                            'px-3 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm text-gray-900',
-                            // Don't truncate for actions column, but truncate others
-                            column.key === 'actions' ? '' : 'max-w-0 truncate',
-                            column.align === 'center' && 'text-center',
-                            column.align === 'right' && 'text-right'
-                          )}
-                          style={{
-                            // Give actions column more space, limit others
-                            maxWidth: column.key === 'actions' ? '300px' : '200px',
-                            // Ensure actions column content doesn't wrap awkwardly
-                            minWidth: column.key === 'actions' ? '250px' : 'auto'
-                          }}
-                        >
-                          <div className={column.key === 'actions' ? '' : 'truncate'} title={String(column.render ? column.render(value, row) : value)}>
-                            {column.render ? column.render(value, row) : value}
-                          </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
+                    row={row}
+                    columns={columns}
+                    onRowClick={onRowClick}
+                  />
                 ))
               )}
             </tbody>

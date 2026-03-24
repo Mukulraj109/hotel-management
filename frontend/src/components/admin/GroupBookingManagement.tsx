@@ -133,6 +133,40 @@ const updateGroupBooking = async (id: string, data: Record<string, unknown>): Pr
   }
 };
 
+const GroupBookingDetails = React.memo(({ booking }: { booking: GroupBooking }) => (
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+    <div>
+      <p className="text-gray-500 flex items-center mb-1">
+        <Calendar className="w-4 h-4 mr-1" />
+        Check-in
+      </p>
+      <p className="font-medium">{new Date(booking.checkIn).toLocaleDateString()}</p>
+    </div>
+    <div>
+      <p className="text-gray-500 flex items-center mb-1">
+        <Calendar className="w-4 h-4 mr-1" />
+        Check-out
+      </p>
+      <p className="font-medium">{new Date(booking.checkOut).toLocaleDateString()}</p>
+    </div>
+    <div>
+      <p className="text-gray-500 flex items-center mb-1">
+        <Users className="w-4 h-4 mr-1" />
+        Rooms
+      </p>
+      <p className="font-medium">{booking.rooms.length} rooms</p>
+    </div>
+    <div>
+      <p className="text-gray-500 flex items-center mb-1">
+        <User className="w-4 h-4 mr-1" />
+        Contact Person
+      </p>
+      <p className="font-medium">{booking.contactPerson.name}</p>
+    </div>
+  </div>
+));
+GroupBookingDetails.displayName = 'GroupBookingDetails';
+
 export default function GroupBookingManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBooking, setSelectedBooking] = useState<GroupBooking | null>(null);
@@ -793,39 +827,7 @@ export default function GroupBookingManagement() {
                     </div>
 
                     {/* Details Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                      <div>
-                        <p className="text-gray-500 flex items-center mb-1">
-                          <Calendar className="w-4 h-4 mr-1" />
-                          Check-in
-                        </p>
-                        <p className="font-medium">{formatDate(booking.checkIn)}</p>
-                      </div>
-                      
-                      <div>
-                        <p className="text-gray-500 flex items-center mb-1">
-                          <Calendar className="w-4 h-4 mr-1" />
-                          Check-out
-                        </p>
-                        <p className="font-medium">{formatDate(booking.checkOut)}</p>
-                      </div>
-
-                      <div>
-                        <p className="text-gray-500 flex items-center mb-1">
-                          <Users className="w-4 h-4 mr-1" />
-                          Rooms
-                        </p>
-                        <p className="font-medium">{booking.rooms.length} rooms</p>
-                      </div>
-
-                      <div>
-                        <p className="text-gray-500 flex items-center mb-1">
-                          <User className="w-4 h-4 mr-1" />
-                          Contact Person
-                        </p>
-                        <p className="font-medium">{booking.contactPerson.name}</p>
-                      </div>
-                    </div>
+                    <GroupBookingDetails booking={booking} />
 
                     {/* Event Details */}
                     {booking.eventDetails?.eventName && (

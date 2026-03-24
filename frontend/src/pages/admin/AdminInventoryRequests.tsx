@@ -92,6 +92,77 @@ interface BulkOperationData {
   notes?: string;
 }
 
+const InventoryRequestInfo = React.memo(({ request, getItemsSummary }: {
+  request: InventoryRequest;
+  getItemsSummary: (items: InventoryRequest['items']) => string;
+}) => (
+  <div className="flex items-center space-x-4 flex-1">
+    <div className="p-3 rounded-xl bg-gradient-to-br from-blue-100 to-purple-100 animate-icon-float">
+      <Package className="h-6 w-6 text-blue-600" />
+    </div>
+    <div className="flex-1">
+      <div className="flex items-start justify-between">
+        <div>
+          <h3 className="font-bold text-gray-900 text-lg">{request.title}</h3>
+          <p className="text-gray-600 mt-1">{request.description}</p>
+          <div className="text-sm text-gray-500 mt-2">
+            {getItemsSummary(request.items)}
+          </div>
+        </div>
+        <div className="ml-4">
+          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold animate-pulse ${
+            request.priority === 'urgent' ? 'bg-red-100 text-red-800 animate-pulse-glow-red' :
+            request.priority === 'high' ? 'bg-orange-100 text-orange-800 animate-pulse-glow-orange' :
+            request.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+            'bg-gray-100 text-gray-800'
+          }`}>
+            {request.priority === 'urgent' && <Zap className="h-3 w-3 mr-1" />}
+            {request.priority}
+          </span>
+        </div>
+      </div>
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="glass-effect rounded-lg p-3">
+          <div className="flex items-center space-x-2">
+            <User className="h-4 w-4 text-blue-500" />
+            <div>
+              <div className="font-medium text-sm">{request.userId?.name}</div>
+              <div className="text-xs text-gray-500">Room {request.bookingId?.rooms?.[0]?.roomId?.roomNumber}</div>
+            </div>
+          </div>
+        </div>
+        <div className="glass-effect rounded-lg p-3">
+          <div className="flex items-center space-x-2">
+            {request.assignedTo ? (
+              <>
+                <UserCheck className="h-4 w-4 text-green-500" />
+                <div>
+                  <div className="font-medium text-sm">{request.assignedTo.name}</div>
+                  <div className="text-xs text-gray-500">{request.assignedTo.email}</div>
+                </div>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="h-4 w-4 text-yellow-500" />
+                <span className="text-sm text-gray-500">Unassigned</span>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="glass-effect rounded-lg p-3">
+          <div className="flex items-center space-x-2">
+            <Clock className="h-4 w-4 text-purple-500" />
+            <div className="text-sm text-gray-600">
+              {format(parseISO(request.createdAt), 'MMM dd, HH:mm')}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+));
+InventoryRequestInfo.displayName = 'InventoryRequestInfo';
+
 export default function AdminInventoryRequests() {
   const { user, logout } = useAuth();
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
