@@ -1,0 +1,44 @@
+import express from 'express';
+import * as guestController from '../controllers/guestController.js';
+import { authenticate, authorize } from '../middleware/auth.js';
+import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext, requireTenantInBulkOps } from '../middleware/tenantIsolation.js';
+
+const router = express.Router();
+
+// Apply authentication and property access to all routes
+router.use(authenticate);
+router.use(ensureTenantContext);
+router.use(ensurePropertyAccess);
+
+// Public routes (for guest self-service)
+router.get('/:id', guestController.getGuest);
+router.get('/:id/bookings', guestController.getGuest);
+router.patch('/:id', guestController.updateGuest);
+
+// Admin/Staff routes
+router.use(authorize('admin', 'manager', 'staff'));
+
+// Enhanced guest management routes
+router.route('/')
+  .get(guestController.getAllGuests)
+  .post(guestController.createGuest);
+
+router.route('/analytics')
+  .get(guestController.getGuestAnalytics);
+
+router.route('/search')
+  .post(guestController.searchGuests);
+
+router.route('/export')
+  .get(guestController.exportGuests);
+
+router.route('/bulk-update')
+  .patch(requireTenantInBulkOps, guestController.bulkUpdateGuests);
+
+router.route('/:id')
+  .get(guestController.getGuest)
+  .patch(guestController.updateGuest)
+  .delete(guestController.deleteGuest);
+
+export default router;

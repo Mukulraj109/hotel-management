@@ -1,0 +1,404 @@
+import { api } from './api';
+import { HousekeepingTask, InventoryItem, RevenueData, OccupancyData, AdminBooking, BookingFilters, BookingStats } from '../types/admin';
+
+interface ApiResponse<T> {
+  status: string;
+  data: T;
+  results?: number;
+  pagination?: {
+    current: number;
+    pages: number;
+    total: number;
+  };
+}
+
+class AdminService {
+  // Housekeeping
+  async getHousekeepingTasks(filters: Record<string, unknown> = {}): Promise<ApiResponse<{ tasks: HousekeepingTask[] }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    const response = await api.get(`/housekeeping?${params.toString()}`);
+    return response.data;
+  }
+
+  async createHousekeepingTask(taskData: Partial<HousekeepingTask>): Promise<ApiResponse<{ task: HousekeepingTask }>> {
+    const response = await api.post('/housekeeping', taskData);
+    return response.data;
+  }
+
+  async updateHousekeepingTask(id: string, updates: Partial<HousekeepingTask>): Promise<ApiResponse<{ task: HousekeepingTask }>> {
+    const response = await api.patch(`/housekeeping/${id}`, updates);
+    return response.data;
+  }
+
+  async getHousekeepingStats(): Promise<ApiResponse<{ stats: unknown[] }>> {
+    const response = await api.get('/housekeeping/stats');
+    return response.data;
+  }
+
+  // Inventory
+  async getInventoryItems(filters: Record<string, unknown> = {}): Promise<ApiResponse<{ items: InventoryItem[] }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    const response = await api.get(`/inventory?${params.toString()}`);
+    return response.data;
+  }
+
+  async createInventoryItem(itemData: Partial<InventoryItem>): Promise<ApiResponse<{ item: InventoryItem }>> {
+    const response = await api.post('/inventory', itemData);
+    return response.data;
+  }
+
+  async updateInventoryItem(id: string, updates: Partial<InventoryItem>): Promise<ApiResponse<{ item: InventoryItem }>> {
+    const response = await api.patch(`/inventory/${id}`, updates);
+    return response.data;
+  }
+
+  async createSupplyRequest(itemId: string, quantity: number, reason?: string): Promise<unknown> {
+    const response = await api.post('/inventory/request', { itemId, quantity, reason });
+    return response.data;
+  }
+
+  async processSupplyRequest(itemId: string, requestId: string, status: string): Promise<unknown> {
+    const response = await api.patch(`/inventory/request/${itemId}/${requestId}`, { status });
+    return response.data;
+  }
+
+  // Reports
+  async getRevenueReport(filters: {
+    startDate: string;
+    endDate: string;
+    groupBy?: string;
+    hotelId?: string;
+  }): Promise<ApiResponse<{ summary: unknown; breakdown: RevenueData[]; period: unknown }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    const response = await api.get(`/reports/revenue?${params.toString()}`);
+    return response.data;
+  }
+
+  async getOccupancyReport(filters: {
+    startDate: string;
+    endDate: string;
+    hotelId?: string;
+  }): Promise<ApiResponse<{ summary: OccupancyData; occupancyByType: unknown; period: unknown }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    const response = await api.get(`/reports/occupancy?${params.toString()}`);
+    return response.data;
+  }
+
+  async getBookingsReport(filters: Record<string, unknown> = {}): Promise<unknown> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    const response = await api.get(`/reports/bookings?${params.toString()}`);
+    return response.data;
+  }
+
+  // OTA Integration
+  async syncBookingCom(hotelId: string): Promise<unknown> {
+    const response = await api.post('/ota/bookingcom/sync', { hotelId });
+    return response.data;
+  }
+
+  async getOTASyncStatus(hotelId: string): Promise<unknown> {
+    const response = await api.get(`/ota/bookingcom/status/${hotelId}`);
+    return response.data;
+  }
+
+  async getOTASyncHistory(filters: Record<string, unknown> = {}): Promise<unknown> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    const response = await api.get(`/ota/sync-history?${params.toString()}`);
+    return response.data;
+  }
+
+  async getOTAConfig(hotelId: string): Promise<unknown> {
+    const response = await api.get(`/ota/config/${hotelId}`);
+    return response.data;
+  }
+
+  async updateOTAConfig(hotelId: string, provider: string, config: Record<string, unknown>): Promise<unknown> {
+    const response = await api.patch(`/ota/config/${hotelId}`, { provider, config });
+    return response.data;
+  }
+
+  async getOTAStats(hotelId: string): Promise<unknown> {
+    const response = await api.get(`/ota/stats/${hotelId}`);
+    return response.data;
+  }
+
+  async setupOTADemo(hotelId: string): Promise<unknown> {
+    const response = await api.post(`/ota/setup/${hotelId}`);
+    return response.data;
+  }
+
+  // Booking Management
+  async getBookings(filters: BookingFilters = {}): Promise<ApiResponse<{ bookings: AdminBooking[] }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    try {
+      // Try admin endpoint first, fallback to regular endpoint if it fails
+      try {
+        const response = await api.get(`/admin/bookings?${params.toString()}`);
+        return response.data;
+      } catch (adminError: unknown) {
+        const adminAxiosErr = adminError as { response?: { status?: number }; message?: string };
+
+        // Fallback to regular endpoint
+        const response = await api.get(`/bookings?${params.toString()}`);
+        return response.data;
+      }
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      if (axiosErr.response?.status === 429) {
+        // Wait a bit and retry once for rate limit errors
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const retryResponse = await api.get(`/bookings?${params.toString()}`);
+        return retryResponse.data;
+      }
+      throw error;
+    }
+  }
+
+  // Bookings for frontdesk - skips admin endpoint to avoid 403 errors
+  async getFrontDeskBookings(filters: BookingFilters = {}): Promise<ApiResponse<{ bookings: AdminBooking[] }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    try {
+      // Use regular bookings endpoint directly for frontdesk
+      const response = await api.get(`/bookings?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      if (axiosErr.response?.status === 429) {
+        // Wait a bit and retry once for rate limit errors
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const retryResponse = await api.get(`/bookings?${params.toString()}`);
+        return retryResponse.data;
+      }
+      throw error;
+    }
+  }
+
+  async getUpcomingBookings(filters: { days?: number; page?: number; limit?: number } = {}): Promise<ApiResponse<AdminBooking[]> & { stats: { todayArrivals: number; tomorrowArrivals: number; totalUpcoming: number } }> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    const response = await api.get(`/bookings/upcoming?${params.toString()}`);
+    return response.data;
+  }
+
+  async getBookingById(id: string): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const response = await api.get(`/bookings/${id}`);
+    return response.data;
+  }
+
+  async updateBooking(id: string, updates: Partial<AdminBooking>): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const response = await api.patch(`/bookings/${id}`, updates);
+    return response.data;
+  }
+
+  async cancelBooking(id: string, reason?: string): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const response = await api.patch(`/bookings/${id}/cancel`, { reason });
+    return response.data;
+  }
+
+  async checkInBooking(id: string, paymentDetails?: {
+    paymentMethods: Array<{
+      method: 'cash' | 'card' | 'upi' | 'online_portal' | 'corporate';
+      amount: number;
+      reference?: string;
+      notes?: string;
+    }>;
+  }): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const response = await api.patch(`/bookings/${id}/check-in`, { paymentDetails });
+    return response.data;
+  }
+
+  async checkOutBooking(id: string): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const response = await api.patch(`/bookings/${id}/check-out`);
+    return response.data;
+  }
+
+  async createBooking(bookingData: {
+    hotelId: string;
+    userId: string;
+    roomIds: string[];
+    checkIn: string;
+    checkOut: string;
+    guestDetails: {
+      adults: number;
+      children: number;
+      specialRequests?: string;
+    };
+    totalAmount: number;
+    currency?: string;
+    paymentStatus?: 'pending' | 'paid';
+    status?: 'pending' | 'confirmed';
+    roomType?: 'single' | 'double' | 'suite' | 'deluxe'; // Room type preference for room-type bookings
+    // Payment information for walk-in bookings
+    paymentMethod?: 'cash' | 'card' | 'upi' | 'bank_transfer';
+    advanceAmount?: number;
+    paymentReference?: string;
+    paymentNotes?: string;
+  }): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const payload = {
+      ...bookingData,
+      idempotencyKey: `admin-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      currency: bookingData.currency || 'INR',
+      paymentStatus: bookingData.paymentStatus || 'pending',
+      status: bookingData.status || 'pending'
+    };
+    
+    const response = await api.post('/bookings', payload);
+    return response.data;
+  }
+
+  async assignRoomsToBooking(bookingId: string, assignmentData: {
+    roomAssignments: { roomType: string; roomNumber: string; }[];
+  }): Promise<ApiResponse<{ booking: AdminBooking }>> {
+    const response = await api.patch(`/bookings/${bookingId}/assign-rooms`, assignmentData);
+    return response.data;
+  }
+
+  async getAvailableRooms(hotelId: string, checkIn?: string, checkOut?: string): Promise<ApiResponse<{ rooms: unknown[] }>> {
+    const params = new URLSearchParams();
+    params.append('hotelId', hotelId);
+    params.append('limit', '100'); // Get up to 100 rooms instead of default 10
+    if (checkIn) params.append('checkIn', checkIn);
+    if (checkOut) params.append('checkOut', checkOut);
+    
+    const url = `/rooms?${params.toString()}`;
+    
+    try {
+      const response = await api.get(url, {
+        headers: {
+          'x-admin-request': 'true'
+        }
+      });
+      return response.data;
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+      
+      if (axiosErr.response?.status === 429) {
+        // Wait a bit and retry once for rate limit errors
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const retryResponse = await api.get(url, {
+          headers: {
+            'x-admin-request': 'true'
+          }
+        });
+        return retryResponse.data;
+      }
+      throw error;
+    }
+  }
+
+  async getUsers(filters: { search?: string; role?: string } = {}): Promise<ApiResponse<{ users: unknown[] }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    // Use /users endpoint instead of /admin/users to support frontdesk and staff roles
+    const response = await api.get(`/users?${params.toString()}`);
+    return response.data;
+  }
+
+  async getBookingStats(filters: { startDate?: string; endDate?: string; hotelId?: string } = {}): Promise<ApiResponse<{ stats: BookingStats }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    const response = await api.get(`/reports/bookings/stats?${params.toString()}`);
+    return response.data;
+  }
+
+  // Hotel Management
+  async getHotels(filters: Record<string, unknown> = {}): Promise<ApiResponse<{ hotels: unknown[] }>> {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, value.toString());
+      }
+    });
+
+    const response = await api.get(`/admin/hotels?${params.toString()}`);
+    return response.data;
+  }
+
+  // User Management
+  async createUser(userData: {
+    name: string;
+    email: string;
+    phone: string;
+    role: string;
+    password: string;
+    preferences?: Record<string, unknown>;
+  }): Promise<ApiResponse<{ user: unknown }>> {
+    const response = await api.post('/admin/users', userData);
+    return response.data;
+  }
+
+  async updateUser(id: string, updates: Record<string, unknown>): Promise<ApiResponse<{ user: unknown }>> {
+    const response = await api.patch(`/admin/users/${id}`, updates);
+    return response.data;
+  }
+
+  async deleteUser(id: string): Promise<ApiResponse<{ message: string }>> {
+    const response = await api.delete(`/admin/users/${id}`);
+    return response.data;
+  }
+}
+
+export const adminService = new AdminService();
