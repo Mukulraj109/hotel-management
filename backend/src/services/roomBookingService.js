@@ -11,6 +11,12 @@ import { withTransaction } from '../utils/transactionHelper.js';
  * Handles room availability checking and automatic booking for meet-ups
  */
 class RoomBookingService {
+  _rethrowKnownError(error, fallbackMessage) {
+    if (error instanceof ApplicationError) {
+      throw error;
+    }
+    throw new ApplicationError(fallbackMessage, 500);
+  }
 
   /**
    * Check room availability for a meet-up
@@ -23,7 +29,14 @@ class RoomBookingService {
    * @returns {Object} Availability result
    */
   async checkRoomAvailability(params) {
-    const { hotelId, date, timeSlot, capacity, roomType } = params;
+    const {
+      hotelId,
+      date,
+      timeSlot,
+      capacity,
+      roomType,
+      skipAlternativeSuggestions = false
+    } = params;
 
     try {
       // Validate date is in the future
@@ -93,12 +106,14 @@ class RoomBookingService {
         available: true,
         recommendedRoom: sortedRooms[0],
         allAvailableRooms: sortedRooms,
-        alternativeTimeSlots: await this._suggestAlternativeTimeSlots(hotelId, date, capacity, roomType, true)
+        alternativeTimeSlots: skipAlternativeSuggestions
+          ? []
+          : await this._suggestAlternativeTimeSlots(hotelId, date, capacity, roomType)
       };
 
     } catch (error) {
       logger.error('Room availability check error:', error);
-      throw new ApplicationError(`Failed to check room availability: ${error.message}`, 500);
+      this._rethrowKnownError(error, `Failed to check room availability: ${error.message}`);
     }
   }
 
@@ -216,7 +231,7 @@ class RoomBookingService {
 
     } catch (error) {
       logger.error('Room booking creation error:', error);
-      throw new ApplicationError(`Failed to create room booking: ${error.message}`, 500);
+      this._rethrowKnownError(error, `Failed to create room booking: ${error.message}`);
     }
   }
 
@@ -374,7 +389,7 @@ class RoomBookingService {
       }
 
       // Cancel the service booking
-      const serviceBooking = await ServiceBooking.findById(meetUp.meetingRoomBooking.bookingId).lean();
+      const serviceBooking = await ServiceBooking.findById(meetUp.meetingRoomBooking.bookingId);
       if (serviceBooking) {
         await serviceBooking.cancelBooking(reason, meetUp.requesterId);
       }
@@ -393,7 +408,7 @@ class RoomBookingService {
 
     } catch (error) {
       logger.error('Room booking cancellation error:', error);
-      throw new ApplicationError(`Failed to cancel room booking: ${error.message}`, 500);
+      this._rethrowKnownError(error, `Failed to cancel room booking: ${error.message}`);
     }
   }
 
@@ -565,7 +580,7 @@ class RoomBookingService {
    * Suggest alternative time slots
    * @private
    */
-  async _suggestAlternativeTimeSlots(hotelId, date, capacity, roomType, isAvailable = false) {
+  async _suggestAlternativeTimeSlots(hotelId, date, capacity, roomType) {
     try {
       const timeSlots = [
         '09:00-11:00', '11:00-13:00', '13:00-15:00',
@@ -581,7 +596,8 @@ class RoomBookingService {
           date,
           timeSlot: { start, end },
           capacity,
-          roomType
+          roomType,
+          skipAlternativeSuggestions: true
         });
 
         if (availability.available) {

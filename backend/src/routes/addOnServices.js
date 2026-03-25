@@ -3,8 +3,12 @@ import addOnController from '../controllers/addOnController.js';
 import { authenticate } from '../middleware/auth.js';
 import adminAuth from '../middleware/adminAuth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Public routes (accessible by authenticated users)
 router.use(authenticate);
@@ -32,7 +36,7 @@ router.get('/:serviceId/availability', addOnController.checkAvailability);
 router.get('/:serviceId/pricing', addOnController.getServicePricing);
 
 // Book a service
-router.post('/:serviceId/book', addOnController.bookService);
+router.post('/:serviceId/book', authorizePolicy('addOnServices', 'bookService'), validate(mutationBaselineSchema), addOnController.bookService);
 
 // Get service analytics (for service owners)
 router.get('/:serviceId/analytics', addOnController.getServiceAnalytics);
@@ -40,21 +44,21 @@ router.get('/:serviceId/analytics', addOnController.getServiceAnalytics);
 // Service Inclusions routes
 router.get('/inclusions/list', addOnController.getInclusions);
 router.get('/inclusions/package/:packageId', addOnController.getPackageInclusions);
-router.post('/inclusions/:id/redeem', addOnController.processRedemption);
+router.post('/inclusions/:id/redeem', authorizePolicy('addOnServices', 'redeemInclusion'), validate(mutationBaselineSchema), addOnController.processRedemption);
 
 // Admin-only routes
 router.use(adminAuth);
 
 // Service Management
-router.post('/', addOnController.createService);
-router.put('/:id', addOnController.updateService);
-router.delete('/:id', addOnController.deleteService);
+router.post('/', authorizePolicy('addOnServices', 'createService'), validate(mutationBaselineSchema), addOnController.createService);
+router.put('/:id', authorizePolicy('addOnServices', 'updateService'), validate(mutationBaselineSchema), addOnController.updateService);
+router.delete('/:id', authorizePolicy('addOnServices', 'deleteService'), validate(mutationBaselineSchema), addOnController.deleteService);
 
 // Bulk operations
-router.post('/bulk', addOnController.bulkCreateServices);
+router.post('/bulk', authorizePolicy('addOnServices', 'bulkCreateServices'), validate(mutationBaselineSchema), addOnController.bulkCreateServices);
 
 // Service Inclusions Management
-router.post('/inclusions', addOnController.createInclusion);
-router.put('/inclusions/:id', addOnController.updateInclusion);
+router.post('/inclusions', authorizePolicy('addOnServices', 'createInclusion'), validate(mutationBaselineSchema), addOnController.createInclusion);
+router.put('/inclusions/:id', authorizePolicy('addOnServices', 'updateInclusion'), validate(mutationBaselineSchema), addOnController.updateInclusion);
 
 export default router;

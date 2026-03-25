@@ -1,4 +1,5 @@
 import express from 'express';
+import Joi from 'joi';
 import MeetUpRequest from '../models/MeetUpRequest.js';
 import User from '../models/User.js';
 import Hotel from '../models/Hotel.js';
@@ -6,7 +7,7 @@ import Room from '../models/Room.js';
 import ServiceBooking from '../models/ServiceBooking.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
-import adminAuth from '../middleware/adminAuth.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { authorize } from '../middleware/auth.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -15,10 +16,12 @@ import { escapeRegex } from '../utils/escapeRegex.js';
 import { validateStatusTransition, MEETUP_TRANSITIONS } from '../utils/statusTransitions.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('meetUpRequests', 'baseAccess'));
 
 // ============= ADMIN ROUTES (Place first to avoid conflicts) =============
 // Admin/Staff/Frontdesk: Get all meet-up requests across the system
@@ -393,7 +396,7 @@ router.get('/admin/analytics', authorize('admin', 'staff', 'frontdesk'), catchAs
 }));
 
 // Admin/Staff/Frontdesk: Force cancel any meet-up request
-router.post('/admin/:requestId/force-cancel', authorize('admin', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
+router.post('/admin/:requestId/force-cancel', authorize('admin', 'staff', 'frontdesk'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { reason } = req.body;
 
   const existingRequest = await MeetUpRequest.findById(req.params.requestId).lean();
@@ -758,7 +761,7 @@ router.post('/:requestId/decline', validate(schemas.respondToMeetUpRequest), cat
 }));
 
 // Cancel a meet-up request
-router.post('/:requestId/cancel', catchAsync(async (req, res) => {
+router.post('/:requestId/cancel', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const meetUpRequest = await MeetUpRequest.findOneAndUpdate(
     {
       _id: req.params.requestId,
@@ -780,7 +783,7 @@ router.post('/:requestId/cancel', catchAsync(async (req, res) => {
 }));
 
 // Complete a meet-up request
-router.post('/:requestId/complete', catchAsync(async (req, res) => {
+router.post('/:requestId/complete', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const meetUpRequest = await MeetUpRequest.findOneAndUpdate(
     {
       _id: req.params.requestId,
@@ -841,7 +844,7 @@ router.post('/:requestId/participants', validate(schemas.addParticipant), catchA
 }));
 
 // Remove participant from a meet-up
-router.delete('/:requestId/participants/:userId', catchAsync(async (req, res) => {
+router.delete('/:requestId/participants/:userId', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const meetUpRequest = await MeetUpRequest.findOneAndUpdate(
     {
       _id: req.params.requestId,

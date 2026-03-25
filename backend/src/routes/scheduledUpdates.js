@@ -1,11 +1,36 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import ScheduledUpdatesService from '../services/scheduledUpdates.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import Joi from 'joi';
 
 const router = express.Router();
+
+router.use(authenticate);
+router.use(ensurePropertyAccess);
+router.use(authorizePolicy('scheduledUpdates', 'baseAccess'));
+
+const createScheduledUpdateSchema = Joi.object({
+  scheduledFor: Joi.date().iso().required(),
+  scope: Joi.string().valid('single', 'group', 'all').required(),
+  propertyId: Joi.string().optional(),
+  groupId: Joi.string().optional(),
+  settingType: Joi.string().required(),
+  settingUpdates: Joi.object().required(),
+  settingName: Joi.string().max(200).optional()
+});
+
+const cancelScheduledUpdateSchema = Joi.object({
+  reason: Joi.string().max(500).optional()
+});
+
+const rescheduleScheduledUpdateSchema = Joi.object({
+  scheduledFor: Joi.date().iso().required()
+});
 
 /**
  * Scheduled Updates Routes
@@ -35,6 +60,7 @@ const router = express.Router();
 router.post('/',
   authenticate,
   ensurePropertyAccess,
+  validate(createScheduledUpdateSchema),
   catchAsync(async (req, res) => {
     const {
       scheduledFor,
@@ -159,6 +185,7 @@ router.get('/:id',
 router.delete('/:id',
   authenticate,
   ensurePropertyAccess,
+  validate(cancelScheduledUpdateSchema),
   catchAsync(async (req, res) => {
     const { reason } = req.body;
 
@@ -192,6 +219,7 @@ router.delete('/:id',
 router.put('/:id/reschedule',
   authenticate,
   ensurePropertyAccess,
+  validate(rescheduleScheduledUpdateSchema),
   catchAsync(async (req, res) => {
     const { scheduledFor } = req.body;
 
@@ -224,6 +252,7 @@ router.put('/:id/reschedule',
 router.post('/:id/execute',
   authenticate,
   ensurePropertyAccess,
+  validate(Joi.object({})),
   catchAsync(async (req, res) => {
     const result = await ScheduledUpdatesService.executeNow(
       req.params.id,

@@ -1,13 +1,17 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import Joi from 'joi';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { operationalManagementController } from '../controllers/operationalManagementController.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication, authorization, and property access to all routes
 router.use(authenticate);
-router.use(authorize(['admin', 'manager', 'staff']));
+router.use(authorizePolicy('operationalManagement', 'modifyAccess'));
 router.use(ensurePropertyAccess);
 
 // Operational Management Overview
@@ -16,41 +20,41 @@ router.get('/overview', operationalManagementController.getOperationalOverview);
 // Counter Routes
 router.route('/counters')
   .get(operationalManagementController.getCounters)
-  .post(operationalManagementController.createCounter);
+  .post(validate(mutationBaselineSchema), operationalManagementController.createCounter);
 
 router.route('/counters/:id')
   .get(operationalManagementController.getCounter)
-  .patch(operationalManagementController.updateCounter)
-  .delete(operationalManagementController.deleteCounter);
+  .patch(validate(mutationBaselineSchema), operationalManagementController.updateCounter)
+  .delete(validate(mutationBaselineSchema), operationalManagementController.deleteCounter);
 
-router.patch('/counters/:id/status', operationalManagementController.updateCounterStatus);
+router.patch('/counters/:id/status', validate(mutationBaselineSchema), operationalManagementController.updateCounterStatus);
 
 // Arrival/Departure Mode Routes
 router.route('/arrival-departure-modes')
   .get(operationalManagementController.getArrivalDepartureModes)
-  .post(operationalManagementController.createArrivalDepartureMode);
+  .post(validate(mutationBaselineSchema), operationalManagementController.createArrivalDepartureMode);
 
 router.route('/arrival-departure-modes/:id')
   .get(operationalManagementController.getArrivalDepartureMode)
-  .patch(operationalManagementController.updateArrivalDepartureMode)
-  .delete(operationalManagementController.deleteArrivalDepartureMode);
+  .patch(validate(mutationBaselineSchema), operationalManagementController.updateArrivalDepartureMode)
+  .delete(validate(mutationBaselineSchema), operationalManagementController.deleteArrivalDepartureMode);
 
 // Lost & Found Routes
 router.route('/lost-found')
   .get(operationalManagementController.getLostFoundItems)
-  .post(operationalManagementController.createLostFoundItem);
+  .post(validate(mutationBaselineSchema), operationalManagementController.createLostFoundItem);
 
 router.route('/lost-found/:id')
   .get(operationalManagementController.getLostFoundItem)
-  .patch(operationalManagementController.updateLostFoundItem);
+  .patch(validate(mutationBaselineSchema), operationalManagementController.updateLostFoundItem);
 
-router.patch('/lost-found/:id/claim', operationalManagementController.claimLostFoundItem);
-router.patch('/lost-found/:id/dispose', operationalManagementController.disposeLostFoundItem);
-router.patch('/lost-found/:id/location', operationalManagementController.updateLostFoundItemLocation);
+router.patch('/lost-found/:id/claim', validate(mutationBaselineSchema), operationalManagementController.claimLostFoundItem);
+router.patch('/lost-found/:id/dispose', validate(mutationBaselineSchema), operationalManagementController.disposeLostFoundItem);
+router.patch('/lost-found/:id/location', validate(mutationBaselineSchema), operationalManagementController.updateLostFoundItemLocation);
 
 // Bulk Operations
-router.patch('/counters/bulk-status', operationalManagementController.bulkUpdateCounterStatus);
-router.patch('/lost-found/bulk-dispose-expired', operationalManagementController.bulkDisposeExpiredItems);
+router.patch('/counters/bulk-status', validate(mutationBaselineSchema), operationalManagementController.bulkUpdateCounterStatus);
+router.patch('/lost-found/bulk-dispose-expired', validate(mutationBaselineSchema), operationalManagementController.bulkDisposeExpiredItems);
 
 // Analytics Routes
 router.get('/analytics/counters', operationalManagementController.getCounterAnalytics);

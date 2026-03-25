@@ -1,11 +1,14 @@
 import express from 'express';
+import Joi from 'joi';
 import inventoryVendorIntegrationService from '../services/inventoryVendorIntegrationService.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
-import { validateRequest } from '../middleware/validation.js';
+import { validate, validateRequest } from '../middleware/validation.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { body, param, query } from 'express-validator';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
@@ -28,7 +31,8 @@ router.use(ensurePropertyAccess);
  *         description: Forbidden
  */
 router.post('/auto-purchase-orders',
-  authorize(['admin', 'manager']),
+  authorizePolicy('inventoryVendorIntegration', 'manageAccess'),
+  validate(mutationBaselineSchema),
   async (req, res) => {
     try {
       const { hotelId } = req.user;
@@ -77,7 +81,7 @@ router.post('/auto-purchase-orders',
  *         description: Validation error
  */
 router.post('/vendor-recommendations',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('inventoryVendorIntegration', 'staffAccess'),
   [
     body('inventoryItemIds').isArray({ min: 1 }).withMessage('At least one inventory item ID is required'),
     body('inventoryItemIds.*').isMongoId().withMessage('Invalid inventory item ID')
@@ -119,7 +123,7 @@ router.post('/vendor-recommendations',
  *         description: Performance analysis retrieved successfully
  */
 router.get('/performance-analysis',
-  authorize(['admin', 'manager']),
+  authorizePolicy('inventoryVendorIntegration', 'manageAccess'),
   async (req, res) => {
     try {
       const { hotelId } = req.user;
@@ -172,7 +176,7 @@ router.get('/performance-analysis',
  *         description: Preferred vendors set successfully
  */
 router.post('/set-preferred-vendors',
-  authorize(['admin', 'manager']),
+  authorizePolicy('inventoryVendorIntegration', 'manageAccess'),
   [
     body('categoryVendorMappings').isArray({ min: 1 }).withMessage('At least one mapping is required'),
     body('categoryVendorMappings.*.category').trim().isLength({ min: 1 }).withMessage('Category is required'),
@@ -217,7 +221,7 @@ router.post('/set-preferred-vendors',
  *         description: Restocking report generated successfully
  */
 router.get('/restocking-report',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('inventoryVendorIntegration', 'staffAccess'),
   async (req, res) => {
     try {
       const { hotelId } = req.user;
@@ -259,7 +263,7 @@ router.get('/restocking-report',
  *         description: Purchase order not found
  */
 router.post('/update-inventory-from-po/:poId',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('inventoryVendorIntegration', 'staffAccess'),
   [param('poId').isMongoId().withMessage('Invalid purchase order ID')],
   validateRequest,
   async (req, res) => {
@@ -311,7 +315,7 @@ router.post('/update-inventory-from-po/:poId',
  *         description: No preferred vendor found
  */
 router.get('/preferred-vendor/:category',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('inventoryVendorIntegration', 'staffAccess'),
   [param('category').trim().isLength({ min: 1 }).withMessage('Category is required')],
   validateRequest,
   async (req, res) => {

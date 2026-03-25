@@ -3,6 +3,7 @@ import HotelService from '../models/HotelService.js';
 import ServiceBooking from '../models/ServiceBooking.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
@@ -102,6 +103,7 @@ router.get('/', catchAsync(async (req, res) => {
  */
 router.get('/bookings',
   authenticate,
+  authorizePolicy('hotelServices', 'baseAccess'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { page = 1, limit = 20, status } = req.query;
@@ -146,6 +148,7 @@ router.get('/bookings',
  */
 router.get('/bookings/:bookingId',
   authenticate,
+  authorizePolicy('hotelServices', 'baseAccess'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { bookingId } = req.params;
@@ -343,6 +346,7 @@ router.get('/:serviceId/availability', catchAsync(async (req, res) => {
  */
 router.post('/:serviceId/bookings',
   authenticate,
+  authorizePolicy('hotelServices', 'baseAccess'),
   ensurePropertyAccess,
   validate(schemas.createServiceBooking),
   catchAsync(async (req, res) => {
@@ -430,6 +434,7 @@ router.post('/:serviceId/bookings',
  */
 router.post('/bookings/:bookingId/cancel',
   authenticate,
+  authorizePolicy('hotelServices', 'baseAccess'),
   ensurePropertyAccess,
   validate(schemas.cancelServiceBooking),
   catchAsync(async (req, res) => {

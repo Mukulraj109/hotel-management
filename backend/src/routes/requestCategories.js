@@ -1,12 +1,16 @@
 import express from 'express';
 import RequestCategory from '../models/RequestCategory.js';
 import RequestTemplate from '../models/RequestTemplate.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
@@ -115,7 +119,7 @@ router.get('/:id', catchAsync(async (req, res) => {
  *     summary: Create new request category
  *     tags: [Request Categories]
  */
-router.post('/', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/', authorizePolicy('requestCategories', 'manageAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
 
   const categoryData = {
@@ -140,7 +144,7 @@ router.post('/', authorize('admin', 'manager'), catchAsync(async (req, res) => {
  *     summary: Update request category
  *     tags: [Request Categories]
  */
-router.put('/:id', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.put('/:id', authorizePolicy('requestCategories', 'manageAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
 
   const category = await RequestCategory.findOneAndUpdate(
@@ -167,7 +171,7 @@ router.put('/:id', authorize('admin', 'manager'), catchAsync(async (req, res) =>
  *     summary: Deactivate request category
  *     tags: [Request Categories]
  */
-router.delete('/:id', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.delete('/:id', authorizePolicy('requestCategories', 'manageAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
 
   const category = await RequestCategory.findOneAndUpdate(
@@ -193,7 +197,7 @@ router.delete('/:id', authorize('admin', 'manager'), catchAsync(async (req, res)
  *     summary: Update category budget
  *     tags: [Request Categories]
  */
-router.put('/:id/budget', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.put('/:id/budget', authorizePolicy('requestCategories', 'manageAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { budgetAllocated, budgetUsed } = req.body;
 

@@ -2,13 +2,18 @@ import express from 'express';
 import seasonalPricingController from '../controllers/seasonalPricingController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import adminAuth from '../middleware/adminAuth.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication and property access
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('seasonalPricing', 'baseAccess'));
 
 // Get seasonal adjustment for a specific date and room type
 router.get('/adjustment', seasonalPricingController.getSeasonalAdjustment);
@@ -32,21 +37,21 @@ router.get('/analytics', seasonalPricingController.getSeasonalAnalytics);
 router.use(adminAuth);
 
 // Season management routes
-router.post('/seasons', seasonalPricingController.createSeason);
+router.post('/seasons', validate(mutationBaselineSchema), seasonalPricingController.createSeason);
 router.get('/seasons', seasonalPricingController.getSeasons);
 router.get('/seasons/:id', seasonalPricingController.getSeasonById);
-router.put('/seasons/:id', seasonalPricingController.updateSeason);
-router.delete('/seasons/:id', seasonalPricingController.deleteSeason);
+router.put('/seasons/:id', validate(mutationBaselineSchema), seasonalPricingController.updateSeason);
+router.delete('/seasons/:id', validate(mutationBaselineSchema), seasonalPricingController.deleteSeason);
 
 // Special period management routes
-router.post('/special-periods', seasonalPricingController.createSpecialPeriod);
+router.post('/special-periods', validate(mutationBaselineSchema), seasonalPricingController.createSpecialPeriod);
 router.get('/special-periods', seasonalPricingController.getSpecialPeriods);
 router.get('/special-periods/:id', seasonalPricingController.getSpecialPeriodById);
-router.put('/special-periods/:id', seasonalPricingController.updateSpecialPeriod);
-router.delete('/special-periods/:id', seasonalPricingController.deleteSpecialPeriod);
+router.put('/special-periods/:id', validate(mutationBaselineSchema), seasonalPricingController.updateSpecialPeriod);
+router.delete('/special-periods/:id', validate(mutationBaselineSchema), seasonalPricingController.deleteSpecialPeriod);
 
 // Bulk operations
-router.post('/special-periods/bulk', seasonalPricingController.bulkCreateSpecialPeriods);
+router.post('/special-periods/bulk', validate(mutationBaselineSchema), seasonalPricingController.bulkCreateSpecialPeriods);
 
 // Alert management
 router.get('/alerts/upcoming', seasonalPricingController.getUpcomingAlerts);

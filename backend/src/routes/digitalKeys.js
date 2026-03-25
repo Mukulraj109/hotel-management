@@ -1,21 +1,25 @@
 import express from 'express';
+import Joi from 'joi';
 import QRCode from 'qrcode';
 import DigitalKey from '../models/DigitalKey.js';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
 import User from '../models/User.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication and property access to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('digitalKeys', 'baseAccess'));
 
 // Get all digital keys for the authenticated user
 router.get('/', catchAsync(async (req, res) => {
@@ -174,7 +178,7 @@ router.post('/generate', validate(schemas.generateDigitalKey), catchAsync(async 
 
 // Admin Routes - System-wide digital key management (MUST be before /:keyId route)
 // Get all digital keys (admin only)
-router.get('/admin', authenticate, authorize(['admin']), catchAsync(async (req, res) => {
+router.get('/admin', authenticate, authorizePolicy('digitalKeys', 'adminAccess'), catchAsync(async (req, res) => {
   const { page = 1, limit = 20, status, type, hotel, search } = req.query;
   const skip = (page - 1) * limit;
   
@@ -219,7 +223,7 @@ router.get('/admin', authenticate, authorize(['admin']), catchAsync(async (req, 
 }));
 
 // Get admin analytics for digital keys
-router.get('/admin/analytics', authenticate, authorize(['admin']), catchAsync(async (req, res) => {
+router.get('/admin/analytics', authenticate, authorizePolicy('digitalKeys', 'adminAccess'), catchAsync(async (req, res) => {
   const { timeRange = '30d' } = req.query;
   
   // Calculate date range
@@ -446,7 +450,7 @@ router.get('/:keyId', catchAsync(async (req, res) => {
 }));
 
 // Validate a digital key (for door access)
-router.post('/validate/:keyCode', catchAsync(async (req, res) => {
+router.post('/validate/:keyCode', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { keyCode } = req.params;
   const { pin, deviceInfo = {} } = req.body;
   
@@ -537,7 +541,7 @@ router.post('/:keyId/share', validate(schemas.shareDigitalKey), catchAsync(async
 }));
 
 // Revoke a shared key
-router.delete('/:keyId/share/:userIdOrEmail', catchAsync(async (req, res) => {
+router.delete('/:keyId/share/:userIdOrEmail', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { keyId, userIdOrEmail } = req.params;
   
   const digitalKey = await DigitalKey.findOne({
@@ -592,7 +596,7 @@ router.get('/:keyId/logs', catchAsync(async (req, res) => {
 }));
 
 // Revoke a digital key
-router.delete('/:keyId', catchAsync(async (req, res) => {
+router.delete('/:keyId', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { keyId } = req.params;
   
   const digitalKey = await DigitalKey.findOne({
@@ -672,7 +676,7 @@ router.get('/stats/overview', catchAsync(async (req, res) => {
 }));
 
 // Get admin activity logs for all digital keys
-router.get('/admin/activity-logs', authenticate, authorize(['admin']), catchAsync(async (req, res) => {
+router.get('/admin/activity-logs', authenticate, authorizePolicy('digitalKeys', 'adminAccess'), catchAsync(async (req, res) => {
   const {
     page = 1,
     limit = 50,
@@ -817,7 +821,7 @@ router.get('/admin/activity-logs', authenticate, authorize(['admin']), catchAsyn
 }));
 
 // Export admin digital keys data
-router.get('/admin/export', authenticate, authorize(['admin']), catchAsync(async (req, res) => {
+router.get('/admin/export', authenticate, authorizePolicy('digitalKeys', 'adminAccess'), catchAsync(async (req, res) => {
   const {
     status,
     type,

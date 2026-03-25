@@ -1,11 +1,15 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { validateStatusTransition, HOUSEKEEPING_TRANSITIONS } from '../utils/statusTransitions.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
@@ -64,7 +68,7 @@ router.use(ensurePropertyAccess);
  *       404:
  *         description: Booking or room not found
  */
-router.post('/process-checkout', authorize('admin', 'manager', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
+router.post('/process-checkout', authorizePolicy('housekeepingAutomation', 'staffFrontdeskAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { bookingId, roomId, options = {} } = req.body;
 
@@ -128,7 +132,7 @@ router.post('/process-checkout', authorize('admin', 'manager', 'staff', 'frontde
  *       200:
  *         description: Tasks retrieved successfully
  */
-router.get('/tasks', authorize('admin', 'manager', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
+router.get('/tasks', authorizePolicy('housekeepingAutomation', 'staffFrontdeskAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { status, priority, taskType, roomId, assignedTo } = req.query;
 
@@ -177,7 +181,7 @@ router.get('/tasks', authorize('admin', 'manager', 'staff', 'frontdesk'), catchA
  *       404:
  *         description: Task not found
  */
-router.get('/tasks/:taskId', authorize('admin', 'manager', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
+router.get('/tasks/:taskId', authorizePolicy('housekeepingAutomation', 'staffFrontdeskAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { taskId } = req.params;
 
@@ -230,7 +234,7 @@ router.get('/tasks/:taskId', authorize('admin', 'manager', 'staff', 'frontdesk')
  *       404:
  *         description: Task or staff member not found
  */
-router.put('/tasks/:taskId/assign', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
+router.put('/tasks/:taskId/assign', authorizePolicy('housekeepingAutomation', 'managerFrontdeskAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { taskId } = req.params;
   const { staffId } = req.body;
@@ -308,7 +312,7 @@ router.put('/tasks/:taskId/assign', authorize('admin', 'manager', 'frontdesk'), 
  *       404:
  *         description: Task not found
  */
-router.put('/tasks/:taskId/start', authorize('admin', 'manager', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
+router.put('/tasks/:taskId/start', authorizePolicy('housekeepingAutomation', 'staffFrontdeskAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { taskId } = req.params;
 
@@ -389,7 +393,7 @@ router.put('/tasks/:taskId/start', authorize('admin', 'manager', 'staff', 'front
  *       404:
  *         description: Task not found
  */
-router.put('/tasks/:taskId/complete', authorize('admin', 'manager', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
+router.put('/tasks/:taskId/complete', authorizePolicy('housekeepingAutomation', 'staffFrontdeskAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { taskId } = req.params;
   const { actualDuration, notes, beforeImages, afterImages } = req.body;
@@ -451,7 +455,7 @@ router.put('/tasks/:taskId/complete', authorize('admin', 'manager', 'staff', 'fr
  *       200:
  *         description: Available staff retrieved successfully
  */
-router.get('/available-staff', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
+router.get('/available-staff', authorizePolicy('housekeepingAutomation', 'managerFrontdeskAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
 
   // Import models
@@ -495,7 +499,7 @@ router.get('/available-staff', authorize('admin', 'manager', 'frontdesk'), catch
  *       200:
  *         description: Statistics retrieved successfully
  */
-router.get('/statistics', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
+router.get('/statistics', authorizePolicy('housekeepingAutomation', 'managerFrontdeskAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { startDate, endDate } = req.query;
 
@@ -541,7 +545,7 @@ router.get('/statistics', authorize('admin', 'manager', 'frontdesk'), catchAsync
  *       200:
  *         description: Auto-assignment completed successfully
  */
-router.post('/auto-assign', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
+router.post('/auto-assign', authorizePolicy('housekeepingAutomation', 'managerFrontdeskAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { taskIds, priority } = req.body;
 

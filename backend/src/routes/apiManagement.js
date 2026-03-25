@@ -1,11 +1,14 @@
 import express from 'express';
 import apiManagementController from '../controllers/apiManagementController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { validate, schemas } from '../middleware/validation.js';
 import rateLimit from 'express-rate-limit';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all routes
 router.use(authenticate);
@@ -24,78 +27,81 @@ const apiManagementRateLimit = rateLimit({
 
 // API Keys Management
 router.route('/api-keys')
-  .get(authorize('admin', 'manager'), apiManagementController.getAPIKeys)
-  .post(authorize('admin'), validate(schemas.createAPIKey), apiManagementController.createAPIKey);
+  .get(authorizePolicy('apiManagement', 'manageAccess'), apiManagementController.getAPIKeys)
+  .post(authorizePolicy('apiManagement', 'adminAccess'), validate(mutationBaselineSchema), validate(schemas.createAPIKey), apiManagementController.createAPIKey);
 
 router.route('/api-keys/:id')
-  .put(authorize('admin'), validate(schemas.updateAPIKey), apiManagementController.updateAPIKey)
-  .delete(authorize('admin'), apiManagementController.deleteAPIKey);
+  .put(authorizePolicy('apiManagement', 'adminAccess'), validate(mutationBaselineSchema), validate(schemas.updateAPIKey), apiManagementController.updateAPIKey)
+  .delete(authorizePolicy('apiManagement', 'adminAccess'), validate(mutationBaselineSchema), apiManagementController.deleteAPIKey);
 
 router.patch('/api-keys/:id/toggle', 
-  authorize('admin'), 
+  authorizePolicy('apiManagement', 'adminAccess'),
+  validate(mutationBaselineSchema),
   apiManagementController.toggleAPIKeyStatus
 );
 
 // Webhook Management
 router.route('/webhooks')
-  .get(authorize('admin', 'manager'), apiManagementController.getWebhooks)
-  .post(authorize('admin'), validate(schemas.createWebhook), apiManagementController.createWebhook);
+  .get(authorizePolicy('apiManagement', 'manageAccess'), apiManagementController.getWebhooks)
+  .post(authorizePolicy('apiManagement', 'adminAccess'), validate(mutationBaselineSchema), validate(schemas.createWebhook), apiManagementController.createWebhook);
 
 router.route('/webhooks/:id')
-  .put(authorize('admin'), validate(schemas.updateWebhook), apiManagementController.updateWebhook)
-  .delete(authorize('admin'), apiManagementController.deleteWebhook);
+  .put(authorizePolicy('apiManagement', 'adminAccess'), validate(mutationBaselineSchema), validate(schemas.updateWebhook), apiManagementController.updateWebhook)
+  .delete(authorizePolicy('apiManagement', 'adminAccess'), validate(mutationBaselineSchema), apiManagementController.deleteWebhook);
 
 router.post('/webhooks/:id/test', 
-  authorize('admin'), 
+  authorizePolicy('apiManagement', 'adminAccess'),
+  validate(mutationBaselineSchema),
   apiManagementController.testWebhook
 );
 
 router.post('/webhooks/:id/regenerate-secret', 
-  authorize('admin'), 
+  authorizePolicy('apiManagement', 'adminAccess'),
+  validate(mutationBaselineSchema),
   apiManagementController.regenerateWebhookSecret
 );
 
 // API Endpoints Catalog
 router.get('/endpoints',
-  authorize('admin', 'manager'),
+  authorizePolicy('apiManagement', 'manageAccess'),
   apiManagementController.getAllEndpoints
 );
 
 // Metrics and Analytics
 router.get('/metrics',
-  authorize('admin', 'manager'),
+  authorizePolicy('apiManagement', 'manageAccess'),
   apiManagementController.getMetrics
 );
 
 router.get('/metrics/endpoints',
-  authorize('admin', 'manager'),
+  authorizePolicy('apiManagement', 'manageAccess'),
   apiManagementController.getTopEndpoints
 );
 
 router.get('/metrics/endpoints/:endpoint', 
-  authorize('admin', 'manager'), 
+  authorizePolicy('apiManagement', 'manageAccess'),
   apiManagementController.getEndpointMetrics
 );
 
 router.get('/metrics/api-keys', 
-  authorize('admin', 'manager'), 
+  authorizePolicy('apiManagement', 'manageAccess'),
   apiManagementController.getAPIKeyUsage
 );
 
 router.get('/metrics/webhooks', 
-  authorize('admin', 'manager'), 
+  authorizePolicy('apiManagement', 'manageAccess'),
   apiManagementController.getWebhookStats
 );
 
 // Export functionality
 router.get('/export/logs',
-  authorize('admin'),
+  authorizePolicy('apiManagement', 'adminAccess'),
   apiManagementController.exportLogs
 );
 
 // API Documentation
 router.get('/documentation',
-  authorize('admin', 'manager'),
+  authorizePolicy('apiManagement', 'manageAccess'),
   apiManagementController.getAPIDocumentation
 );
 

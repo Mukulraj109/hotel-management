@@ -61,7 +61,8 @@ class AdminGuestServicesService {
   private hotelIdCacheExpiry: number = 0;
 
   private async apiRequest<T>(endpoint: string, options: { method?: string; data?: Record<string, unknown>; basePath?: string } = {}): Promise<ApiResponse<T>> {
-    const basePath = options.basePath || this.basePath;
+    // Properly handle basePath - empty string should override the default
+    const basePath = options.basePath !== undefined ? options.basePath : this.basePath;
     const url = `${basePath}${endpoint}`;
 
     try {
@@ -100,9 +101,9 @@ class AdminGuestServicesService {
       return this.hotelIdCache;
     }
 
-    // Get hotelId from user profile API
+    // Get hotelId from user profile API using the configured api instance
     try {
-      const response = await this.apiRequest('/auth/me', { basePath: '' });
+      const response = await api.get('/auth/me');
       const userData = (response.data as { user?: unknown })?.user;
 
       if (userData?.hotelId) {
@@ -114,14 +115,9 @@ class AdminGuestServicesService {
       // Error handled silently
     }
 
-    // Use the correct hotelId that matches the database
-    const correctHotelId = '68c7e6ebca8aed0ec8036a9c';
-
-    // Cache the correct hotelId for 10 minutes to avoid repeated lookups
-    this.hotelIdCache = correctHotelId;
-    this.hotelIdCacheExpiry = now + 10 * 60 * 1000;
-
-    return correctHotelId;
+    // Fallback: Use a placeholder error or throw - the API should provide hotelId
+    console.warn('No hotelId found from auth endpoint, falling back to user context');
+    throw new Error('Unable to determine hotel ID. Please ensure you are logged in.');
   }
 
   async getServices(filters: GuestServiceFilters = {}): Promise<ApiResponse<{ serviceRequests: GuestService[]; pagination: { page: number; limit: number; total: number; pages: number } }>> {

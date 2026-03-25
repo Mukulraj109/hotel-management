@@ -1,11 +1,15 @@
 import express from 'express';
 import IncidentReport from '../models/IncidentReport.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
@@ -77,7 +81,7 @@ router.use(ensurePropertyAccess);
  *       201:
  *         description: Incident report created successfully
  */
-router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/', authorizePolicy('incidents', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const incidentData = {
     ...req.body,
     hotelId: req.user.role === 'staff' ? req.user.hotelId : req.body.hotelId,
@@ -158,7 +162,7 @@ router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
  *       200:
  *         description: List of incident reports
  */
-router.get('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/', authorizePolicy('incidents', 'staffAccess'), catchAsync(async (req, res) => {
   const {
     page = 1,
     limit = 20,
@@ -248,7 +252,7 @@ router.get('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
  *       200:
  *         description: Incident report details
  */
-router.get('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/:id', authorizePolicy('incidents', 'staffAccess'), catchAsync(async (req, res) => {
   const incident = await IncidentReport.findById(req.params.id)
     .populate('hotelId', 'name contact')
     .populate('roomId', 'number type floor amenities')
@@ -320,7 +324,7 @@ router.get('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
  *       200:
  *         description: Incident updated successfully
  */
-router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.patch('/:id', authorizePolicy('incidents', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const incident = await IncidentReport.findById(req.params.id);
   
   if (!incident) {
@@ -397,7 +401,7 @@ router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =>
  *       200:
  *         description: Incident assigned successfully
  */
-router.post('/:id/assign', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/:id/assign', authorizePolicy('incidents', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { assignedTo, notes } = req.body;
   
   const incident = await IncidentReport.findById(req.params.id).lean();
@@ -461,7 +465,7 @@ router.post('/:id/assign', authorize('staff', 'admin'), catchAsync(async (req, r
  *       200:
  *         description: Action added successfully
  */
-router.post('/:id/actions', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/:id/actions', authorizePolicy('incidents', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { action, notes, cost } = req.body;
   
   const incident = await IncidentReport.findById(req.params.id).lean();
@@ -515,7 +519,7 @@ router.post('/:id/actions', authorize('staff', 'admin'), catchAsync(async (req, 
  *       200:
  *         description: Incident statistics
  */
-router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/stats', authorizePolicy('incidents', 'staffAccess'), catchAsync(async (req, res) => {
   const { startDate, endDate } = req.query;
   
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
@@ -608,7 +612,7 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
  *       200:
  *         description: Critical incidents
  */
-router.get('/critical', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/critical', authorizePolicy('incidents', 'staffAccess'), catchAsync(async (req, res) => {
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
@@ -648,7 +652,7 @@ router.get('/critical', authorize('staff', 'admin'), catchAsync(async (req, res)
  *       200:
  *         description: Incident trends
  */
-router.get('/trends', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/trends', authorizePolicy('incidents', 'staffAccess'), catchAsync(async (req, res) => {
   const { days = 30 } = req.query;
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   

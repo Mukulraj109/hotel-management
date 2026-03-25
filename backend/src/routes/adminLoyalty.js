@@ -2,17 +2,19 @@ import express from 'express';
 import Offer from '../models/Offer.js';
 import Loyalty from '../models/Loyalty.js';
 import User from '../models/User.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import Joi from 'joi';
 import { v4 as uuidv4 } from 'uuid';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Validation schemas for admin operations
 const createOfferSchema = Joi.object({
@@ -85,7 +87,7 @@ const bulkOperationSchema = Joi.object({
  *       200:
  *         description: List of offers with pagination
  */
-router.get('/offers', authenticate, authorize(['admin', 'manager']), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/offers', authenticate, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     page = 1,
     limit = 20,
@@ -160,7 +162,7 @@ router.get('/offers', authenticate, authorize(['admin', 'manager']), ensurePrope
  */
 router.post('/offers',
   authenticate,
-  authorize(['admin', 'manager']),
+  authorizePolicy('adminLoyalty', 'managerAccess'),
   ensurePropertyAccess,
   validate(createOfferSchema),
   catchAsync(async (req, res) => {
@@ -201,7 +203,7 @@ router.post('/offers',
  *       200:
  *         description: Offer details
  */
-router.get('/offers/:id', authenticate, authorize(['admin', 'manager']), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/offers/:id', authenticate, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const offer = await Offer.findById(req.params.id)
     .populate('hotelId', 'name').lean();
     
@@ -258,7 +260,7 @@ router.get('/offers/:id', authenticate, authorize(['admin', 'manager']), ensureP
  */
 router.put('/offers/:id',
   authenticate,
-  authorize(['admin', 'manager']),
+  authorizePolicy('adminLoyalty', 'managerAccess'),
   ensurePropertyAccess,
   validate(updateOfferSchema),
   catchAsync(async (req, res) => {
@@ -301,7 +303,7 @@ router.put('/offers/:id',
  *       204:
  *         description: Offer deleted successfully
  */
-router.delete('/offers/:id', authenticate, authorize(['admin', 'manager']), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.delete('/offers/:id', authenticate, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   logger.debug('Deleting offer', { offerId: req.params.id });
   
   const offer = await Offer.findByIdAndDelete(req.params.id);
@@ -346,7 +348,7 @@ router.delete('/offers/:id', authenticate, authorize(['admin', 'manager']), ensu
  */
 router.post('/offers/bulk',
   authenticate,
-  authorize(['admin', 'manager']),
+  authorizePolicy('adminLoyalty', 'managerAccess'),
   ensurePropertyAccess,
   validate(bulkOperationSchema),
   catchAsync(async (req, res) => {
@@ -412,7 +414,7 @@ router.post('/offers/bulk',
  *       200:
  *         description: Loyalty analytics data
  */
-router.get('/analytics', authenticate, authorize(['admin', 'manager']), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/analytics', authenticate, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const { dateFrom, dateTo } = req.query;
   
   // Build date filter
@@ -539,7 +541,7 @@ router.get('/analytics', authenticate, authorize(['admin', 'manager']), ensurePr
  *       200:
  *         description: Detailed offer statistics
  */
-router.get('/offers/:id/stats', authenticate, authorize(['admin', 'manager']), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/offers/:id/stats', authenticate, authorizePolicy('adminLoyalty', 'managerAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const offerId = req.params.id;
   
   // Verify offer exists

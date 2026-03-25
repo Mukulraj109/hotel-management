@@ -1,15 +1,20 @@
 import express from 'express';
+import Joi from 'joi';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import inventoryNotificationService from '../services/inventoryNotificationService.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require admin authentication
 router.use(authenticate);
 router.use(authorize('admin'));
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('inventoryNotifications', 'baseAccess'));
 
 /**
  * Get inventory notifications for admin
@@ -41,7 +46,7 @@ router.get('/', catchAsync(async (req, res) => {
 /**
  * Mark inventory notifications as read
  */
-router.patch('/mark-read', catchAsync(async (req, res) => {
+router.patch('/mark-read', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { _id: userId } = req.user;
   const { notificationIds } = req.body;
 

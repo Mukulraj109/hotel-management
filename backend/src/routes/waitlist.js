@@ -11,21 +11,25 @@ import {
   processExpiredEntries,
   getWaitlistEntry
 } from '../controllers/waitlistController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
-import { validateWaitlistEntry } from '../middleware/validation.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validateWaitlistEntry, validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('waitlist', 'baseAccess'));
 
 // Public waitlist routes (guests can create entries)
-router.post('/', validateWaitlistEntry, createWaitlistEntry);
+router.post('/', validate(mutationBaselineSchema), validateWaitlistEntry, createWaitlistEntry);
 
 // Staff-only routes
-router.use(authorize('staff', 'manager', 'admin', 'frontdesk'));
+router.use(authorizePolicy('waitlist', 'baseAccess'));
 
 // Get active waitlist with filtering and pagination
 router.get('/', getActiveWaitlist);
@@ -34,24 +38,24 @@ router.get('/', getActiveWaitlist);
 router.get('/analytics', getWaitlistAnalytics);
 
 // Process matches for all waiting entries
-router.post('/process-matches', processWaitlistMatches);
+router.post('/process-matches', validate(mutationBaselineSchema), processWaitlistMatches);
 
 // Find match candidates for specific criteria
-router.post('/find-candidates', findMatchCandidates);
+router.post('/find-candidates', validate(mutationBaselineSchema), findMatchCandidates);
 
 // Process expired entries
-router.post('/process-expired', processExpiredEntries);
+router.post('/process-expired', validate(mutationBaselineSchema), processExpiredEntries);
 
 // Get specific waitlist entry
 router.get('/:id', getWaitlistEntry);
 
 // Update waitlist entry status
-router.patch('/:id', updateWaitlistEntry);
+router.patch('/:id', validate(mutationBaselineSchema), updateWaitlistEntry);
 
 // Handle match actions (confirm, decline, contact)
-router.post('/:id/match/:matchId/action', handleMatchAction);
+router.post('/:id/match/:matchId/action', validate(mutationBaselineSchema), handleMatchAction);
 
 // Add contact history
-router.post('/:id/contact', addContactHistory);
+router.post('/:id/contact', validate(mutationBaselineSchema), addContactHistory);
 
 export default router;

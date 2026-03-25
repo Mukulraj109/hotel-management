@@ -1,16 +1,21 @@
 import express from 'express';
+import Joi from 'joi';
 import MessageTemplate from '../models/MessageTemplate.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication and property access
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('messageTemplates', 'baseAccess'));
 
 /**
  * @swagger
@@ -70,7 +75,7 @@ router.use(ensurePropertyAccess);
  *       201:
  *         description: Template created successfully
  */
-router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/', authorize('staff', 'admin'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const templateData = {
     ...req.body,
     hotelId: req.user.role === 'staff' ? req.user.hotelId : req.body.hotelId,
@@ -278,7 +283,7 @@ router.get('/:id', catchAsync(async (req, res) => {
  *       200:
  *         description: Template updated successfully
  */
-router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.patch('/:id', authorize('staff', 'admin'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const template = await MessageTemplate.findById(req.params.id);
   
   if (!template) {
@@ -337,7 +342,7 @@ router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =>
  *       204:
  *         description: Template deleted successfully
  */
-router.delete('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.delete('/:id', authorize('staff', 'admin'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const template = await MessageTemplate.findById(req.params.id).lean();
   
   if (!template) {
@@ -392,7 +397,7 @@ router.delete('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =
  *       200:
  *         description: Template rendered successfully
  */
-router.post('/:id/render', catchAsync(async (req, res) => {
+router.post('/:id/render', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { variables = {}, language = 'en' } = req.body;
   
   const template = await MessageTemplate.findById(req.params.id).lean();
@@ -451,7 +456,7 @@ router.post('/:id/render', catchAsync(async (req, res) => {
  *       201:
  *         description: Template cloned successfully
  */
-router.post('/:id/clone', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/:id/clone', authorize('staff', 'admin'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { name } = req.body;
   
   const template = await MessageTemplate.findById(req.params.id).lean();
@@ -519,7 +524,7 @@ router.post('/:id/clone', authorize('staff', 'admin'), catchAsync(async (req, re
  *       200:
  *         description: A/B test variant created successfully
  */
-router.post('/:id/ab-test', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/:id/ab-test', authorize('staff', 'admin'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { name, subject, content, htmlContent, weight = 50 } = req.body;
   
   const template = await MessageTemplate.findById(req.params.id).lean();

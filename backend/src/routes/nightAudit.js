@@ -1,18 +1,22 @@
 import express from 'express';
 import NightAudit from '../models/NightAudit.js';
 import nightAuditService from '../services/nightAuditService.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import Joi from 'joi';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 router.use(authenticate);
 router.use(ensurePropertyAccess);
 
 // Run night audit manually
-router.post('/run', authorize('admin'), catchAsync(async (req, res) => {
+router.post('/run', authorizePolicy('nightAudit', 'adminAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const hotelId = req.body.hotelId || req.user.hotelId;
   const auditDate = req.body.date || new Date(Date.now() - 24 * 60 * 60 * 1000); // Default: yesterday
 
@@ -71,7 +75,7 @@ router.get('/', catchAsync(async (req, res) => {
 }));
 
 // Lock an audit day
-router.post('/:id/lock', authorize('admin'), catchAsync(async (req, res) => {
+router.post('/:id/lock', authorizePolicy('nightAudit', 'adminAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const audit = await NightAudit.findOneAndUpdate(
     { _id: req.params.id, status: 'completed' },
     {

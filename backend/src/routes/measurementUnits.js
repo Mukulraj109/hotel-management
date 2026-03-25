@@ -1,7 +1,8 @@
 import express from 'express';
 import measurementUnitController from '../controllers/measurementUnitController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
 
@@ -118,10 +119,12 @@ const addConversionFactorSchema = Joi.object({
 const formatValueSchema = Joi.object({
   value: Joi.number().required()
 });
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Authentication required for all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('measurementUnits', 'baseAccess'));
 
 /**
  * @swagger
@@ -183,7 +186,7 @@ router.use(ensurePropertyAccess);
  *         description: Unit with this name or symbol already exists
  */
 router.post('/', 
-  authorize(['admin', 'manager']), 
+  authorizePolicy('measurementUnits', 'manageAccess'), 
   validate(createUnitSchema), 
   measurementUnitController.createUnit
 );
@@ -290,7 +293,7 @@ router.get('/:id', measurementUnitController.getUnit);
  *         description: Unit with this name or symbol already exists
  */
 router.put('/:id', 
-  authorize(['admin', 'manager']), 
+  authorizePolicy('measurementUnits', 'manageAccess'), 
   validate(updateUnitSchema), 
   measurementUnitController.updateUnit
 );
@@ -317,7 +320,8 @@ router.put('/:id',
  *         description: Unit not found
  */
 router.delete('/:id', 
-  authorize(['admin', 'manager']), 
+  authorizePolicy('measurementUnits', 'manageAccess'), 
+  validate(mutationBaselineSchema),
   measurementUnitController.deleteUnit
 );
 
@@ -549,7 +553,7 @@ router.get('/base', measurementUnitController.getBaseUnits);
  *         description: Unit not found
  */
 router.post('/:unitId/conversion-factors', 
-  authorize(['admin', 'manager']), 
+  authorizePolicy('measurementUnits', 'manageAccess'), 
   validate(addConversionFactorSchema), 
   measurementUnitController.addConversionFactor
 );
@@ -588,7 +592,7 @@ router.post('/:unitId/conversion-factors',
  *         description: Conversion report generated successfully
  */
 router.get('/report', 
-  authorize(['admin', 'manager']), 
+  authorizePolicy('measurementUnits', 'manageAccess'), 
   measurementUnitController.getConversionReport
 );
 
@@ -606,7 +610,7 @@ router.get('/report',
  *         description: Unit configuration validated successfully
  */
 router.get('/validate', 
-  authorize(['admin', 'manager']), 
+  authorizePolicy('measurementUnits', 'manageAccess'), 
   measurementUnitController.validateUnitConfiguration
 );
 
@@ -625,7 +629,8 @@ router.get('/validate',
  *         description: Conversion cache cleared successfully
  */
 router.post('/cache/clear', 
-  authorize(['admin', 'manager']), 
+  authorizePolicy('measurementUnits', 'manageAccess'),
+  validate(mutationBaselineSchema),
   measurementUnitController.clearConversionCache
 );
 

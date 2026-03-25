@@ -1,11 +1,14 @@
 import express from 'express';
+import Joi from 'joi';
 import translationController from '../controllers/translationController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import { body, param, query } from 'express-validator';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Validation schemas
 const namespaceValidation = [
@@ -129,6 +132,7 @@ router.get('/:namespace/:language',
  * POST /api/translations/batch
  */
 router.post('/batch', 
+  validate(mutationBaselineSchema),
   batchTranslationsValidation,
   translationController.getBatchTranslations
 );
@@ -136,6 +140,7 @@ router.post('/batch',
 // Protected routes (authentication required)
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('translations', 'baseAccess'));
 
 /**
  * Translate text
@@ -143,6 +148,7 @@ router.use(ensurePropertyAccess);
  */
 router.post('/translate', 
   authorize(['admin', 'content_manager', 'translator', 'staff', 'guest']), // Allow all authenticated users to translate
+  validate(mutationBaselineSchema),
   translateTextValidation,
   translationController.translateText
 );
@@ -153,6 +159,7 @@ router.post('/translate',
  */
 router.post('/batch-translate', 
   authorize(['admin', 'content_manager', 'translator']),
+  validate(mutationBaselineSchema),
   batchTranslateValidation,
   translationController.batchTranslate
 );
@@ -163,6 +170,7 @@ router.post('/batch-translate',
  */
 router.post('/', 
   authorize(['admin', 'content_manager', 'translator']),
+  validate(mutationBaselineSchema),
   saveTranslationValidation,
   translationController.saveTranslation
 );
@@ -173,6 +181,7 @@ router.post('/',
  */
 router.delete('/:namespace/:key', 
   authorize(['admin', 'content_manager']),
+  validate(mutationBaselineSchema),
   [...namespaceValidation, ...keyValidation],
   translationController.deleteTranslation
 );
@@ -183,6 +192,7 @@ router.delete('/:namespace/:key',
  */
 router.put('/:namespace/:key/approve', 
   authorize(['admin', 'content_manager', 'reviewer']),
+  validate(mutationBaselineSchema),
   [
     ...namespaceValidation,
     ...keyValidation,

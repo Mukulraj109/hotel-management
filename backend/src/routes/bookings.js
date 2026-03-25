@@ -4,9 +4,10 @@ import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
 import Invoice from '../models/Invoice.js';
 import User from '../models/User.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
@@ -17,8 +18,19 @@ import { bookingCompletionMiddleware } from '../middleware/crmTrackingMiddleware
 import logger from '../utils/logger.js';
 import cancellationService from '../services/cancellationService.js';
 import { validateTransition } from '../utils/bookingStateMachine.js';
+import bookingService from '../modules/booking/service.js';
+import {
+  getSettlement,
+  addSettlementAdjustment,
+  paySettlement,
+  markNoShow
+} from '../modules/booking/controller.js';
+import bookingAuditService from '../services/bookingAuditService.js';
+import invoiceLifecycleSyncService from '../services/invoiceLifecycleSyncService.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true);
 
 /**
  * @swagger
@@ -362,7 +374,7 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
  *       200:
  *         description: List of bookings for the room
  */
-router.get('/room/:roomId', authenticate, ensureTenantContext, authorize('admin', 'staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/room/:roomId', authenticate, ensureTenantContext, authorizePolicy('bookings', 'getRoomBookings'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const { roomId } = req.params;
   const { 
     status,
@@ -438,7 +450,7 @@ router.get('/room/:roomId', authenticate, ensureTenantContext, authorize('admin'
 }));
 
 // Check room availability for given dates
-router.post('/check-availability', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
+router.post('/check-availability', validate(mutationBaselineSchema), authenticate, authorizePolicy('bookings', 'baseAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const { roomIds, checkIn, checkOut, hotelId } = req.body;
 
   if (!roomIds || !checkIn || !checkOut) {
@@ -576,6 +588,7 @@ router.get('/:id', authenticate, ensureTenantContext, ensurePropertyAccess, catc
 router.post('/',
   authenticate,
   ensureTenantContext,
+  authorizePolicy('bookings', 'create'),
   ensurePropertyAccess,
   bookingCompletionMiddleware,
   validate(schemas.createBooking),
@@ -607,116 +620,31 @@ router.post('/',
       guestPhone
     } = req.body;
 
-    let idempotencyKey = clientIdempotencyKey;
-
     logger.debug('Booking payment fields', { paymentMethod, hasAdvanceAmount: !!advanceAmount });
-
-    // Generate server-side idempotency key if client didn't provide one
-    if (!idempotencyKey) {
-      const crypto = await import('crypto');
-      idempotencyKey = crypto.default.createHash('sha256')
-        .update(`${userId || ''}-${JSON.stringify(roomIds || [])}-${checkIn}-${checkOut}-${totalAmount}`)
-        .digest('hex');
-    }
 
     const session = await mongoose.startSession();
 
     try {
       await session.withTransaction(async () => {
-        // Check for duplicate booking with same idempotency key (with intelligent expiration)
-        const existingBooking = await Booking.findOne({ idempotencyKey }).lean();
-        if (existingBooking) {
-          // Allow reuse of idempotency key if:
-          // 1. The existing booking is from the same user AND
-          // 2. Either the existing booking is old (>1 hour) OR it's in a final state
-          const isOldBooking = (Date.now() - existingBooking.createdAt.getTime()) > (60 * 60 * 1000); // 1 hour
-          const isFinalState = ['checked_out', 'cancelled', 'no_show'].includes(existingBooking.status);
-          const isSameUser = existingBooking.userId.toString() === (userId || req.user._id).toString();
-          
-          if (!isSameUser) {
-            throw new ApplicationError(
-              `Booking conflict detected. This booking reference is already in use by another user. ` +
-              `Please refresh the page and try again.`, 
-              409
-            );
-          }
-          
-          if (!isOldBooking && !isFinalState) {
-            // Recent booking by same user that's still active
-            const timeSinceCreated = Math.round((Date.now() - existingBooking.createdAt.getTime()) / (1000 * 60)); // minutes
-            throw new ApplicationError(
-              `Duplicate booking detected. You already have booking ${existingBooking.bookingNumber} created ${timeSinceCreated} minutes ago. ` +
-              `If you want to make a different booking, please wait a few minutes or contact support.`, 
-              409
-            );
-          }
-          
-          // Old booking or final state - allow new booking but log it
-          logger.info('Reusing idempotency key', { bookingNumber: existingBooking.bookingNumber, reason: isFinalState ? 'completed' : 'old' });
-        }
-
-        const checkInDate = new Date(checkIn);
-        const checkOutDate = new Date(checkOut);
-
-        let rooms = [];
-        let roomsWithRates = [];
-
-        // Only validate rooms if roomIds are provided
-        if (roomIds && roomIds.length > 0) {
-          // Get rooms and check availability
-          rooms = await Room.find({
-            _id: { $in: roomIds },
-            hotelId,
-            isActive: true
-          }).lean().limit(1000);
-
-          if (rooms.length !== roomIds.length) {
-            throw new ApplicationError('One or more rooms not found or not available', 404);
-          }
-
-          // Check for overlapping bookings
-          const overlappingBookings = await Booking.findOverlapping(
-            roomIds,
-            checkInDate,
-            checkOutDate
-          );
-
-          if (overlappingBookings.length > 0) {
-            const conflictingRooms = overlappingBookings.map(booking => {
-              const conflictedRoom = rooms.find(room => 
-                booking.rooms.some(bookingRoom => bookingRoom.roomId.toString() === room._id.toString())
-              );
-              return {
-                roomNumber: conflictedRoom?.roomNumber || 'Unknown',
-                conflictingBooking: booking.bookingNumber,
-                conflictDates: `${booking.checkIn.toDateString()} - ${booking.checkOut.toDateString()}`,
-                status: booking.status
-              };
-            });
-            
-            const roomDetails = conflictingRooms.map(room => 
-              `Room ${room.roomNumber} (conflicting with booking ${room.conflictingBooking}, ${room.conflictDates}, status: ${room.status})`
-            ).join('; ');
-            
-            throw new ApplicationError(
-              `Room availability conflict detected. The following rooms are already booked for overlapping dates: ${roomDetails}. ` +
-              `Please select different dates or contact support if you believe this is an error.`,
-              409
-            );
-          }
-
-          // Calculate rates from actual rooms
-          roomsWithRates = rooms.map(room => ({
-            roomId: room._id,
-            rate: room.currentRate
-          }));
-        }
-        // For bookings without room allocation, use empty rooms array
-
-        const nights = Math.ceil((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
-        const calculatedTotal = roomsWithRates.length > 0 
-          ? roomsWithRates.reduce((total, room) => total + room.rate, 0) * nights
-          : 0; // No calculated total for bookings without room allocation
+        const {
+          idempotencyKey,
+          checkInDate,
+          checkOutDate,
+          rooms,
+          roomsWithRates,
+          nights,
+          calculatedTotal
+        } = await bookingService.prepareBookingCreation({
+          clientIdempotencyKey,
+          requestedUserId: userId || req.user._id,
+          userId,
+          roomIds,
+          hotelId,
+          checkIn,
+          checkOut,
+          totalAmount,
+          session
+        });
 
         // Create booking - use admin-provided values when available
         // Prepare payment details if payment information is provided
@@ -931,37 +859,17 @@ router.post('/',
  *         description: Booking updated successfully
  */
 router.patch('/:id',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
+  authorizePolicy('bookings', 'update'),
   ensurePropertyAccess,
   marketingSyncMiddleware('booking_updated'),
   catchAsync(async (req, res) => {
     const booking = await Booking.findById(req.params.id).lean();
-
-    if (!booking) {
-      throw new ApplicationError('Booking not found', 404);
-    }
-
-    // Check permissions
-    if (req.user.role === 'guest' && booking.userId.toString() !== req.user._id.toString()) {
-      throw new ApplicationError('You do not have permission to modify this booking', 403);
-    }
-
-    if ((req.user.role === 'staff' || req.user.role === 'frontdesk') && booking.hotelId.toString() !== req.user.hotelId.toString()) {
-      throw new ApplicationError('You do not have permission to modify this booking', 403);
-    }
-
-    // Restrict certain fields for guests
-    const allowedFields = req.user.role === 'guest' 
-      ? ['guestDetails'] 
-      : Object.keys(req.body);
-
-    const updateData = {};
-    allowedFields.forEach(field => {
-      if (req.body[field] !== undefined) {
-        updateData[field] = req.body[field];
-      }
-    });
+    bookingService.assertCanModifyBooking(booking, req.user, 'modify');
+    const bookingBeforeUpdate = bookingAuditService.buildSnapshot(booking);
+    const updateData = bookingService.buildBookingUpdateData(req.body, req.user.role);
 
     const originalBooking = await Booking.findById(req.params.id).lean();
     const oldPaymentStatus = originalBooking?.paymentStatus;
@@ -978,32 +886,17 @@ router.patch('/:id',
 
     // Update corresponding invoice if payment status changed
     if (updateData.paymentStatus && ['admin', 'staff'].includes(req.user.role)) {
-      const invoice = await Invoice.findOne({ bookingId: req.params.id });
-      if (invoice) {
-        if (updateData.paymentStatus === 'paid' && invoice.status !== 'paid') {
-          // Mark invoice as paid
-          invoice.status = 'paid';
-          invoice.paidDate = new Date();
-          
-          // Add payment record if not exists
-          const totalPaid = invoice.payments.reduce((sum, p) => sum + p.amount, 0);
-          if (totalPaid < invoice.totalAmount) {
-            invoice.payments.push({
-              amount: invoice.totalAmount - totalPaid,
-              method: 'credit_card', // Default method
-              paidBy: updatedBooking.userId,
-              paidAt: new Date(),
-              notes: 'Payment status updated via booking'
-            });
-          }
-        } else if (updateData.paymentStatus === 'pending' && invoice.status === 'paid') {
-          // Revert invoice to issued status
-          invoice.status = 'issued';
-          invoice.paidDate = null;
-          invoice.payments = []; // Clear payments
-        }
-        
-        await invoice.save();
+      try {
+        await invoiceLifecycleSyncService.syncBookingPaymentStatus({
+          bookingId: req.params.id,
+          paymentStatus: updateData.paymentStatus,
+          actorUserId: req.user._id
+        });
+      } catch (error) {
+        invoiceLifecycleSyncService.logSyncFailure(
+          { bookingId: req.params.id, flow: 'booking-update-payment-status' },
+          error
+        );
       }
 
       // Notify admin dashboard if payment status changed
@@ -1048,6 +941,19 @@ router.patch('/:id',
       logger.warn('Failed to send real-time booking update notification', { error: wsError.message });
     }
 
+    await bookingAuditService.logBookingMutation({
+      booking: updatedBooking,
+      changeType: 'update',
+      user: req.user,
+      req,
+      oldValues: bookingBeforeUpdate,
+      newValues: bookingAuditService.buildSnapshot(updatedBooking),
+      metadata: {
+        priority: 'medium',
+        tags: ['booking_update']
+      }
+    });
+
     res.json({
       status: 'success',
       data: {
@@ -1077,20 +983,15 @@ router.patch('/:id',
  *         description: Booking cancelled successfully
  */
 router.patch('/:id/cancel',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
+  authorizePolicy('bookings', 'cancel'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const booking = await Booking.findById(req.params.id);
-
-    if (!booking) {
-      throw new ApplicationError('Booking not found', 404);
-    }
-
-    // Check permissions
-    if (req.user.role === 'guest' && booking.userId.toString() !== req.user._id.toString()) {
-      throw new ApplicationError('You do not have permission to cancel this booking', 403);
-    }
+    bookingService.assertCanModifyBooking(booking, req.user, 'cancel');
+    const bookingBeforeCancel = bookingAuditService.buildSnapshot(booking);
 
     if (!booking.canCancel()) {
       throw new ApplicationError('This booking cannot be cancelled', 400);
@@ -1125,6 +1026,19 @@ router.patch('/:id/cancel',
     booking.cancellationReason = req.body.reason || 'Cancelled by user';
     await booking.save();
 
+    try {
+      await invoiceLifecycleSyncService.syncBookingCancellationInvoices({
+        bookingId: booking._id,
+        refundAmount: refundCalc.refundAmount,
+        reason: booking.cancellationReason
+      });
+    } catch (error) {
+      invoiceLifecycleSyncService.logSyncFailure(
+        { bookingId: booking._id, flow: 'booking-cancel' },
+        error
+      );
+    }
+
     // Release room availability for cancelled dates
     if (booking.rooms && booking.rooms.length > 0) {
       const RoomAvailability = (await import('../models/RoomAvailability.js')).default;
@@ -1148,6 +1062,21 @@ router.patch('/:id/cancel',
       });
     } catch (e) { /* WebSocket is non-critical */ }
 
+    await bookingAuditService.logBookingMutation({
+      booking,
+      changeType: 'cancellation',
+      user: req.user,
+      req,
+      oldValues: bookingBeforeCancel,
+      newValues: bookingAuditService.buildSnapshot(booking),
+      metadata: {
+        priority: refundCalc.refundAmount > 0 ? 'high' : 'medium',
+        tags: ['booking_cancellation'],
+        refundAmount: refundCalc.refundAmount,
+        penaltyAmount: refundCalc.penaltyAmount
+      }
+    });
+
     res.json({
       status: 'success',
       data: {
@@ -1160,9 +1089,10 @@ router.patch('/:id/cancel',
 
 // Change room for a booking (for drag & drop in tape chart)
 router.post('/change-room',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
-  authorize(['admin', 'staff', 'frontdesk']),
+  authorizePolicy('bookings', 'changeRoom'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { bookingId, newRoomId, newRoomNumber, reason, changeDate } = req.body;
@@ -1172,185 +1102,69 @@ router.post('/change-room',
       throw new ApplicationError('Booking not found', 404);
     }
 
-    // Find the room in the booking's rooms array and update it
-    if (booking.rooms && booking.rooms.length > 0) {
-      booking.rooms[0].roomId = new mongoose.Types.ObjectId(newRoomId);
-      // Add a note about the room change
-      if (!booking.notes) booking.notes = [];
-      booking.notes.push(`Room changed to ${newRoomNumber} on ${new Date().toISOString()} by ${req.user.name}. Reason: ${reason}`);
-      
-      await booking.save();
-      
-      res.json({
-        success: true,
-        data: {
-          booking,
-          message: `Room changed to ${newRoomNumber} successfully`
-        }
-      });
-    } else {
-      throw new ApplicationError('Booking has no rooms to change', 400);
-    }
+    bookingService.applyExistingRoomChange({
+      booking,
+      newRoomId: new mongoose.Types.ObjectId(newRoomId),
+      newRoomNumber,
+      actorName: req.user.name,
+      reason
+    });
+    
+    await booking.save();
+    
+    res.json({
+      success: true,
+      data: {
+        booking,
+        message: `Room changed to ${newRoomNumber} successfully`
+      }
+    });
   })
 );
 
 // Change room by finding booking via guest details or booking ID (for drag & drop in tape chart)
 router.post('/change-room-by-guest',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
-  authorize(['admin', 'staff', 'frontdesk']),
+  authorizePolicy('bookings', 'changeRoomByGuest'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     logger.debug('Change room by guest request', { bookingId: req.body.bookingId, newRoomId: req.body.newRoomId });
 
-    const { bookingId, guestName, checkIn, checkOut, newRoomId, newRoomNumber, reason } = req.body;
+    const { bookingId, guestName, checkIn, checkOut, newRoomId, newRoomNumber, reason, newCheckInDate } = req.body;
 
-    let booking;
-
-    // First try to find by bookingId if provided
-    if (bookingId) {
-      logger.debug('Searching by booking ID', { bookingId });
-      booking = await Booking.findById(bookingId).lean();
-    }
-
-    // If not found by ID, search by guest name and dates
-    if (!booking && guestName) {
-      logger.debug('Searching by guest name and dates');
-
-      // Find the user by name
-      const user = await User.findOne({
-        name: { $regex: new RegExp(guestName, 'i') }
-      }).lean();
-
-      if (user) {
-        logger.debug('Found user for room change', { userId: user._id });
-
-        // Create flexible date range to handle timezone issues
-        const checkInDate = new Date(checkIn);
-        const checkOutDate = new Date(checkOut);
-        checkInDate.setHours(0, 0, 0, 0);
-        checkOutDate.setHours(23, 59, 59, 999);
-
-        // Search with date range
-        const searchQuery = {
-          userId: user._id,
-          checkIn: {
-            $gte: new Date(checkInDate.getTime() - 24 * 60 * 60 * 1000), // 1 day before
-            $lte: new Date(checkInDate.getTime() + 24 * 60 * 60 * 1000)  // 1 day after
-          },
-          checkOut: {
-            $gte: new Date(checkOutDate.getTime() - 24 * 60 * 60 * 1000), // 1 day before
-            $lte: new Date(checkOutDate.getTime() + 24 * 60 * 60 * 1000)  // 1 day after
-          }
-        };
-
-        logger.debug('Booking search query constructed');
-        booking = await Booking.findOne(searchQuery).lean();
-      } else {
-        logger.debug('No user found for room change lookup');
-      }
-    }
-
-    if (!booking) {
-      logger.debug('No booking found for room change');
-      throw new ApplicationError(`Booking not found for ${guestName || bookingId}`, 404);
-    }
-
+    const booking = await bookingService.findBookingForRoomChange({
+      bookingId,
+      guestName,
+      checkIn,
+      checkOut
+    });
     logger.debug('Found booking for room change', { bookingId: booking._id, status: booking.status });
 
-    // Ensure rooms array exists
-    if (!booking.rooms) {
-      booking.rooms = [];
-    }
-
-    // Cancelled bookings cannot be reactivated - they are a terminal state
-    if (booking.status === 'cancelled' || booking.status === 'no_show' || booking.status === 'checked_out') {
-      throw new ApplicationError(
-        `Cannot assign rooms to a booking in terminal state "${booking.status}". Please create a new booking.`,
-        400
-      );
-    }
-
-    // Find the room to get its rate and validate room type
-    const Room = mongoose.model('Room');
-    const room = await Room.findById(newRoomId).lean();
-
-    if (!room) {
-      throw new ApplicationError(`Room not found: ${newRoomNumber}`, 404);
-    }
-
+    const room = await bookingService.validateRoomAssignment({
+      booking,
+      newRoomId,
+      newRoomNumber
+    });
     logger.debug('Room details for assignment', { roomNumber: room.roomNumber, roomType: room.roomType, isActive: room.isActive });
 
-    // Validate room type compatibility
-    if (booking.roomType && room.roomType) {
-      const bookingRoomType = booking.roomType.toLowerCase();
-      const actualRoomType = room.roomType.toLowerCase();
-
-      // Check if room types match (allow some flexibility for similar types)
-      const isCompatible =
-        bookingRoomType === actualRoomType ||
-        (bookingRoomType === 'deluxe' && actualRoomType === 'deluxe') ||
-        (bookingRoomType === 'suite' && actualRoomType === 'suite') ||
-        (bookingRoomType === 'single' && actualRoomType === 'single') ||
-        (bookingRoomType === 'double' && actualRoomType === 'double');
-
-      if (!isCompatible) {
-        logger.debug('Room type mismatch detected', { bookingType: booking.roomType, roomType: room.roomType });
-        throw new ApplicationError(
-          `Room type mismatch: Booking requires ${booking.roomType} but room ${newRoomNumber} is ${room.roomType}`,
-          400
-        );
-      }
-    }
-
-    // Validate that the target date is within the booking's check-in/check-out period
-    const { newCheckInDate } = req.body;
-    if (newCheckInDate) {
-      const targetDate = new Date(newCheckInDate);
-      const bookingCheckIn = new Date(booking.checkIn);
-      const bookingCheckOut = new Date(booking.checkOut);
-
-      // Normalize dates to compare only the date part
-      targetDate.setHours(0, 0, 0, 0);
-      bookingCheckIn.setHours(0, 0, 0, 0);
-      bookingCheckOut.setHours(0, 0, 0, 0);
-
-      logger.debug('Date validation for room change', { bookingId: booking._id });
-
-      // Check if target date is within the booking period (inclusive of check-in, exclusive of check-out)
-      if (targetDate < bookingCheckIn || targetDate >= bookingCheckOut) {
-        throw new ApplicationError(
-          `Date mismatch: Cannot assign guest to ${targetDate.toDateString()}. Booking is only valid from ${bookingCheckIn.toDateString()} to ${new Date(bookingCheckOut.getTime() - 1).toDateString()}`,
-          400
-        );
-      }
-    }
-
-    // Check if room is active and available
-    if (!room.isActive) {
-      throw new ApplicationError(`Room ${newRoomNumber} is not active`, 400);
-    }
+    bookingService.assertRoomChangeDateWithinBooking({
+      booking,
+      newCheckInDate
+    });
 
     const roomRate = room.price || booking.totalAmount / booking.nights || 100;
 
-    // Handle bookings without rooms (new bookings) or with existing rooms
-    if (booking.rooms.length > 0) {
-      // Update existing room
-      logger.debug('Updating existing room assignment', { bookingId: booking._id, newRoomId });
-      booking.rooms[0].roomId = new mongoose.Types.ObjectId(newRoomId);
-      booking.rooms[0].rate = roomRate;
-    } else {
-      // Add new room to booking
-      logger.debug('Adding new room to booking', { bookingId: booking._id, newRoomId });
-      booking.rooms.push({
-        roomId: new mongoose.Types.ObjectId(newRoomId),
-        rate: roomRate
-      });
-    }
-
-    // Add a note about the room assignment/change
-    if (!booking.notes) booking.notes = [];
-    booking.notes.push(`Room assigned/changed to ${newRoomNumber} on ${new Date().toISOString()} by ${req.user.name}. Reason: ${reason}`);
+    logger.debug('Applying room assignment update', { bookingId: booking._id, newRoomId });
+    bookingService.applyRoomAssignment({
+      booking,
+      newRoomId,
+      roomRate,
+      newRoomNumber,
+      actorName: req.user.name,
+      reason
+    });
 
     logger.debug('Saving booking with updated room', { bookingId: booking._id });
     await booking.save();
@@ -1406,8 +1220,10 @@ router.post('/change-room-by-guest',
  *         description: Modification request created successfully
  */
 router.post('/:id/modification-request',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
+  authorizePolicy('bookings', 'createModificationRequest'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { modificationType, requestedChanges, reason, priority = 'medium' } = req.body;
@@ -1418,36 +1234,15 @@ router.post('/:id/modification-request',
       throw new ApplicationError('Booking not found', 404);
     }
 
-    // Check if user owns this booking or is staff/admin
-    const isOwner = booking.userId._id.toString() === req.user._id.toString();
-    const isStaff = ['admin', 'staff', 'manager'].includes(req.user.role);
-
-    if (!isOwner && !isStaff) {
-      throw new ApplicationError('You are not authorized to modify this booking', 403);
-    }
-
-    // Create modification request object following the booking schema
-    const modificationRequest = {
-      modificationId: new mongoose.Types.ObjectId().toString(),
+    bookingService.assertModificationAccess(booking, req.user, 'modify');
+    const modificationRequest = bookingService.buildModificationRequest({
+      booking,
       modificationType,
-      modificationDate: new Date(),
-      modifiedBy: {
-        source: req.user.role === 'admin' || req.user.role === 'staff' || req.user.role === 'frontdesk' ? 'admin' : 'guest',
-        userId: req.user._id.toString(),
-        userName: req.user.name,
-        ipAddress: req.ip || 'unknown'
-      },
-      oldValues: {
-        checkIn: booking.checkIn,
-        checkOut: booking.checkOut,
-        roomType: booking.roomType,
-        totalAmount: booking.totalAmount,
-        guestDetails: booking.guestDetails
-      },
-      newValues: requestedChanges,
+      requestedChanges,
       reason,
-      autoApproved: false
-    };
+      user: req.user,
+      ip: req.ip
+    });
 
     // Add to booking's modifications array
     if (!booking.modifications) booking.modifications = [];
@@ -1524,13 +1319,7 @@ router.get('/:id/modification-requests',
       throw new ApplicationError('Booking not found', 404);
     }
 
-    // Check permissions
-    const isOwner = booking.userId._id.toString() === req.user._id.toString();
-    const isStaff = ['admin', 'staff', 'manager'].includes(req.user.role);
-
-    if (!isOwner && !isStaff) {
-      throw new ApplicationError('You are not authorized to view modification requests for this booking', 403);
-    }
+    bookingService.assertModificationAccess(booking, req.user, 'view modification requests for');
 
     res.json({
       status: 'success',
@@ -1618,60 +1407,29 @@ router.get('/:id/audit-trail',
  *         description: Modification request reviewed successfully
  */
 router.patch('/:id/modification-requests/:requestId/review',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
-  authorize(['admin', 'staff', 'manager', 'frontdesk']),
+  authorizePolicy('bookings', 'reviewModificationRequest'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { action, reviewNotes, approvedChanges } = req.body;
     const { id: bookingId, requestId } = req.params;
 
-    const booking = await Booking.findById(bookingId).populate('userId hotelId').lean();
+    const booking = await Booking.findById(bookingId).populate('userId hotelId');
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
     }
 
-    const modificationRequest = booking.modifications.find(
-      mod => mod.modificationId === requestId
-    );
-
-    if (!modificationRequest) {
-      throw new ApplicationError('Modification request not found', 404);
-    }
-
-    // For now, we'll track status in the reason field since the schema doesn't have a status field
-    if (modificationRequest.reason && modificationRequest.reason.includes('REVIEWED:')) {
-      throw new ApplicationError('Modification request has already been reviewed', 400);
-    }
-
-    // Update modification request
-    modificationRequest.reason = `${modificationRequest.reason || ''} REVIEWED: ${action.toUpperCase()} by ${req.user.name}. ${reviewNotes || ''}`.trim();
-
-    if (action === 'approve' && approvedChanges) {
-      modificationRequest.approvedChanges = approvedChanges;
-
-      // Apply approved changes to booking
-      if (approvedChanges.checkIn) booking.checkIn = new Date(approvedChanges.checkIn);
-      if (approvedChanges.checkOut) booking.checkOut = new Date(approvedChanges.checkOut);
-      if (approvedChanges.totalAmount) booking.totalAmount = approvedChanges.totalAmount;
-      if (approvedChanges.guestDetails) {
-        booking.guestDetails = { ...booking.guestDetails, ...approvedChanges.guestDetails };
-      }
-
-      // Add status history entry
-      booking.statusHistory.push({
-        status: booking.status,
-        timestamp: new Date(),
-        changedBy: {
-          source: 'staff',
-          userId: req.user._id,
-          userName: req.user.name
-        },
-        reason: `Booking modified: ${modificationRequest.modificationType}`,
-        automaticTransition: false,
-        validatedTransition: true
-      });
-    }
+    const modificationRequest = bookingService.findModificationRequestOrThrow(booking, requestId);
+    bookingService.applyApprovedModificationChanges({
+      booking,
+      modificationRequest,
+      action,
+      reviewNotes,
+      approvedChanges,
+      reviewer: req.user
+    });
 
     await booking.save();
 
@@ -1750,34 +1508,19 @@ router.patch('/:id/modification-requests/:requestId/review',
  *         description: Guest checked in successfully
  */
 router.patch('/:id/check-in',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
-  authorize(['admin', 'staff', 'frontdesk']),
+  authorizePolicy('bookings', 'checkIn'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
-    const booking = await Booking.findById(req.params.id).lean();
-
-    if (!booking) {
-      throw new ApplicationError('Booking not found', 404);
-    }
-
-    // Check permissions
-    if ((req.user.role === 'staff' || req.user.role === 'frontdesk') && booking.hotelId.toString() !== req.user.hotelId.toString()) {
-      throw new ApplicationError('You do not have permission to check-in this booking', 403);
-    }
+    const booking = await Booking.findById(req.params.id);
+    bookingService.assertCanCheckInBooking(booking, req.user);
+    const bookingBeforeCheckIn = bookingAuditService.buildSnapshot(booking);
 
     // Log current booking status for debugging
     logger.debug('Check-in attempt', { bookingId: booking._id, bookingNumber: booking.bookingNumber, currentStatus: booking.status });
-
-    // Validate booking status - allow pending and confirmed for frontdesk operations
-    if (booking.status !== 'confirmed' && booking.status !== 'pending') {
-      throw new ApplicationError(`Cannot check-in booking with status '${booking.status}'. Only pending or confirmed bookings can be checked in.`, 400);
-    }
-
-    // Verify at least one room is assigned
-    if (!booking.rooms || booking.rooms.length === 0 || !booking.rooms.some(r => r.roomId)) {
-      throw new ApplicationError('Cannot check in: no room assigned to this booking. Please assign a room first.', 400);
-    }
+    bookingService.assertBookingCanBeCheckedIn(booking);
 
     const { paymentDetails } = req.body;
 
@@ -1888,6 +1631,21 @@ router.patch('/:id/check-in',
     // Save the booking - this will trigger pre-save hooks to calculate paymentDetails.totalPaid
     await updatedBooking.save();
 
+    if (updatedBooking.paymentStatus) {
+      try {
+        await invoiceLifecycleSyncService.syncBookingPaymentStatus({
+          bookingId: updatedBooking._id,
+          paymentStatus: updatedBooking.paymentStatus,
+          actorUserId: req.user._id
+        });
+      } catch (invoiceSyncError) {
+        invoiceLifecycleSyncService.logSyncFailure(
+          { bookingId: updatedBooking._id, flow: 'booking-check-in' },
+          invoiceSyncError
+        );
+      }
+    }
+
     // Batch: update all room statuses to 'occupied' with a single updateMany
     if (updatedBooking.rooms && updatedBooking.rooms.length > 0) {
       const roomIdsToUpdate = updatedBooking.rooms
@@ -1922,6 +1680,20 @@ router.patch('/:id/check-in',
       });
     } catch (e) { /* WebSocket is non-critical */ }
 
+    await bookingAuditService.logBookingMutation({
+      booking: updatedBooking,
+      changeType: 'update',
+      user: req.user,
+      req,
+      oldValues: bookingBeforeCheckIn,
+      newValues: bookingAuditService.buildSnapshot(updatedBooking),
+      metadata: {
+        priority: paymentDetails && paymentDetails.paymentMethods ? 'high' : 'medium',
+        tags: ['booking_check_in'],
+        paymentCollected: !!(paymentDetails && paymentDetails.paymentMethods)
+      }
+    });
+
     res.json({
       status: 'success',
       data: {
@@ -1953,31 +1725,23 @@ router.patch('/:id/check-in',
  *         description: Guest checked out successfully
  */
 router.patch('/:id/check-out',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
-  authorize(['admin', 'staff', 'frontdesk']),
+  authorizePolicy('bookings', 'checkOut'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const booking = await Booking.findById(req.params.id).lean();
-
-    if (!booking) {
-      throw new ApplicationError('Booking not found', 404);
-    }
+    bookingService.assertBookingCanBeCheckedOut(booking);
+    const bookingBeforeCheckout = bookingAuditService.buildSnapshot(booking);
 
     // ensurePropertyAccess middleware already verified access
     // No need for additional hotelId check - supports multi-property
 
-    // Validate booking status
-    if (booking.status !== 'checked_in') {
-      throw new ApplicationError('Only checked-in bookings can be checked out', 400);
-    }
-
     // CRITICAL: Validate payment balance BEFORE allowing checkout
     // Guests cannot checkout with outstanding balance unless explicitly bypassed
     const { bypassBalanceCheck, bypassReason } = req.body;
-    const totalAmount = booking.totalAmount || 0;
-    const totalPaid = booking.paymentDetails?.totalPaid || 0;
-    const outstandingBalance = totalAmount - totalPaid;
+    const { outstandingBalance } = bookingService.getCheckoutBalanceInfo(booking);
 
     logger.debug('Checkout payment validation', { bookingNumber: booking.bookingNumber, outstandingBalance, bypassBalanceCheck });
 
@@ -2021,6 +1785,17 @@ router.patch('/:id/check-out',
         reason: 'Guest checked out'
       }
     };
+
+    if (bypassBalanceCheck && outstandingBalance > 0) {
+      updateData.$push = {
+        notes: {
+          text: `BYPASS CHECKOUT - Outstanding balance: Rs ${outstandingBalance}. Reason: ${bypassReason || 'Not specified'}`,
+          createdBy: req.user._id,
+          createdAt: new Date(),
+          type: 'bypass_checkout'
+        }
+      };
+    }
 
     const updatedBooking = await Booking.findByIdAndUpdate(
       req.params.id,
@@ -2067,36 +1842,10 @@ router.patch('/:id/check-out',
 
     // Auto-generate final invoice at checkout
     try {
-      // Check if a final invoice already exists
-      const existingInvoice = await Invoice.findOne({
-        bookingId: booking._id,
-        type: 'accommodation',
-        status: { $ne: 'cancelled' }
-      }).lean();
-
-      if (!existingInvoice) {
-        const invoiceData = {
-          hotelId: booking.hotelId,
-          bookingId: booking._id,
-          guestId: booking.userId,
-          type: 'accommodation',
-          status: 'issued',
-          invoiceDate: new Date(),
-          dueDate: new Date(),
-          items: [{
-            description: `Room charges - ${booking.nights || 1} night(s)`,
-            quantity: booking.nights || 1,
-            unitPrice: booking.totalAmount / Math.max(booking.nights || 1, 1),
-            amount: booking.totalAmount,
-            category: 'room_charge'
-          }],
-          subtotal: booking.totalAmount,
-          totalAmount: booking.totalAmount,
-          currency: booking.currency || 'INR',
-          notes: `Auto-generated at checkout for booking ${booking.bookingNumber || booking._id}`
-        };
-
-        await Invoice.create(invoiceData);
+      const invoiceResult = await invoiceLifecycleSyncService.ensureCheckoutInvoice({
+        booking: updatedBooking
+      });
+      if (invoiceResult.created) {
         logger.info('Invoice auto-generated at checkout', { bookingId: booking._id });
       }
     } catch (invoiceError) {
@@ -2167,6 +1916,21 @@ router.patch('/:id/check-out',
       });
     } catch (e) { /* WebSocket is non-critical */ }
 
+    await bookingAuditService.logBookingMutation({
+      booking: updatedBooking,
+      changeType: 'update',
+      user: req.user,
+      req,
+      oldValues: bookingBeforeCheckout,
+      newValues: bookingAuditService.buildSnapshot(updatedBooking),
+      metadata: {
+        priority: outstandingBalance > 0 ? 'high' : 'medium',
+        tags: ['booking_checkout'],
+        bypassBalanceCheck: !!bypassBalanceCheck,
+        outstandingBalance
+      }
+    });
+
     res.json({
       status: 'success',
       data: {
@@ -2227,9 +1991,10 @@ router.patch('/:id/check-out',
  *         description: Booking not found
  */
 router.post('/:id/extra-persons',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
-  authorize(['admin', 'staff', 'frontdesk']),
+  authorizePolicy('bookings', 'addExtraPerson'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { id } = req.params;
@@ -2241,10 +2006,7 @@ router.post('/:id/extra-persons',
       throw new ApplicationError('Booking not found', 404);
     }
 
-    // Check if booking belongs to user's hotel
-    if (booking.hotelId.toString() !== req.user.hotelId.toString()) {
-      throw new ApplicationError('Booking not found in your hotel', 404);
-    }
+    bookingService.assertBookingInUserHotel(booking, req.user);
 
     // User context for RBAC
     const userContext = {
@@ -2329,9 +2091,10 @@ router.post('/:id/extra-persons',
  *         description: Booking or person not found
  */
 router.delete('/:id/extra-persons/:personId',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
-  authorize(['admin', 'staff', 'frontdesk']),
+  authorizePolicy('bookings', 'removeExtraPerson'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { id, personId } = req.params;
@@ -2342,10 +2105,7 @@ router.delete('/:id/extra-persons/:personId',
       throw new ApplicationError('Booking not found', 404);
     }
 
-    // Check if booking belongs to user's hotel
-    if (booking.hotelId.toString() !== req.user.hotelId.toString()) {
-      throw new ApplicationError('Booking not found in your hotel', 404);
-    }
+    bookingService.assertBookingInUserHotel(booking, req.user);
 
     // User context for RBAC
     const userContext = {
@@ -2421,9 +2181,10 @@ router.delete('/:id/extra-persons/:personId',
  *         description: Booking or charge not found
  */
 router.put('/:id/extra-persons/:personId/update-charge',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
-  authorize(['admin', 'staff', 'frontdesk']),
+  authorizePolicy('bookings', 'updateExtraPersonCharge'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { id, personId } = req.params;
@@ -2443,10 +2204,7 @@ router.put('/:id/extra-persons/:personId/update-charge',
       throw new ApplicationError('Booking not found', 404);
     }
 
-    // Check property access
-    if (booking.hotelId.toString() !== req.user.hotelId.toString()) {
-      throw new ApplicationError('Booking not found in your hotel', 404);
-    }
+    bookingService.assertBookingInUserHotel(booking, req.user);
 
     // Find the charge
     const chargeIndex = booking.extraPersonCharges.findIndex(
@@ -2516,9 +2274,10 @@ router.put('/:id/extra-persons/:personId/update-charge',
  *         description: Booking not found
  */
 router.post('/:id/extra-persons/calculate-charges',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
-  authorize(['admin', 'staff', 'frontdesk']),
+  authorizePolicy('bookings', 'calculateExtraPersonCharges'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { id } = req.params;
@@ -2529,10 +2288,7 @@ router.post('/:id/extra-persons/calculate-charges',
       throw new ApplicationError('Booking not found', 404);
     }
 
-    // Check if booking belongs to user's hotel
-    if (booking.hotelId.toString() !== req.user.hotelId.toString()) {
-      throw new ApplicationError('Booking not found in your hotel', 404);
-    }
+    bookingService.assertBookingInUserHotel(booking, req.user);
 
     // Calculate charges
     const chargeResult = await booking.calculateExtraPersonCharges();
@@ -2593,9 +2349,10 @@ router.post('/:id/extra-persons/calculate-charges',
  *         description: Booking or charge not found
  */
 router.post('/:id/extra-persons/:personId/approve',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
-  authorize(['admin', 'staff', 'frontdesk']),
+  authorizePolicy('bookings', 'approveExtraPersonCharge'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { id, personId } = req.params;
@@ -2606,10 +2363,7 @@ router.post('/:id/extra-persons/:personId/approve',
       throw new ApplicationError('Booking not found', 404);
     }
 
-    // Check property access
-    if (booking.hotelId.toString() !== req.user.hotelId.toString()) {
-      throw new ApplicationError('Booking not found in your hotel', 404);
-    }
+    bookingService.assertBookingInUserHotel(booking, req.user);
 
     // Find the charge
     const chargeIndex = booking.extraPersonCharges.findIndex(
@@ -2717,24 +2471,23 @@ router.post('/:id/extra-persons/:personId/approve',
  *         description: Booking not found
  */
 router.post('/:id/extra-persons/payment',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
-  authorize(['admin', 'staff', 'frontdesk']),
+  authorizePolicy('bookings', 'payExtraPersonCharges'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { id } = req.params;
     const { paymentMethods, extraPersonCharges, totalAmount } = req.body;
 
     // Find booking
-    const booking = await Booking.findById(id).lean();
+    const booking = await Booking.findById(id);
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
     }
 
-    // Check if booking belongs to user's hotel
-    if (booking.hotelId.toString() !== req.user.hotelId.toString()) {
-      throw new ApplicationError('Booking not found in your hotel', 404);
-    }
+    bookingService.assertBookingInUserHotel(booking, req.user);
+    const bookingBeforeExtraPersonPayment = bookingAuditService.buildSnapshot(booking);
 
     // Validate payment methods
     if (!Array.isArray(paymentMethods) || paymentMethods.length === 0) {
@@ -2824,6 +2577,34 @@ router.post('/:id/extra-persons/payment',
       // Save booking
       await booking.save();
 
+      try {
+        await invoiceLifecycleSyncService.syncBookingPaymentStatus({
+          bookingId: booking._id,
+          paymentStatus: booking.paymentStatus,
+          actorUserId: req.user._id
+        });
+      } catch (invoiceSyncError) {
+        invoiceLifecycleSyncService.logSyncFailure(
+          { bookingId: booking._id, flow: 'extra-person-charge-payment' },
+          invoiceSyncError
+        );
+      }
+
+      await bookingAuditService.logBookingMutation({
+        booking,
+        changeType: 'update',
+        user: req.user,
+        req,
+        oldValues: bookingBeforeExtraPersonPayment,
+        newValues: bookingAuditService.buildSnapshot(booking),
+        metadata: {
+          priority: 'high',
+          tags: ['extra_person_charge_payment'],
+          totalPaid,
+          chargeCount: Array.isArray(extraPersonCharges) ? extraPersonCharges.length : 0
+        }
+      });
+
       // Populate booking details for response
       await booking.populate('userId', 'name email');
       await booking.populate('rooms.roomId', 'roomNumber roomType');
@@ -2877,37 +2658,9 @@ router.post('/:id/extra-persons/payment',
 router.get('/:id/settlement',
   authenticate,
   ensureTenantContext,
-  authorize(['admin', 'staff', 'frontdesk']),
+  authorizePolicy('bookings', 'getSettlement'),
   ensurePropertyAccess,
-  catchAsync(async (req, res) => {
-    const { id } = req.params;
-
-    // Find booking
-    const booking = await Booking.findById(id).lean();
-    if (!booking) {
-      throw new ApplicationError('Booking not found', 404);
-    }
-
-    // ensurePropertyAccess middleware already verified access
-    // No need for additional hotelId check - supports multi-property
-
-    // Calculate settlement if not exists
-    const settlement = booking.calculateSettlement();
-
-    res.json({
-      status: 'success',
-      data: {
-        settlement,
-        bookingDetails: {
-          bookingNumber: booking.bookingNumber,
-          guestName: booking.userId ? booking.userId.name : 'N/A',
-          checkIn: booking.checkIn,
-          checkOut: booking.checkOut,
-          status: booking.status
-        }
-      }
-    });
-  })
+  getSettlement
 );
 
 /**
@@ -2957,52 +2710,12 @@ router.get('/:id/settlement',
  *         description: Booking not found
  */
 router.post('/:id/settlement/adjustment',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
-  authorize(['admin', 'staff', 'frontdesk']),
+  authorizePolicy('bookings', 'addSettlementAdjustment'),
   ensurePropertyAccess,
-  catchAsync(async (req, res) => {
-    const { id } = req.params;
-    const { type, amount, description } = req.body;
-
-    // Validate input
-    if (!type || amount === undefined || !description) {
-      throw new ApplicationError('Type, amount, and description are required', 400);
-    }
-
-    // Find booking
-    const booking = await Booking.findById(id);
-    if (!booking) {
-      throw new ApplicationError('Booking not found', 404);
-    }
-
-    // Check if booking belongs to user's hotel
-    if (booking.hotelId.toString() !== req.user.hotelId.toString()) {
-      throw new ApplicationError('Booking not found in your hotel', 404);
-    }
-
-    // User context for RBAC
-    const userContext = {
-      userId: req.user._id,
-      userName: req.user.name,
-      userRole: req.user.role
-    };
-
-    // Add settlement adjustment
-    const adjustment = booking.addSettlementAdjustment({ type, amount, description }, userContext);
-
-    // Save booking
-    await booking.save();
-
-    res.json({
-      status: 'success',
-      data: {
-        adjustment,
-        updatedSettlement: booking.settlementTracking,
-        message: 'Settlement adjustment added successfully'
-      }
-    });
-  })
+  addSettlementAdjustment
 );
 
 
@@ -3059,140 +2772,12 @@ router.post('/:id/settlement/adjustment',
  *         description: Booking not found
  */
 router.post('/:id/settlement/payment',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
-  authorize(['admin', 'staff', 'frontdesk']),
+  authorizePolicy('bookings', 'paySettlement'),
   ensurePropertyAccess,
-  catchAsync(async (req, res) => {
-    const { paymentMethods, amount } = req.body;
-    const { id } = req.params;
-
-    // Find booking
-    const booking = await Booking.findById(id).lean();
-    if (!booking) {
-      throw new ApplicationError('Booking not found', 404);
-    }
-
-    // ensurePropertyAccess middleware already verified access
-    // No need for additional hotelId check - supports multi-property
-
-    // Validate payment methods
-    if (!paymentMethods || paymentMethods.length === 0) {
-      throw new ApplicationError('At least one payment method is required', 400);
-    }
-
-    const totalPaid = paymentMethods.reduce((sum, payment) => sum + payment.amount, 0);
-    if (Math.abs(totalPaid - amount) > 0.01) {
-      throw new ApplicationError('Payment amounts do not match total', 400);
-    }
-
-    // Process payments
-    const processedPayments = paymentMethods.map(payment => ({
-      method: payment.method,
-      amount: payment.amount,
-      reference: payment.reference || `${payment.method}-${Date.now()}`,
-      processedBy: req.user._id,
-      processedAt: new Date(),
-      notes: payment.notes || `Settlement payment via ${payment.method}`
-    }));
-
-    // Initialize settlement tracking if not exists
-    if (!booking.settlementTracking) {
-      booking.settlementTracking = {
-        status: 'pending',
-        finalAmount: 0,
-        outstandingBalance: 0,
-        refundAmount: 0,
-        adjustments: [],
-        settlementHistory: []
-      };
-    }
-
-    // Add payment to settlement history
-    booking.settlementTracking.settlementHistory.push({
-      action: 'payment_received',
-      amount: totalPaid,
-      paymentMethods: processedPayments,
-      processedBy: req.user._id,
-      processedAt: new Date(),
-      description: 'Settlement payment received',
-      reference: processedPayments.map(p => p.reference).join(', ')
-    });
-
-    // CRITICAL FIX: Update paymentDetails.totalPaid (not booking.totalPaid which doesn't exist)
-    if (!booking.paymentDetails) {
-      booking.paymentDetails = {
-        paymentMethods: [],
-        totalPaid: 0,
-        remainingAmount: booking.totalAmount || 0,
-        collectedAt: new Date(),
-        collectedBy: req.user._id
-      };
-    }
-
-    if (!booking.paymentDetails.paymentMethods) {
-      booking.paymentDetails.paymentMethods = [];
-    }
-
-    // Add settlement payments to paymentDetails
-    booking.paymentDetails.paymentMethods.push(...processedPayments);
-
-    // Update outstanding balance
-    const previousBalance = booking.settlementTracking.outstandingBalance || 0;
-    booking.settlementTracking.outstandingBalance = Math.max(0, previousBalance - totalPaid);
-
-    // Update settlement status
-    if (booking.settlementTracking.outstandingBalance === 0) {
-      booking.settlementTracking.status = 'completed';
-    } else {
-      booking.settlementTracking.status = 'partial';
-    }
-
-    // Add to booking payment history
-    if (!booking.paymentHistory) {
-      booking.paymentHistory = [];
-    }
-
-    // Add each payment method to payment history
-    paymentMethods.forEach((pm) => {
-      booking.paymentHistory.push({
-        amount: pm.amount || 0,
-        method: pm.method || 'cash',
-        reference: pm.reference || '',
-        notes: pm.notes || 'Settlement payment',
-        collectedBy: req.user._id,
-        collectedAt: new Date(),
-        status: 'completed',
-        type: 'settlement'
-      });
-    });
-
-    logger.info('Settlement payment processed', { bookingNumber: booking.bookingNumber, paymentAmount: totalPaid });
-
-    // Save booking
-    await booking.save();
-
-    // Populate booking details for response
-    await booking.populate([
-      { path: 'userId', select: 'name email phone' },
-      { path: 'rooms.roomId', select: 'roomNumber type' }
-    ]);
-
-    res.json({
-      status: 'success',
-      data: {
-        booking: booking,
-        settlementTracking: booking.settlementTracking,
-        paymentSummary: {
-          totalPaid: totalPaid,
-          previousBalance: previousBalance,
-          remainingBalance: booking.settlementTracking.outstandingBalance,
-          paymentMethods: processedPayments
-        },
-        message: 'Settlement payment processed successfully'
-      }
-    });
-  })
+  paySettlement
 );
 
 
@@ -3239,150 +2824,13 @@ router.post('/:id/settlement/payment',
  *         description: Booking not found
  */
 router.post('/:id/no-show',
+  validate(mutationBaselineSchema),
   authenticate,
   ensureTenantContext,
-  authorize(['admin', 'staff', 'frontdesk']),
+  authorizePolicy('bookings', 'markNoShow'),
   ensurePropertyAccess,
-  catchAsync(async (req, res) => {
-    const { reason, chargeAmount = 0 } = req.body;
-    const { id } = req.params;
-
-    // Validate reason
-    if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
-      throw new ApplicationError('Reason is required for marking a booking as no-show', 400);
-    }
-
-    if (reason.length > 500) {
-      throw new ApplicationError('Reason cannot exceed 500 characters', 400);
-    }
-
-    // Validate chargeAmount
-    if (chargeAmount < 0) {
-      throw new ApplicationError('Charge amount cannot be negative', 400);
-    }
-
-    // Find booking
-    const booking = await Booking.findById(id)
-      .populate('userId', 'name email phone')
-      .populate('rooms.roomId', 'roomNumber type').lean();
-
-    if (!booking) {
-      throw new ApplicationError('Booking not found', 404);
-    }
-
-    // ensurePropertyAccess middleware already verified property access
-    // No need for additional hotelId check - supports multi-property
-
-    // Validate booking status - can only mark confirmed or pending bookings as no-show
-    // Validate status transition using state machine
-    const noShowTransition = validateTransition(booking.status, 'no_show');
-    if (!noShowTransition.valid) {
-      throw new ApplicationError(
-        `Cannot mark booking as no-show. ${noShowTransition.error}`,
-        400
-      );
-    }
-
-    // Validate chargeAmount doesn't exceed totalAmount
-    if (chargeAmount > booking.totalAmount) {
-      throw new ApplicationError(
-        `Charge amount (${chargeAmount}) cannot exceed total booking amount (${booking.totalAmount})`,
-        400
-      );
-    }
-
-    // Update booking status
-    booking.status = 'no_show';
-
-    // Update no-show details using existing model fields
-    booking.noShowRecorded = new Date();
-    booking.noShowReason = reason.trim();
-    booking.noShowMarkedBy = {
-      userId: req.user._id,
-      userName: req.user.name,
-      userRole: req.user.role
-    };
-    booking.noShowChargeAmount = chargeAmount;
-    booking.noShowChargeApplied = chargeAmount > 0;
-
-    // If charge amount is provided, add to payment details
-    if (chargeAmount > 0) {
-      // Initialize paymentDetails if not exists
-      if (!booking.paymentDetails) {
-        booking.paymentDetails = {
-          totalPaid: 0,
-          remainingAmount: booking.totalAmount,
-          paymentMethods: []
-        };
-      }
-
-      // Add no-show charge to payment methods
-      booking.paymentDetails.paymentMethods.push({
-        method: 'cash', // Default to cash as it's pending collection
-        amount: chargeAmount,
-        reference: `NO-SHOW-${booking.bookingNumber}-${Date.now()}`,
-        notes: `No-show cancellation charge: ${reason.substring(0, 100)}${reason.length > 100 ? '...' : ''}`,
-        processedBy: req.user._id,
-        processedAt: new Date()
-      });
-
-      // Update payment totals (marked as pending until actually collected)
-      // Note: We're recording the charge but not adding to totalPaid yet
-      // This represents the amount that SHOULD be charged
-    }
-
-    // Update status history
-    if (!booking.statusHistory) {
-      booking.statusHistory = [];
-    }
-
-    booking.statusHistory.push({
-      status: 'no_show',
-      timestamp: new Date(),
-      changedBy: {
-        source: 'manual',
-        userId: req.user._id,
-        userName: req.user.name,
-        userRole: req.user.role
-      },
-      reason: reason.substring(0, 200) // Store abbreviated reason in status history
-    });
-
-    // Log the no-show action
-    logger.info('No-show marked', {
-      bookingNumber: booking.bookingNumber,
-      chargeAmount,
-      markedBy: req.user._id
-    });
-
-    // Save booking
-    await booking.save();
-
-    // Prepare no-show details for response
-    const noShowDetails = {
-      markedAt: booking.noShowRecorded,
-      markedBy: {
-        userId: booking.noShowMarkedBy.userId,
-        userName: booking.noShowMarkedBy.userName,
-        userRole: booking.noShowMarkedBy.userRole
-      },
-      reason: booking.noShowReason,
-      chargeAmount: booking.noShowChargeAmount,
-      charged: booking.noShowChargeApplied
-    };
-
-    // Send response
-    res.json({
-      status: 'success',
-      data: {
-        booking: booking,
-        message: chargeAmount > 0
-          ? `Booking marked as no-show successfully with a charge of ₹${chargeAmount}`
-          : 'Booking marked as no-show successfully',
-        noShowDetails: noShowDetails
-      }
-    });
-  })
+  markNoShow
 );
 
 export default router;
+

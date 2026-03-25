@@ -1,6 +1,8 @@
 import express from 'express';
+import Joi from 'joi';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import Booking from '../models/Booking.js';
 import RoomAvailability from '../models/RoomAvailability.js';
@@ -8,8 +10,10 @@ import RoomType from '../models/RoomType.js';
 import logger from '../utils/logger.js';
 import rateLimit from 'express-rate-limit';
 import { validateTransition } from '../utils/bookingStateMachine.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Rate limiting for external APIs
 const externalApiLimiter = rateLimit({
@@ -26,6 +30,9 @@ const externalApiLimiter = rateLimit({
 
 // Apply rate limiting to all external booking routes
 router.use(externalApiLimiter);
+router.use(authenticate);
+router.use(ensurePropertyAccess);
+router.use(authorizePolicy('externalBookings', 'baseAccess'));
 
 /**
  * @swagger
@@ -108,6 +115,7 @@ router.use(externalApiLimiter);
 router.post('/',
   authenticate, // Basic authentication
   ensurePropertyAccess,
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const {
       hotelId,
@@ -340,6 +348,7 @@ router.post('/',
 router.put('/:bookingId',
   authenticate,
   ensurePropertyAccess,
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { bookingId } = req.params;
     const {
@@ -536,6 +545,7 @@ router.put('/:bookingId',
 router.post('/:bookingId/cancel',
   authenticate,
   ensurePropertyAccess,
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { bookingId } = req.params;
     const { reason = 'External cancellation' } = req.body;

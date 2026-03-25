@@ -1,4 +1,5 @@
 import express from 'express';
+import Joi from 'joi';
 import mongoose from 'mongoose';
 import User from '../models/User.js';
 import Hotel from '../models/Hotel.js';
@@ -15,15 +16,21 @@ import Housekeeping from '../models/Housekeeping.js';
 import CheckoutInventory from '../models/CheckoutInventory.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
+import { checkPropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import logger from '../utils/logger.js';
 import { validateTransition } from '../utils/bookingStateMachine.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication and property access
 router.use(authenticate);
+router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
 // Most routes require admin authentication - specific routes can override this
 
@@ -40,8 +47,7 @@ router.use(ensurePropertyAccess);
  *         description: Hotel information
  */
 router.get('/hotel', authorize('admin', 'staff', 'manager'), catchAsync(async (req, res) => {
-  // For single hotel application, get the first (and only) hotel
-  const hotel = await Hotel.findOne().select('_id name').lean();
+  const hotel = await Hotel.findById(req.query.hotelId || req.user.hotelId).select('_id name').lean();
 
   if (!hotel) {
     throw new ApplicationError('Hotel not found', 404);
@@ -1366,7 +1372,7 @@ router.get('/revenue', authorize('admin', 'staff'), catchAsync(async (req, res, 
         pendingAmount: {
           $sum: {
             $cond: [
-              { $in: ['$paymentStatus', ['pending', 'partial']] },
+              { $in: ['$paymentStatus', ['pending', 'partially_paid']] },
               '$totalAmount',
               0
             ]
@@ -4281,7 +4287,7 @@ router.get('/alerts', authorize('admin', 'staff'), catchAsync(async (req, res, n
     {
       $match: {
         hotelId: new mongoose.Types.ObjectId(hotelId),
-        paymentStatus: { $in: ['pending', 'partial'] },
+        paymentStatus: { $in: ['pending', 'partially_paid'] },
         checkOut: { $lt: now }
       }
     },
@@ -5788,7 +5794,7 @@ router.get('/reports', authorize('admin', 'staff'), catchAsync(async (req, res, 
 /**
  * Admin Bypass Checkout - Emergency/Special Case Checkout
  */
-router.post('/bypass-checkout', authenticate, authorize('admin', 'frontdesk'), catchAsync(async (req, res) => {
+router.post('/bypass-checkout', authenticate, authorizePolicy('adminDashboard', 'adminFrontdeskAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { bookingId, notes, paymentMethod = 'cash' } = req.body;
   const adminId = req.user._id;
 
@@ -5798,6 +5804,11 @@ router.post('/bypass-checkout', authenticate, authorize('admin', 'frontdesk'), c
   const booking = await Booking.findById(bookingId).populate('userId rooms.roomId');
   if (!booking) {
     throw new ApplicationError('Booking not found', 404);
+  }
+
+  const hasBookingAccess = await checkPropertyAccess(req.user._id, booking.hotelId, req.user);
+  if (!hasBookingAccess) {
+    throw new ApplicationError('Access denied. You do not have permission to bypass checkout for this booking.', 403);
   }
 
   // Verify booking is checked in

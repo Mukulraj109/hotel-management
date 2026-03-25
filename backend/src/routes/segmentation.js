@@ -10,10 +10,13 @@ import {
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import authorize from '../middleware/authorize.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { param, query } from 'express-validator';
 import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 router.use(authenticate);
 router.use(ensurePropertyAccess);
@@ -45,7 +48,7 @@ const paginationValidation = [
 ];
 
 // Advanced segmentation analysis
-router.post('/analyze', authorize(['admin', 'manager']), performAdvancedSegmentation);
+router.post('/analyze', authorizePolicy('segmentation', 'manageAccess'), validate(mutationBaselineSchema), performAdvancedSegmentation);
 
 // Get segmentation summary
 router.get('/summary', authorize(['admin', 'manager', 'staff']), getSegmentationSummary);

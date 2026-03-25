@@ -9,11 +9,13 @@ import mongoSanitize from 'express-mongo-sanitize';
 import hpp from 'hpp';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
+import path from 'path';
 import connectDB from './config/database.js';
 import { validateEnvironment } from './utils/validateEnv.js';
 import { requestTracing } from './middleware/requestTracing.js';
 import {
-    connectRedis
+    connectRedis,
+    getRedisClient
 } from './config/redis.js';
 import {
     errorHandler
@@ -26,6 +28,7 @@ import {
     comprehensiveAPILogger
 } from './middleware/comprehensiveLogger.js';
 import apiMetricsMiddleware from './middleware/apiMetricsMiddleware.js';
+import { apiVersioning, getApiVersionInfo } from './middleware/apiVersioning.js';
 import logger from './utils/logger.js';
 import websocketService from './services/websocketService.js';
 import inventoryScheduler from './services/inventoryScheduler.js';
@@ -42,13 +45,18 @@ import bookingWorkflowEngine from './services/bookingWorkflowEngine.js'; // Temp
 import payloadRetentionService from './services/payloadRetentionService.js'; // Temporarily disabled to debug hang
 import otaPayloadService from './services/otaPayloadService.js'; // Temporarily disabled to debug hang
 import systemHealthMonitor from './services/systemHealthMonitor.js';
+import { registerApiRoutes } from './app/registerApiRoutes.js';
+import { setupGracefulShutdown } from './utils/gracefulShutdown.js';
+
+const queueProcessorMode = process.env.QUEUE_PROCESSOR_MODE || 'api';
+const shouldRunQueueProcessorInApi = queueProcessorMode === 'api';
 
 // Route imports - TEMPORARILY COMMENTED FOR DEVELOPMENT
 import authRoutes from './routes/auth.js';
 import roomRoutes from './routes/rooms.js';
-import bookingRoutes from './routes/bookings.js';
+import bookingModule from './modules/booking/index.js';
 import enhancedBookingRoutes from './routes/enhancedBookings.js'; // Temporarily disabled
-import paymentRoutes from './routes/payments.js';
+import billingModule from './modules/billing/index.js';
 import housekeepingRoutes from './routes/housekeeping.js'; // Temporarily disabled
 import inventoryRoutes from './routes/inventory.js'; // Temporarily disabled
 import guestRoutes from './routes/guests.js';
@@ -64,7 +72,6 @@ import guestServiceRoutes from './routes/guestServices.js'; // Temporarily disab
 import reviewRoutes from './routes/reviews.js'; // Temporarily disabled
 import maintenanceRoutes from './routes/maintenance.js'; // Temporarily disabled
 import incidentRoutes from './routes/incidents.js'; // Temporarily disabled
-import invoiceRoutes from './routes/invoices.js'; // Temporarily disabled
 import supplyRequestRoutes from './routes/supplyRequests.js'; // Temporarily disabled
 import communicationRoutes from './routes/communications.js'; // Temporarily disabled
 import messageTemplateRoutes from './routes/messageTemplates.js'; // Temporarily disabled
@@ -367,6 +374,9 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
+// API version negotiation and compatibility routing (non-breaking v2 -> v1 alias).
+app.use('/api', apiVersioning);
+
 // Body parsing middleware
 app.use('/api/v1/webhooks', express.raw({
     type: 'application/json'
@@ -481,6 +491,14 @@ app.get('/health/websocket', (req, res) => {
     });
 });
 
+// API version capability endpoint.
+app.get('/api/versions', (req, res) => {
+    res.status(200).json({
+        status: 'success',
+        data: getApiVersionInfo()
+    });
+});
+
 // Detailed system health endpoints
 app.get('/health/detailed', async (req, res) => {
     try {
@@ -544,91 +562,196 @@ app.get('/health/metrics', async (req, res) => {
     }
 });
 
+// Queue health endpoint (for retry/DLQ observability and ops checks).
+app.get('/health/queue', async (req, res) => {
+    try {
+        const queueStats = await queueService.getQueueStats();
+        res.status(200).json({
+            status: 'success',
+            data: queueStats,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        logger.error('Queue health retrieval failed:', error);
+        res.status(500).json({
+            status: 'error',
+            message: 'Failed to retrieve queue health',
+            error: error.message,
+            timestamp: new Date().toISOString()
+        });
+    }
+});
+
 // Redis caching for read-heavy endpoints
 import { createCacheMiddleware, createCacheInvalidationMiddleware } from './middleware/cache.js';
 const roomCacheMiddleware = createCacheMiddleware({ ttl: 300, keyGenerator: (req) => `rooms:${req.user?.hotelId}:${req.originalUrl}` });
 const roomTypeCacheMiddleware = createCacheMiddleware({ ttl: 3600, keyGenerator: (req) => `roomtypes:${req.user?.hotelId}:${req.originalUrl}` });
 const settingsCacheMiddleware = createCacheMiddleware({ ttl: 7200, keyGenerator: (req) => `settings:${req.user?.hotelId}:${req.originalUrl}` });
 
-// API Routes - TEMPORARILY COMMENTED FOR DEVELOPMENT
-app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/rooms', roomCacheMiddleware, roomRoutes);
-app.use('/api/v1/bookings/enhanced', enhancedBookingRoutes);
-app.use('/api/v1/bookings', noShowRoutes);
-app.use('/api/v1/bookings', bookingRoutes);
-app.use('/api/v1/extra-person-pricing', extraPersonPricingRoutes);
-app.use('/api/v1/settlements', settlementsRoutes);
-app.use('/api/v1/pos-settlements', posSettlementIntegrationRoutes);
-app.use('/api/v1/approvals', approvalRoutes);
-app.use('/api/v1/payments', paymentRoutes);
-app.use('/api/v1/housekeeping', housekeepingRoutes);
-app.use('/api/v1/inventory', inventoryRoutes);
-app.use('/api/v1/inventory/analytics', inventoryAnalyticsRoutes);
-app.use('/api/v1/guests', guestRoutes);
-app.use('/api/v1/reports', reportRoutes);
-app.use('/api/v1/ota', otaRoutes);
-app.use('/api/v1/webhooks', webhookRoutes);
-// IMPORTANT: admin/travel-dashboard, admin/hotel-services, admin-bypass-management, and admin-dashboard MUST come BEFORE /admin to avoid being caught by admin-only middleware
-app.use('/api/v1/admin/travel-dashboard', adminTravelDashboardRoutes);
-app.use('/api/v1/admin/hotel-services', adminHotelServicesRoutes);
-app.use('/api/v1/admin-bypass-management', adminBypassManagementRoutes);
-app.use('/api/v1/admin-bypass-management', bypassFinancialAnalyticsRoutes);
-app.use('/api/v1/admin-dashboard', adminDashboardRoutes);
-app.use('/api/v1/admin', adminRoutes);
-app.use('/api/v1/system-integration', systemIntegrationRoutes);
-app.use('/api/v1/staff-dashboard', staffDashboardRoutes);
-app.use('/api/v1/staff/alerts', staffAlertsRoutes);
-app.use('/api/v1/staff-meetups', staffMeetUpRoutes);
-app.use('/api/v1/daily-inventory-checks', dailyInventoryCheckRoutes);
-app.use('/api/v1/inventory-notifications', inventoryNotificationRoutes);
-app.use('/api/v1/guest-services', guestServiceRoutes);
-app.use('/api/v1/admin/service-types', serviceTypesRoutes);
-app.use('/api/v1/reviews', reviewRoutes);
-app.use('/api/v1/maintenance', maintenanceRoutes);
-app.use('/api/v1/incidents', incidentRoutes);
-app.use('/api/v1/invoices', invoiceRoutes);
-app.use('/api/v1/supply-requests', supplyRequestRoutes);
-app.use('/api/v1/communications', communicationRoutes);
-app.use('/api/v1/message-templates', messageTemplateRoutes);
-app.use('/api/v1/booking-conversations', bookingConversationRoutes);
-app.use('/api/v1/contact', contactRoutes);
-app.use('/api/v1/billing-history', billingHistoryRoutes);
-app.use('/api/v1/loyalty', loyaltyRoutes);
-app.use('/api/v1/admin/loyalty', adminLoyaltyRoutes);
-app.use('/api/v1/loyalty/favorites', offerFavoriteRoutes);
-app.use('/api/v1/hotel-services', hotelServicesRoutes);
-app.use('/api/v1/staff/services', staffServicesRoutes);
-app.use('/api/v1/notifications', notificationRoutes);
-app.use('/api/v1/settlement-notifications', settlementNotificationRoutes);
-app.use('/api/v1/user-preferences', userPreferencesRoutes);
-app.use('/api/v1/hotel-settings', settingsCacheMiddleware, hotelSettingsRoutes);
-// CRITICAL: Move checkout-inventory and other specific routes BEFORE settings catch-all routes
-app.use('/api/v1/checkout-inventory', checkoutInventoryRoutes);
-app.use('/api/v1/integrations', integrationsRoutes); // Integration settings routes
-app.use('/api/v1/upload', uploadRoutes); // Upload routes for avatars
-app.use('/api/v1/digital-keys', digitalKeyRoutes);
-app.use('/api/v1/meet-up-requests', meetUpRequestRoutes);
-app.use('/api/v1/meetup-resources', meetUpResourceRoutes);
-app.use('/api/v1/travel-agents', travelAgentRoutes);
-// admin/travel-dashboard moved to line 475 (before /admin route)
-app.use('/api/v1/dashboard-updates', dashboardUpdatesRoutes);
-app.use('/api/v1/room-inventory', roomInventoryRoutes);
-app.use('/api/v1/photos', photoUploadRoutes);
-app.use('/api/v1/documents', documentUploadRoutes);
-app.use('/api/v1/staff-tasks', staffTaskRoutes);
-
-// IMPORTANT: Settings routes MUST come AFTER specific routes to avoid conflicts
-app.use('/api/v1/settings', settingsRoutes); // Settings routes with various endpoints
-app.use('/api/v1/scheduled-updates', scheduledUpdatesRoutes); // Scheduled updates routes (Feature 1 - Phase 5.6)
-app.use('/api/v1/daily-routine-check', dailyRoutineCheckRoutes);
-app.use('/api/v1/test', testCheckoutsRoutes);
-app.use('/api/v1/attractions', attractionsRoutes);
-app.use('/api/v1/corporate', corporateRoutes);
-app.use('/api/v1/analytics', analyticsRoutes);
-app.use('/api/v1/pos', posRoutes);
-app.use('/api/v1/revenue-management', revenueManagementRoutes);
-app.use('/api/v1/channel-manager', channelManagerRoutes);
-app.use('/api/v1/booking-engine', bookingEngineRoutes);
+registerApiRoutes(app, {
+    roomCacheMiddleware,
+    settingsCacheMiddleware,
+    roomTypeCacheMiddleware,
+    authRoutes,
+    roomRoutes,
+    enhancedBookingRoutes,
+    noShowRoutes,
+    bookingRoutes: bookingModule.routes,
+    extraPersonPricingRoutes,
+    settlementsRoutes,
+    posSettlementIntegrationRoutes,
+    approvalRoutes,
+    paymentRoutes: billingModule.paymentRoutes,
+    housekeepingRoutes,
+    inventoryRoutes,
+    inventoryAnalyticsRoutes,
+    guestRoutes,
+    reportRoutes,
+    otaRoutes,
+    webhookRoutes,
+    adminTravelDashboardRoutes,
+    adminHotelServicesRoutes,
+    adminBypassManagementRoutes,
+    bypassFinancialAnalyticsRoutes,
+    adminDashboardRoutes,
+    adminRoutes,
+    systemIntegrationRoutes,
+    staffDashboardRoutes,
+    staffAlertsRoutes,
+    staffMeetUpRoutes,
+    dailyInventoryCheckRoutes,
+    inventoryNotificationRoutes,
+    guestServiceRoutes,
+    serviceTypesRoutes,
+    reviewRoutes,
+    maintenanceRoutes,
+    incidentRoutes,
+    invoiceRoutes: billingModule.invoiceRoutes,
+    supplyRequestRoutes,
+    communicationRoutes,
+    messageTemplateRoutes,
+    bookingConversationRoutes,
+    contactRoutes,
+    billingHistoryRoutes,
+    loyaltyRoutes,
+    adminLoyaltyRoutes,
+    offerFavoriteRoutes,
+    hotelServicesRoutes,
+    staffServicesRoutes,
+    notificationRoutes,
+    settlementNotificationRoutes,
+    userPreferencesRoutes,
+    hotelSettingsRoutes,
+    checkoutInventoryRoutes,
+    integrationsRoutes,
+    uploadRoutes,
+    digitalKeyRoutes,
+    meetUpRequestRoutes,
+    meetUpResourceRoutes,
+    travelAgentRoutes,
+    dashboardUpdatesRoutes,
+    roomInventoryRoutes,
+    photoUploadRoutes,
+    documentUploadRoutes,
+    staffTaskRoutes,
+    settingsRoutes,
+    scheduledUpdatesRoutes,
+    dailyRoutineCheckRoutes,
+    testCheckoutsRoutes,
+    attractionsRoutes,
+    corporateRoutes,
+    analyticsRoutes,
+    posRoutes,
+    revenueManagementRoutes,
+    channelManagerRoutes,
+    bookingEngineRoutes,
+    financialRoutes,
+    tapeChartRoutes,
+    auditTrailRoutes,
+    dashboardRoutes,
+    roomBlockRoutes,
+    assignmentRulesRoutes,
+    waitingListRoutes,
+    waitlistRoutes,
+    billingSessionRoutes,
+    posReportsRoutes,
+    guestLookupRoutes,
+    availabilityRoutes,
+    rateManagementRoutes,
+    seasonalPricingRoutes,
+    addOnServicesRoutes,
+    dayUseRoutes,
+    roomTypesRoutes,
+    channelManagementRoutes,
+    otaWebhookRoutes,
+    externalBookingsRoutes,
+    inventoryManagementRoutes,
+    mappingRoutes,
+    currencyRoutes,
+    languageRoutes,
+    translationRoutes,
+    channelLocalizationRoutes,
+    otaAmendmentRoutes,
+    auditRoutes,
+    auditLogRoutes,
+    laundryRoutes,
+    aiRoutes,
+    roomTaxRoutes,
+    revenueAccountRoutes,
+    roomChargeRoutes,
+    phoneExtensionRoutes,
+    billMessageRoutes,
+    hotelAreaRoutes,
+    webSettingsRoutes,
+    webOptimizationRoutes,
+    salutationRoutes,
+    guestImportRoutes,
+    blacklistRoutes,
+    vipRoutes,
+    customFieldRoutes,
+    userManagementRoutes,
+    usersRoutes,
+    loginActivityRoutes,
+    userAnalyticsRoutes,
+    bookingFormRoutes,
+    allotmentRoutes,
+    centralizedRatesRoutes,
+    propertyGroupsRoutes,
+    portfolioRoutes,
+    propertyRoomsRoutes,
+    departmentRoutes,
+    reasonRoutes,
+    paymentMethodRoutes,
+    guestManagementRoutes,
+    operationalManagementRoutes,
+    apiManagementRoutes,
+    gdprRoutes,
+    credentialRoutes,
+    rolePermissionRoutes,
+    dataPrivacyRoutes,
+    securityMonitoringRoutes,
+    checkoutAutomationRoutes,
+    laundryTemplatesRoutes,
+    inventoryAutomationRoutes,
+    housekeepingAutomationRoutes,
+    workflowRoutes,
+    departmentBudgetRoutes,
+    vendorRoutes,
+    enhancedAnalyticsRoutes,
+    requestTemplatesRoutes,
+    requestCategoriesRoutes,
+    vendorComparisonRoutes,
+    reorderRoutes,
+    stockMovementsRoutes,
+    inventoryConsumptionRoutes,
+    emailCampaignRoutes,
+    crmRoutes,
+    segmentationRoutes,
+    personalizationRoutes,
+    featureFlagRoutes,
+    nightAuditRoutes,
+    cancellationRoutes
+});
 
 // Serve widget.js for external websites
 app.get('/widget.js', (req, res) => {
@@ -639,7 +762,6 @@ app.get('/widget.js', (req, res) => {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
     // Serve from frontend public directory
-    const path = require('path');
     const widgetPath = path.join(process.cwd(), 'frontend', 'public', 'widget.js');
     res.sendFile(widgetPath, (err) => {
         if (err) {
@@ -648,108 +770,6 @@ app.get('/widget.js', (req, res) => {
         }
     });
 });
-app.use('/api/v1/financial', financialRoutes);
-app.use('/api/v1/tape-chart', tapeChartRoutes);
-app.use('/api/v1/audit-trail', auditTrailRoutes);
-app.use('/api/v1/dashboard', dashboardRoutes);
-app.use('/api/v1/room-blocks', roomBlockRoutes);
-app.use('/api/v1/assignment-rules', assignmentRulesRoutes);
-// Advanced Reservations route moved after basic routes for stability
-// app.use('/api/v1/advanced-reservations', advancedReservationsRoutes);
-app.use('/api/v1/waiting-list', waitingListRoutes);
-app.use('/api/v1/waitlist', waitlistRoutes);
-app.use('/api/v1/billing-sessions', billingSessionRoutes);
-app.use('/api/v1/pos/reports', posReportsRoutes);
-app.use('/api/v1/guest-lookup', guestLookupRoutes);
-app.use('/api/v1/availability', availabilityRoutes);
-app.use('/api/v1/rates', rateManagementRoutes);
-app.use('/api/v1/seasonal-pricing', seasonalPricingRoutes);
-app.use('/api/v1/add-on-services', addOnServicesRoutes);
-app.use('/api/v1/day-use', dayUseRoutes);
-app.use('/api/v1/room-types', roomTypeCacheMiddleware, roomTypesRoutes);
-app.use('/api/v1/channels', channelManagementRoutes); // Temporarily disabled due to syntax errors
-app.use('/api/v1/ota-webhooks', otaWebhookRoutes);
-app.use('/api/v1/external', externalBookingsRoutes);
-
-app.use('/api/v1/inventory-management', inventoryManagementRoutes);
-app.use('/api/v1/mappings', mappingRoutes);
-app.use('/api/v1/currencies', currencyRoutes);
-app.use('/api/v1/languages', languageRoutes);
-app.use('/api/v1/translations', translationRoutes);
-app.use('/api/v1/channel-localization', channelLocalizationRoutes);
-app.use('/api/v1/ota-amendments', otaAmendmentRoutes);
-app.use('/api/v1/audit', auditRoutes);
-app.use('/api/v1/audit-log', auditLogRoutes);
-app.use('/api/v1/laundry', laundryRoutes);
-app.use('/api/v1/ai', aiRoutes);
-app.use('/api/v1/room-taxes', roomTaxRoutes);
-app.use('/api/v1/revenue-accounts', revenueAccountRoutes);
-app.use('/api/v1/room-charges', roomChargeRoutes);
-app.use('/api/v1/phone-extensions', phoneExtensionRoutes);
-app.use('/api/v1/bill-messages', billMessageRoutes);
-app.use('/api/v1/hotel-areas', hotelAreaRoutes);
-app.use('/api/v1/web-settings', webSettingsRoutes);
-app.use('/api/v1/web-optimization', webOptimizationRoutes);
-app.use('/api/v1/salutations', salutationRoutes);
-app.use('/api/v1/guest-import', guestImportRoutes);
-app.use('/api/v1/blacklist', blacklistRoutes);
-app.use('/api/v1/vip', vipRoutes);
-app.use('/api/v1/custom-fields', customFieldRoutes);
-app.use('/api/v1/user-management', userManagementRoutes);
-app.use('/api/v1/users', usersRoutes);
-app.use('/api/v1/login-activity', loginActivityRoutes);
-app.use('/api/v1/user-analytics', userAnalyticsRoutes);
-app.use('/api/v1/booking-forms', bookingFormRoutes);
-app.use('/api/v1/allotments', allotmentRoutes);
-app.use('/api/v1/centralized-rates', centralizedRatesRoutes);
-app.use('/api/v1/property-groups', propertyGroupsRoutes);
-app.use('/api/v1/portfolio', portfolioRoutes);
-app.use('/api/v1/property-rooms', propertyRoomsRoutes);
-app.use('/api/v1/departments', departmentRoutes);
-app.use('/api/v1/reasons', reasonRoutes);
-app.use('/api/v1/payment-methods', paymentMethodRoutes);
-app.use('/api/v1/guest-management', guestManagementRoutes);
-app.use('/api/v1/operational-management', operationalManagementRoutes);
-app.use('/api/v1/api-management', apiManagementRoutes);
-
-
-// Security & Compliance API Routes - TEMPORARILY COMMENTED
-app.use('/api/v1/gdpr', gdprRoutes);
-app.use('/api/v1/credentials', credentialRoutes);
-app.use('/api/v1/roles', rolePermissionRoutes);
-app.use('/api/v1/data-privacy', dataPrivacyRoutes);
-app.use('/api/v1/security-monitoring', securityMonitoringRoutes);
-app.use('/api/v1/checkout-automation', checkoutAutomationRoutes);
-app.use('/api/v1/laundry-templates', laundryTemplatesRoutes);
-app.use('/api/v1/inventory-automation', inventoryAutomationRoutes);
-app.use('/api/v1/housekeeping-automation', housekeepingAutomationRoutes);
-app.use('/api/v1/workflow', workflowRoutes);
-app.use('/api/v1/department-budget', departmentBudgetRoutes);
-app.use('/api/v1/vendors', vendorRoutes);
-app.use('/api/v1/enhanced-analytics', enhancedAnalyticsRoutes);
-app.use('/api/v1/request-templates', requestTemplatesRoutes);
-app.use('/api/v1/request-categories', requestCategoriesRoutes);
-app.use('/api/v1/vendor-comparison', vendorComparisonRoutes);
-app.use('/api/v1/reorder', reorderRoutes);
-app.use('/api/v1/stock-movements', stockMovementsRoutes);
-app.use('/api/v1/inventory/consumption', inventoryConsumptionRoutes);
-app.use('/api/v1/email-campaigns', emailCampaignRoutes);
-app.use('/api/v1/crm', crmRoutes);
-app.use('/api/v1/segmentation', segmentationRoutes);
-app.use('/api/v1/personalization', personalizationRoutes);
-
-// Advanced Reservations route - TEMPORARILY COMMENTED OUT DUE TO STARTUP HANG
-// INSTRUCTIONS TO ENABLE:
-// 1. Start server without this route (it will start successfully)
-// 2. Once server is running and stable, uncomment the line below
-// 3. Restart server - the route will work perfectly (all tests passed)
-// app.use('/api/v1/advanced-reservations', advancedReservationsRoutes);
-
-// 404 handler
-// ── Production Readiness: New feature routes ──
-app.use('/api/v1/feature-flags', featureFlagRoutes);
-app.use('/api/v1/night-audit', nightAuditRoutes);
-if (cancellationRoutes) app.use('/api/v1/cancellations', cancellationRoutes);
 
 app.all('*', (req, res) => {
     res.status(404).json({
@@ -837,14 +857,19 @@ const server = app.listen(PORT, async () => {
         //   pricingScheduler.start();
         // } // Temporarily disabled - requires tensorflow
 
-        // Start queue processing for OTA sync - TEMPORARILY COMMENTED
-        try {
-            logger.info('🔄 Starting queue processing...');
-            await queueService.startProcessing();
-            logger.info('✅ Queue processing started');
-        } catch (error) {
-            logger.warn('❌ Queue processing failed to start:', {
-                error: error.message
+        if (shouldRunQueueProcessorInApi) {
+            try {
+                logger.info('Starting queue processing in API mode...');
+                await queueService.startProcessing();
+                logger.info('Queue processing started in API mode');
+            } catch (error) {
+                logger.warn('Queue processing failed to start in API mode', {
+                    error: error.message
+                });
+            }
+        } else {
+            logger.info('Queue processing skipped in API mode', {
+                queueProcessorMode
             });
         }
 
@@ -902,59 +927,21 @@ const server = app.listen(PORT, async () => {
 
 // ── Production Readiness: Enhanced Graceful Shutdown ──
 // Ensures in-flight requests complete, DB/Redis connections close properly
-let isShuttingDown = false;
-
-const gracefulShutdown = async (signal) => {
-    if (isShuttingDown) return;
-    isShuttingDown = true;
-
-    logger.info(`${signal} received. Starting graceful shutdown...`);
-
-    // Stop accepting new connections
-    server.close(async () => {
-        logger.info('HTTP server closed — no new connections accepted');
-
-        try {
-            // Stop background services
-            inventoryScheduler.stop();
-            reorderJob.stop();
-            stopScheduledUpdatesJob();
-            bookingWorkflowEngine.stop();
-            systemHealthMonitor.stop();
-            await queueService.stopProcessing();
-            logger.info('Background services stopped');
-
-            // Close database connections
-            const mongoose = (await import('mongoose')).default;
-            if (mongoose.connection.readyState === 1) {
-                await mongoose.connection.close();
-                logger.info('MongoDB connection closed');
-            }
-
-            // Close Redis connection
-            try {
-                const { getRedisClient } = await import('./config/redis.js');
-                const redis = getRedisClient();
-                if (redis) { await redis.quit(); logger.info('Redis connection closed'); }
-            } catch { /* Redis may not be connected */ }
-
-            logger.info('Graceful shutdown complete');
-            process.exit(0);
-        } catch (err) {
-            logger.error('Error during graceful shutdown:', err);
-            process.exit(1);
-        }
-    });
-
-    // Force shutdown after 30 seconds if graceful shutdown stalls
-    setTimeout(() => {
-        logger.error('Forced shutdown after 30s timeout — some requests may have been interrupted');
-        process.exit(1);
-    }, 30000);
-};
-
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+// Centralized graceful shutdown for API and background services.
+setupGracefulShutdown(server, {
+    logger,
+    mongoose: (await import('mongoose')).default,
+    redis: getRedisClient(),
+    beforeExit: async () => {
+        inventoryScheduler.stop();
+        reorderJob.stop();
+        stopScheduledUpdatesJob();
+        bookingWorkflowEngine.stop();
+        systemHealthMonitor.stop();
+        await queueService.stopProcessing();
+        logger.info('Background services stopped');
+    }
+});
 
 // Log unhandled rejections but don't crash
 process.on('unhandledRejection', (reason) => {

@@ -1,9 +1,13 @@
 import express from 'express';
 import availabilityController from '../controllers/availabilityController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import Joi from 'joi';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 /**
  * @swagger
@@ -136,7 +140,7 @@ router.get('/calendar', availabilityController.getAvailabilityCalendar);
  *       200:
  *         description: Room status information
  */
-router.get('/room-status', authenticate, authorize(['admin', 'manager', 'front_desk']), ensurePropertyAccess, availabilityController.getRoomStatus);
+router.get('/room-status', authenticate, authorizePolicy('availability', 'staffAccess'), ensurePropertyAccess, availabilityController.getRoomStatus);
 
 /**
  * @swagger
@@ -174,7 +178,7 @@ router.get('/room-status', authenticate, authorize(['admin', 'manager', 'front_d
  *       201:
  *         description: Rooms blocked successfully
  */
-router.post('/block', authenticate, authorize(['admin', 'manager']), ensurePropertyAccess, availabilityController.blockRooms);
+router.post('/block', authenticate, authorizePolicy('availability', 'manageAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), availabilityController.blockRooms);
 
 /**
  * @swagger
@@ -209,7 +213,7 @@ router.post('/block', authenticate, authorize(['admin', 'manager']), ensurePrope
  *       200:
  *         description: Rooms unblocked successfully
  */
-router.post('/unblock', authenticate, authorize(['admin', 'manager']), ensurePropertyAccess, availabilityController.unblockRooms);
+router.post('/unblock', authenticate, authorizePolicy('availability', 'manageAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), availabilityController.unblockRooms);
 
 /**
  * @swagger
@@ -240,7 +244,7 @@ router.post('/unblock', authenticate, authorize(['admin', 'manager']), ensurePro
  *       200:
  *         description: Occupancy rate data
  */
-router.get('/occupancy', authenticate, authorize(['admin', 'manager', 'front_desk']), ensurePropertyAccess, availabilityController.getOccupancyRate);
+router.get('/occupancy', authenticate, authorizePolicy('availability', 'staffAccess'), ensurePropertyAccess, availabilityController.getOccupancyRate);
 
 /**
  * @swagger
@@ -302,7 +306,7 @@ router.get('/alternatives', availabilityController.findAlternatives);
  *       200:
  *         description: Overbooking status and suggestions
  */
-router.get('/overbooking', authenticate, authorize(['admin', 'manager', 'front_desk']), ensurePropertyAccess, availabilityController.checkOverbooking);
+router.get('/overbooking', authenticate, authorizePolicy('availability', 'staffAccess'), ensurePropertyAccess, availabilityController.checkOverbooking);
 
 /**
  * @swagger

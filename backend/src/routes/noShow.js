@@ -1,6 +1,9 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import Joi from 'joi';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { validate } from '../middleware/validation.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import {
   markAsNoShow,
   getNoShowStats,
@@ -8,6 +11,7 @@ import {
 } from '../controllers/noShowController.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication and property access to all routes
 router.use(authenticate);
@@ -93,7 +97,7 @@ router.use(ensurePropertyAccess);
  *       404:
  *         description: Booking not found
  */
-router.post('/:bookingId/no-show', authorize('admin', 'staff', 'manager'), markAsNoShow);
+router.post('/:bookingId/no-show', authorizePolicy('noShow', 'staffAccess'), validate(mutationBaselineSchema), markAsNoShow);
 
 /**
  * @swagger
@@ -138,7 +142,7 @@ router.post('/:bookingId/no-show', authorize('admin', 'staff', 'manager'), markA
  *       404:
  *         description: Booking not found
  */
-router.put('/:bookingId/reverse-no-show', authorize('admin', 'manager'), reverseNoShow);
+router.put('/:bookingId/reverse-no-show', authorizePolicy('noShow', 'managerAccess'), validate(mutationBaselineSchema), reverseNoShow);
 
 /**
  * @swagger
@@ -201,6 +205,6 @@ router.put('/:bookingId/reverse-no-show', authorize('admin', 'manager'), reverse
  *       403:
  *         description: Insufficient permissions
  */
-router.get('/no-show/stats', authorize('admin', 'manager'), getNoShowStats);
+router.get('/no-show/stats', authorizePolicy('noShow', 'managerAccess'), getNoShowStats);
 
 export default router;

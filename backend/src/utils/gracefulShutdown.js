@@ -2,8 +2,9 @@
  * Graceful shutdown handler.
  * Ensures in-flight requests complete before the process exits.
  */
-const setupGracefulShutdown = (server, { mongoose, redis, logger } = {}) => {
+const setupGracefulShutdown = (server, { mongoose, redis, logger, beforeExit } = {}) => {
   let isShuttingDown = false;
+  let forceShutdownTimer = null;
 
   const shutdown = async (signal) => {
     if (isShuttingDown) return;
@@ -19,6 +20,10 @@ const setupGracefulShutdown = (server, { mongoose, redis, logger } = {}) => {
       log('HTTP server closed. Cleaning up...');
 
       try {
+        if (typeof beforeExit === 'function') {
+          await beforeExit(signal);
+        }
+
         // Close database connection
         if (mongoose && mongoose.connection.readyState === 1) {
           await mongoose.connection.close();
@@ -31,6 +36,11 @@ const setupGracefulShutdown = (server, { mongoose, redis, logger } = {}) => {
           log('Redis connection closed.');
         }
 
+        if (forceShutdownTimer) {
+          clearTimeout(forceShutdownTimer);
+          forceShutdownTimer = null;
+        }
+
         log('Graceful shutdown complete.');
         process.exit(0);
       } catch (err) {
@@ -40,7 +50,7 @@ const setupGracefulShutdown = (server, { mongoose, redis, logger } = {}) => {
     });
 
     // Force shutdown after 30 seconds
-    setTimeout(() => {
+    forceShutdownTimer = setTimeout(() => {
       logErr('Forced shutdown after 30s timeout.');
       process.exit(1);
     }, 30000);

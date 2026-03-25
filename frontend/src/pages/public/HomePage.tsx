@@ -10,7 +10,7 @@ export default function HomePage() {
   const [reviewSummary, setReviewSummary] = useState<ReviewSummary | null>(null);
   const [reviewsLoading, setReviewsLoading] = useState(true);
 
-  const HOTEL_ID = '68c7e6ebca8aed0ec8036a9c';
+  const HOTEL_ID = '68cd01414419c17b5f6b4c12'; // Correct hotel ID matching database
 
   const amenities = [
     { icon: Wifi, name: 'Free WiFi' },

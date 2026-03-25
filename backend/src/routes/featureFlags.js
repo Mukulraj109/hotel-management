@@ -1,9 +1,13 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import Joi from 'joi';
+import { authenticate } from '../middleware/auth.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import featureFlagService from '../services/featureFlagService.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 router.use(authenticate);
 
@@ -21,7 +25,7 @@ router.get('/:flagName', catchAsync(async (req, res) => {
 }));
 
 // Toggle flag (admin only)
-router.post('/:flagName', authorize('admin'), catchAsync(async (req, res) => {
+router.post('/:flagName', authorizePolicy('featureFlags', 'adminAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { enabled, hotelId } = req.body;
   if (enabled) {
     await featureFlagService.enable(req.params.flagName, hotelId);

@@ -1,28 +1,33 @@
 import express from 'express';
-import * as guestImportController from '../controllers/guestImportController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import Joi from 'joi';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import * as guestImportController from '../controllers/guestImportController.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
 
 // Admin/Staff routes only
-router.use(authorize('admin', 'manager', 'staff'));
+router.use(authorizePolicy('guestImport', 'staffAccess'));
 
 // File upload route
 router.post('/upload', 
+  validate(mutationBaselineSchema),
   guestImportController.upload.single('file'),
   guestImportController.uploadFile
 );
 
 // Import guests
-router.post('/import', guestImportController.importGuests);
+router.post('/import', validate(mutationBaselineSchema), guestImportController.importGuests);
 
 // Validate guest data
-router.post('/validate', guestImportController.validateGuestData);
+router.post('/validate', validate(mutationBaselineSchema), guestImportController.validateGuestData);
 
 // Get import template
 router.get('/template', guestImportController.getImportTemplate);

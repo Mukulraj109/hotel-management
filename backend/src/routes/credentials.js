@@ -1,11 +1,13 @@
 import express from 'express';
 import credentialController from '../controllers/credentialController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Validation schemas
 const storeCredentialSchema = Joi.object({
@@ -118,7 +120,7 @@ router.use(ensurePropertyAccess);
  *         description: Insufficient permissions
  */
 router.post('/',
-  authorize(['admin', 'manager']),
+  authorizePolicy('credentials', 'managerAccess'),
   validate(storeCredentialSchema),
   credentialController.storeCredential
 );
@@ -154,7 +156,7 @@ router.post('/',
  *         description: Credentials list retrieved
  */
 router.get('/',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('credentials', 'staffAccess'),
   credentialController.listCredentials
 );
 
@@ -186,7 +188,7 @@ router.get('/',
  *         description: Credential not found
  */
 router.get('/:service/:environment?',
-  authorize(['admin', 'manager']),
+  authorizePolicy('credentials', 'managerAccess'),
   credentialController.getCredential
 );
 
@@ -228,7 +230,7 @@ router.get('/:service/:environment?',
  *         description: Credential updated successfully
  */
 router.put('/:service/:environment?',
-  authorize(['admin', 'manager']),
+  authorizePolicy('credentials', 'managerAccess'),
   validate(updateCredentialSchema),
   credentialController.updateCredential
 );
@@ -263,7 +265,8 @@ router.put('/:service/:environment?',
  *         description: Credential deleted successfully
  */
 router.delete('/:service/:environment?',
-  authorize(['admin']),
+  authorizePolicy('credentials', 'adminAccess'),
+  validate(mutationBaselineSchema),
   credentialController.deleteCredential
 );
 
@@ -305,7 +308,7 @@ router.delete('/:service/:environment?',
  *         description: Credential rotated successfully
  */
 router.post('/:service/:environment?/rotate',
-  authorize(['admin', 'manager']),
+  authorizePolicy('credentials', 'managerAccess'),
   validate(rotateCredentialSchema),
   credentialController.rotateCredential
 );
@@ -345,7 +348,7 @@ router.post('/:service/:environment?/rotate',
  *         description: Token generated successfully
  */
 router.post('/tokens/generate',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('credentials', 'staffAccess'),
   validate(generateTokenSchema),
   credentialController.generateToken
 );
@@ -375,7 +378,7 @@ router.post('/tokens/generate',
  *         description: Token validation result
  */
 router.post('/tokens/validate',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('credentials', 'staffAccess'),
   validate(validateTokenSchema),
   credentialController.validateToken
 );
@@ -408,7 +411,7 @@ router.post('/tokens/validate',
  *         description: Token revoked successfully
  */
 router.post('/tokens/:tokenId/revoke',
-  authorize(['admin', 'manager']),
+  authorizePolicy('credentials', 'managerAccess'),
   validate(revokeTokenSchema),
   credentialController.revokeToken
 );
@@ -443,7 +446,7 @@ router.post('/tokens/:tokenId/revoke',
  *         description: Usage statistics retrieved
  */
 router.get('/usage',
-  authorize(['admin', 'manager']),
+  authorizePolicy('credentials', 'managerAccess'),
   credentialController.getCredentialUsage
 );
 
@@ -471,7 +474,7 @@ router.get('/usage',
  *         description: Security audit report retrieved
  */
 router.get('/audit',
-  authorize(['admin']),
+  authorizePolicy('credentials', 'adminAccess'),
   credentialController.getSecurityAudit
 );
 
@@ -489,7 +492,7 @@ router.get('/audit',
  *         description: Health check completed
  */
 router.get('/health',
-  authorize(['admin', 'manager']),
+  authorizePolicy('credentials', 'managerAccess'),
   credentialController.healthCheck
 );
 

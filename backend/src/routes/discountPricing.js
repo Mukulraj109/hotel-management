@@ -1,6 +1,7 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 // import discountPricingController from '../controllers/discountPricingController.js';
 
 const router = express.Router();
@@ -8,7 +9,7 @@ const router = express.Router();
 // Apply authentication and authorization to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
-router.use(authorize(['admin', 'manager', 'staff']));
+router.use(authorizePolicy('discountPricing', 'modifyAccess'));
 
 // Advanced Features Overview
 // router.get('/overview', discountPricingController.getAdvancedFeaturesOverview);
@@ -23,7 +24,7 @@ router.use(authorize(['admin', 'manager', 'staff']));
 //   .patch(discountPricingController.updateSpecialDiscount)
 //   .delete(discountPricingController.deleteSpecialDiscount);
 
-// router.post('/discounts/applicable', discountPricingController.getApplicableDiscounts);
+// post('/discounts/applicable', discountPricingController.getApplicableDiscounts);
 
 // Dynamic Pricing Routes
 // router.route('/pricing')
@@ -35,7 +36,7 @@ router.use(authorize(['admin', 'manager', 'staff']));
 //   .patch(discountPricingController.updateDynamicPricing)
 //   .delete(discountPricingController.deleteDynamicPricing);
 
-// router.post('/pricing/:id/calculate', discountPricingController.calculateDynamicPrice);
+// post('/pricing/:id/calculate', discountPricingController.calculateDynamicPrice);
 
 // // Market Segment Routes
 // router.route('/market-segments')
@@ -47,7 +48,7 @@ router.use(authorize(['admin', 'manager', 'staff']));
 //   .patch(discountPricingController.updateMarketSegment)
 //   .delete(discountPricingController.deleteMarketSegment);
 
-// router.post('/market-segments/match', discountPricingController.findMatchingSegments);
+// post('/market-segments/match', discountPricingController.findMatchingSegments);
 
 // // Job Type Routes
 // router.route('/job-types')
@@ -62,8 +63,8 @@ router.use(authorize(['admin', 'manager', 'staff']));
 // router.get('/job-types/search', discountPricingController.searchJobTypes);
 
 // // Bulk Operations
-// router.patch('/discounts/bulk-status', discountPricingController.bulkUpdateDiscountStatus);
-// router.patch('/pricing/bulk-status', discountPricingController.bulkUpdatePricingStatus);
+// patch('/discounts/bulk-status', discountPricingController.bulkUpdateDiscountStatus);
+// patch('/pricing/bulk-status', discountPricingController.bulkUpdatePricingStatus);
 
 // // Analytics Routes
 // router.get('/analytics/discounts', discountPricingController.getDiscountAnalytics);

@@ -1,10 +1,14 @@
 import express from 'express';
 import { body } from 'express-validator';
 import waitingListController from '../controllers/waitingListController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Validation middleware for creating waiting list entry
 const validateWaitingListEntry = [
@@ -126,80 +130,88 @@ router.use(ensurePropertyAccess);
 
 // Get all waiting list entries with filters
 router.get('/',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('waitingList', 'staffAccess'),
   waitingListController.getWaitingList
 );
 
 // Get room availability
 router.get('/room-availability',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('waitingList', 'staffAccess'),
   waitingListController.getRoomAvailability
 );
 
 // Get waitlist statistics
 router.get('/stats',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('waitingList', 'staffAccess'),
   waitingListController.getWaitlistStats
 );
 
 // Get single waiting list entry
 router.get('/:id',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('waitingList', 'staffAccess'),
   waitingListController.getWaitingListEntry
 );
 
 // Create new waiting list entry
 router.post('/',
-  authorize(['admin', 'manager', 'staff']),
+  validate(mutationBaselineSchema),
+  authorizePolicy('waitingList', 'staffAccess'),
   validateWaitingListEntry,
   waitingListController.createWaitingListEntry
 );
 
 // Update waiting list entry
 router.put('/:id',
-  authorize(['admin', 'manager', 'staff']),
+  validate(mutationBaselineSchema),
+  authorizePolicy('waitingList', 'staffAccess'),
   validateWaitingListEntry,
   waitingListController.updateWaitingListEntry
 );
 
 // Update entry status
 router.patch('/:id/status',
-  authorize(['admin', 'manager', 'staff']),
+  validate(mutationBaselineSchema),
+  authorizePolicy('waitingList', 'staffAccess'),
   validateStatusUpdate,
   waitingListController.updateStatus
 );
 
 // Update entry priority
 router.patch('/:id/priority',
-  authorize(['admin', 'manager', 'staff']),
+  validate(mutationBaselineSchema),
+  authorizePolicy('waitingList', 'staffAccess'),
   validatePriorityUpdate,
   waitingListController.updatePriority
 );
 
 // Add note to entry
 router.post('/:id/notes',
-  authorize(['admin', 'manager', 'staff']),
+  validate(mutationBaselineSchema),
+  authorizePolicy('waitingList', 'staffAccess'),
   validateNoteAdd,
   waitingListController.addNote
 );
 
 // Record contact with guest
 router.post('/:id/contact',
-  authorize(['admin', 'manager', 'staff']),
+  validate(mutationBaselineSchema),
+  authorizePolicy('waitingList', 'staffAccess'),
   validateContactRecord,
   waitingListController.recordContact
 );
 
 // Send availability notification
 router.post('/:id/notify',
-  authorize(['admin', 'manager', 'staff']),
+  validate(mutationBaselineSchema),
+  authorizePolicy('waitingList', 'staffAccess'),
   body('message').optional().isLength({ min: 1, max: 500 }),
   waitingListController.sendAvailabilityNotification
 );
 
 // Delete waiting list entry
 router.delete('/:id',
-  authorize(['admin', 'manager']),
+  validate(mutationBaselineSchema),
+  authorizePolicy('waitingList', 'managerAccess'),
   waitingListController.deleteWaitingListEntry
 );
 

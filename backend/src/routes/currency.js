@@ -1,11 +1,14 @@
 import express from 'express';
 import currencyController from '../controllers/currencyController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import { body, param, query } from 'express-validator';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Validation schemas
 const createCurrencyValidation = [
@@ -132,37 +135,42 @@ router.use(ensurePropertyAccess);
 
 // Currency management (admin only)
 router.post('/', 
-  authorize(['admin', 'revenue_manager']), 
+  authorizePolicy('currency', 'manageAccess'),
+  validate(mutationBaselineSchema),
   createCurrencyValidation, 
   currencyController.createCurrency
 );
 
 router.put('/:code', 
-  authorize(['admin', 'revenue_manager']), 
+  authorizePolicy('currency', 'manageAccess'),
+  validate(mutationBaselineSchema),
   updateCurrencyValidation, 
   currencyController.updateCurrency
 );
 
 router.delete('/:code', 
-  authorize(['admin']), 
+  authorizePolicy('currency', 'adminAccess'),
+  validate(mutationBaselineSchema),
   currencyParamValidation, 
   currencyController.deleteCurrency
 );
 
 // Exchange rate management
 router.post('/rates/update', 
-  authorize(['admin', 'revenue_manager']), 
+  authorizePolicy('currency', 'manageAccess'),
+  validate(mutationBaselineSchema),
   currencyController.updateExchangeRates
 );
 
 router.get('/providers/status', 
-  authorize(['admin', 'revenue_manager']), 
+  authorizePolicy('currency', 'manageAccess'), 
   currencyController.getProviderStatus
 );
 
 // Channel support management
 router.post('/:code/channels', 
-  authorize(['admin', 'revenue_manager']), 
+  authorizePolicy('currency', 'manageAccess'),
+  validate(mutationBaselineSchema),
   [
     ...currencyParamValidation,
     body('channel')
@@ -181,7 +189,8 @@ router.post('/:code/channels',
 
 // Batch operations
 router.post('/batch/convert', 
-  authorize(['admin', 'revenue_manager', 'front_desk']), 
+  authorizePolicy('currency', 'batchAccess'),
+  validate(mutationBaselineSchema),
   [
     body('conversions')
       .isArray({ min: 1 })

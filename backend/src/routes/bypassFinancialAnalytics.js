@@ -1,27 +1,30 @@
 import express from 'express';
+import Joi from 'joi';
 import mongoose from 'mongoose';
 import BypassFinancialImpact from '../models/BypassFinancialImpact.js';
 import AdminBypassAudit from '../models/AdminBypassAudit.js';
 import bypassFinancialService from '../services/bypassFinancialService.js';
 import {
     authenticate,
-    authorize
 } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import {
     ApplicationError
 } from '../middleware/errorHandler.js';
 import {
     catchAsync
 } from '../utils/catchAsync.js';
+import { validate } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
-router.use(authorize('admin', 'manager'));
+router.use(authorizePolicy('bypassFinancialAnalytics', 'managerAccess'));
 
 /**
  * Get financial summary for hotel
@@ -842,7 +845,7 @@ router.get('/executive-report', catchAsync(async (req, res) => {
 /**
  * Update financial impact record
  */
-router.put('/impact/:impactId', catchAsync(async (req, res) => {
+router.put('/impact/:impactId', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const {
         impactId
     } = req.params;
@@ -870,7 +873,7 @@ router.put('/impact/:impactId', catchAsync(async (req, res) => {
 /**
  * Add recovery action
  */
-router.post('/impact/:impactId/recovery-action', catchAsync(async (req, res) => {
+router.post('/impact/:impactId/recovery-action', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const {
         impactId
     } = req.params;
@@ -913,7 +916,7 @@ router.post('/impact/:impactId/recovery-action', catchAsync(async (req, res) => 
 /**
  * Complete recovery action
  */
-router.put('/impact/:impactId/recovery-action/:actionId/complete', catchAsync(async (req, res) => {
+router.put('/impact/:impactId/recovery-action/:actionId/complete', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const {
         impactId,
         actionId

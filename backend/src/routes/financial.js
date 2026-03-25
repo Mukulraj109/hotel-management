@@ -2,9 +2,11 @@ import express from 'express';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ensureTenantContext, requireTenantInBulkOps } from '../middleware/tenantIsolation.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 // TODO: Add request body validation (e.g., express-validator or Joi) to POST/PUT routes
 import { validate, schemas } from '../middleware/validation.js';
 import rateLimit from 'express-rate-limit';
+import Joi from 'joi';
 
 // Import controllers
 import * as chartOfAccountsController from '../controllers/chartOfAccountsController.js';
@@ -17,6 +19,7 @@ import FinancialService from '../services/financialService.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Rate limiting for financial operations
 const financialLimiter = rateLimit({
@@ -80,7 +83,7 @@ router.route('/chart-of-accounts')
 
 router.get('/chart-of-accounts/tree', authorize('admin', 'staff', 'manager', 'frontdesk'), chartOfAccountsController.getAccountTree);
 router.get('/chart-of-accounts/flattened', authorize('admin', 'staff', 'manager', 'frontdesk'), chartOfAccountsController.getFlattenedAccounts);
-router.post('/chart-of-accounts/bulk-import', authorize('admin', 'manager'), requireTenantInBulkOps, chartOfAccountsController.bulkImportAccounts);
+router.post('/chart-of-accounts/bulk-import', authorizePolicy('financial', 'chartBulkImport'), validate(mutationBaselineSchema), requireTenantInBulkOps, chartOfAccountsController.bulkImportAccounts);
 
 router.route('/chart-of-accounts/:id')
   .get(authorize('admin', 'staff', 'manager', 'frontdesk'), chartOfAccountsController.getAccount)
@@ -104,17 +107,17 @@ router.route('/journal-entries')
   .post(authorize('admin', 'manager'), journalEntryController.createJournalEntry);
 
 router.get('/journal-entries/templates', authorize('admin', 'staff', 'manager', 'frontdesk'), journalEntryController.getJournalTemplates);
-router.post('/journal-entries/bulk-create', authorize('admin', 'manager'), requireTenantInBulkOps, journalEntryController.bulkCreateJournalEntries);
+router.post('/journal-entries/bulk-create', authorizePolicy('financial', 'journalBulkCreate'), validate(mutationBaselineSchema), requireTenantInBulkOps, journalEntryController.bulkCreateJournalEntries);
 
 router.route('/journal-entries/:id')
   .get(authorize('admin', 'staff', 'manager', 'frontdesk'), journalEntryController.getJournalEntry)
   .patch(authorize('admin', 'manager'), journalEntryController.updateJournalEntry)
   .delete(authorize('admin'), journalEntryController.deleteJournalEntry);
 
-router.post('/journal-entries/:id/post', authorize('admin', 'manager'), journalEntryController.postJournalEntry);
-router.post('/journal-entries/:id/reverse', authorize('admin', 'manager'), journalEntryController.reverseJournalEntry);
-router.post('/journal-entries/:id/approve', authorize('admin', 'manager'), journalEntryController.approveJournalEntry);
-router.post('/journal-entries/:id/reject', authorize('admin', 'manager'), journalEntryController.rejectJournalEntry);
+router.post('/journal-entries/:id/post', authorizePolicy('financial', 'journalLifecycle'), validate(mutationBaselineSchema), journalEntryController.postJournalEntry);
+router.post('/journal-entries/:id/reverse', authorizePolicy('financial', 'journalLifecycle'), validate(mutationBaselineSchema), journalEntryController.reverseJournalEntry);
+router.post('/journal-entries/:id/approve', authorizePolicy('financial', 'journalLifecycle'), validate(mutationBaselineSchema), journalEntryController.approveJournalEntry);
+router.post('/journal-entries/:id/reject', authorizePolicy('financial', 'journalLifecycle'), validate(mutationBaselineSchema), journalEntryController.rejectJournalEntry);
 
 // === BANK ACCOUNT ROUTES ===
 router.route('/bank-accounts')
@@ -130,9 +133,9 @@ router.route('/bank-accounts/:id')
   .delete(authorize('admin'), bankAccountController.deactivateBankAccount);
 
 router.get('/bank-accounts/:id/transactions', authorize('admin', 'staff', 'manager', 'frontdesk'), bankAccountController.getTransactions);
-router.post('/bank-accounts/:id/transactions', authorize('admin', 'staff', 'manager'), bankAccountController.addTransaction);
-router.post('/bank-accounts/:id/reconcile', authorize('admin', 'manager'), bankAccountController.reconcileAccount);
-router.post('/bank-accounts/:id/import-statement', authorize('admin', 'manager'), bankAccountController.importStatement);
+router.post('/bank-accounts/:id/transactions', authorizePolicy('financial', 'bankTransactionCreate'), validate(mutationBaselineSchema), bankAccountController.addTransaction);
+router.post('/bank-accounts/:id/reconcile', authorizePolicy('financial', 'bankReconcileImport'), validate(mutationBaselineSchema), bankAccountController.reconcileAccount);
+router.post('/bank-accounts/:id/import-statement', authorizePolicy('financial', 'bankReconcileImport'), validate(mutationBaselineSchema), bankAccountController.importStatement);
 
 // === BUDGET ROUTES ===
 router.route('/budgets')
@@ -150,9 +153,9 @@ router.route('/budgets/:id')
   .patch(authorize('admin', 'manager'), budgetController.updateBudget)
   .delete(authorize('admin'), budgetController.deleteBudget);
 
-router.post('/budgets/:id/submit-review', authorize('admin', 'manager'), budgetController.submitForReview);
-router.post('/budgets/:id/approve', authorize('admin'), budgetController.approveBudget);
-router.post('/budgets/:id/revise', authorize('admin', 'manager'), budgetController.createRevision);
+router.post('/budgets/:id/submit-review', authorizePolicy('financial', 'budgetSubmitRevise'), validate(mutationBaselineSchema), budgetController.submitForReview);
+router.post('/budgets/:id/approve', authorizePolicy('financial', 'budgetApprove'), validate(mutationBaselineSchema), budgetController.approveBudget);
+router.post('/budgets/:id/revise', authorizePolicy('financial', 'budgetSubmitRevise'), validate(mutationBaselineSchema), budgetController.createRevision);
 
 // === INVOICES ===
 router.route('/invoices')

@@ -2,15 +2,18 @@ import express from 'express';
 import mongoose from 'mongoose';
 import Room from '../models/Room.js';
 import Booking from '../models/Booking.js';
-import { authenticate, authorize, optionalAuth } from '../middleware/auth.js';
+import { authenticate, optionalAuth } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ensureTenantContext, requireTenantInBulkOps } from '../middleware/tenantIsolation.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import logger from '../utils/logger.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 /**
  * @swagger
@@ -393,7 +396,7 @@ router.get('/:id', authenticate, ensureTenantContext, ensurePropertyAccess, catc
 router.post('/',
   authenticate,
   ensureTenantContext,
-  authorize('admin', 'staff'),
+  authorizePolicy('rooms', 'createUpdateAccess'),
   ensurePropertyAccess,
   validate(schemas.createRoom),
   catchAsync(async (req, res) => {
@@ -439,8 +442,9 @@ router.post('/',
 router.patch('/:id',
   authenticate,
   ensureTenantContext,
-  authorize('admin', 'staff'),
+  authorizePolicy('rooms', 'createUpdateAccess'),
   ensurePropertyAccess,
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const room = await Room.findByIdAndUpdate(
       req.params.id,
@@ -483,8 +487,9 @@ router.patch('/:id',
 router.delete('/:id',
   authenticate,
   ensureTenantContext,
-  authorize('admin'),
+  authorizePolicy('rooms', 'deleteAccess'),
   ensurePropertyAccess,
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const room = await Room.findByIdAndUpdate(
       req.params.id,
@@ -539,7 +544,8 @@ router.put('/:id/pricing',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin', 'manager']),
+  authorizePolicy('rooms', 'pricingAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { baseRate, currentRate, reason } = req.body;
     const roomId = req.params.id;
@@ -602,7 +608,7 @@ router.get('/:id/price-history',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('rooms', 'priceHistoryAccess'),
   catchAsync(async (req, res) => {
     const roomId = req.params.id;
 
@@ -668,8 +674,9 @@ router.post('/bulk-price-update',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin', 'manager']),
+  authorizePolicy('rooms', 'bulkPricingAccess'),
   requireTenantInBulkOps,
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { updates, reason } = req.body;
 

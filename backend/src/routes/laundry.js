@@ -14,12 +14,15 @@ import {
   getAllLaundryTransactions,
   getLaundryTransaction
 } from '../controllers/laundryController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all routes
 router.use(authenticate);
@@ -125,7 +128,8 @@ router.use(ensurePropertyAccess);
  *         description: Unauthorized
  */
 router.post('/send-items', 
-  authorize(['admin', 'manager', 'housekeeping', 'front_desk']),
+  authorizePolicy('laundry', 'staffFrontdeskAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(sendItemsToLaundry)
 );
 
@@ -153,7 +157,8 @@ router.post('/send-items',
  *         description: Unauthorized
  */
 router.put('/:id/mark-in-laundry',
-  authorize(['admin', 'manager', 'housekeeping']),
+  authorizePolicy('laundry', 'housekeepingAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(markItemsAsInLaundry)
 );
 
@@ -181,7 +186,8 @@ router.put('/:id/mark-in-laundry',
  *         description: Unauthorized
  */
 router.put('/:id/mark-cleaning',
-  authorize(['admin', 'manager', 'housekeeping']),
+  authorizePolicy('laundry', 'housekeepingAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(markItemsAsCleaning)
 );
 
@@ -209,7 +215,8 @@ router.put('/:id/mark-cleaning',
  *         description: Unauthorized
  */
 router.put('/:id/mark-ready',
-  authorize(['admin', 'manager', 'housekeeping']),
+  authorizePolicy('laundry', 'housekeepingAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(markItemsAsReady)
 );
 
@@ -259,7 +266,8 @@ router.put('/:id/mark-ready',
  *         description: Unauthorized
  */
 router.put('/:id/return-items',
-  authorize(['admin', 'manager', 'housekeeping', 'front_desk']),
+  authorizePolicy('laundry', 'staffFrontdeskAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(returnItemsFromLaundry)
 );
 
@@ -297,7 +305,8 @@ router.put('/:id/return-items',
  *         description: Unauthorized
  */
 router.put('/:id/mark-lost',
-  authorize(['admin', 'manager', 'housekeeping']),
+  authorizePolicy('laundry', 'housekeepingAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(markItemsAsLost)
 );
 
@@ -335,7 +344,8 @@ router.put('/:id/mark-lost',
  *         description: Unauthorized
  */
 router.put('/:id/mark-damaged',
-  authorize(['admin', 'manager', 'housekeeping']),
+  authorizePolicy('laundry', 'housekeepingAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(markItemsAsDamaged)
 );
 
@@ -373,7 +383,7 @@ router.put('/:id/mark-damaged',
  *         description: Unauthorized
  */
 router.get('/dashboard',
-  authorize(['admin', 'manager', 'housekeeping', 'front_desk']),
+  authorizePolicy('laundry', 'staffFrontdeskAccess'),
   catchAsync(getLaundryDashboard)
 );
 
@@ -409,7 +419,7 @@ router.get('/dashboard',
  *         description: Unauthorized
  */
 router.get('/status',
-  authorize(['admin', 'manager', 'housekeeping', 'front_desk']),
+  authorizePolicy('laundry', 'staffFrontdeskAccess'),
   catchAsync(getLaundryStatus)
 );
 
@@ -428,7 +438,7 @@ router.get('/status',
  *         description: Unauthorized
  */
 router.get('/overdue',
-  authorize(['admin', 'manager', 'housekeeping', 'front_desk']),
+  authorizePolicy('laundry', 'staffFrontdeskAccess'),
   catchAsync(getOverdueItems)
 );
 
@@ -460,7 +470,7 @@ router.get('/overdue',
  *         description: Unauthorized
  */
 router.get('/statistics',
-  authorize(['admin', 'manager']),
+  authorizePolicy('laundry', 'managerAccess'),
   catchAsync(getLaundryStatistics)
 );
 
@@ -509,7 +519,7 @@ router.get('/statistics',
  *         description: Unauthorized
  */
 router.get('/',
-  authorize(['admin', 'manager', 'housekeeping', 'front_desk']),
+  authorizePolicy('laundry', 'staffFrontdeskAccess'),
   catchAsync(getAllLaundryTransactions)
 );
 
@@ -539,7 +549,7 @@ router.get('/',
  *         description: Forbidden
  */
 router.get('/:id',
-  authorize(['admin', 'manager', 'housekeeping', 'front_desk']),
+  authorizePolicy('laundry', 'staffFrontdeskAccess'),
   catchAsync(getLaundryTransaction)
 );
 

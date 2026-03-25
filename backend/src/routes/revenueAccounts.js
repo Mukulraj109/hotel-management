@@ -1,12 +1,15 @@
 import express from 'express';
+import Joi from 'joi';
 import revenueAccountController from '../controllers/revenueAccountController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import { body, param, query } from 'express-validator';
 import financialRateLimiter from '../middleware/financialRateLimiter.js';
 
 const router = express.Router({ mergeParams: true });
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Rate limiting for financial operations
 router.use(financialRateLimiter);
@@ -262,6 +265,7 @@ const idParamValidation = [
 // All routes require authentication
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('revenueAccounts', 'baseAccess'));
 
 // Public API endpoints for revenue account information (accessible to all authenticated users)
 
@@ -278,6 +282,7 @@ router.get('/hotels/:hotelId/applicable',
 
 // Calculate revenue allocation for booking preview (used by booking engine)
 router.post('/hotels/:hotelId/calculate', 
+  validate(mutationBaselineSchema),
   paramValidation,
   allocationCalculationValidation,
   revenueAccountController.calculateRevenueAllocation
@@ -323,6 +328,7 @@ router.get('/:id',
 // Create new revenue account (admin and finance only)
 router.post('/hotels/:hotelId', 
   authorize(['admin', 'finance']),
+  validate(mutationBaselineSchema),
   paramValidation,
   createAccountValidation,
   revenueAccountController.createRevenueAccount
@@ -331,6 +337,7 @@ router.post('/hotels/:hotelId',
 // Update revenue account (admin and finance only)
 router.put('/:id', 
   authorize(['admin', 'finance']),
+  validate(mutationBaselineSchema),
   updateAccountValidation,
   revenueAccountController.updateRevenueAccount
 );
@@ -338,6 +345,7 @@ router.put('/:id',
 // Bulk update account status (admin and finance only)
 router.patch('/hotels/:hotelId/bulk-update', 
   authorize(['admin', 'finance']),
+  validate(mutationBaselineSchema),
   paramValidation,
   bulkUpdateValidation,
   revenueAccountController.bulkUpdateAccountStatus
@@ -346,6 +354,7 @@ router.patch('/hotels/:hotelId/bulk-update',
 // Delete/deactivate revenue account (admin only)
 router.delete('/:id', 
   authorize(['admin']),
+  validate(mutationBaselineSchema),
   idParamValidation,
   revenueAccountController.deleteRevenueAccount
 );

@@ -1,7 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import Housekeeping from '../models/Housekeeping.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -9,11 +9,15 @@ import { catchAsync } from '../utils/catchAsync.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
 import logger from '../utils/logger.js';
 import { validateStatusTransition, HOUSEKEEPING_TRANSITIONS } from '../utils/statusTransitions.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Get housekeeping tasks
-router.get('/', authenticate, ensureTenantContext, authorize('admin', 'staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     status,
     roomId,
@@ -133,7 +137,7 @@ router.get('/', authenticate, ensureTenantContext, authorize('admin', 'staff', '
 }));
 
 // Create housekeeping task
-router.post('/', authenticate, ensureTenantContext, authorize('admin', 'staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.post('/', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   logger.debug('Received housekeeping task creation request', { hotelId: req.user.hotelId });
   
   const taskData = {
@@ -167,7 +171,7 @@ router.post('/', authenticate, ensureTenantContext, authorize('admin', 'staff', 
 }));
 
 // Update housekeeping task
-router.patch('/:id', authenticate, ensureTenantContext, authorize('admin', 'staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { id } = req.params;
   const updateData = req.body;
 
@@ -209,7 +213,7 @@ router.patch('/:id', authenticate, ensureTenantContext, authorize('admin', 'staf
 }));
 
 // Get task statistics
-router.get('/stats', authenticate, ensureTenantContext, authorize('admin', 'staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/stats', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'staffAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const query = req.user.hotelId ? { hotelId: req.user.hotelId } : {};
 
   const stats = await Housekeeping.aggregate([
@@ -244,7 +248,7 @@ router.get('/stats', authenticate, ensureTenantContext, authorize('admin', 'staf
 }));
 
 // Inspect a completed housekeeping task (QA workflow)
-router.post('/:id/inspect', authenticate, authorize('admin', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.post('/:id/inspect', authenticate, authorizePolicy('housekeeping', 'inspectAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const task = await Housekeeping.findById(req.params.id);
 
   if (!task) {

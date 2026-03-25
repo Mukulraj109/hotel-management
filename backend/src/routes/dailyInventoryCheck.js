@@ -1,6 +1,6 @@
 import express from 'express';
 import mongoose from 'mongoose';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import DailyInventoryCheck from '../models/DailyInventoryCheck.js';
@@ -11,10 +11,13 @@ import Room from '../models/Room.js';
 import Booking from '../models/Booking.js';
 import User from '../models/User.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import inventoryNotificationService from '../services/inventoryNotificationService.js';
 import { validate, schemas } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
@@ -60,7 +63,7 @@ router.use(ensurePropertyAccess);
  *       201:
  *         description: Daily inventory check created successfully
  */
-router.post('/', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/', authenticate, authorizePolicy('dailyInventoryCheck', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { roomId, items, notes } = req.body;
   const { hotelId } = req.user;
 
@@ -150,7 +153,7 @@ router.post('/', authenticate, authorize('staff', 'admin'), catchAsync(async (re
  *       200:
  *         description: List of daily inventory checks
  */
-router.get('/', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/', authenticate, authorizePolicy('dailyInventoryCheck', 'staffAccess'), catchAsync(async (req, res) => {
   const {
     page = 1,
     limit = 20,
@@ -216,7 +219,7 @@ router.get('/', authenticate, authorize('staff', 'admin'), catchAsync(async (req
  *       200:
  *         description: Today's inventory checks
  */
-router.get('/today', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/today', authenticate, authorizePolicy('dailyInventoryCheck', 'staffAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   
   const todayChecks = await DailyInventoryCheck.getTodayChecks(hotelId);
@@ -239,7 +242,7 @@ router.get('/today', authenticate, authorize('staff', 'admin'), catchAsync(async
  *       200:
  *         description: Overdue inventory checks
  */
-router.get('/overdue', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/overdue', authenticate, authorizePolicy('dailyInventoryCheck', 'staffAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   
   const overdueChecks = await DailyInventoryCheck.getOverdueChecks(hotelId);
@@ -268,7 +271,7 @@ router.get('/overdue', authenticate, authorize('staff', 'admin'), catchAsync(asy
  *       200:
  *         description: Daily inventory check details
  */
-router.get('/:id', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/:id', authenticate, authorizePolicy('dailyInventoryCheck', 'staffAccess'), catchAsync(async (req, res) => {
   const dailyCheck = await DailyInventoryCheck.findById(req.params.id)
     .populate('roomId', 'roomNumber type')
     .populate('checkedBy', 'name email')
@@ -325,7 +328,7 @@ router.get('/:id', authenticate, authorize('staff', 'admin'), catchAsync(async (
  *       200:
  *         description: Daily inventory check updated successfully
  */
-router.patch('/:id', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.patch('/:id', authenticate, authorizePolicy('dailyInventoryCheck', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   // Read-only check for permissions
   const existingCheck = await DailyInventoryCheck.findById(req.params.id).lean();
 
@@ -386,7 +389,7 @@ router.patch('/:id', authenticate, authorize('staff', 'admin'), catchAsync(async
  *       200:
  *         description: Daily inventory check marked as completed
  */
-router.patch('/:id/complete', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.patch('/:id/complete', authenticate, authorizePolicy('dailyInventoryCheck', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const existingCheck = await DailyInventoryCheck.findById(req.params.id).lean();
 
   if (!existingCheck) {
@@ -451,7 +454,7 @@ router.patch('/:id/complete', authenticate, authorize('staff', 'admin'), catchAs
  *       200:
  *         description: Issue added successfully
  */
-router.post('/:id/issues', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/:id/issues', authenticate, authorizePolicy('dailyInventoryCheck', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { itemId, issue, priority = 'medium' } = req.body;
 
   const existingCheck = await DailyInventoryCheck.findById(req.params.id).lean();
@@ -491,7 +494,7 @@ router.post('/:id/issues', authenticate, authorize('staff', 'admin'), catchAsync
 /**
  * Get daily checks for a room
  */
-router.get('/room/:roomId', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/room/:roomId', authorizePolicy('dailyInventoryCheck', 'staffAccess'), catchAsync(async (req, res) => {
   const { roomId } = req.params;
   const { startDate, endDate } = req.query;
 
@@ -509,7 +512,7 @@ router.get('/room/:roomId', authorize('staff', 'admin'), catchAsync(async (req, 
 /**
  * Get pending replacements for hotel
  */
-router.get('/pending-replacements', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/pending-replacements', authorizePolicy('dailyInventoryCheck', 'staffAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
 
   const pendingReplacements = await DailyInventoryCheck.getPendingReplacements(hotelId);
@@ -527,7 +530,7 @@ router.get('/pending-replacements', authorize('staff', 'admin'), catchAsync(asyn
  * Get guest charges from inventory
  * Used by guest dashboard to show charges
  */
-router.get('/guest-charges/:guestId', authorize('staff', 'admin', 'guest'), catchAsync(async (req, res) => {
+router.get('/guest-charges/:guestId', authorizePolicy('dailyInventoryCheck', 'guestAccess'), catchAsync(async (req, res) => {
   const { guestId } = req.params;
   const { bookingId } = req.query;
 
@@ -570,7 +573,7 @@ router.get('/guest-charges/:guestId', authorize('staff', 'admin', 'guest'), catc
  * Create daily check template for room
  * Returns a pre-filled template based on room inventory
  */
-router.get('/template/:roomId', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/template/:roomId', authorizePolicy('dailyInventoryCheck', 'staffAccess'), catchAsync(async (req, res) => {
   const { roomId } = req.params;
 
   // Get room inventory template
@@ -613,7 +616,7 @@ router.get('/template/:roomId', authorize('staff', 'admin'), catchAsync(async (r
 /**
  * Update daily check (for corrections)
  */
-router.patch('/:checkId', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.patch('/:checkId', authorizePolicy('dailyInventoryCheck', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { checkId } = req.params;
   const updates = req.body;
 
@@ -645,7 +648,7 @@ router.patch('/:checkId', authorize('staff', 'admin'), catchAsync(async (req, re
 /**
  * Get daily check statistics for dashboard
  */
-router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/stats', authorizePolicy('dailyInventoryCheck', 'staffAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { period = 'week' } = req.query;
 

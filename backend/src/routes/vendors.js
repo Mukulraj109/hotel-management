@@ -1,11 +1,15 @@
 import express from 'express';
+import Joi from 'joi';
 import { vendorController } from '../controllers/vendorController.js';
 import vendorService from '../services/vendorService.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import { body, param, query, validationResult } from 'express-validator';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Express-validator validation middleware
 const validateRequest = (req, res, next) => {
@@ -247,7 +251,7 @@ router.get('/top-performers', vendorController.getTopPerformers);
  *       200:
  *         description: Vendors with expiring contracts
  */
-router.get('/contracts/expiring', authorize('admin', 'manager'), vendorController.getExpiringContracts);
+router.get('/contracts/expiring', authorizePolicy('vendors', 'managerAccess'), vendorController.getExpiringContracts);
 
 /**
  * @swagger
@@ -407,7 +411,8 @@ router.get('/:id', vendorController.getVendor);
  */
 // Enhanced create vendor route
 router.post('/',
-  authorize('admin', 'manager'),
+  authorizePolicy('vendors', 'managerAccess'),
+  validate(mutationBaselineSchema),
   createVendorValidation,
   validateRequest,
   async (req, res) => {
@@ -442,7 +447,7 @@ router.post('/',
 );
 
 // Legacy create route for backward compatibility
-router.post('/legacy', authorize('admin', 'manager'), vendorController.createVendor);
+router.post('/legacy', authorizePolicy('vendors', 'managerAccess'), validate(mutationBaselineSchema), vendorController.createVendor);
 
 /**
  * @swagger
@@ -483,7 +488,7 @@ router.post('/legacy', authorize('admin', 'manager'), vendorController.createVen
  *       200:
  *         description: Vendor updated successfully
  */
-router.put('/:id', authorize('admin', 'manager'), vendorController.updateVendor);
+router.put('/:id', authorizePolicy('vendors', 'managerAccess'), validate(mutationBaselineSchema), vendorController.updateVendor);
 
 /**
  * @swagger
@@ -503,7 +508,7 @@ router.put('/:id', authorize('admin', 'manager'), vendorController.updateVendor)
  *       200:
  *         description: Vendor deleted successfully
  */
-router.delete('/:id', authorize('admin', 'manager'), vendorController.deleteVendor);
+router.delete('/:id', authorizePolicy('vendors', 'managerAccess'), validate(mutationBaselineSchema), vendorController.deleteVendor);
 
 /**
  * @swagger
@@ -543,7 +548,7 @@ router.delete('/:id', authorize('admin', 'manager'), vendorController.deleteVend
  *       200:
  *         description: Performance updated successfully
  */
-router.post('/:id/performance', authorize('admin', 'manager'), vendorController.updateVendorPerformance);
+router.post('/:id/performance', authorizePolicy('vendors', 'managerAccess'), validate(mutationBaselineSchema), vendorController.updateVendorPerformance);
 
 /**
  * @swagger
@@ -583,7 +588,7 @@ router.post('/:id/performance', authorize('admin', 'manager'), vendorController.
  *       200:
  *         description: Payment record added successfully
  */
-router.post('/:id/payment', authorize('admin', 'manager'), vendorController.addPaymentRecord);
+router.post('/:id/payment', authorizePolicy('vendors', 'managerAccess'), validate(mutationBaselineSchema), vendorController.addPaymentRecord);
 
 // Enhanced vendor routes
 /**
@@ -611,7 +616,7 @@ router.post('/:id/payment', authorize('admin', 'manager'), vendorController.addP
  *         description: Enhanced vendor analytics retrieved successfully
  */
 router.get('/enhanced/analytics',
-  authorize(['admin', 'manager']),
+  authorizePolicy('vendors', 'managerAccess'),
   async (req, res) => {
     try {
       const { hotelId } = req.user;
@@ -668,7 +673,8 @@ router.get('/enhanced/analytics',
  *         description: Enhanced vendor comparison data retrieved successfully
  */
 router.post('/enhanced/comparison',
-  authorize(['admin', 'manager']),
+  authorizePolicy('vendors', 'managerAccess'),
+  validate(mutationBaselineSchema),
   [
     body('vendorIds').isArray({ min: 2 }).withMessage('At least 2 vendors required for comparison'),
     body('vendorIds.*').isMongoId().withMessage('Invalid vendor ID')
@@ -714,7 +720,7 @@ router.post('/enhanced/comparison',
  *         description: Enhanced preferred vendors retrieved successfully
  */
 router.get('/enhanced/preferred',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('vendors', 'staffAccess'),
   async (req, res) => {
     try {
       const { hotelId } = req.user;
@@ -756,7 +762,7 @@ router.get('/enhanced/preferred',
  *         description: Enhanced vendor details retrieved successfully
  */
 router.get('/:id/enhanced/details',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('vendors', 'staffAccess'),
   [param('id').isMongoId().withMessage('Invalid vendor ID')],
   validateRequest,
   async (req, res) => {
@@ -830,7 +836,8 @@ router.get('/:id/enhanced/details',
  *         description: Enhanced performance evaluation added successfully
  */
 router.post('/:id/enhanced/performance-update',
-  authorize(['admin', 'manager']),
+  authorizePolicy('vendors', 'managerAccess'),
+  validate(mutationBaselineSchema),
   [
     param('id').isMongoId().withMessage('Invalid vendor ID'),
     body('delivery').optional().isFloat({ min: 1, max: 5 }).withMessage('Delivery rating must be between 1 and 5'),

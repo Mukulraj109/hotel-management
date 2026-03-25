@@ -1,4 +1,5 @@
 import express from 'express';
+import Joi from 'joi';
 import { body, param, query } from 'express-validator';
 import {
   createPaymentMethod,
@@ -25,9 +26,11 @@ import {
 } from '../controllers/paymentMethodController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
-import authorize from '../middleware/authorize.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication and property access to all routes
 router.use(authenticate);
@@ -202,7 +205,8 @@ const analyticsUpdateValidation = [
  *         description: Unauthorized
  */
 router.post('/', 
-  authorize(['admin', 'manager']),
+  authorizePolicy('paymentMethods', 'managerAccess'),
+  validate(mutationBaselineSchema),
   createPaymentMethodValidation,
   createPaymentMethod
 );
@@ -388,7 +392,7 @@ router.get('/search',
  *         description: Payment methods exported successfully
  */
 router.get('/export',
-  authorize(['admin', 'manager']),
+  authorizePolicy('paymentMethods', 'managerAccess'),
   query('format').optional().isIn(['json', 'csv']),
   exportPaymentMethods
 );
@@ -472,7 +476,8 @@ router.get('/type/:type',
  *         description: Bulk update completed
  */
 router.put('/bulk-update',
-  authorize(['admin', 'manager']),
+  authorizePolicy('paymentMethods', 'managerAccess'),
+  validate(mutationBaselineSchema),
   bulkUpdateValidation,
   bulkUpdatePaymentMethods
 );
@@ -508,7 +513,8 @@ router.put('/bulk-update',
  *         description: Display order updated successfully
  */
 router.put('/display-order',
-  authorize(['admin', 'manager']),
+  authorizePolicy('paymentMethods', 'managerAccess'),
+  validate(mutationBaselineSchema),
   body('updates').isArray({ min: 1 }).withMessage('Updates array is required'),
   body('updates.*.id').isMongoId().withMessage('Each update must have a valid ID'),
   body('updates.*.order').isInt({ min: 0 }).withMessage('Each update must have a valid order number'),
@@ -588,7 +594,8 @@ router.get('/:id',
  *         description: Payment method not found
  */
 router.put('/:id',
-  authorize(['admin', 'manager']),
+  authorizePolicy('paymentMethods', 'managerAccess'),
+  validate(mutationBaselineSchema),
   updatePaymentMethodValidation,
   updatePaymentMethod
 );
@@ -617,7 +624,8 @@ router.put('/:id',
  *         description: Payment method not found
  */
 router.delete('/:id',
-  authorize(['admin']),
+  authorizePolicy('paymentMethods', 'adminAccess'),
+  validate(mutationBaselineSchema),
   paymentMethodIdValidation,
   deletePaymentMethod
 );
@@ -642,7 +650,8 @@ router.delete('/:id',
  *         description: Gateway test result
  */
 router.post('/:id/test-gateway',
-  authorize(['admin', 'manager']),
+  authorizePolicy('paymentMethods', 'managerAccess'),
+  validate(mutationBaselineSchema),
   paymentMethodIdValidation,
   testGatewayConnection
 );
@@ -687,7 +696,8 @@ router.post('/:id/test-gateway',
  *         description: Analytics updated successfully
  */
 router.put('/:id/analytics',
-  authorize(['admin', 'manager', 'supervisor']),
+  authorizePolicy('paymentMethods', 'supervisorAccess'),
+  validate(mutationBaselineSchema),
   analyticsUpdateValidation,
   updateAnalytics
 );
@@ -841,7 +851,8 @@ router.get('/:id/validate',
  *         description: Payment method cloned successfully
  */
 router.post('/:id/clone',
-  authorize(['admin', 'manager']),
+  authorizePolicy('paymentMethods', 'managerAccess'),
+  validate(mutationBaselineSchema),
   paymentMethodIdValidation,
   body('newName').trim().isLength({ min: 1, max: 100 }).withMessage('New name is required'),
   body('newCode').trim().isLength({ min: 1, max: 20 }).matches(/^[A-Z0-9_-]+$/).withMessage('New code is required and must be uppercase'),
@@ -882,7 +893,8 @@ router.post('/:id/clone',
  *         description: Status updated successfully
  */
 router.patch('/:id/status',
-  authorize(['admin', 'manager']),
+  authorizePolicy('paymentMethods', 'managerAccess'),
+  validate(mutationBaselineSchema),
   paymentMethodIdValidation,
   body('isActive').isBoolean().withMessage('isActive must be a boolean'),
   body('reason').optional().trim().isLength({ max: 500 }).withMessage('Reason cannot exceed 500 characters'),

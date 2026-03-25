@@ -4,6 +4,7 @@ import Offer from '../models/Offer.js';
 import User from '../models/User.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
@@ -14,6 +15,7 @@ const router = express.Router();
 // Apply authentication and property access to all loyalty routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('loyalty', 'baseAccess'));
 
 /**
  * @swagger

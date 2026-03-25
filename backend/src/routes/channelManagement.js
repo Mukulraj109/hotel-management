@@ -1,4 +1,5 @@
 import express from 'express';
+import Joi from 'joi';
 import mongoose from 'mongoose';
 import { Channel } from '../models/ChannelManager.js';
 import RoomType from '../models/RoomType.js';
@@ -7,13 +8,17 @@ import BookingComService from '../services/channels/bookingComService.js';
 // import { syncMiddleware } from '../middleware/channelSyncMiddleware.js'; // Temporarily disabled to debug server hang
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply auth middleware to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('channelManagement', 'baseAccess'));
 
 // Channel services mapping
 const channelServices = {
@@ -73,7 +78,7 @@ router.get('/', async (req, res) => {
  *               settings:
  *                 type: object
  */
-router.post('/initialize', async (req, res) => {
+router.post('/initialize', validate(mutationBaselineSchema), async (req, res) => {
   try {
     const { channelType, credentials, settings } = req.body;
     const hotelId = req.user.hotelId;
@@ -117,7 +122,7 @@ router.post('/initialize', async (req, res) => {
  *     summary: Test channel connection
  *     tags: [Channel Management]
  */
-router.post('/:channelId/test', async (req, res) => {
+router.post('/:channelId/test', validate(mutationBaselineSchema), async (req, res) => {
   try {
     const { channelId } = req.params;
 
@@ -226,7 +231,7 @@ router.get('/:channelId/mappings', async (req, res) => {
  *                     ratePlans:
  *                       type: array
  */
-router.post('/:channelId/mappings', async (req, res) => {
+router.post('/:channelId/mappings', validate(mutationBaselineSchema), async (req, res) => {
   try {
     const { channelId } = req.params;
     const { mappings } = req.body;
@@ -289,7 +294,7 @@ router.post('/:channelId/mappings', async (req, res) => {
  *               roomTypeId:
  *                 type: string
  */
-router.post('/:channelId/sync', async (req, res) => {
+router.post('/:channelId/sync', validate(mutationBaselineSchema), async (req, res) => {
   try {
     const { channelId } = req.params;
     const { startDate, endDate, roomTypeId } = req.body;
@@ -419,7 +424,7 @@ router.get('/:channelId/metrics', async (req, res) => {
  *               isActive:
  *                 type: boolean
  */
-router.put('/:channelId', async (req, res) => {
+router.put('/:channelId', validate(mutationBaselineSchema), async (req, res) => {
   try {
     const { channelId } = req.params;
     const { settings, credentials, isActive } = req.body;
@@ -480,7 +485,7 @@ router.put('/:channelId', async (req, res) => {
  *     summary: Delete channel
  *     tags: [Channel Management]
  */
-router.delete('/:channelId', async (req, res) => {
+router.delete('/:channelId', validate(mutationBaselineSchema), async (req, res) => {
   try {
     const { channelId } = req.params;
     

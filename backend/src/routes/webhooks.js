@@ -3,6 +3,8 @@ import Stripe from 'stripe';
 import Booking from '../models/Booking.js';
 import Payment from '../models/Payment.js';
 import logger from '../utils/logger.js';
+import bookingAuditService from '../services/bookingAuditService.js';
+import invoiceLifecycleSyncService from '../services/invoiceLifecycleSyncService.js';
 
 const router = express.Router();
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
@@ -27,6 +29,10 @@ router.post('/stripe', express.raw({ type: 'application/json' }), async (req, re
   if (!stripe) {
     logger.error('Stripe is not configured. Set STRIPE_SECRET_KEY.');
     return res.status(503).json({ error: 'Payment processing is not configured' });
+  }
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    logger.error('Stripe webhook secret is not configured. Set STRIPE_WEBHOOK_SECRET.');
+    return res.status(503).json({ error: 'Webhook processing is not configured' });
   }
 
   const sig = req.headers['stripe-signature'];
@@ -99,6 +105,39 @@ async function handlePaymentSuccess(paymentIntent) {
           paymentId: payment._id,
           bookingId: payment.bookingId
         });
+      } else {
+        try {
+          await invoiceLifecycleSyncService.syncBookingPaymentStatus({
+            bookingId: booking._id,
+            paymentStatus: 'paid',
+            actorUserId: booking.userId
+          });
+        } catch (error) {
+          invoiceLifecycleSyncService.logSyncFailure(
+            { bookingId: booking._id, flow: 'stripe-webhook-payment-success' },
+            error
+          );
+        }
+
+        await bookingAuditService.logBookingMutation({
+          booking,
+          changeType: 'update',
+          user: { _id: booking.userId, role: 'system', email: null },
+          req: {
+            originalUrl: '/api/v1/webhooks/stripe',
+            headers: {},
+            ip: 'stripe-webhook'
+          },
+          oldValues: {
+            paymentStatus: 'pending'
+          },
+          newValues: bookingAuditService.buildSnapshot(booking),
+          metadata: {
+            priority: 'high',
+            tags: ['stripe_webhook', 'payment_success'],
+            paymentIntentId: paymentIntent.id
+          }
+        });
       }
 
       logger.info('Payment and booking updated successfully', {
@@ -163,12 +202,50 @@ async function handleRefund(charge) {
       payment.status = totalRefunded === originalAmount ? 'refunded' : 'partially_refunded';
       await payment.save();
 
+      const bookingPaymentStatus = totalRefunded === originalAmount ? 'refunded' : 'partially_paid';
+
       // Update booking status
-      await Booking.findByIdAndUpdate(payment.bookingId, {
-        paymentStatus: payment.status
+      const booking = await Booking.findByIdAndUpdate(payment.bookingId, {
+        paymentStatus: bookingPaymentStatus
       },
         { new: true }
       );
+
+      if (booking) {
+        try {
+          await invoiceLifecycleSyncService.syncInvoiceAfterRefund({
+            bookingId: booking._id,
+            refundAmount: totalRefunded / 100,
+            reason: charge.reason || 'stripe_webhook_refund'
+          });
+        } catch (error) {
+          invoiceLifecycleSyncService.logSyncFailure(
+            { bookingId: booking._id, flow: 'stripe-webhook-refund' },
+            error
+          );
+        }
+
+        await bookingAuditService.logBookingMutation({
+          booking,
+          changeType: 'update',
+          user: { _id: booking.userId, role: 'system', email: null },
+          req: {
+            originalUrl: '/api/v1/webhooks/stripe',
+            headers: {},
+            ip: 'stripe-webhook'
+          },
+          oldValues: {
+            paymentStatus: 'paid'
+          },
+          newValues: bookingAuditService.buildSnapshot(booking),
+          metadata: {
+            priority: 'high',
+            tags: ['stripe_webhook', 'refund'],
+            paymentIntentId: charge.payment_intent,
+            refundAmount: totalRefunded / 100
+          }
+        });
+      }
 
       logger.info('Refund processed', {
         paymentId: payment._id,

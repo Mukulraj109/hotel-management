@@ -1,15 +1,20 @@
 import express from 'express';
+import Joi from 'joi';
 import Notification from '../models/Notification.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require admin authentication
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('dashboardUpdates', 'baseAccess'));
 router.use(authorize('admin', 'staff'));
 
 /**
@@ -284,7 +289,7 @@ router.get('/summary', catchAsync(async (req, res) => {
  *       200:
  *         description: Notifications marked as read
  */
-router.patch('/mark-read', catchAsync(async (req, res) => {
+router.patch('/mark-read', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { notificationIds, markAllRead } = req.body;
   const hotelId = req.user.hotelId;
 

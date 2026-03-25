@@ -196,7 +196,7 @@ export default function ReviewsPage() {
   const [filterRating, setFilterRating] = useState<number | undefined>();
 
   // Default hotel ID - in real app, this would come from context or props
-      const hotelId = '68c7e6ebca8aed0ec8036a9c';
+      const hotelId = '68cd01414419c17b5f6b4c12'; // Correct hotel ID matching database
 
   const loadReviews = async (page = 1) => {
     try {

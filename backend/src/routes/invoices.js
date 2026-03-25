@@ -1,15 +1,21 @@
 import express from 'express';
 import Invoice from '../models/Invoice.js';
-import Booking from '../models/Booking.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import financialRateLimiter from '../middleware/financialRateLimiter.js';
 import { validateFinancial, invoiceCreationSchema } from '../middleware/financialValidation.js';
 import { verifyHotelOwnership } from '../middleware/idorProtection.js';
+import { enforceIdempotency } from '../middleware/idempotency.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import billingService from '../modules/billing/service.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const idempotentInvoiceMutation = enforceIdempotency({ namespace: 'invoices' });
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require rate limiting, authentication and property access
 router.use(financialRateLimiter);
@@ -75,7 +81,7 @@ router.use(ensurePropertyAccess);
  *       201:
  *         description: Invoice created successfully
  */
-router.post('/', authorize('staff', 'admin'), validateFinancial(invoiceCreationSchema), catchAsync(async (req, res) => {
+router.post('/', authorizePolicy('invoices', 'create'), validate(mutationBaselineSchema), idempotentInvoiceMutation, validateFinancial(invoiceCreationSchema), catchAsync(async (req, res) => {
   const {
     bookingId,
     type,
@@ -87,60 +93,17 @@ router.post('/', authorize('staff', 'admin'), validateFinancial(invoiceCreationS
     billingAddress
   } = req.body;
 
-  // Verify booking exists
-  const booking = await Booking.findById(bookingId)
-    .populate('userId', 'name email')
-    .populate('hotelId', 'name').lean();
-  
-  if (!booking) {
-    throw new ApplicationError('Booking not found', 404);
-  }
-
-  // Check hotel access
-  const hotelId = req.user.role === 'staff' ? req.user.hotelId : booking.hotelId._id;
-  if (req.user.role === 'staff' && booking.hotelId._id.toString() !== hotelId.toString()) {
-    throw new ApplicationError('You can only create invoices for your hotel', 403);
-  }
-
-  const invoiceData = {
-    hotelId,
+  const invoice = await billingService.createInvoice({
     bookingId,
-    guestId: booking.userId._id,
-    type: type || 'accommodation',
-    items: items.map(item => ({
-      ...item,
-      totalPrice: item.quantity * item.unitPrice,
-      taxAmount: ((item.quantity * item.unitPrice) * (item.taxRate || 0)) / 100
-    })),
-    dueDate: new Date(dueDate),
+    type,
+    items,
+    dueDate,
+    discounts,
+    splitBilling,
     notes,
-    billingAddress
-  };
-
-  const invoice = await Invoice.create(invoiceData);
-
-  // Add discounts if provided
-  if (discounts && discounts.length > 0) {
-    for (const discount of discounts) {
-      await invoice.addDiscount(
-        discount.description,
-        discount.type,
-        discount.value,
-        req.user._id
-      );
-    }
-  }
-
-  // Setup split billing if enabled
-  if (splitBilling && splitBilling.isEnabled) {
-    await invoice.setupSplitBilling(splitBilling.method, splitBilling.splits);
-  }
-
-  await invoice.populate([
-    { path: 'hotelId', select: 'name address contact' },
-    { path: 'bookingId', select: 'bookingNumber checkIn checkOut' },
-    { path: 'guestId', select: 'name email phone' }
-  ]);
+    billingAddress,
+    user: req.user
+  });
 
   res.status(201).json({
     status: 'success',
@@ -340,47 +303,12 @@ router.get('/:id', verifyHotelOwnership('Invoice'), catchAsync(async (req, res) 
  *       200:
  *         description: Invoice updated successfully
  */
-router.patch('/:id', authorize('staff', 'admin'), verifyHotelOwnership('Invoice'), catchAsync(async (req, res) => {
-  const allowedUpdates = ['status', 'dueDate', 'items', 'notes', 'internalNotes'];
-  const updates = {};
-
-  Object.keys(req.body).forEach(key => {
-    if (allowedUpdates.includes(key)) {
-      updates[key] = req.body[key];
-    }
+router.patch('/:id', authorizePolicy('invoices', 'update'), validate(mutationBaselineSchema), idempotentInvoiceMutation, verifyHotelOwnership('Invoice'), catchAsync(async (req, res) => {
+  const invoice = await billingService.updateInvoice({
+    invoiceId: req.params.id,
+    body: req.body,
+    user: req.user
   });
-
-  // Build query to match non-paid invoices with access permissions
-  const matchQuery = { _id: req.params.id, status: { $ne: 'paid' } };
-  if (req.user.role === 'staff') {
-    matchQuery.hotelId = req.user.hotelId;
-  }
-
-  const invoice = await Invoice.findOneAndUpdate(
-    matchQuery,
-    { $set: updates },
-    { new: true, runValidators: true }
-  );
-
-  if (!invoice) {
-    // Determine specific error
-    const exists = await Invoice.findById(req.params.id).lean();
-    if (!exists) {
-      throw new ApplicationError('Invoice not found', 404);
-    }
-    if (req.user.role === 'staff' && exists.hotelId.toString() !== req.user.hotelId.toString()) {
-      throw new ApplicationError('You can only update invoices for your hotel', 403);
-    }
-    if (exists.status === 'paid') {
-      throw new ApplicationError('Cannot update paid invoices', 400);
-    }
-  }
-
-  // Recalculate totals if items were updated (uses model instance method)
-  if (updates.items && invoice) {
-    invoice.calculateTotals();
-    await invoice.save();
-  }
 
   res.json({
     status: 'success',
@@ -424,29 +352,16 @@ router.patch('/:id', authorize('staff', 'admin'), verifyHotelOwnership('Invoice'
  *       200:
  *         description: Payment added successfully
  */
-router.post('/:id/payments', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/:id/payments', authorizePolicy('invoices', 'addPayment'), validate(mutationBaselineSchema), idempotentInvoiceMutation, catchAsync(async (req, res) => {
   const { amount, method, transactionId, notes } = req.body;
-  
-  const invoice = await Invoice.findById(req.params.id).lean();
-  
-  if (!invoice) {
-    throw new ApplicationError('Invoice not found', 404);
-  }
-
-  // Check access permissions
-  if (req.user.role === 'staff' && invoice.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('You can only add payments to invoices for your hotel', 403);
-  }
-
-  if (amount <= 0 || amount > invoice.amountRemaining) {
-    throw new ApplicationError('Invalid payment amount', 400);
-  }
-
-  await invoice.addPayment(amount, method, req.user._id, transactionId, notes);
-
-  await invoice.populate([
-    { path: 'payments.paidBy', select: 'name' }
-  ]);
+  const invoice = await billingService.addInvoicePayment({
+    invoiceId: req.params.id,
+    amount,
+    method,
+    transactionId,
+    notes,
+    user: req.user
+  });
 
   res.json({
     status: 'success',
@@ -495,25 +410,15 @@ router.post('/:id/payments', authorize('staff', 'admin'), catchAsync(async (req,
  *       200:
  *         description: Discount added successfully
  */
-router.post('/:id/discounts', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/:id/discounts', authorizePolicy('invoices', 'addDiscount'), validate(mutationBaselineSchema), idempotentInvoiceMutation, catchAsync(async (req, res) => {
   const { description, type, value } = req.body;
-  
-  const invoice = await Invoice.findById(req.params.id).lean();
-  
-  if (!invoice) {
-    throw new ApplicationError('Invoice not found', 404);
-  }
-
-  // Check access permissions
-  if (req.user.role === 'staff' && invoice.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('You can only add discounts to invoices for your hotel', 403);
-  }
-
-  if (invoice.status === 'paid') {
-    throw new ApplicationError('Cannot add discounts to paid invoices', 400);
-  }
-
-  await invoice.addDiscount(description, type, value, req.user._id);
+  const invoice = await billingService.addInvoiceDiscount({
+    invoiceId: req.params.id,
+    description,
+    type,
+    value,
+    user: req.user
+  });
 
   res.json({
     status: 'success',
@@ -568,25 +473,14 @@ router.post('/:id/discounts', authorize('staff', 'admin'), catchAsync(async (req
  *       200:
  *         description: Split billing setup successfully
  */
-router.post('/:id/split-billing', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/:id/split-billing', authorizePolicy('invoices', 'setupSplitBilling'), validate(mutationBaselineSchema), idempotentInvoiceMutation, catchAsync(async (req, res) => {
   const { method, splits } = req.body;
-  
-  const invoice = await Invoice.findById(req.params.id).lean();
-  
-  if (!invoice) {
-    throw new ApplicationError('Invoice not found', 404);
-  }
-
-  // Check access permissions
-  if (req.user.role === 'staff' && invoice.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('You can only setup split billing for invoices for your hotel', 403);
-  }
-
-  if (invoice.status === 'paid') {
-    throw new ApplicationError('Cannot setup split billing for paid invoices', 400);
-  }
-
-  await invoice.setupSplitBilling(method, splits);
+  const invoice = await billingService.setupInvoiceSplitBilling({
+    invoiceId: req.params.id,
+    method,
+    splits,
+    user: req.user
+  });
 
   res.json({
     status: 'success',
@@ -634,27 +528,17 @@ router.post('/:id/split-billing', authorize('staff', 'admin'), catchAsync(async 
  *       200:
  *         description: Split marked as paid successfully
  */
-router.post('/:id/splits/:splitIndex/pay', authorize('staff', 'admin', 'guest'), catchAsync(async (req, res) => {
+router.post('/:id/splits/:splitIndex/pay', authorizePolicy('invoices', 'paySplit'), validate(mutationBaselineSchema), idempotentInvoiceMutation, catchAsync(async (req, res) => {
   const { amount, method, transactionId } = req.body;
   const { splitIndex } = req.params;
-  
-  const invoice = await Invoice.findById(req.params.id).lean();
-  
-  if (!invoice) {
-    throw new ApplicationError('Invoice not found', 404);
-  }
-
-  // Check access permissions
-  if (req.user.role === 'guest') {
-    const split = invoice.splitBilling.splits[parseInt(splitIndex)];
-    if (!split || split.guestId.toString() !== req.user._id.toString()) {
-      throw new ApplicationError('You can only pay your own split', 403);
-    }
-  } else if (req.user.role === 'staff' && invoice.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('You can only manage splits for invoices for your hotel', 403);
-  }
-
-  await invoice.markSplitPaid(parseInt(splitIndex), amount, method, transactionId);
+  const invoice = await billingService.markInvoiceSplitPaid({
+    invoiceId: req.params.id,
+    splitIndex,
+    amount,
+    method,
+    transactionId,
+    user: req.user
+  });
 
   res.json({
     status: 'success',
@@ -690,7 +574,7 @@ router.post('/:id/splits/:splitIndex/pay', authorize('staff', 'admin', 'guest'),
  *       200:
  *         description: Invoice statistics
  */
-router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/stats', authorizePolicy('invoices', 'getStats'), catchAsync(async (req, res) => {
   const { startDate, endDate } = req.query;
   
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
@@ -782,7 +666,7 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
  *       200:
  *         description: Overdue invoices
  */
-router.get('/overdue', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/overdue', authorizePolicy('invoices', 'getOverdue'), catchAsync(async (req, res) => {
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
@@ -843,36 +727,13 @@ router.get('/overdue', authorize('staff', 'admin'), catchAsync(async (req, res) 
  *       201:
  *         description: Supplementary invoice created successfully
  */
-router.post('/supplementary/extra-person-charges', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/supplementary/extra-person-charges', authorizePolicy('invoices', 'createSupplementaryExtraPerson'), validate(mutationBaselineSchema), idempotentInvoiceMutation, catchAsync(async (req, res) => {
   const { bookingId, extraPersonCharges } = req.body;
-
-  if (!bookingId || !extraPersonCharges || extraPersonCharges.length === 0) {
-    throw new ApplicationError('Booking ID and extra person charges are required', 400);
-  }
-
-  // Verify booking exists and check permissions
-  const booking = await Booking.findById(bookingId).populate('hotelId').lean();
-  if (!booking) {
-    throw new ApplicationError('Booking not found', 404);
-  }
-
-  // Check hotel access
-  if (req.user.role === 'staff' && booking.hotelId._id.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('You can only create invoices for your hotel', 403);
-  }
-
-  // Generate supplementary invoice
-  const invoice = await Invoice.generateSupplementaryInvoice(
+  const invoice = await billingService.createSupplementaryInvoiceForExtraPersonCharges({
     bookingId,
     extraPersonCharges,
-    req.user._id
-  );
-
-  await invoice.populate([
-    { path: 'guestId', select: 'name email phone' },
-    { path: 'bookingId', select: 'bookingNumber checkIn checkOut' },
-    { path: 'hotelId', select: 'name' }
-  ]);
+    user: req.user
+  });
 
   res.status(201).json({
     status: 'success',
@@ -919,44 +780,13 @@ router.post('/supplementary/extra-person-charges', authorize('staff', 'admin'), 
  *       201:
  *         description: Settlement invoice created successfully
  */
-router.post('/supplementary/settlement', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/supplementary/settlement', authorizePolicy('invoices', 'createSupplementarySettlement'), validate(mutationBaselineSchema), idempotentInvoiceMutation, catchAsync(async (req, res) => {
   const { settlementId, adjustments } = req.body;
-
-  if (!settlementId || !adjustments || adjustments.length === 0) {
-    throw new ApplicationError('Settlement ID and adjustments are required', 400);
-  }
-
-  // Import Settlement model
-  const Settlement = (await import('../models/Settlement.js')).default;
-
-  // Verify settlement exists
-  const settlement = await Settlement.findById(settlementId)
-    .populate({
-      path: 'bookingId',
-      populate: { path: 'hotelId' }
-    }).lean();
-
-  if (!settlement) {
-    throw new ApplicationError('Settlement not found', 404);
-  }
-
-  // Check hotel access
-  if (req.user.role === 'staff' && settlement.bookingId.hotelId._id.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('You can only create invoices for your hotel', 403);
-  }
-
-  // Generate settlement invoice
-  const invoice = await Invoice.generateSettlementInvoice(
+  const invoice = await billingService.createSupplementaryInvoiceForSettlement({
     settlementId,
     adjustments,
-    req.user._id
-  );
-
-  await invoice.populate([
-    { path: 'guestId', select: 'name email phone' },
-    { path: 'bookingId', select: 'bookingNumber checkIn checkOut' },
-    { path: 'hotelId', select: 'name' }
-  ]);
+    user: req.user
+  });
 
   res.status(201).json({
     status: 'success',
@@ -1010,46 +840,13 @@ router.post('/supplementary/settlement', authorize('staff', 'admin'), catchAsync
  *       200:
  *         description: Extra charges added to invoice successfully
  */
-router.put('/:id/add-extra-charges', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.put('/:id/add-extra-charges', authorizePolicy('invoices', 'addExtraCharges'), validate(mutationBaselineSchema), idempotentInvoiceMutation, catchAsync(async (req, res) => {
   const { extraPersonCharges } = req.body;
-
-  if (!extraPersonCharges || extraPersonCharges.length === 0) {
-    throw new ApplicationError('Extra person charges are required', 400);
-  }
-
-  // Build query to match non-paid invoices with access permissions
-  const matchQuery = { _id: req.params.id, status: { $ne: 'paid' } };
-  if (req.user.role === 'staff') {
-    matchQuery.hotelId = req.user.hotelId;
-  }
-
-  // Use $push to atomically add extra person charges
-  const invoice = await Invoice.findOneAndUpdate(
-    matchQuery,
-    {
-      $push: {
-        extraPersonCharges: { $each: extraPersonCharges }
-      }
-    },
-    { new: true, runValidators: true }
-  ).populate([
-    { path: 'guestId', select: 'name email phone' },
-    { path: 'bookingId', select: 'bookingNumber checkIn checkOut' },
-    { path: 'hotelId', select: 'name' }
-  ]);
-
-  if (!invoice) {
-    const exists = await Invoice.findById(req.params.id).lean();
-    if (!exists) {
-      throw new ApplicationError('Invoice not found', 404);
-    }
-    if (req.user.role === 'staff' && exists.hotelId.toString() !== req.user.hotelId.toString()) {
-      throw new ApplicationError('You can only modify invoices for your hotel', 403);
-    }
-    if (exists.status === 'paid') {
-      throw new ApplicationError('Cannot modify paid invoices', 400);
-    }
-  }
+  const invoice = await billingService.addExtraChargesToInvoice({
+    invoiceId: req.params.id,
+    extraPersonCharges,
+    user: req.user
+  });
 
   res.json({
     status: 'success',

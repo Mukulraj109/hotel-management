@@ -15,6 +15,7 @@ class QueueService {
     this.redis = null;
     this.isProcessing = false;
     this.processingInterval = null;
+    this.scheduledProcessingInterval = null;
     this.workerId = `worker_${process.pid}_${Date.now()}`;
     this.workerInstance = process.env.WORKER_INSTANCE || 'default';
     this.maxConcurrentJobs = parseInt(process.env.MAX_CONCURRENT_JOBS) || 5;
@@ -230,7 +231,7 @@ class QueueService {
       this.isProcessing = true;
     
       // Process scheduled events (move from MongoDB to Redis when ready)
-      setInterval(() => {
+      this.scheduledProcessingInterval = setInterval(() => {
         this.processScheduledEvents().catch(error => {
           logger.error('Error processing scheduled events', { error: error.message });
         });
@@ -262,6 +263,11 @@ class QueueService {
       if (this.processingInterval) {
         clearInterval(this.processingInterval);
         this.processingInterval = null;
+      }
+
+      if (this.scheduledProcessingInterval) {
+        clearInterval(this.scheduledProcessingInterval);
+        this.scheduledProcessingInterval = null;
       }
 
       // Wait for active jobs to complete
@@ -793,6 +799,10 @@ class QueueService {
     const stats = {};
     
     try {
+      if (!this.redis || typeof this.redis.lLen !== 'function') {
+        return stats;
+      }
+
       for (let priority = 1; priority <= 5; priority++) {
         const queueKey = `queue:events:priority_${priority}`;
         const length = await this.redis.lLen(queueKey);

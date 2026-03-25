@@ -1,12 +1,16 @@
 import express from 'express';
+import Joi from 'joi';
 import { body, param, query } from 'express-validator';
 import bookingFormController from '../controllers/bookingFormController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import rateLimit from 'express-rate-limit';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Rate limiting for form submissions
 const formSubmissionLimit = rateLimit({
@@ -223,7 +227,7 @@ const abTestValidation = [
 ];
 
 // Admin routes - require authentication and admin role
-router.use(authenticate, ensurePropertyAccess, (req, res, next) => {
+router.use(authenticate, ensurePropertyAccess, authorizePolicy('bookingForm', 'adminAccess'), (req, res, next) => {
   logger.debug('BookingForm route auth check', { userId: req.user?.id, role: req.user?.role });
 
   if (!req.user) {
@@ -248,20 +252,20 @@ router.use(authenticate, ensurePropertyAccess, (req, res, next) => {
 });
 
 // Template CRUD operations
-router.post('/templates', createTemplateValidation, bookingFormController.createTemplate);
+router.post('/templates', validate(mutationBaselineSchema), createTemplateValidation, bookingFormController.createTemplate);
 router.get('/templates', paginationValidation, bookingFormController.getTemplates);
 router.get('/templates/:id', templateIdValidation, bookingFormController.getTemplate);
-router.put('/templates/:id', updateTemplateValidation, bookingFormController.updateTemplate);
-router.delete('/templates/:id', templateIdValidation, bookingFormController.deleteTemplate);
+router.put('/templates/:id', validate(mutationBaselineSchema), updateTemplateValidation, bookingFormController.updateTemplate);
+router.delete('/templates/:id', validate(mutationBaselineSchema), templateIdValidation, bookingFormController.deleteTemplate);
 
 // Template operations
-router.post('/templates/:id/duplicate', duplicateValidation, bookingFormController.duplicateTemplate);
+router.post('/templates/:id/duplicate', validate(mutationBaselineSchema), duplicateValidation, bookingFormController.duplicateTemplate);
 router.get('/templates/:id/export', exportValidation, bookingFormController.exportTemplate);
-router.post('/templates/import', importValidation, bookingFormController.importTemplate);
+router.post('/templates/import', validate(mutationBaselineSchema), importValidation, bookingFormController.importTemplate);
 
 // Analytics and A/B testing
 router.get('/templates/:id/analytics', analyticsValidation, bookingFormController.getAnalytics);
-router.post('/templates/:id/ab-test', abTestValidation, bookingFormController.testABVariant);
+router.post('/templates/:id/ab-test', validate(mutationBaselineSchema), abTestValidation, bookingFormController.testABVariant);
 
 // Public routes - for form rendering and submission (no auth required)
 const publicRouter = express.Router();
@@ -282,6 +286,7 @@ publicRouter.get('/forms/:id/render',
 // Form submission - with rate limiting and validation
 publicRouter.post('/forms/:id/submit',
   formSubmissionLimit,
+  validate(mutationBaselineSchema),
   formSubmissionValidation,
   bookingFormController.submitForm
 );
@@ -289,6 +294,7 @@ publicRouter.post('/forms/:id/submit',
 // Form validation - for real-time validation
 publicRouter.post('/forms/:id/validate',
   formRenderLimit,
+  validate(mutationBaselineSchema),
   formSubmissionValidation,
   bookingFormController.validateForm
 );

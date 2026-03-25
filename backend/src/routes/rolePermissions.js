@@ -1,7 +1,8 @@
 import express from 'express';
 import rolePermissionController from '../controllers/rolePermissionController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { requirePermission, requireRoleLevel } from '../middleware/permissionCheck.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
@@ -55,10 +56,12 @@ const bulkAssignSchema = Joi.object({
     })
   ).required()
 });
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Authentication required for all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('rolePermissions', 'baseAccess'));
 
 /**
  * @swagger
@@ -274,6 +277,7 @@ router.put('/:roleId',
  */
 router.delete('/:roleId',
   requireRoleLevel(100), // Only super admin can delete roles
+  validate(mutationBaselineSchema),
   rolePermissionController.deleteRole
 );
 
@@ -388,6 +392,7 @@ router.post('/users/:userId/assign',
  */
 router.delete('/users/:userId/remove',
   requirePermission('user:update'),
+  validate(mutationBaselineSchema),
   rolePermissionController.removeUserRole
 );
 

@@ -1,9 +1,13 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import Joi from 'joi';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all routes
 router.use(authenticate);
@@ -12,7 +16,7 @@ router.use(ensurePropertyAccess);
 /**
  * Get user's favorite offers
  */
-router.get('/', authorize('guest', 'member', 'vip'), catchAsync(async (req, res) => {
+router.get('/', authorizePolicy('offerFavorites', 'memberAccess'), catchAsync(async (req, res) => {
     const userId = req.user._id;
     
     // TODO: Implement favorite offers functionality
@@ -26,7 +30,7 @@ router.get('/', authorize('guest', 'member', 'vip'), catchAsync(async (req, res)
 /**
  * Add offer to favorites
  */
-router.post('/:offerId', authorize('guest', 'member', 'vip'), catchAsync(async (req, res) => {
+router.post('/:offerId', authorizePolicy('offerFavorites', 'memberAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const userId = req.user._id;
     const { offerId } = req.params;
     
@@ -40,7 +44,7 @@ router.post('/:offerId', authorize('guest', 'member', 'vip'), catchAsync(async (
 /**
  * Remove offer from favorites
  */
-router.delete('/:offerId', authorize('guest', 'member', 'vip'), catchAsync(async (req, res) => {
+router.delete('/:offerId', authorizePolicy('offerFavorites', 'memberAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const userId = req.user._id;
     const { offerId } = req.params;
     

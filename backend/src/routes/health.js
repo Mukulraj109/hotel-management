@@ -1,8 +1,12 @@
 import express from 'express';
 import healthController from '../controllers/healthController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import Joi from 'joi';
+import { authenticate } from '../middleware/auth.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Public health check endpoints (no authentication required)
 // These are used by load balancers and monitoring systems
@@ -139,7 +143,7 @@ router.get('/checks/:checkName', authenticate, healthController.getSpecificCheck
  */
 router.get('/status', 
   authenticate, 
-  authorize(['admin', 'staff']),
+  authorizePolicy('health', 'staffAccess'),
   healthController.getDetailedStatus
 );
 
@@ -158,7 +162,7 @@ router.get('/status',
  */
 router.get('/metrics',
   authenticate,
-  authorize(['admin', 'staff']),
+  authorizePolicy('health', 'staffAccess'),
   healthController.getHealthMetrics
 );
 
@@ -186,7 +190,7 @@ router.get('/metrics',
  */
 router.get('/history',
   authenticate,
-  authorize(['admin', 'staff']),
+  authorizePolicy('health', 'staffAccess'),
   healthController.getHealthHistory
 );
 
@@ -205,7 +209,7 @@ router.get('/history',
  */
 router.get('/system',
   authenticate,
-  authorize(['admin', 'staff']),
+  authorizePolicy('health', 'staffAccess'),
   healthController.getSystemInfo
 );
 
@@ -224,14 +228,15 @@ router.get('/system',
  */
 router.get('/dashboard',
   authenticate,
-  authorize(['admin', 'staff']),
+  authorizePolicy('health', 'staffAccess'),
   healthController.getDashboard
 );
 
 // Health check configuration endpoints (admin only)
 router.post('/checks/run',
   authenticate,
-  authorize(['admin']),
+  authorizePolicy('health', 'adminAccess'),
+  validate(mutationBaselineSchema),
   async (req, res, next) => {
     try {
       const { checks } = req.body;
@@ -317,7 +322,8 @@ router.get('/external/:token',
 // Webhook endpoint for health alerts
 router.post('/alerts/webhook',
   authenticate,
-  authorize(['admin']),
+  authorizePolicy('health', 'adminAccess'),
+  validate(mutationBaselineSchema),
   (req, res) => {
     const { url, events = ['unhealthy', 'degraded'] } = req.body;
     

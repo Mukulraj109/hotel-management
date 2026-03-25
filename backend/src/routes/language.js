@@ -1,12 +1,15 @@
 import express from 'express';
 import languageController from '../controllers/languageController.js';
 import contentController from '../controllers/contentController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import { body, param, query } from 'express-validator';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Validation schemas
 const createLanguageValidation = [
@@ -155,12 +158,14 @@ router.get('/translation/supported', languageController.getSupportedLanguages);
 
 // Detect language of text
 router.post('/detect', [
+  validate(mutationBaselineSchema),
   body('text').notEmpty().withMessage('Text is required'),
   validate
 ], languageController.detectLanguage);
 
 // Format content by language
 router.post('/format', [
+  validate(mutationBaselineSchema),
   body('text').notEmpty().withMessage('Text is required'),
   body('languageCode').isLength({ min: 2, max: 3 }).withMessage('Language code required'),
   validate
@@ -180,22 +185,26 @@ router.get('/content/stats/overview', contentController.getContentStats);
 // Protected routes (authentication required)
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('language', 'baseAccess'));
 
 // Language management (admin/content manager only)
 router.post('/', 
-  authorize(['admin', 'content_manager']), 
+  authorizePolicy('language', 'manageAccess'),
+  validate(mutationBaselineSchema),
   createLanguageValidation, 
   languageController.createLanguage
 );
 
 router.put('/:code', 
-  authorize(['admin', 'content_manager']), 
+  authorizePolicy('language', 'manageAccess'),
+  validate(mutationBaselineSchema),
   updateLanguageValidation, 
   languageController.updateLanguage
 );
 
 router.delete('/:code', 
-  authorize(['admin']), 
+  authorizePolicy('language', 'adminAccess'),
+  validate(mutationBaselineSchema),
   languageParamValidation, 
   languageController.deleteLanguage
 );
@@ -204,7 +213,7 @@ router.delete('/:code',
 
 // Get resource translations
 router.get('/translations/:resourceType/:resourceId', 
-  authorize(['admin', 'content_manager', 'translator', 'reviewer']),
+  authorizePolicy('language', 'translationReadAccess'),
   [
     param('resourceType').notEmpty().withMessage('Resource type is required'),
     param('resourceId').isMongoId().withMessage('Invalid resource ID'),
@@ -215,20 +224,22 @@ router.get('/translations/:resourceType/:resourceId',
 
 // Translate resource
 router.post('/translations/:resourceType/:resourceId', 
-  authorize(['admin', 'content_manager', 'translator']),
+  authorizePolicy('language', 'translateAccess'),
+  validate(mutationBaselineSchema),
   translateResourceValidation,
   languageController.translateResource
 );
 
 // Get pending translations
 router.get('/translations/pending/review', 
-  authorize(['admin', 'content_manager', 'reviewer', 'translator']),
+  authorizePolicy('language', 'translationReadAccess'),
   languageController.getPendingTranslations
 );
 
 // Approve translation
 router.patch('/translations/:translationId/approve', 
-  authorize(['admin', 'content_manager', 'reviewer']),
+  authorizePolicy('language', 'reviewAccess'),
+  validate(mutationBaselineSchema),
   [
     param('translationId').isMongoId().withMessage('Invalid translation ID'),
     body('notes').optional().isString().withMessage('Notes must be a string'),
@@ -239,7 +250,8 @@ router.patch('/translations/:translationId/approve',
 
 // Reject translation
 router.patch('/translations/:translationId/reject', 
-  authorize(['admin', 'content_manager', 'reviewer']),
+  authorizePolicy('language', 'reviewAccess'),
+  validate(mutationBaselineSchema),
   [
     param('translationId').isMongoId().withMessage('Invalid translation ID'),
     body('notes').optional().isString().withMessage('Notes must be a string'),
@@ -250,7 +262,8 @@ router.patch('/translations/:translationId/reject',
 
 // Bulk update translations
 router.patch('/translations/bulk', 
-  authorize(['admin', 'content_manager', 'reviewer']),
+  authorizePolicy('language', 'reviewAccess'),
+  validate(mutationBaselineSchema),
   [
     body('updates').isArray({ min: 1 }).withMessage('Updates array is required'),
     body('updates.*.id').isMongoId().withMessage('Each update must have valid translation ID'),
@@ -262,13 +275,13 @@ router.patch('/translations/bulk',
 
 // Get translation statistics
 router.get('/translations/stats/overview', 
-  authorize(['admin', 'content_manager', 'reviewer']),
+  authorizePolicy('language', 'reviewAccess'),
   languageController.getTranslationStats
 );
 
 // Get translation workflow status
 router.get('/translations/workflow/:resourceType/:resourceId/:targetLanguage', 
-  authorize(['admin', 'content_manager', 'reviewer', 'translator']),
+  authorizePolicy('language', 'translationReadAccess'),
   [
     param('resourceType').notEmpty().withMessage('Resource type is required'),
     param('resourceId').isMongoId().withMessage('Invalid resource ID'),
@@ -280,7 +293,8 @@ router.get('/translations/workflow/:resourceType/:resourceId/:targetLanguage',
 
 // Channel support management
 router.post('/:code/channels', 
-  authorize(['admin', 'content_manager']),
+  authorizePolicy('language', 'manageAccess'),
+  validate(mutationBaselineSchema),
   [
     ...languageParamValidation,
     body('channel')
@@ -299,35 +313,40 @@ router.post('/:code/channels',
 
 // Create content
 router.post('/content', 
-  authorize(['admin', 'content_manager']),
+  authorizePolicy('language', 'manageAccess'),
+  validate(mutationBaselineSchema),
   createContentValidation,
   contentController.createContent
 );
 
 // Update content
 router.put('/content/:key', 
-  authorize(['admin', 'content_manager']),
+  authorizePolicy('language', 'manageAccess'),
+  validate(mutationBaselineSchema),
   [...contentKeyValidation, validate],
   contentController.updateContent
 );
 
 // Delete content
 router.delete('/content/:key', 
-  authorize(['admin', 'content_manager']),
+  authorizePolicy('language', 'manageAccess'),
+  validate(mutationBaselineSchema),
   contentKeyValidation,
   contentController.deleteContent
 );
 
 // Publish content
 router.patch('/content/:key/publish', 
-  authorize(['admin', 'content_manager']),
+  authorizePolicy('language', 'manageAccess'),
+  validate(mutationBaselineSchema),
   contentKeyValidation,
   contentController.publishContent
 );
 
 // Translate content
 router.post('/content/:key/translate', 
-  authorize(['admin', 'content_manager', 'translator']),
+  authorizePolicy('language', 'translateAccess'),
+  validate(mutationBaselineSchema),
   [
     ...contentKeyValidation,
     body('targetLanguages')
@@ -343,20 +362,21 @@ router.post('/content/:key/translate',
 
 // Get content translations
 router.get('/content/:key/translations', 
-  authorize(['admin', 'content_manager', 'translator', 'reviewer']),
+  authorizePolicy('language', 'translationReadAccess'),
   contentKeyValidation,
   contentController.getContentTranslations
 );
 
 // Get translatable content
 router.get('/content/translatable/list', 
-  authorize(['admin', 'content_manager', 'translator']),
+  authorizePolicy('language', 'translateAccess'),
   contentController.getTranslatableContent
 );
 
 // Batch translate content
 router.post('/content/batch/translate', 
-  authorize(['admin', 'content_manager', 'translator']),
+  authorizePolicy('language', 'translateAccess'),
+  validate(mutationBaselineSchema),
   [
     body('contentKeys')
       .isArray({ min: 1 })

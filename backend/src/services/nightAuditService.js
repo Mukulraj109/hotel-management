@@ -253,7 +253,7 @@ class NightAuditService {
         hotelId,
         checkIn: { $gte: dayStart, $lte: dayEnd },
         status: 'confirmed'
-      }).lean().limit(1000);
+      }).limit(1000);
 
       let processed = 0;
       let chargesApplied = new Decimal(0);

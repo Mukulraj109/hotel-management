@@ -8,12 +8,17 @@ import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import Joi from 'joi';
+import { getUserPropertyIds } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Hotels list endpoint - accessible by admin, staff, and frontdesk (needed for walk-in bookings)
-router.get('/hotels', authenticate, ensurePropertyAccess, authorize(['admin', 'staff', 'frontdesk']), catchAsync(async (req, res) => {
+router.get('/hotels', authenticate, ensureTenantContext, ensurePropertyAccess, authorize(['admin', 'staff', 'frontdesk']), catchAsync(async (req, res) => {
   const {
     page = 1,
     limit = 20,
@@ -21,7 +26,23 @@ router.get('/hotels', authenticate, ensurePropertyAccess, authorize(['admin', 's
     isActive
   } = req.query;
 
+  const accessiblePropertyIds = await getUserPropertyIds(req.user._id, req.user);
   const query = {};
+
+  if (!accessiblePropertyIds.length) {
+    return res.json({
+      status: 'success',
+      data: { hotels: [] },
+      pagination: {
+        total: 0,
+        page: parseInt(page),
+        pages: 0,
+        limit: parseInt(limit)
+      }
+    });
+  }
+
+  query._id = { $in: accessiblePropertyIds };
 
   if (isActive !== undefined) query.isActive = isActive === 'true';
 
@@ -58,7 +79,7 @@ router.get('/hotels', authenticate, ensurePropertyAccess, authorize(['admin', 's
 }));
 
 // Users list endpoint - accessible by admin, staff, and frontdesk (needed for staff management)
-router.get('/users', authenticate, ensurePropertyAccess, authorize(['admin', 'staff', 'frontdesk']), catchAsync(async (req, res) => {
+router.get('/users', authenticate, ensureTenantContext, ensurePropertyAccess, authorize(['admin', 'staff', 'frontdesk']), catchAsync(async (req, res) => {
   const {
     page = 1,
     limit = 20,
@@ -67,24 +88,22 @@ router.get('/users', authenticate, ensurePropertyAccess, authorize(['admin', 'st
     isActive
   } = req.query;
 
+  const accessiblePropertyIds = await getUserPropertyIds(req.user._id, req.user);
   const query = {};
 
   if (isActive !== undefined) query.isActive = isActive === 'true';
 
   // Handle role filtering properly for staff management vs general user management
   if (role === 'guest') {
-    // Only show guest users (no hotel filtering needed)
     query.role = 'guest';
+    query.hotelId = { $in: accessiblePropertyIds };
   } else if (role === 'staff' || role === 'admin') {
-    // Show specific staff/admin role from this hotel
     query.role = role;
-    query.hotelId = req.user.hotelId;
+    query.hotelId = { $in: accessiblePropertyIds };
   } else if (!role) {
-    // No role specified - check if this is a staff management context
-    // For staff management, only include staff/admin from this hotel
     query.$or = [
-      { role: 'staff', hotelId: req.user.hotelId },
-      { role: 'admin', hotelId: req.user.hotelId }
+      { role: 'staff', hotelId: { $in: accessiblePropertyIds } },
+      { role: 'admin', hotelId: { $in: accessiblePropertyIds } }
     ];
   }
 
@@ -151,9 +170,11 @@ router.use(ensurePropertyAccess);
  *         description: Dashboard statistics
  */
 router.get('/dashboard', catchAsync(async (req, res) => {
+  const accessiblePropertyIds = await getUserPropertyIds(req.user._id, req.user);
   const today = new Date();
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   const startOfYear = new Date(today.getFullYear(), 0, 1);
+  const scopedHotelFilter = accessiblePropertyIds.length ? { hotelId: { $in: accessiblePropertyIds } } : { hotelId: null };
 
   // Get basic counts
   const [
@@ -165,18 +186,19 @@ router.get('/dashboard', catchAsync(async (req, res) => {
     totalRevenue,
     monthlyRevenue
   ] = await Promise.all([
-    User.countDocuments({ isActive: true }),
-    Hotel.countDocuments({ isActive: true }),
-    Booking.countDocuments(),
-    Booking.countDocuments({ createdAt: { $gte: startOfMonth } }),
-    Booking.countDocuments({ createdAt: { $gte: startOfYear } }),
+    User.countDocuments({ isActive: true, ...scopedHotelFilter }),
+    Hotel.countDocuments({ isActive: true, _id: { $in: accessiblePropertyIds } }),
+    Booking.countDocuments(scopedHotelFilter),
+    Booking.countDocuments({ ...scopedHotelFilter, createdAt: { $gte: startOfMonth } }),
+    Booking.countDocuments({ ...scopedHotelFilter, createdAt: { $gte: startOfYear } }),
     Booking.aggregate([
-      { $match: { paymentStatus: 'paid' } },
+      { $match: { ...scopedHotelFilter, paymentStatus: 'paid' } },
       { $group: { _id: null, total: { $sum: '$totalAmount' } } }
     ]),
     Booking.aggregate([
       { 
         $match: { 
+          ...scopedHotelFilter,
           paymentStatus: 'paid',
           createdAt: { $gte: startOfMonth }
         } 
@@ -186,7 +208,7 @@ router.get('/dashboard', catchAsync(async (req, res) => {
   ]);
 
   // Get recent bookings
-  const recentBookings = await Booking.find()
+  const recentBookings = await Booking.find(scopedHotelFilter)
     .populate('userId', 'name email')
     .populate('hotelId', 'name')
     .sort('-createdAt')
@@ -197,6 +219,7 @@ router.get('/dashboard', catchAsync(async (req, res) => {
   const userTrends = await User.aggregate([
     {
       $match: {
+        ...scopedHotelFilter,
         createdAt: { $gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) }
       }
     },
@@ -268,7 +291,7 @@ router.get('/dashboard', catchAsync(async (req, res) => {
  *       201:
  *         description: User created successfully
  */
-router.post('/users', catchAsync(async (req, res) => {
+router.post('/users', authorizePolicy('admin', 'createUser'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { name, email, phone, password, role, preferences } = req.body;
 
   // Check if user already exists
@@ -333,9 +356,28 @@ router.post('/users', catchAsync(async (req, res) => {
  *       200:
  *         description: User updated successfully
  */
-router.patch('/users/:id', catchAsync(async (req, res) => {
+router.patch('/users/:id', authorizePolicy('admin', 'updateUser'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { id } = req.params;
   const { role, isActive, hotelId } = req.body;
+  const existingUser = await User.findById(id).select('hotelId').lean();
+
+  if (!existingUser) {
+    throw new ApplicationError('User not found', 404);
+  }
+
+  if (existingUser.hotelId) {
+    const hasExistingAccess = await checkPropertyAccess(req.user._id, existingUser.hotelId, req.user);
+    if (!hasExistingAccess) {
+      throw new ApplicationError('Access denied. You do not have permission to modify this user.', 403);
+    }
+  }
+
+  if (hotelId) {
+    const hasTargetAccess = await checkPropertyAccess(req.user._id, hotelId, req.user);
+    if (!hasTargetAccess) {
+      throw new ApplicationError('Access denied. You do not have permission to assign this user to the selected property.', 403);
+    }
+  }
 
   const updateData = {};
   if (role !== undefined) updateData.role = role;
@@ -376,13 +418,22 @@ router.patch('/users/:id', catchAsync(async (req, res) => {
  *       200:
  *         description: User deleted successfully
  */
-router.delete('/users/:id', catchAsync(async (req, res) => {
+router.delete('/users/:id', authorizePolicy('admin', 'deleteUser'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { id } = req.params;
+  const existingUser = await User.findById(id).select('hotelId').lean();
 
-  const user = await User.findByIdAndDelete(id);
-  if (!user) {
+  if (!existingUser) {
     throw new ApplicationError('User not found', 404);
   }
+
+  if (existingUser.hotelId) {
+    const hasAccess = await checkPropertyAccess(req.user._id, existingUser.hotelId, req.user);
+    if (!hasAccess) {
+      throw new ApplicationError('Access denied. You do not have permission to delete this user.', 403);
+    }
+  }
+
+  await User.findByIdAndDelete(id);
 
   res.json({
     status: 'success',
@@ -450,7 +501,7 @@ router.delete('/users/:id', catchAsync(async (req, res) => {
  *       201:
  *         description: Hotel created successfully
  */
-router.post('/hotels', catchAsync(async (req, res) => {
+router.post('/hotels', authorizePolicy('admin', 'createHotel'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const {
     name,
     description,
@@ -519,9 +570,14 @@ router.post('/hotels', catchAsync(async (req, res) => {
  *       200:
  *         description: Hotel updated successfully
  */
-router.patch('/hotels/:id', catchAsync(async (req, res) => {
+router.patch('/hotels/:id', authorizePolicy('admin', 'updateHotelStatus'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { id } = req.params;
   const { isActive } = req.body;
+  const hasAccess = await checkPropertyAccess(req.user._id, id, req.user);
+
+  if (!hasAccess) {
+    throw new ApplicationError('Access denied. You do not have permission to modify this hotel.', 403);
+  }
 
   const hotel = await Hotel.findByIdAndUpdate(
     id,
@@ -576,7 +632,7 @@ router.patch('/hotels/:id', catchAsync(async (req, res) => {
  *       200:
  *         description: Hotel updated successfully
  */
-router.put('/hotels/:id', catchAsync(async (req, res) => {
+router.put('/hotels/:id', authorizePolicy('admin', 'updateHotelDetails'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { id } = req.params;
   const {
     name,
@@ -586,6 +642,11 @@ router.put('/hotels/:id', catchAsync(async (req, res) => {
     amenities = [],
     type = 'hotel'
   } = req.body;
+  const hasAccess = await checkPropertyAccess(req.user._id, id, req.user);
+
+  if (!hasAccess) {
+    throw new ApplicationError('Access denied. You do not have permission to modify this hotel.', 403);
+  }
 
   const hotel = await Hotel.findByIdAndUpdate(
     id,
@@ -638,8 +699,13 @@ router.put('/hotels/:id', catchAsync(async (req, res) => {
  *       200:
  *         description: Hotel deleted successfully
  */
-router.delete('/hotels/:id', catchAsync(async (req, res) => {
+router.delete('/hotels/:id', authorizePolicy('admin', 'deleteHotel'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { id } = req.params;
+  const hasAccess = await checkPropertyAccess(req.user._id, id, req.user);
+
+  if (!hasAccess) {
+    throw new ApplicationError('Access denied. You do not have permission to delete this hotel.', 403);
+  }
 
   const hotel = await Hotel.findByIdAndDelete(id);
 
@@ -699,6 +765,7 @@ router.delete('/hotels/:id', catchAsync(async (req, res) => {
  *         description: List of bookings
  */
 router.get('/bookings', catchAsync(async (req, res) => {
+  const accessiblePropertyIds = await getUserPropertyIds(req.user._id, req.user);
   const {
     page = 1,
     limit = 20,
@@ -710,10 +777,17 @@ router.get('/bookings', catchAsync(async (req, res) => {
   } = req.query;
 
   const query = {};
+  query.hotelId = { $in: accessiblePropertyIds };
   
   if (status) query.status = status;
   if (paymentStatus) query.paymentStatus = paymentStatus;
-  if (hotelId) query.hotelId = hotelId;
+  if (hotelId) {
+    const hasAccess = await checkPropertyAccess(req.user._id, hotelId, req.user);
+    if (!hasAccess) {
+      throw new ApplicationError('Access denied. You do not have permission to access this property.', 403);
+    }
+    query.hotelId = hotelId;
+  }
   
   if (startDate || endDate) {
     query.createdAt = {};
@@ -768,6 +842,7 @@ router.get('/bookings', catchAsync(async (req, res) => {
  *         description: System analytics
  */
 router.get('/analytics', catchAsync(async (req, res) => {
+  const accessiblePropertyIds = await getUserPropertyIds(req.user._id, req.user);
   const { period = '30d' } = req.query;
   
   let startDate;
@@ -791,6 +866,7 @@ router.get('/analytics', catchAsync(async (req, res) => {
   const revenueTrends = await Booking.aggregate([
     {
       $match: {
+        hotelId: { $in: accessiblePropertyIds },
         paymentStatus: 'paid',
         createdAt: { $gte: startDate }
       }
@@ -811,6 +887,7 @@ router.get('/analytics', catchAsync(async (req, res) => {
   const statusDistribution = await Booking.aggregate([
     {
       $match: {
+        hotelId: { $in: accessiblePropertyIds },
         createdAt: { $gte: startDate }
       }
     },
@@ -826,6 +903,7 @@ router.get('/analytics', catchAsync(async (req, res) => {
   const topHotels = await Booking.aggregate([
     {
       $match: {
+        hotelId: { $in: accessiblePropertyIds },
         paymentStatus: 'paid',
         createdAt: { $gte: startDate }
       }

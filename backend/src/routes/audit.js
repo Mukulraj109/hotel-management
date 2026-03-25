@@ -13,11 +13,14 @@ import {
   triggerManualCleanup,
   exportAuditData
 } from '../controllers/auditController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
-import { validateObjectId } from '../middleware/validation.js';
+import { authenticate } from '../middleware/auth.js';
+import { validateObjectId, validate } from '../middleware/validation.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all audit routes
 router.use(authenticate);
@@ -191,7 +194,7 @@ router.use(ensurePropertyAccess);
  *       403:
  *         description: Forbidden
  */
-router.get('/ota-payloads', authorize('admin', 'audit', 'compliance'), getOTAPayloads);
+router.get('/ota-payloads', authorizePolicy('audit', 'staffAccess'), getOTAPayloads);
 
 /**
  * @swagger
@@ -220,7 +223,7 @@ router.get('/ota-payloads', authorize('admin', 'audit', 'compliance'), getOTAPay
  *       404:
  *         description: Payload not found
  */
-router.get('/ota-payloads/:payloadId', authorize('admin', 'audit', 'compliance'), getOTAPayload);
+router.get('/ota-payloads/:payloadId', authorizePolicy('audit', 'staffAccess'), getOTAPayload);
 
 /**
  * @swagger
@@ -280,7 +283,7 @@ router.get('/ota-payloads/:payloadId', authorize('admin', 'audit', 'compliance')
  *       400:
  *         description: Invalid payload ID or audit failed
  */
-router.get('/ota-payloads/:payloadId/audit', authorize('admin', 'audit'), getPayloadAudit);
+router.get('/ota-payloads/:payloadId/audit', authorizePolicy('audit', 'staffAccess'), getPayloadAudit);
 
 /**
  * @swagger
@@ -318,7 +321,7 @@ router.get('/ota-payloads/:payloadId/audit', authorize('admin', 'audit'), getPay
  *       200:
  *         description: Booking payloads retrieved
  */
-router.get('/bookings/:bookingId/payloads', validateObjectId('bookingId'), authorize('admin', 'audit', 'front-desk'), getBookingPayloads);
+router.get('/bookings/:bookingId/payloads', validateObjectId('bookingId'), authorizePolicy('audit', 'frontdeskAccess'), getBookingPayloads);
 
 /**
  * @swagger
@@ -364,7 +367,7 @@ router.get('/bookings/:bookingId/payloads', validateObjectId('bookingId'), autho
  *                       minimum: 0
  *                       maximum: 100
  */
-router.post('/bookings/:bookingId/reconcile', validateObjectId('bookingId'), authorize('admin', 'audit'), reconcileBookingData);
+router.post('/bookings/:bookingId/reconcile', validate(mutationBaselineSchema), validateObjectId('bookingId'), authorizePolicy('audit', 'staffAccess'), reconcileBookingData);
 
 /**
  * @swagger
@@ -409,7 +412,7 @@ router.post('/bookings/:bookingId/reconcile', validateObjectId('bookingId'), aut
  *       200:
  *         description: Statistics retrieved
  */
-router.get('/stats', authorize('admin', 'audit', 'management'), getPayloadStats);
+router.get('/stats', authorizePolicy('audit', 'managementAccess'), getPayloadStats);
 
 /**
  * @swagger
@@ -451,7 +454,7 @@ router.get('/stats', authorize('admin', 'audit', 'management'), getPayloadStats)
  *       400:
  *         description: Missing required parameters
  */
-router.get('/compliance/report', authorize('admin', 'compliance'), generateComplianceReport);
+router.get('/compliance/report', authorizePolicy('audit', 'complianceAccess'), generateComplianceReport);
 
 /**
  * @swagger
@@ -517,7 +520,7 @@ router.get('/compliance/report', authorize('admin', 'compliance'), generateCompl
  *       200:
  *         description: Audit logs retrieved
  */
-router.get('/logs', authorize('admin', 'audit'), getAuditLogs);
+router.get('/logs', authorizePolicy('audit', 'staffAccess'), getAuditLogs);
 
 /**
  * @swagger
@@ -538,7 +541,7 @@ router.get('/logs', authorize('admin', 'audit'), getAuditLogs);
  *       200:
  *         description: Correlated audit data retrieved
  */
-router.get('/correlations/:correlationId', authorize('admin', 'audit'), getAuditByCorrelation);
+router.get('/correlations/:correlationId', authorizePolicy('audit', 'staffAccess'), getAuditByCorrelation);
 
 /**
  * @swagger
@@ -589,7 +592,7 @@ router.get('/correlations/:correlationId', authorize('admin', 'audit'), getAudit
  *                         archivePercentage:
  *                           type: string
  */
-router.get('/retention/stats', authorize('admin', 'audit'), getRetentionStats);
+router.get('/retention/stats', authorizePolicy('audit', 'staffAccess'), getRetentionStats);
 
 /**
  * @swagger
@@ -642,7 +645,7 @@ router.get('/retention/stats', authorize('admin', 'audit'), getRetentionStats);
  *                     errors:
  *                       type: array
  */
-router.post('/retention/cleanup', authorize('admin'), triggerManualCleanup);
+router.post('/retention/cleanup', validate(mutationBaselineSchema), authorizePolicy('audit', 'adminAccess'), triggerManualCleanup);
 
 /**
  * @swagger
@@ -698,6 +701,6 @@ router.post('/retention/cleanup', authorize('admin'), triggerManualCleanup);
  *       400:
  *         description: Missing required parameters
  */
-router.get('/export', authorize('admin', 'compliance'), exportAuditData);
+router.get('/export', authorizePolicy('audit', 'complianceAccess'), exportAuditData);
 
 export default router;

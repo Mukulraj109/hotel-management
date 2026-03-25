@@ -1,4 +1,5 @@
 import express from 'express';
+import Joi from 'joi';
 import {
   getTravelDashboardOverview,
   getTravelAnalytics,
@@ -14,14 +15,19 @@ import {
 } from '../controllers/adminTravelDashboardController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 logger.debug('Travel dashboard routes loading with FRONTDESK permission enabled');
 
 // Apply authentication to all routes
 router.use(authenticate);
+router.use(ensurePropertyAccess);
+router.use(authorizePolicy('adminTravelDashboard', 'baseAccess'));
 
 // Apply authorization - admin, manager, staff, and frontdesk can access travel dashboard
 logger.debug('Travel dashboard routes: authorize middleware set for admin, manager, staff, frontdesk');
@@ -45,6 +51,6 @@ router.get('/analytics/performance', getAllPerformanceMetrics);
 router.get('/analytics/time-series', getTimeSeriesAnalytics);
 
 // Advanced export routes
-router.post('/export/comprehensive', createComprehensiveExport);
+router.post('/export/comprehensive', validate(mutationBaselineSchema), createComprehensiveExport);
 
 export default router;

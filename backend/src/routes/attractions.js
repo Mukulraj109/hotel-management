@@ -1,11 +1,15 @@
 import express from 'express';
 import LocalAttraction from '../models/LocalAttraction.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 /**
  * @swagger
@@ -275,8 +279,9 @@ router.get('/:id', catchAsync(async (req, res) => {
  */
 router.post('/',
   authenticate,
-  authorize('admin'),
+  authorizePolicy('attractions', 'adminAccess'),
   ensurePropertyAccess,
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const {
       name,
@@ -343,8 +348,9 @@ router.post('/',
  */
 router.patch('/:id',
   authenticate,
-  authorize('admin'),
+  authorizePolicy('attractions', 'adminAccess'),
   ensurePropertyAccess,
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const attraction = await LocalAttraction.findByIdAndUpdate(
       req.params.id,
@@ -385,8 +391,9 @@ router.patch('/:id',
  */
 router.delete('/:id',
   authenticate,
-  authorize('admin'),
+  authorizePolicy('attractions', 'adminAccess'),
   ensurePropertyAccess,
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const attraction = await LocalAttraction.findByIdAndDelete(req.params.id);
 

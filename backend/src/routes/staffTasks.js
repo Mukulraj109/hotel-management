@@ -1,15 +1,19 @@
 import express from 'express';
 import mongoose from 'mongoose';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import StaffTask from '../models/StaffTask.js';
 import Room from '../models/Room.js';
 import InventoryItem from '../models/InventoryItem.js';
 import inventoryNotificationService from '../services/inventoryNotificationService.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
@@ -18,7 +22,7 @@ router.use(ensurePropertyAccess);
 /**
  * Get staff member's tasks
  */
-router.get('/my-tasks', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/my-tasks', authorizePolicy('staffTasks', 'staffAccess'), catchAsync(async (req, res) => {
   const {
     status,
     taskType,
@@ -47,7 +51,7 @@ router.get('/my-tasks', authorize('staff', 'admin'), catchAsync(async (req, res)
 /**
  * Get today's tasks for staff member
  */
-router.get('/today', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/today', authorizePolicy('staffTasks', 'staffAccess'), catchAsync(async (req, res) => {
   const tasks = await StaffTask.getTodaysTasks(req.user._id);
 
   res.json({
@@ -60,7 +64,7 @@ router.get('/today', authorize('staff', 'admin'), catchAsync(async (req, res) =>
 /**
  * Get specific task details
  */
-router.get('/:taskId', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/:taskId', authorizePolicy('staffTasks', 'staffAccess'), catchAsync(async (req, res) => {
   const task = await StaffTask.findById(req.params.taskId)
     .populate('assignedTo', 'name email')
     .populate('createdBy', 'name email')
@@ -86,7 +90,7 @@ router.get('/:taskId', authorize('staff', 'admin'), catchAsync(async (req, res) 
 /**
  * Update task status
  */
-router.patch('/:taskId/status', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.patch('/:taskId/status', authorizePolicy('staffTasks', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { status, completionNotes, completionData } = req.body;
 
   const task = await StaffTask.findById(req.params.taskId);
@@ -145,7 +149,7 @@ router.patch('/:taskId/status', authorize('staff', 'admin'), catchAsync(async (r
 /**
  * Update task progress (for partial completion tracking)
  */
-router.patch('/:taskId/progress', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.patch('/:taskId/progress', authorizePolicy('staffTasks', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { progressData } = req.body;
 
   const task = await StaffTask.findById(req.params.taskId).lean();
@@ -168,7 +172,7 @@ router.patch('/:taskId/progress', authorize('staff', 'admin'), catchAsync(async 
 /**
  * Add completion photo to task
  */
-router.post('/:taskId/photos', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/:taskId/photos', authorizePolicy('staffTasks', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { photoUrl, description } = req.body;
 
   const task = await StaffTask.findById(req.params.taskId).lean();
@@ -191,7 +195,7 @@ router.post('/:taskId/photos', authorize('staff', 'admin'), catchAsync(async (re
 /**
  * Create new task (admin only)
  */
-router.post('/', authorize('admin'), catchAsync(async (req, res) => {
+router.post('/', authorizePolicy('staffTasks', 'adminAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const taskData = {
     ...req.body,
     hotelId: req.user.hotelId,
@@ -243,7 +247,7 @@ router.post('/', authorize('admin'), catchAsync(async (req, res) => {
 /**
  * Get all tasks for hotel (admin only)
  */
-router.get('/', authorize('admin'), catchAsync(async (req, res) => {
+router.get('/', authorizePolicy('staffTasks', 'adminAccess'), catchAsync(async (req, res) => {
   const {
     assignedTo,
     status,
@@ -291,7 +295,7 @@ router.get('/', authorize('admin'), catchAsync(async (req, res) => {
 /**
  * Get overdue tasks for hotel (admin only)
  */
-router.get('/overdue', authorize('admin'), catchAsync(async (req, res) => {
+router.get('/overdue', authorizePolicy('staffTasks', 'adminAccess'), catchAsync(async (req, res) => {
   const tasks = await StaffTask.getOverdueTasks(req.user.hotelId);
 
   res.json({
@@ -304,7 +308,7 @@ router.get('/overdue', authorize('admin'), catchAsync(async (req, res) => {
 /**
  * Get task statistics for hotel (admin only)
  */
-router.get('/stats', authorize('admin'), catchAsync(async (req, res) => {
+router.get('/stats', authorizePolicy('staffTasks', 'adminAccess'), catchAsync(async (req, res) => {
   const { startDate, endDate } = req.query;
 
   const stats = await StaffTask.getTaskStats(req.user.hotelId, startDate, endDate);
@@ -318,7 +322,7 @@ router.get('/stats', authorize('admin'), catchAsync(async (req, res) => {
 /**
  * Delete task (admin only)
  */
-router.delete('/:taskId', authorize('admin'), catchAsync(async (req, res) => {
+router.delete('/:taskId', authorizePolicy('staffTasks', 'adminAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const task = await StaffTask.findOne({
     _id: req.params.taskId,
     hotelId: req.user.hotelId
@@ -344,7 +348,7 @@ router.delete('/:taskId', authorize('admin'), catchAsync(async (req, res) => {
 /**
  * Create daily inventory check tasks for all rooms
  */
-router.post('/create-daily-inventory-checks', authorize('admin'), catchAsync(async (req, res) => {
+router.post('/create-daily-inventory-checks', authorizePolicy('staffTasks', 'adminAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { assignedTo, dueDate = new Date() } = req.body;
 
   if (!assignedTo) {

@@ -13,15 +13,18 @@ import {
 } from '../controllers/personalizationController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
-import authorize from '../middleware/authorize.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { crmTrackingMiddleware } from '../middleware/crmTrackingMiddleware.js';
 import { body, param, query } from 'express-validator';
 import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('personalization', 'baseAccess'));
 
 const guestIdValidation = [
   param('guestId').isMongoId().withMessage('Invalid guest ID'),
@@ -81,6 +84,7 @@ const contextValidation = [
 
 // Core personalization endpoints
 router.post('/experience',
+  validate(mutationBaselineSchema),
   crmTrackingMiddleware('personalization_request'),
   contextValidation,
   generatePersonalizedExperience
@@ -92,18 +96,21 @@ router.get('/content',
 );
 
 router.post('/pricing',
+  validate(mutationBaselineSchema),
   crmTrackingMiddleware('pricing_request'),
   contextValidation,
   getPersonalizedPricing
 );
 
 router.post('/recommendations',
+  validate(mutationBaselineSchema),
   crmTrackingMiddleware('recommendation_request'),
   contextValidation,
   getPersonalizedRecommendations
 );
 
 router.post('/offers',
+  validate(mutationBaselineSchema),
   crmTrackingMiddleware('offer_request'),
   contextValidation,
   getPersonalizedOffers
@@ -116,7 +123,8 @@ router.get('/dashboard',
 
 // Guest-specific personalization (Admin/Manager only)
 router.post('/guests/:guestId/experience',
-  authorize(['admin', 'manager']),
+  validate(mutationBaselineSchema),
+  authorizePolicy('personalization', 'managerAccess'),
   guestIdValidation,
   contextValidation,
   getPersonalizedExperienceForGuest
@@ -124,6 +132,7 @@ router.post('/guests/:guestId/experience',
 
 // Preference management
 router.put('/preferences',
+  validate(mutationBaselineSchema),
   crmTrackingMiddleware('preferences_update'),
   preferencesValidation,
   updatePersonalizationPreferences
@@ -131,12 +140,13 @@ router.put('/preferences',
 
 // Analytics and testing
 router.get('/analytics',
-  authorize(['admin', 'manager']),
+  authorizePolicy('personalization', 'managerAccess'),
   getPersonalizationAnalytics
 );
 
 router.post('/test/variant',
-  authorize(['admin', 'manager']),
+  validate(mutationBaselineSchema),
+  authorizePolicy('personalization', 'managerAccess'),
   variantTestValidation,
   testPersonalizationVariant
 );

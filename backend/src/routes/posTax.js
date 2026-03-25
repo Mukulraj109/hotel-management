@@ -2,6 +2,7 @@ import express from 'express';
 import posTaxController from '../controllers/posTaxController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
 import financialRateLimiter from '../middleware/financialRateLimiter.js';
@@ -179,10 +180,12 @@ const exemptionSchema = Joi.object({
   requiresDocumentation: Joi.boolean().optional(),
   requiresApproval: Joi.boolean().optional()
 });
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Authentication required for all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('posTax', 'baseAccess'));
 
 /**
  * @swagger
@@ -384,6 +387,7 @@ router.put('/:id',
  */
 router.delete('/:id', 
   authorize(['admin', 'manager']), 
+  validate(mutationBaselineSchema),
   posTaxController.deleteTax
 );
 
@@ -584,6 +588,7 @@ router.get('/validate',
  */
 router.post('/cache/clear', 
   authorize(['admin', 'manager']), 
+  validate(mutationBaselineSchema),
   posTaxController.clearTaxCache
 );
 
@@ -719,6 +724,7 @@ router.put('/:taxId/exemptions/:exemptionId',
  */
 router.delete('/:taxId/exemptions/:exemptionId', 
   authorize(['admin', 'manager']), 
+  validate(mutationBaselineSchema),
   posTaxController.deleteTaxExemption
 );
 

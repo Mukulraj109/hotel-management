@@ -1,17 +1,21 @@
 import express from 'express';
+import Joi from 'joi';
 import mongoose from 'mongoose';
 import CheckoutInventory from '../models/CheckoutInventory.js';
 import Booking from '../models/Booking.js';
 import User from '../models/User.js';
 import Room from '../models/Room.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All test routes require admin authentication
 router.use(authenticate);
-router.use(authorize('admin'));
+router.use(authorizePolicy('testCheckouts', 'adminAccess'));
 
 // Test endpoint to compare checkout data sources
 router.get('/compare-checkouts', async (req, res) => {
@@ -259,7 +263,7 @@ router.get('/available-checkouts', async (req, res) => {
 });
 
 // Create a test checkout inventory record
-router.post('/create-test-checkout', async (req, res) => {
+router.post('/create-test-checkout', validate(mutationBaselineSchema), async (req, res) => {
   try {
     const hotelId = req.user?.hotelId;
     
@@ -359,7 +363,7 @@ router.get('/booking-statuses', async (req, res) => {
 });
 
 // Fix for checkout inventory: Create a checked-in booking
-router.post('/create-checked-in-booking', async (req, res) => {
+router.post('/create-checked-in-booking', validate(mutationBaselineSchema), async (req, res) => {
   try {
     const hotelId = req.user?.hotelId || '68b19648e35a38ee7b1d1828';
     logger.debug('Creating test booking for hotel', { hotelId });

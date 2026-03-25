@@ -1,9 +1,9 @@
 import express from 'express';
 import {
-    authenticate,
-    authorize
+    authenticate
 } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import inventoryIntegrationService from '../services/inventoryIntegrationService.js';
 import workflowAutomationService from '../services/workflowAutomationService.js';
 import {
@@ -15,14 +15,17 @@ import {
 import {
     ApplicationError
 } from '../middleware/errorHandler.js';
+import { validate } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
-router.use(authorize('admin', 'manager'));
+router.use(authorizePolicy('systemIntegration', 'modifyAccess'));
 
 /**
  * Get system integration health status
@@ -71,7 +74,7 @@ router.get('/health', catchAsync(async (req, res) => {
 /**
  * Trigger inventory reconciliation
  */
-router.post('/inventory/reconciliation', catchAsync(async (req, res) => {
+router.post('/inventory/reconciliation', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const {
         timeRange = 24
     } = req.body;
@@ -92,7 +95,7 @@ router.post('/inventory/reconciliation', catchAsync(async (req, res) => {
 /**
  * Test inventory integration
  */
-router.post('/inventory/test', catchAsync(async (req, res) => {
+router.post('/inventory/test', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const {
         itemId = 'test_item', quantity = 1
     } = req.body;
@@ -142,7 +145,7 @@ router.get('/automation/rules', catchAsync(async (req, res) => {
 /**
  * Update automation rule
  */
-router.put('/automation/rules/:ruleType/:ruleName', catchAsync(async (req, res) => {
+router.put('/automation/rules/:ruleType/:ruleName', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const {
         ruleType,
         ruleName
@@ -165,7 +168,7 @@ router.put('/automation/rules/:ruleType/:ruleName', catchAsync(async (req, res) 
 /**
  * Test workflow automation
  */
-router.post('/automation/test', catchAsync(async (req, res) => {
+router.post('/automation/test', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const {
         bypassAuditId
     } = req.body;
@@ -186,7 +189,7 @@ router.post('/automation/test', catchAsync(async (req, res) => {
 /**
  * Test notification system
  */
-router.post('/notifications/test', catchAsync(async (req, res) => {
+router.post('/notifications/test', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const {
         type = 'email',
             recipient = req.user.email,
@@ -271,7 +274,7 @@ router.get('/metrics', catchAsync(async (req, res) => {
 /**
  * Trigger system sync
  */
-router.post('/sync', catchAsync(async (req, res) => {
+router.post('/sync', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const {
         services = ['inventory', 'automation', 'notifications']
     } = req.body;
@@ -424,7 +427,7 @@ router.get('/logs', catchAsync(async (req, res) => {
 /**
  * Configure system integration settings
  */
-router.put('/settings', catchAsync(async (req, res) => {
+router.put('/settings', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const settings = req.body;
     const hotelId = req.user.hotelId;
 

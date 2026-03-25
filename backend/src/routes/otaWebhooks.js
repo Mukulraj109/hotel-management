@@ -1,4 +1,5 @@
 import express from 'express';
+import Joi from 'joi';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 import { authenticate } from '../middleware/auth.js';
@@ -9,8 +10,10 @@ import { Channel } from '../models/ChannelManager.js';
 import InventoryService from '../services/inventoryService.js';
 import logger from '../utils/logger.js';
 import { validateTransition } from '../utils/bookingStateMachine.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 /**
  * @swagger
@@ -123,6 +126,7 @@ const channelRateLimit = (req, res, next) => {
 
 // Main webhook handler
 router.post('/ota', 
+  validate(mutationBaselineSchema),
   verifyWebhookSignature,
   channelRateLimit,
   catchAsync(async (req, res) => {

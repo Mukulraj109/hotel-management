@@ -4,10 +4,12 @@ import Joi from 'joi';
 import DepartmentBudget from '../models/DepartmentBudget.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import financialRateLimiter from '../middleware/financialRateLimiter.js';
 import { validateFinancial } from '../middleware/financialValidation.js';
+import { validate } from '../middleware/validation.js';
 
 // Budget-specific validation schemas
 const budgetCreationSchema = Joi.object({
@@ -26,6 +28,7 @@ const spendingSchema = Joi.object({
   reference: Joi.string().max(200),
   hotelId: Joi.string().pattern(/^[0-9a-fA-F]{24}$/)
 }).options({ stripUnknown: true });
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 const router = express.Router();
 
@@ -33,6 +36,7 @@ const router = express.Router();
 router.use(financialRateLimiter);
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('departmentBudget', 'baseAccess'));
 
 /**
  * @swagger
@@ -273,7 +277,7 @@ router.get('/:department/trends', authorize('staff', 'admin'), catchAsync(async 
  *       201:
  *         description: Budget created successfully
  */
-router.post('/:department', authorize('admin', 'manager'), validateFinancial(budgetCreationSchema), catchAsync(async (req, res) => {
+router.post('/:department', authorize('admin', 'manager'), validate(mutationBaselineSchema), validateFinancial(budgetCreationSchema), catchAsync(async (req, res) => {
   const { department } = req.params;
   const { year, month, allocations } = req.body;
   const hotelId = req.user.role === 'manager' ? req.user.hotelId : req.body.hotelId;
@@ -367,7 +371,7 @@ router.post('/:department', authorize('admin', 'manager'), validateFinancial(bud
  *       200:
  *         description: Spending updated successfully
  */
-router.post('/:department/spending', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/:department/spending', authorize('admin', 'manager'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { department } = req.params;
   const { amount, category = 'supply_requests', year = new Date().getFullYear(), month } = req.body;
   const hotelId = req.user.role === 'manager' ? req.user.hotelId : req.body.hotelId;
@@ -420,7 +424,7 @@ router.post('/:department/spending', authorize('admin', 'manager'), catchAsync(a
  *       200:
  *         description: Commitments updated successfully
  */
-router.post('/:department/commitments', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/:department/commitments', authorize('admin', 'manager'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { department } = req.params;
   const { amount, type = 'pending_approvals', year = new Date().getFullYear(), month } = req.body;
   const hotelId = req.user.role === 'manager' ? req.user.hotelId : req.body.hotelId;
@@ -473,7 +477,7 @@ router.post('/:department/commitments', authorize('admin', 'manager'), catchAsyn
  *       200:
  *         description: Budget availability check
  */
-router.post('/:department/check-availability', catchAsync(async (req, res) => {
+router.post('/:department/check-availability', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { department } = req.params;
   const { amount, category = 'supply_requests', year = new Date().getFullYear(), month } = req.body;
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.body.hotelId;

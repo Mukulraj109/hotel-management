@@ -3,14 +3,18 @@ import channelLocalizationController from '../controllers/channelLocalizationCon
 import otaMonitoringService from '../services/otaMonitoringService.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import { body, param, query } from 'express-validator';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Authentication required for all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('channelLocalization', 'baseAccess'));
 
 // Validation schemas
 const hotelIdValidation = [
@@ -124,6 +128,7 @@ router.get('/hotels/:hotelId/channels',
  *         description: Channel configuration created successfully
  */
 router.post('/hotels/:hotelId/channels',
+  validate(mutationBaselineSchema),
   authorize(['admin', 'hotel_manager', 'frontdesk']),
   createChannelConfigValidation,
   channelLocalizationController.createChannelConfiguration
@@ -137,6 +142,7 @@ router.post('/hotels/:hotelId/channels',
  *     tags: [Channel Management]
  */
 router.put('/hotels/:hotelId/channels/:channelId',
+  validate(mutationBaselineSchema),
   authorize(['admin', 'hotel_manager', 'frontdesk']),
   updateChannelConfigValidation,
   channelLocalizationController.updateChannelConfiguration
@@ -150,6 +156,7 @@ router.put('/hotels/:hotelId/channels/:channelId',
  *     tags: [Channel Management]
  */
 router.delete('/hotels/:hotelId/channels/:channelId',
+  validate(mutationBaselineSchema),
   authorize(['admin', 'hotel_manager', 'frontdesk']),
   updateChannelConfigValidation,
   channelLocalizationController.deleteChannelConfiguration
@@ -163,6 +170,7 @@ router.delete('/hotels/:hotelId/channels/:channelId',
  *     tags: [Channel Management]
  */
 router.post('/hotels/:hotelId/channels/:channelId/test',
+  validate(mutationBaselineSchema),
   authorize(['admin', 'hotel_manager', 'channel_manager', 'frontdesk']),
   updateChannelConfigValidation,
   channelLocalizationController.testChannelConnection
@@ -178,6 +186,7 @@ router.post('/hotels/:hotelId/channels/:channelId/test',
  *     tags: [Rate Distribution]
  */
 router.post('/hotels/:hotelId/distribute-rates',
+  validate(mutationBaselineSchema),
   authorize(['admin', 'hotel_manager', 'revenue_manager', 'frontdesk']),
   rateDistributionValidation,
   channelLocalizationController.distributeRates
@@ -206,6 +215,7 @@ router.get('/hotels/:hotelId/distribution-status',
  *     tags: [Content Translation]
  */
 router.post('/hotels/:hotelId/translate-content',
+  validate(mutationBaselineSchema),
   authorize(['admin', 'hotel_manager', 'content_manager', 'frontdesk']),
   contentTranslationValidation,
   channelLocalizationController.translateContent
@@ -219,6 +229,7 @@ router.post('/hotels/:hotelId/translate-content',
  *     tags: [Content Translation]
  */
 router.post('/hotels/:hotelId/queue-translation',
+  validate(mutationBaselineSchema),
   authorize(['admin', 'hotel_manager', 'content_manager', 'frontdesk']),
   contentTranslationValidation,
   channelLocalizationController.queueContentTranslation
@@ -381,6 +392,7 @@ router.get('/hotels/:hotelId/translation-analytics',
  *     tags: [Bulk Operations]
  */
 router.post('/hotels/:hotelId/sync-all',
+  validate(mutationBaselineSchema),
   authorize(['admin', 'hotel_manager', 'frontdesk']),
   [...hotelIdValidation,
    body('syncType').optional().isIn(['full', 'incremental', 'rates_only', 'content_only']),
@@ -391,6 +403,7 @@ router.post('/hotels/:hotelId/sync-all',
 
 // Webhook endpoints for channel notifications
 router.post('/webhooks/channels/:channelId',
+  validate(mutationBaselineSchema),
   // Special webhook authentication middleware would go here
   param('channelId').isString(),
   async (req, res) => {

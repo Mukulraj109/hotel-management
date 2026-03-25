@@ -1,4 +1,5 @@
 import express from 'express';
+import Joi from 'joi';
 import {
   handleOTAAmendmentWebhook,
   getPendingAmendments,
@@ -12,9 +13,11 @@ import {
 } from '../controllers/otaAmendmentController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
-import { validateBookingId } from '../middleware/validation.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate, validateBookingId } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 /**
  * @swagger
@@ -107,11 +110,12 @@ const router = express.Router();
  *       500:
  *         description: Server error
  */
-router.post('/webhook', handleOTAAmendmentWebhook);
+router.post('/webhook', validate(mutationBaselineSchema), handleOTAAmendmentWebhook);
 
 // Protected routes - require authentication
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('otaAmendments', 'baseAccess'));
 
 /**
  * @swagger
@@ -260,6 +264,7 @@ router.get('/booking/:bookingId/status-history', validateBookingId, getBookingSt
  *         description: Booking or amendment not found
  */
 router.post('/:bookingId/:amendmentId/approve', 
+  validate(mutationBaselineSchema),
   validateBookingId, 
   authorize('admin', 'front-desk', 'reservations'), 
   approveAmendment
@@ -311,6 +316,7 @@ router.post('/:bookingId/:amendmentId/approve',
  *         description: Booking or amendment not found
  */
 router.post('/:bookingId/:amendmentId/reject', 
+  validate(mutationBaselineSchema),
   validateBookingId, 
   authorize('admin', 'front-desk', 'reservations'), 
   rejectAmendment
@@ -362,6 +368,7 @@ router.post('/:bookingId/:amendmentId/reject',
  *         description: Booking not found
  */
 router.post('/booking/:bookingId/change-status', 
+  validate(mutationBaselineSchema),
   validateBookingId, 
   authorize('admin', 'front-desk'), 
   changeBookingStatus
@@ -410,6 +417,7 @@ router.post('/booking/:bookingId/change-status',
  *         description: Invalid request data
  */
 router.post('/bulk', 
+  validate(mutationBaselineSchema),
   authorize('admin', 'reservations'), 
   processBulkAmendments
 );

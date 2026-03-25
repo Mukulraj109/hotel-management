@@ -1,15 +1,20 @@
 import express from 'express';
+import Joi from 'joi';
 import RequestTemplate from '../models/RequestTemplate.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('requestTemplates', 'baseAccess'));
 
 /**
  * @swagger
@@ -98,7 +103,7 @@ router.get('/:id', catchAsync(async (req, res) => {
  *     summary: Create new request template
  *     tags: [Request Templates]
  */
-router.post('/', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/', authorize('admin', 'manager'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
 
   const templateData = {
@@ -123,7 +128,7 @@ router.post('/', authorize('admin', 'manager'), catchAsync(async (req, res) => {
  *     summary: Update request template
  *     tags: [Request Templates]
  */
-router.put('/:id', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.put('/:id', authorize('admin', 'manager'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
 
   const template = await RequestTemplate.findOneAndUpdate(
@@ -150,7 +155,7 @@ router.put('/:id', authorize('admin', 'manager'), catchAsync(async (req, res) =>
  *     summary: Deactivate request template
  *     tags: [Request Templates]
  */
-router.delete('/:id', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.delete('/:id', authorize('admin', 'manager'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
 
   const template = await RequestTemplate.findOneAndUpdate(
@@ -176,7 +181,7 @@ router.delete('/:id', authorize('admin', 'manager'), catchAsync(async (req, res)
  *     summary: Increment template use count
  *     tags: [Request Templates]
  */
-router.post('/:id/use', catchAsync(async (req, res) => {
+router.post('/:id/use', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
 
   const template = await RequestTemplate.findOneAndUpdate(

@@ -172,7 +172,10 @@ class OTAAmendmentService {
           roomIds,
           requestedChanges.checkIn || booking.checkIn,
           requestedChanges.checkOut || booking.checkOut,
-          booking._id
+          {
+            hotelId: booking.hotelId,
+            excludeBookingId: booking._id
+          }
         );
 
         if (overlapping.length > 0) {
@@ -225,7 +228,10 @@ class OTAAmendmentService {
           requestedRoomIds,
           booking.checkIn,
           booking.checkOut,
-          booking._id
+          {
+            hotelId: booking.hotelId,
+            excludeBookingId: booking._id
+          }
         );
 
         if (overlapping.length > 0) {

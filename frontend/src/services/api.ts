@@ -16,6 +16,44 @@ const api = axios.create({
   },
 });
 
+const IDEMPOTENT_MUTATION_PATTERNS = [
+  /^\/payments\/intent$/,
+  /^\/payments\/confirm$/,
+  /^\/payments\/extra-person-charges\/intent$/,
+  /^\/payments\/settlement\/intent$/,
+  /^\/payments\/refund$/,
+  /^\/payments\/room-charge$/,
+  /^\/payments\/cash-on-delivery$/,
+  /^\/invoices$/,
+  /^\/invoices\/[^/]+$/,
+  /^\/invoices\/[^/]+\/payments$/,
+  /^\/invoices\/[^/]+\/discounts$/,
+  /^\/invoices\/[^/]+\/split-billing$/,
+  /^\/invoices\/[^/]+\/splits\/[^/]+\/pay$/,
+  /^\/invoices\/supplementary\/extra-person-charges$/,
+  /^\/invoices\/supplementary\/settlement$/,
+  /^\/invoices\/[^/]+\/add-extra-charges$/
+];
+
+const createIdempotencyKey = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `idem_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+};
+
+const isIdempotentProtectedMutation = (config: { method?: string; url?: string }) => {
+  const method = (config.method || '').toLowerCase();
+  if (!['post', 'put', 'patch'].includes(method)) {
+    return false;
+  }
+
+  const rawUrl = config.url || '';
+  const cleanPath = rawUrl.split('?')[0].replace(/^https?:\/\/[^/]+/i, '');
+
+  return IDEMPOTENT_MUTATION_PATTERNS.some((pattern) => pattern.test(cleanPath));
+};
+
 // Request interceptor to add CSRF token and selected property
 api.interceptors.request.use(
   (config) => {
@@ -40,18 +78,46 @@ api.interceptors.request.use(
     }
 
     // Add selected property ID to requests if available
+    // BUT: Skip for auth endpoints and certain other endpoints that don't need it
     if (selectedPropertyId && selectedPropertyId !== 'null') {
       if (config.method?.toUpperCase() === 'GET') {
-        config.params = config.params || {};
-        const urlHasHotelId = config.url?.includes('hotelId=');
-        const paramsHaveHotelId = config.params.hotelId;
-        if (!urlHasHotelId && !paramsHaveHotelId) {
-          config.params.hotelId = selectedPropertyId;
+        const skipHotelIdEndpoints = [
+          '/auth/me',        // Getting current user - doesn't need hotelId
+          '/auth/login',     // Login - no auth context yet
+          '/auth/register',  // Register - no auth context yet
+          '/auth/logout',    // Logout - user context not needed
+        ];
+        
+        const shouldSkipHotelId = skipHotelIdEndpoints.some(endpoint => 
+          config.url?.includes(endpoint)
+        );
+
+        if (!shouldSkipHotelId) {
+          config.params = config.params || {};
+          const urlHasHotelId = config.url?.includes('hotelId=');
+          const paramsHaveHotelId = config.params.hotelId;
+          if (!urlHasHotelId && !paramsHaveHotelId) {
+            config.params.hotelId = selectedPropertyId;
+          }
         }
       } else if (['POST', 'PUT', 'PATCH'].includes(config.method?.toUpperCase() || '')) {
         if (config.data && typeof config.data === 'object' && !config.data.hotelId) {
           config.data.hotelId = selectedPropertyId;
         }
+      }
+    }
+
+    // Attach idempotency key for payment/invoice financial mutations.
+    // Keep existing key if caller already supplied one.
+    if (isIdempotentProtectedMutation(config)) {
+      const hasIdempotencyKey =
+        !!config.headers['Idempotency-Key'] ||
+        !!config.headers['idempotency-key'] ||
+        !!config.headers['X-Idempotency-Key'] ||
+        !!config.headers['x-idempotency-key'];
+
+      if (!hasIdempotencyKey) {
+        config.headers['Idempotency-Key'] = createIdempotencyKey();
       }
     }
 

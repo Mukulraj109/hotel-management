@@ -1,6 +1,9 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import Joi from 'joi';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import {
   createApprovalRequest,
   getApprovalRequests,
@@ -13,6 +16,7 @@ import {
 } from '../controllers/approvalController.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 /**
  * @swagger
@@ -70,7 +74,8 @@ router.post(
   '/',
   authenticate,
   ensurePropertyAccess,
-  authorize('frontdesk', 'manager', 'admin'),
+  authorizePolicy('approvals', 'frontdeskAccess'),
+  validate(mutationBaselineSchema),
   createApprovalRequest
 );
 
@@ -132,7 +137,7 @@ router.get(
   '/',
   authenticate,
   ensurePropertyAccess,
-  authorize('frontdesk', 'manager', 'admin'),
+  authorizePolicy('approvals', 'frontdeskAccess'),
   getApprovalRequests
 );
 
@@ -160,7 +165,7 @@ router.get(
   '/my-requests',
   authenticate,
   ensurePropertyAccess,
-  authorize('frontdesk', 'manager', 'admin'),
+  authorizePolicy('approvals', 'frontdeskAccess'),
   getApprovalRequests
 );
 
@@ -182,7 +187,7 @@ router.get(
   '/pending-count',
   authenticate,
   ensurePropertyAccess,
-  authorize('frontdesk', 'manager', 'admin'),
+  authorizePolicy('approvals', 'frontdeskAccess'),
   getPendingCount
 );
 
@@ -217,7 +222,7 @@ router.get(
   '/stats',
   authenticate,
   ensurePropertyAccess,
-  authorize('manager', 'admin'),
+  authorizePolicy('approvals', 'managerAccess'),
   getApprovalStats
 );
 
@@ -249,7 +254,7 @@ router.get(
   '/:id',
   authenticate,
   ensurePropertyAccess,
-  authorize('frontdesk', 'manager', 'admin'),
+  authorizePolicy('approvals', 'frontdeskAccess'),
   getApprovalRequestById
 );
 
@@ -291,7 +296,8 @@ router.put(
   '/:id/approve',
   authenticate,
   ensurePropertyAccess,
-  authorize('manager', 'admin'),
+  authorizePolicy('approvals', 'managerAccess'),
+  validate(mutationBaselineSchema),
   approveRequest
 );
 
@@ -336,7 +342,8 @@ router.put(
   '/:id/reject',
   authenticate,
   ensurePropertyAccess,
-  authorize('manager', 'admin'),
+  authorizePolicy('approvals', 'managerAccess'),
+  validate(mutationBaselineSchema),
   rejectRequest
 );
 
@@ -370,7 +377,8 @@ router.put(
   '/:id/cancel',
   authenticate,
   ensurePropertyAccess,
-  authorize('frontdesk', 'manager', 'admin'),
+  authorizePolicy('approvals', 'frontdeskAccess'),
+  validate(mutationBaselineSchema),
   cancelRequest
 );
 
@@ -404,7 +412,8 @@ router.delete(
   '/:id',
   authenticate,
   ensurePropertyAccess,
-  authorize('frontdesk', 'manager', 'admin'),
+  authorizePolicy('approvals', 'frontdeskAccess'),
+  validate(mutationBaselineSchema),
   cancelRequest
 );
 

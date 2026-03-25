@@ -1,23 +1,35 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { BookingComConnector } from '../services/bookingComConnector.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Note: OTA routes apply middleware per-route as some need different access levels
 
 // Quick setup endpoint for testing - enable Booking.com integration
 router.post('/setup/:hotelId',
   authenticate,
-  authorize('admin'),
+  authorizePolicy('ota', 'adminAccess'),
   ensurePropertyAccess,
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { hotelId } = req.params;
     
     try {
+      if (!process.env.OTA_CLIENT_ID || !process.env.OTA_CLIENT_SECRET) {
+        throw new ApplicationError(
+          'OTA client credentials are not configured. Set OTA_CLIENT_ID and OTA_CLIENT_SECRET before enabling OTA setup.',
+          503
+        );
+      }
+
       const Hotel = (await import('../models/Hotel.js')).default;
 
       // Atomic update: set OTA connections
@@ -29,8 +41,8 @@ router.post('/setup/:hotelId',
               bookingCom: {
                 isEnabled: true,
                 credentials: {
-                  clientId: process.env.OTA_CLIENT_ID || 'configure-in-env',
-                  clientSecret: process.env.OTA_CLIENT_SECRET || 'configure-in-env',
+                  clientId: process.env.OTA_CLIENT_ID,
+                  clientSecret: process.env.OTA_CLIENT_SECRET,
                   hotelId: 'booking_com_hotel_123'
                 },
                 lastSync: null
@@ -61,8 +73,9 @@ router.post('/setup/:hotelId',
 // Manual sync trigger for Booking.com
 router.post('/bookingcom/sync',
   authenticate,
-  authorize('admin'),
+  authorizePolicy('ota', 'adminAccess'),
   ensurePropertyAccess,
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { hotelId } = req.body;
     
@@ -91,7 +104,7 @@ router.post('/bookingcom/sync',
 // Get Booking.com sync status
 router.get('/bookingcom/status/:hotelId',
   authenticate,
-  authorize('admin', 'staff'),
+  authorizePolicy('ota', 'staffAccess'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { hotelId } = req.params;
@@ -113,7 +126,7 @@ router.get('/bookingcom/status/:hotelId',
 // Get OTA sync history
 router.get('/sync-history',
   authenticate,
-  authorize('admin', 'staff'),
+  authorizePolicy('ota', 'staffAccess'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { hotelId, page = 1, limit = 10, provider, status } = req.query;
@@ -179,7 +192,7 @@ router.get('/sync-history',
 // Get OTA configuration for a hotel
 router.get('/config/:hotelId',
   authenticate,
-  authorize('admin'),
+  authorizePolicy('ota', 'adminAccess'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { hotelId } = req.params;
@@ -252,8 +265,9 @@ router.get('/config/:hotelId',
 // Update OTA configuration
 router.patch('/config/:hotelId',
   authenticate,
-  authorize('admin'),
+  authorizePolicy('ota', 'adminAccess'),
   ensurePropertyAccess,
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { hotelId } = req.params;
     const { provider, config } = req.body;
@@ -304,7 +318,7 @@ router.patch('/config/:hotelId',
 // Get OTA statistics
 router.get('/stats/:hotelId',
   authenticate,
-  authorize('admin', 'staff'),
+  authorizePolicy('ota', 'staffAccess'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const { hotelId } = req.params;

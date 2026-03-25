@@ -73,7 +73,8 @@ class AdminMaintenanceService {
 
   private async apiRequest<T>(endpoint: string, options: { method?: string; data?: Record<string, unknown>; basePath?: string } = {}): Promise<ApiResponse<T>> {
     try {
-      const basePath = options.basePath || this.basePath;
+      // Properly handle basePath - empty string should override the default
+      const basePath = options.basePath !== undefined ? options.basePath : this.basePath;
       const url = `${basePath}${endpoint}`;
 
       let response;
@@ -201,9 +202,9 @@ class AdminMaintenanceService {
       return this.hotelIdCache;
     }
 
-    // Get hotelId from user profile API
+    // Get hotelId from user profile API using the configured api instance
     try {
-      const response = await this.apiRequest('/auth/me', { basePath: '' });
+      const response = await api.get('/auth/me');
       const userData = response.data?.user;
 
       if (userData?.hotelId) {

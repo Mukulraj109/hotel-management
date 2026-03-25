@@ -5,19 +5,23 @@ import NotificationTemplate from '../models/NotificationTemplate.js';
 import User from '../models/User.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
+import Joi from 'joi';
 import { notificationEmitter } from '../services/notificationEmitter.js';
 import optimizedNotificationService from '../services/optimizedNotificationService.js';
 import rateLimiter from '../services/rateLimiter.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication and property access middleware to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('notifications', 'baseAccess'));
 
 // GET /api/v1/notifications - Get user notifications with pagination and filters
 router.get('/', catchAsync(async (req, res, next) => {
@@ -710,7 +714,7 @@ router.get('/:id', catchAsync(async (req, res, next) => {
 }));
 
 // PATCH /api/v1/notifications/:id/read - Mark notification as read
-router.patch('/:id/read', catchAsync(async (req, res, next) => {
+router.patch('/:id/read', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user._id;
   
@@ -743,7 +747,7 @@ router.post('/mark-read', validate(schemas.markNotificationsRead), catchAsync(as
 }));
 
 // POST /api/v1/notifications/mark-all-read - Mark all notifications as read
-router.post('/mark-all-read', catchAsync(async (req, res, next) => {
+router.post('/mark-all-read', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const userId = req.user._id;
   
   const result = await Notification.markAllAsRead(userId);
@@ -756,7 +760,7 @@ router.post('/mark-all-read', catchAsync(async (req, res, next) => {
 }));
 
 // DELETE /api/v1/notifications/:id - Delete notification
-router.delete('/:id', catchAsync(async (req, res, next) => {
+router.delete('/:id', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user._id;
   
@@ -846,7 +850,7 @@ router.post('/test', validate(schemas.sendTestNotification), catchAsync(async (r
 }));
 
 // POST /api/v1/notifications/subscribe - Subscribe to notification types
-router.post('/subscribe', catchAsync(async (req, res, next) => {
+router.post('/subscribe', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const userId = req.user._id;
   const { subscriptions } = req.body;
 
@@ -1140,7 +1144,7 @@ router.get('/templates/:id', catchAsync(async (req, res, next) => {
 }));
 
 // POST /api/v1/notifications/templates - Create new template
-router.post('/templates', catchAsync(async (req, res, next) => {
+router.post('/templates', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const hotelId = req.user.hotelId;
   const userId = req.user._id;
 
@@ -1171,7 +1175,7 @@ router.post('/templates', catchAsync(async (req, res, next) => {
 }));
 
 // PATCH /api/v1/notifications/templates/:id - Update template
-router.patch('/templates/:id', catchAsync(async (req, res, next) => {
+router.patch('/templates/:id', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const hotelId = req.user.hotelId;
   const userId = req.user._id;
@@ -1219,7 +1223,7 @@ router.patch('/templates/:id', catchAsync(async (req, res, next) => {
 }));
 
 // DELETE /api/v1/notifications/templates/:id - Delete (deactivate) template
-router.delete('/templates/:id', catchAsync(async (req, res, next) => {
+router.delete('/templates/:id', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const hotelId = req.user.hotelId;
 
@@ -1254,7 +1258,7 @@ router.delete('/templates/:id', catchAsync(async (req, res, next) => {
 }));
 
 // POST /api/v1/notifications/templates/:id/preview - Preview template with variables
-router.post('/templates/:id/preview', catchAsync(async (req, res, next) => {
+router.post('/templates/:id/preview', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const { variables = {} } = req.body;
   const hotelId = req.user.hotelId;
@@ -1345,7 +1349,7 @@ router.get('/templates/analytics/performance', catchAsync(async (req, res, next)
 }));
 
 // POST /api/v1/notifications/templates/initialize - Initialize default templates for hotel
-router.post('/templates/initialize', catchAsync(async (req, res, next) => {
+router.post('/templates/initialize', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const hotelId = req.user.hotelId;
   const userId = req.user._id;
 
@@ -1562,7 +1566,7 @@ router.get('/monitoring/rate-limits', catchAsync(async (req, res, next) => {
 }));
 
 // POST /api/v1/notifications/monitoring/rate-limits/reset - Reset rate limits
-router.post('/monitoring/rate-limits/reset', catchAsync(async (req, res, next) => {
+router.post('/monitoring/rate-limits/reset', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   // Check permissions - only admin can reset rate limits
   if (req.user.role !== 'admin') {
     throw new ApplicationError('Insufficient permissions to reset rate limits', 403);
@@ -1704,7 +1708,7 @@ router.get('/monitoring/metrics', catchAsync(async (req, res, next) => {
 }));
 
 // POST /api/v1/notifications/monitoring/cleanup - Trigger cleanup
-router.post('/monitoring/cleanup', catchAsync(async (req, res, next) => {
+router.post('/monitoring/cleanup', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   // Check permissions - only admin can trigger cleanup
   if (req.user.role !== 'admin') {
     throw new ApplicationError('Insufficient permissions to trigger cleanup', 403);
@@ -1720,7 +1724,7 @@ router.post('/monitoring/cleanup', catchAsync(async (req, res, next) => {
 }));
 
 // POST /api/v1/notifications/monitoring/flush-queue - Force flush notification queue
-router.post('/monitoring/flush-queue', catchAsync(async (req, res, next) => {
+router.post('/monitoring/flush-queue', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   // Check permissions - only admin can flush queue
   if (req.user.role !== 'admin') {
     throw new ApplicationError('Insufficient permissions to flush queue', 403);

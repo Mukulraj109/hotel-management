@@ -1,7 +1,8 @@
 import express from 'express';
 import dataPrivacyController from '../controllers/dataPrivacyController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { requirePermission, requireRoleLevel } from '../middleware/permissionCheck.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
@@ -91,6 +92,7 @@ const validateProcessingSchema = Joi.object({
 // Authentication required for most routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('dataPrivacy', 'baseAccess'));
 
 /**
  * @swagger

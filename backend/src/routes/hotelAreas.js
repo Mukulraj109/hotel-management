@@ -1,17 +1,22 @@
 import express from 'express';
+import Joi from 'joi';
 import { body, param, query } from 'express-validator';
 import hotelAreaController from '../controllers/hotelAreaController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import hotelMiddleware from '../middleware/hotelMiddleware.js';
 import roleMiddleware from '../middleware/roleMiddleware.js';
+import { validate } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Authentication middleware for all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('hotelAreas', 'baseAccess'));
 
 // Validation schemas
 const createAreaValidation = [
@@ -411,6 +416,7 @@ router.get(
 // Create new hotel area
 router.post(
   '/:hotelId/areas',
+  validate(mutationBaselineSchema),
   createAreaValidation,
   hotelMiddleware,
   roleMiddleware(['admin', 'manager']),
@@ -420,6 +426,7 @@ router.post(
 // Update hotel area
 router.put(
   '/areas/:id',
+  validate(mutationBaselineSchema),
   updateAreaValidation,
   roleMiddleware(['admin', 'manager']),
   hotelAreaController.updateArea
@@ -428,6 +435,7 @@ router.put(
 // Delete hotel area
 router.delete(
   '/areas/:id',
+  validate(mutationBaselineSchema),
   param('id').isMongoId(),
   roleMiddleware(['admin']),
   hotelAreaController.deleteArea
@@ -436,6 +444,7 @@ router.delete(
 // Bulk update area status
 router.patch(
   '/:hotelId/areas/bulk-status',
+  validate(mutationBaselineSchema),
   bulkUpdateValidation,
   hotelMiddleware,
   roleMiddleware(['admin', 'manager']),
@@ -445,6 +454,7 @@ router.patch(
 // Update area room counts
 router.patch(
   '/areas/:id/room-counts',
+  validate(mutationBaselineSchema),
   param('id').isMongoId(),
   roleMiddleware(['admin', 'manager', 'housekeeping']),
   hotelAreaController.updateRoomCounts
@@ -453,6 +463,7 @@ router.patch(
 // Update area statistics
 router.patch(
   '/areas/:id/statistics',
+  validate(mutationBaselineSchema),
   param('id').isMongoId(),
   roleMiddleware(['admin', 'manager']),
   hotelAreaController.updateAreaStatistics
@@ -461,6 +472,7 @@ router.patch(
 // Assign staff to area
 router.patch(
   '/areas/:id/assign-staff',
+  validate(mutationBaselineSchema),
   assignStaffValidation,
   roleMiddleware(['admin', 'manager']),
   hotelAreaController.assignStaff

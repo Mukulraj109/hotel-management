@@ -1,12 +1,15 @@
 import express from 'express';
+import Joi from 'joi';
 import roomTaxController from '../controllers/roomTaxController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import { body, param, query } from 'express-validator';
 import financialRateLimiter from '../middleware/financialRateLimiter.js';
 
 const router = express.Router({ mergeParams: true });
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Rate limiting for financial tax operations
 router.use(financialRateLimiter);
@@ -206,6 +209,7 @@ const idParamValidation = [
 // All routes require authentication
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('roomTax', 'baseAccess'));
 
 // Public API endpoints for tax information (accessible to all authenticated users)
 
@@ -222,6 +226,7 @@ router.get('/hotels/:hotelId/applicable',
 
 // Calculate taxes for booking preview (used by booking engine)
 router.post('/hotels/:hotelId/calculate', 
+  validate(mutationBaselineSchema),
   paramValidation,
   taxCalculationValidation,
   roomTaxController.calculateTaxes
@@ -253,6 +258,7 @@ router.get('/:id',
 // Create new tax (admin and finance only)
 router.post('/hotels/:hotelId', 
   authorize(['admin', 'finance']),
+  validate(mutationBaselineSchema),
   paramValidation,
   createTaxValidation,
   roomTaxController.createRoomTax
@@ -261,6 +267,7 @@ router.post('/hotels/:hotelId',
 // Update tax (admin and finance only)
 router.put('/:id', 
   authorize(['admin', 'finance']),
+  validate(mutationBaselineSchema),
   updateTaxValidation,
   roomTaxController.updateRoomTax
 );
@@ -268,6 +275,7 @@ router.put('/:id',
 // Bulk update tax status (admin and finance only)
 router.patch('/hotels/:hotelId/bulk-update', 
   authorize(['admin', 'finance']),
+  validate(mutationBaselineSchema),
   paramValidation,
   bulkUpdateValidation,
   roomTaxController.bulkUpdateTaxStatus
@@ -276,6 +284,7 @@ router.patch('/hotels/:hotelId/bulk-update',
 // Delete/deactivate tax (admin only)
 router.delete('/:id', 
   authorize(['admin']),
+  validate(mutationBaselineSchema),
   idParamValidation,
   roomTaxController.deleteRoomTax
 );

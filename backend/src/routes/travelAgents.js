@@ -26,14 +26,16 @@ import {
   getAgentMultiBookings,
   getMultiBookingAnalytics
 } from '../controllers/multiBookingController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Validation schemas
 const registerTravelAgentSchema = Joi.object({
@@ -144,41 +146,41 @@ router.get('/me/bookings', getMyBookings);
 
 // Admin/Staff routes for managing travel agents
 router.post('/',
-  authorize('admin', 'manager'),
+  authorizePolicy('travelAgents', 'manageAccess'),
   validate(registerTravelAgentSchema),
   registerTravelAgent
 );
 
 router.get('/',
-  authorize('admin', 'manager', 'staff', 'frontdesk'),
+  authorizePolicy('travelAgents', 'opsAccess'),
   getAllTravelAgents
 );
 
 router.get('/:id',
-  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
+  authorizePolicy('travelAgents', 'allAgentAccess'),
   getTravelAgentById
 );
 
 router.put('/:id',
-  authorize('admin', 'manager', 'travel_agent'),
+  authorizePolicy('travelAgents', 'agentManageAccess'),
   validate(updateTravelAgentSchema),
   updateTravelAgent
 );
 
 router.patch('/:id/status',
-  authorize('admin', 'manager'),
+  authorizePolicy('travelAgents', 'manageAccess'),
   validate(updateStatusSchema),
   updateTravelAgentStatus
 );
 
 router.get('/:id/performance',
-  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
+  authorizePolicy('travelAgents', 'allAgentAccess'),
   getTravelAgentPerformance
 );
 
 // Multi-booking routes
 router.post('/multi-booking',
-  authorize('admin', 'manager', 'travel_agent'),
+  authorizePolicy('travelAgents', 'agentManageAccess'),
   (req, res, next) => {
     // Custom validation for multi-booking
     const { error } = schemas.createMultiBooking.validate(req.body);
@@ -206,17 +208,17 @@ router.post('/multi-booking',
 );
 
 router.get('/multi-booking',
-  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
+  authorizePolicy('travelAgents', 'allAgentAccess'),
   getAgentMultiBookings
 );
 
 router.get('/multi-booking/analytics',
-  authorize('admin', 'manager', 'staff', 'frontdesk'),
+  authorizePolicy('travelAgents', 'opsAccess'),
   getMultiBookingAnalytics
 );
 
 router.post('/multi-booking/calculate-pricing',
-  authorize('admin', 'manager', 'frontdesk', 'travel_agent'),
+  authorizePolicy('travelAgents', 'frontdeskAgentAccess'),
   (req, res, next) => {
     // Custom validation for bulk pricing calculation
     const { error } = schemas.calculateBulkPricing.validate(req.body);
@@ -244,57 +246,60 @@ router.post('/multi-booking/calculate-pricing',
 );
 
 router.get('/multi-booking/:id',
-  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
+  authorizePolicy('travelAgents', 'allAgentAccess'),
   getMultiBookingById
 );
 
 router.patch('/multi-booking/:id/status',
-  authorize('admin', 'manager'),
+  authorizePolicy('travelAgents', 'manageAccess'),
   validate(schemas.updateMultiBookingStatus),
   updateMultiBookingStatus
 );
 
 router.post('/multi-booking/:id/rollback',
-  authorize('admin', 'manager'),
+  authorizePolicy('travelAgents', 'manageAccess'),
   validate(schemas.rollbackMultiBooking),
   rollbackFailedBookings
 );
 
 // Export routes
 router.post('/export/bookings',
-  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
+  authorizePolicy('travelAgents', 'allAgentAccess'),
+  validate(mutationBaselineSchema),
   exportBookings
 );
 
 router.post('/export/commission-report',
-  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
+  authorizePolicy('travelAgents', 'allAgentAccess'),
+  validate(mutationBaselineSchema),
   generateCommissionReport
 );
 
 router.post('/export/batch',
-  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
+  authorizePolicy('travelAgents', 'allAgentAccess'),
+  validate(mutationBaselineSchema),
   createBatchExport
 );
 
 // Analytics routes
 router.get('/analytics/trends',
-  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
+  authorizePolicy('travelAgents', 'allAgentAccess'),
   getBookingTrends
 );
 
 router.get('/analytics/forecast',
-  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
+  authorizePolicy('travelAgents', 'allAgentAccess'),
   getRevenueForecast
 );
 
 router.get('/analytics/performance',
-  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
+  authorizePolicy('travelAgents', 'allAgentAccess'),
   getPerformanceMetrics
 );
 
 // Download route
 router.get('/download/:filename',
-  authorize('admin', 'manager', 'staff', 'frontdesk', 'travel_agent'),
+  authorizePolicy('travelAgents', 'allAgentAccess'),
   downloadFile
 );
 

@@ -21,40 +21,44 @@ import {
 } from '../controllers/centralizedRateController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
-import authorize from '../middleware/authorize.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true);
 
 // Apply authentication to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('centralizedRates', 'baseAccess'));
 
 // Rate CRUD operations
-router.post('/', authorize(['admin', 'rate_manager']), createRate);
+router.post('/', authorizePolicy('centralizedRates', 'manageAccess'), validate(mutationBaselineSchema), createRate);
 router.get('/', getRates);
 router.get('/:rateId', getRateById);
-router.put('/:rateId', authorize(['admin', 'rate_manager']), updateRate);
-router.delete('/:rateId', authorize(['admin', 'rate_manager']), deleteRate);
+router.put('/:rateId', authorizePolicy('centralizedRates', 'manageAccess'), validate(mutationBaselineSchema), updateRate);
+router.delete('/:rateId', authorizePolicy('centralizedRates', 'manageAccess'), validate(mutationBaselineSchema), deleteRate);
 
 // Rate operations
-router.post('/:rateId/distribute', authorize(['admin', 'rate_manager']), distributeRate);
-router.post('/:rateId/calculate', calculateRate);
+router.post('/:rateId/distribute', authorizePolicy('centralizedRates', 'manageAccess'), validate(mutationBaselineSchema), distributeRate);
+router.post('/:rateId/calculate', validate(mutationBaselineSchema), calculateRate);
 router.get('/:rateId/validate', validateRate);
-router.post('/:rateId/duplicate', authorize(['admin', 'rate_manager']), duplicateRate);
-router.patch('/:rateId/status', authorize(['admin', 'rate_manager']), updateRateStatus);
+router.post('/:rateId/duplicate', authorizePolicy('centralizedRates', 'manageAccess'), validate(mutationBaselineSchema), duplicateRate);
+router.patch('/:rateId/status', authorizePolicy('centralizedRates', 'manageAccess'), validate(mutationBaselineSchema), updateRateStatus);
 
 // Distribution and sync
-router.post('/:rateId/preview-distribution', previewRateDistribution);
-router.post('/group/:groupId/sync', authorize(['admin', 'rate_manager']), syncRates);
+router.post('/:rateId/preview-distribution', validate(mutationBaselineSchema), previewRateDistribution);
+router.post('/group/:groupId/sync', authorizePolicy('centralizedRates', 'manageAccess'), validate(mutationBaselineSchema), syncRates);
 
 // Analytics and reporting
 router.get('/:rateId/analytics', getRateAnalytics);
 router.get('/:rateId/history', getRateHistory);
 router.get('/group/:groupId/dashboard', getGroupDashboard);
-router.get('/export', authorize(['admin', 'rate_manager']), exportRates);
+router.get('/export', authorizePolicy('centralizedRates', 'manageAccess'), exportRates);
 
 // Conflict management
 router.get('/conflicts', getConflicts);
-router.post('/conflicts/:conflictId/resolve', authorize(['admin', 'rate_manager']), resolveConflict);
+router.post('/conflicts/:conflictId/resolve', authorizePolicy('centralizedRates', 'manageAccess'), validate(mutationBaselineSchema), resolveConflict);
 
 export default router;

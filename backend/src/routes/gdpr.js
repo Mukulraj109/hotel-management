@@ -2,6 +2,7 @@ import express from 'express';
 import gdprController from '../controllers/gdprController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
 
@@ -39,10 +40,12 @@ const dataRequestProcessSchema = Joi.object({
   action: Joi.string().valid('approve', 'reject', 'process').required(),
   notes: Joi.string().optional()
 });
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Authentication required for all GDPR routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('gdpr', 'baseAccess'));
 
 // User data subject rights endpoints
 
@@ -162,6 +165,7 @@ router.get('/consent/history',
  *         description: Data access request completed
  */
 router.post('/data/access',
+  validate(mutationBaselineSchema),
   gdprController.requestDataAccess
 );
 
@@ -257,6 +261,7 @@ router.post('/data/erasure',
  *         description: Portable data export generated
  */
 router.post('/data/portability',
+  validate(mutationBaselineSchema),
   validate(portabilitySchema),
   gdprController.requestDataPortability
 );
@@ -463,6 +468,7 @@ router.get('/admin/data-requests/:requestId',
  */
 router.post('/admin/data-requests/:requestId/process',
   authorize(['admin']),
+  validate(mutationBaselineSchema),
   validate(dataRequestProcessSchema),
   gdprController.processDataRequest
 );
@@ -495,6 +501,7 @@ router.post('/admin/data-requests/:requestId/process',
  */
 router.post('/admin/bulk-consent-status',
   authorize(['admin', 'staff']),
+  validate(mutationBaselineSchema),
   gdprController.getBulkConsentStatus
 );
 

@@ -1,15 +1,23 @@
 import express from 'express';
+import Joi from 'joi';
 import mongoose from 'mongoose';
 import BookingConversation from '../models/BookingConversation.js';
 import Booking from '../models/Booking.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import { validate } from '../middleware/validation.js';
 import websocketService from '../services/websocketService.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+
+router.use(authenticate);
+router.use(ensurePropertyAccess);
+router.use(authorizePolicy('bookingConversations', 'baseAccess'));
 
 /**
  * @swagger
@@ -50,7 +58,7 @@ const router = express.Router();
  *       201:
  *         description: Conversation created successfully
  */
-router.post('/', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
+router.post('/', authenticate, ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const {
     bookingId,
     subject,
@@ -325,7 +333,7 @@ router.get('/:id', authenticate, ensurePropertyAccess, catchAsync(async (req, re
  *       201:
  *         description: Message added successfully
  */
-router.post('/:id/messages', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
+router.post('/:id/messages', authenticate, ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const {
     content,
     messageType = 'text',
@@ -428,7 +436,7 @@ router.post('/:id/messages', authenticate, ensurePropertyAccess, catchAsync(asyn
  *       200:
  *         description: Messages marked as read
  */
-router.patch('/:id/read', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
+router.patch('/:id/read', authenticate, ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { messageIds } = req.body;
 
   const conversation = await BookingConversation.findById(req.params.id).lean();
@@ -483,7 +491,7 @@ router.patch('/:id/read', authenticate, ensurePropertyAccess, catchAsync(async (
  *       200:
  *         description: Conversation assigned successfully
  */
-router.patch('/:id/assign', authenticate, ensurePropertyAccess, authorize('staff', 'admin', 'manager'), catchAsync(async (req, res) => {
+router.patch('/:id/assign', authenticate, ensurePropertyAccess, authorizePolicy('bookingConversations', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { staffUserId } = req.body;
 
   const conversation = await BookingConversation.findById(req.params.id).lean();
@@ -565,7 +573,7 @@ router.patch('/:id/assign', authenticate, ensurePropertyAccess, authorize('staff
  *       200:
  *         description: Status updated successfully
  */
-router.patch('/:id/status', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
+router.patch('/:id/status', authenticate, ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { status, reason } = req.body;
 
   const conversation = await BookingConversation.findById(req.params.id).lean();
@@ -652,7 +660,7 @@ router.patch('/:id/status', authenticate, ensurePropertyAccess, catchAsync(async
  *       200:
  *         description: Conversation statistics
  */
-router.get('/stats', authenticate, ensurePropertyAccess, authorize('staff', 'admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/stats', authenticate, ensurePropertyAccess, authorizePolicy('bookingConversations', 'staffAccess'), catchAsync(async (req, res) => {
   const { hotelId, startDate, endDate } = req.query;
 
   let targetHotelId;

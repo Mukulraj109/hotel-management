@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import DailyRoutineCheckTemplate from '../models/DailyRoutineCheckTemplate.js';
 
 const MONGO_URI = 'mongodb+srv://mukulraj756:Zk8q2W4uDCaUWRh3@cluster0.thahvbk.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0';
-const HOTEL_ID = '68c7e6ebca8aed0ec8036a9c';
+const HOTEL_ID = '68cd01414419c17b5f6b4c12'; // Correct hotel ID matching database
 
 const templateData = [
   {

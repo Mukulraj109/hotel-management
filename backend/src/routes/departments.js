@@ -1,4 +1,5 @@
 import express from 'express';
+import Joi from 'joi';
 import { body, param, query } from 'express-validator';
 import {
   createDepartment,
@@ -23,9 +24,11 @@ import {
 } from '../controllers/departmentController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
-import authorize from '../middleware/authorize.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all routes
 router.use(authenticate);
@@ -151,7 +154,8 @@ const bulkUpdateValidation = [
  *         description: Unauthorized
  */
 router.post('/', 
-  authorize(['admin', 'manager']),
+  authorizePolicy('departments', 'manageAccess'),
+  validate(mutationBaselineSchema),
   createDepartmentValidation,
   createDepartment
 );
@@ -275,7 +279,7 @@ router.get('/search',
  *         description: Departments exported successfully
  */
 router.get('/export',
-  authorize(['admin', 'manager']),
+  authorizePolicy('departments', 'manageAccess'),
   query('format').optional().isIn(['json', 'csv']),
   exportDepartments
 );
@@ -325,7 +329,8 @@ router.get('/summary', getDepartmentSummary);
  *         description: Bulk update completed
  */
 router.put('/bulk-update',
-  authorize(['admin', 'manager']),
+  authorizePolicy('departments', 'manageAccess'),
+  validate(mutationBaselineSchema),
   bulkUpdateValidation,
   bulkUpdateDepartments
 );
@@ -402,7 +407,8 @@ router.get('/:id',
  *         description: Department not found
  */
 router.put('/:id',
-  authorize(['admin', 'manager']),
+  authorizePolicy('departments', 'manageAccess'),
+  validate(mutationBaselineSchema),
   updateDepartmentValidation,
   updateDepartment
 );
@@ -431,21 +437,24 @@ router.put('/:id',
  *         description: Department not found
  */
 router.delete('/:id',
-  authorize(['admin']),
+  authorizePolicy('departments', 'adminAccess'),
+  validate(mutationBaselineSchema),
   departmentIdValidation,
   deleteDepartment
 );
 
 // Department specific operations
 router.post('/:id/assign-staff',
-  authorize(['admin', 'manager']),
+  authorizePolicy('departments', 'manageAccess'),
+  validate(mutationBaselineSchema),
   departmentIdValidation,
   body('staffIds').isArray().withMessage('Staff IDs array is required'),
   assignStaff
 );
 
 router.put('/:id/analytics',
-  authorize(['admin', 'manager']),
+  authorizePolicy('departments', 'manageAccess'),
+  validate(mutationBaselineSchema),
   departmentIdValidation,
   updateAnalytics
 );
@@ -464,14 +473,16 @@ router.get('/:id/audit-log',
 );
 
 router.put('/:id/kpis',
-  authorize(['admin', 'manager']),
+  authorizePolicy('departments', 'manageAccess'),
+  validate(mutationBaselineSchema),
   departmentIdValidation,
   body('kpis').isArray().withMessage('KPIs array is required'),
   updateDepartmentKPIs
 );
 
 router.put('/:id/budget',
-  authorize(['admin', 'manager']),
+  authorizePolicy('departments', 'manageAccess'),
+  validate(mutationBaselineSchema),
   departmentIdValidation,
   body('budget').isObject().withMessage('Budget object is required'),
   updateDepartmentBudget
@@ -485,7 +496,8 @@ router.get('/:id/staff',
 );
 
 router.patch('/:id/status',
-  authorize(['admin', 'manager']),
+  authorizePolicy('departments', 'manageAccess'),
+  validate(mutationBaselineSchema),
   departmentIdValidation,
   body('status').isIn(['active', 'inactive', 'suspended', 'archived']).withMessage('Invalid status'),
   body('reason').optional().trim().isLength({ max: 500 }).withMessage('Reason cannot exceed 500 characters'),
@@ -493,7 +505,8 @@ router.patch('/:id/status',
 );
 
 router.post('/:id/clone',
-  authorize(['admin', 'manager']),
+  authorizePolicy('departments', 'manageAccess'),
+  validate(mutationBaselineSchema),
   departmentIdValidation,
   body('newName').trim().isLength({ min: 1, max: 100 }).withMessage('New name is required'),
   body('newCode').trim().isLength({ min: 1, max: 10 }).matches(/^[A-Z0-9_]+$/).withMessage('New code is required and must be uppercase'),

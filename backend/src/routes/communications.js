@@ -1,14 +1,18 @@
 import express from 'express';
+import Joi from 'joi';
 import Communication from '../models/Communication.js';
 import MessageTemplate from '../models/MessageTemplate.js';
 import User from '../models/User.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import { validate } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // URL validation helper to prevent open redirect attacks
 function isAllowedRedirectUrl(url) {
@@ -26,6 +30,7 @@ function isAllowedRedirectUrl(url) {
 // All routes require authentication and property access
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('communications', 'baseAccess'));
 
 /**
  * @swagger
@@ -88,7 +93,7 @@ router.use(ensurePropertyAccess);
  *       201:
  *         description: Communication created and sent successfully
  */
-router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/', authorize('staff', 'admin'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const {
     type,
     category,
@@ -406,7 +411,7 @@ router.get('/:id', catchAsync(async (req, res) => {
  *       200:
  *         description: Communication cancelled successfully
  */
-router.post('/:id/cancel', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/:id/cancel', authorize('staff', 'admin'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const communication = await Communication.findById(req.params.id).lean();
   
   if (!communication) {
@@ -453,7 +458,7 @@ router.post('/:id/cancel', authorize('staff', 'admin'), catchAsync(async (req, r
  *       200:
  *         description: Open tracked successfully
  */
-router.post('/:id/track/open', catchAsync(async (req, res) => {
+router.post('/:id/track/open', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { trackingId } = req.query;
   
   const communication = await Communication.findById(req.params.id).lean();
@@ -667,7 +672,7 @@ router.get('/stats', authorize('staff', 'admin'), catchAsync(async (req, res) =>
  *       201:
  *         description: Bulk communication created successfully
  */
-router.post('/bulk', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/bulk', authorize('staff', 'admin'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const {
     type,
     subject,

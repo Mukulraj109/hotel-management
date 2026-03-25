@@ -1,8 +1,10 @@
 import express from 'express';
+import Joi from 'joi';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { requireRole } from '../middleware/roleAuth.js';
-import { validateObjectId } from '../middleware/validation.js';
+import { validate, validateObjectId } from '../middleware/validation.js';
 import reorderService from '../services/reorderService.js';
 import ReorderAlert from '../models/ReorderAlert.js';
 import InventoryItem from '../models/InventoryItem.js';
@@ -10,6 +12,11 @@ import logger from '../utils/logger.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+
+router.use(authenticate);
+router.use(ensurePropertyAccess);
+router.use(authorizePolicy('reorder', 'baseAccess'));
 
 /**
  * @swagger
@@ -175,6 +182,7 @@ router.post('/configure/:itemId',
   authenticate,
   ensurePropertyAccess,
   requireRole(['admin', 'manager']),
+  validate(mutationBaselineSchema),
   validateObjectId('itemId'),
   async (req, res, next) => {
     try {
@@ -260,7 +268,7 @@ router.post('/configure/:itemId',
  *                       type: object
  *                       description: Check results summary
  */
-router.post('/check', authenticate, ensurePropertyAccess, requireRole(['admin', 'manager']), async (req, res, next) => {
+router.post('/check', authenticate, ensurePropertyAccess, requireRole(['admin', 'manager']), validate(mutationBaselineSchema), async (req, res, next) => {
   try {
     const hotelId = req.user.hotelId;
 
@@ -338,6 +346,7 @@ router.post('/approve/:alertId',
   authenticate,
   ensurePropertyAccess,
   requireRole(['admin', 'manager']),
+  validate(mutationBaselineSchema),
   validateObjectId('alertId'),
   async (req, res, next) => {
     try {
@@ -430,6 +439,7 @@ router.post('/acknowledge/:alertId',
   authenticate,
   ensurePropertyAccess,
   requireRole(['admin', 'manager', 'staff']),
+  validate(mutationBaselineSchema),
   validateObjectId('alertId'),
   async (req, res, next) => {
     try {
@@ -503,6 +513,7 @@ router.post('/dismiss/:alertId',
   authenticate,
   ensurePropertyAccess,
   requireRole(['admin', 'manager']),
+  validate(mutationBaselineSchema),
   validateObjectId('alertId'),
   async (req, res, next) => {
     try {
@@ -729,7 +740,7 @@ router.get('/items-needing-reorder', authenticate, ensurePropertyAccess, require
  *       200:
  *         description: Bulk configuration completed successfully
  */
-router.post('/bulk-configure', authenticate, ensurePropertyAccess, requireRole(['admin', 'manager']), async (req, res, next) => {
+router.post('/bulk-configure', authenticate, ensurePropertyAccess, requireRole(['admin', 'manager']), validate(mutationBaselineSchema), async (req, res, next) => {
   try {
     const { items } = req.body;
     const hotelId = req.user.hotelId;

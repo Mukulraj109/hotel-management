@@ -1,10 +1,14 @@
 import express from 'express';
 import assignmentRulesController from '../controllers/assignmentRulesController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Protect all routes
 router.use(authenticate);
@@ -23,7 +27,7 @@ router.use(ensurePropertyAccess);
  *         description: Assignment rules statistics retrieved successfully
  */
 router.get('/stats', 
-  authorize('admin', 'staff'), 
+  authorizePolicy('assignmentRules', 'staffAccess'), 
   catchAsync(assignmentRulesController.getAssignmentRulesStats)
 );
 
@@ -76,7 +80,7 @@ router.get('/stats',
  *         description: Assignment rules retrieved successfully
  */
 router.get('/', 
-  authorize('admin', 'staff'), 
+  authorizePolicy('assignmentRules', 'staffAccess'), 
   catchAsync(assignmentRulesController.getAssignmentRules)
 );
 
@@ -113,7 +117,8 @@ router.get('/',
  *         description: Assignment rule created successfully
  */
 router.post('/', 
-  authorize('admin', 'staff'), 
+  authorizePolicy('assignmentRules', 'staffAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(assignmentRulesController.createAssignmentRule)
 );
 
@@ -139,7 +144,7 @@ router.post('/',
  *         description: Assignment rule not found
  */
 router.get('/:id', 
-  authorize('admin', 'staff'), 
+  authorizePolicy('assignmentRules', 'staffAccess'), 
   catchAsync(assignmentRulesController.getAssignmentRule)
 );
 
@@ -184,7 +189,8 @@ router.get('/:id',
  *         description: Assignment rule not found
  */
 router.put('/:id', 
-  authorize('admin', 'staff'), 
+  authorizePolicy('assignmentRules', 'staffAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(assignmentRulesController.updateAssignmentRule)
 );
 
@@ -210,7 +216,8 @@ router.put('/:id',
  *         description: Assignment rule not found
  */
 router.delete('/:id', 
-  authorize('admin'), 
+  authorizePolicy('assignmentRules', 'adminAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(assignmentRulesController.deleteAssignmentRule)
 );
 
@@ -252,7 +259,8 @@ router.delete('/:id',
  *         description: Assignment rule not found
  */
 router.post('/:id/test',
-  authorize('admin', 'staff'),
+  authorizePolicy('assignmentRules', 'staffAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(assignmentRulesController.testAssignmentRule)
 );
 
@@ -291,7 +299,8 @@ router.post('/:id/test',
  *         description: Invalid criteria provided
  */
 router.post('/auto-assign',
-  authorize('admin', 'staff'),
+  authorizePolicy('assignmentRules', 'staffAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(assignmentRulesController.autoAssignRooms)
 );
 

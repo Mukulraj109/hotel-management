@@ -1,15 +1,19 @@
 import express from 'express';
 import Inventory from '../models/Inventory.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Get inventory items
-router.get('/', authenticate, ensureTenantContext, authorize('admin', 'staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/', authenticate, ensureTenantContext, authorizePolicy('inventory', 'readWriteAccess'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const {
     category,
     lowStock,
@@ -52,7 +56,7 @@ router.get('/', authenticate, ensureTenantContext, authorize('admin', 'staff', '
 }));
 
 // Create inventory item
-router.post('/', authenticate, ensureTenantContext, authorize('admin', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.post('/', authenticate, ensureTenantContext, authorizePolicy('inventory', 'manageAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const itemData = {
     ...req.body,
     hotelId: req.user.hotelId
@@ -67,7 +71,7 @@ router.post('/', authenticate, ensureTenantContext, authorize('admin', 'frontdes
 }));
 
 // Update inventory item
-router.patch('/:id', authenticate, ensureTenantContext, authorize('admin', 'staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('inventory', 'readWriteAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const item = await Inventory.findByIdAndUpdate(
     req.params.id,
     req.body,
@@ -85,7 +89,7 @@ router.patch('/:id', authenticate, ensureTenantContext, authorize('admin', 'staf
 }));
 
 // Create supply request
-router.post('/request', authenticate, ensureTenantContext, authorize('staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.post('/request', authenticate, ensureTenantContext, authorizePolicy('inventory', 'requestAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { itemId, quantity, reason } = req.body;
 
   const item = await Inventory.findByIdAndUpdate(
@@ -120,8 +124,9 @@ router.post('/request', authenticate, ensureTenantContext, authorize('staff', 'f
 router.patch('/request/:itemId/:requestId',
   authenticate,
   ensureTenantContext,
-  authorize('admin', 'frontdesk'),
+  authorizePolicy('inventory', 'manageAccess'),
   ensurePropertyAccess,
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { itemId, requestId } = req.params;
     const { status } = req.body; // 'approved', 'rejected', 'fulfilled'

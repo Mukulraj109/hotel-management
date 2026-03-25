@@ -174,7 +174,6 @@ eventQueueSchema.index({ status: 1, scheduledFor: 1 });
 eventQueueSchema.index({ eventType: 1, status: 1, createdAt: 1 });
 eventQueueSchema.index({ 'payload.hotelId': 1, status: 1, eventType: 1 });
 eventQueueSchema.index({ batchId: 1, status: 1 });
-eventQueueSchema.index({ correlationId: 1 });
 
 // TTL index for completed/failed events (cleanup after 30 days)
 eventQueueSchema.index({ 

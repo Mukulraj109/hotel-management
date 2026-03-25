@@ -12,14 +12,17 @@ import {
 } from '../controllers/meetUpResourceController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
-import adminAuth from '../middleware/adminAuth.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate, schemas } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('meetUpResources', 'baseAccess'));
 
 /**
  * @swagger
@@ -33,7 +36,7 @@ router.post('/room-availability', validate(schemas.checkRoomAvailability), check
 router.get('/rooms/:hotelId', getAvailableRooms);
 router.post('/book-room', validate(schemas.bookRoom), bookRoom);
 router.post('/booking-cost', validate(schemas.calculateBookingCost), calculateBookingCost);
-router.delete('/cancel-booking/:meetUpId', cancelRoomBooking);
+router.delete('/cancel-booking/:meetUpId', validate(mutationBaselineSchema), cancelRoomBooking);
 router.get('/booking-details/:meetUpId', getBookingDetails);
 
 // Equipment and services routes
@@ -44,7 +47,7 @@ router.get('/services/:hotelId', getAvailableServices);
 router.get('/room-schedule/:hotelId', getRoomSchedule);
 
 // Admin-only routes
-router.get('/admin/all-bookings', adminAuth, async (req, res) => {
+router.get('/admin/all-bookings', authorizePolicy('meetUpResources', 'adminAccess'), async (req, res) => {
   try {
     const { page = 1, limit = 20, hotelId, date, status } = req.query;
     const skip = (page - 1) * limit;
@@ -102,7 +105,7 @@ router.get('/admin/all-bookings', adminAuth, async (req, res) => {
   }
 });
 
-router.get('/admin/booking-analytics', adminAuth, async (req, res) => {
+router.get('/admin/booking-analytics', authorizePolicy('meetUpResources', 'adminAccess'), async (req, res) => {
   try {
     const { period = '30d', hotelId } = req.query;
 

@@ -1,10 +1,14 @@
 import express from 'express';
 import advancedReservationsController from '../controllers/advancedReservationsController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Protect all routes
 router.use(authenticate);
@@ -23,13 +27,13 @@ router.use(ensurePropertyAccess);
  *         description: Advanced reservations statistics retrieved successfully
  */
 router.get('/stats', 
-  authorize('admin', 'staff'), 
+  authorizePolicy('advancedReservations', 'staffAccess'), 
   catchAsync(advancedReservationsController.getAdvancedReservationsStats)
 );
 
 // Get available bookings for creating advanced reservations
 router.get('/available-bookings', 
-  authorize('admin', 'staff'), 
+  authorizePolicy('advancedReservations', 'staffAccess'), 
   catchAsync(advancedReservationsController.getAvailableBookings)
 );
 
@@ -89,7 +93,7 @@ router.get('/available-bookings',
  *         description: Advanced reservations retrieved successfully
  */
 router.get('/', 
-  authorize('admin', 'staff'), 
+  authorizePolicy('advancedReservations', 'staffAccess'), 
   catchAsync(advancedReservationsController.getAdvancedReservations)
 );
 
@@ -133,7 +137,8 @@ router.get('/',
  *         description: Advanced reservation created successfully
  */
 router.post('/', 
-  authorize('admin', 'staff'), 
+  authorizePolicy('advancedReservations', 'staffAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(advancedReservationsController.createAdvancedReservation)
 );
 
@@ -159,7 +164,7 @@ router.post('/',
  *         description: Advanced reservation not found
  */
 router.get('/:id', 
-  authorize('admin', 'staff'), 
+  authorizePolicy('advancedReservations', 'staffAccess'), 
   catchAsync(advancedReservationsController.getAdvancedReservation)
 );
 
@@ -206,7 +211,8 @@ router.get('/:id',
  *         description: Advanced reservation not found
  */
 router.put('/:id', 
-  authorize('admin', 'staff'), 
+  authorizePolicy('advancedReservations', 'staffAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(advancedReservationsController.updateAdvancedReservation)
 );
 
@@ -249,7 +255,8 @@ router.put('/:id',
  *         description: Advanced reservation or room not found
  */
 router.post('/:id/assign-room', 
-  authorize('admin', 'staff'), 
+  authorizePolicy('advancedReservations', 'staffAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(advancedReservationsController.assignRoom)
 );
 
@@ -298,7 +305,8 @@ router.post('/:id/assign-room',
  *         description: Advanced reservation not found
  */
 router.post('/:id/add-upgrade', 
-  authorize('admin', 'staff'), 
+  authorizePolicy('advancedReservations', 'staffAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(advancedReservationsController.addUpgrade)
 );
 
@@ -345,7 +353,8 @@ router.post('/:id/add-upgrade',
  *         description: Advanced reservation not found
  */
 router.post('/:id/add-flag',
-  authorize('admin', 'staff'),
+  authorizePolicy('advancedReservations', 'staffAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(advancedReservationsController.addReservationFlag)
 );
 
@@ -371,7 +380,8 @@ router.post('/:id/add-flag',
  *         description: Advanced reservation not found
  */
 router.delete('/:id',
-  authorize('admin', 'staff'),
+  authorizePolicy('advancedReservations', 'staffAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(advancedReservationsController.deleteAdvancedReservation)
 );
 

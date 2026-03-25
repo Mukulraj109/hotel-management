@@ -1,4 +1,5 @@
 import express from 'express';
+import Joi from 'joi';
 import mongoose from 'mongoose';
 import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
@@ -11,8 +12,11 @@ import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import logger from '../utils/logger.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Checkout Inventory Analytics Report
 router.get('/checkout-inventory', authenticate, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
@@ -979,7 +983,7 @@ router.get('/satisfaction-breakdown', authenticate, authorize('admin', 'staff'),
 }));
 
 // Enhanced KPI Reports - Calculate and retrieve comprehensive KPIs
-router.post('/kpi/calculate', authenticate, authorize('admin', 'staff'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.post('/kpi/calculate', authenticate, authorizePolicy('reports', 'staffAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { date, period = 'daily' } = req.body;
   
   if (!date) {
@@ -1237,7 +1241,7 @@ router.get('/business-intelligence', authenticate, authorize('admin', 'staff'), 
 }));
 
 // Batch calculate KPIs for a date range
-router.post('/kpi/batch-calculate', authenticate, authorize('admin'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.post('/kpi/batch-calculate', authenticate, authorizePolicy('reports', 'adminAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { startDate, endDate, period = 'daily', hotelId } = req.body;
   
   if (!startDate || !endDate || !hotelId) {

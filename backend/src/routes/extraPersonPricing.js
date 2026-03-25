@@ -1,12 +1,16 @@
 import express from 'express';
 import ExtraPersonCharge from '../models/ExtraPersonCharge.js';
 import extraPersonPricingEngine from '../services/extraPersonPricingEngine.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 /**
  * @swagger
@@ -25,7 +29,7 @@ const router = express.Router();
 router.get('/rules',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('extraPersonPricing', 'staffAccess'),
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
 
@@ -112,7 +116,8 @@ router.get('/rules',
 router.post('/rules',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin']),
+  authorizePolicy('extraPersonPricing', 'adminAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
     const ruleData = {
@@ -177,7 +182,8 @@ router.post('/rules',
 router.put('/rules/:id',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin']),
+  authorizePolicy('extraPersonPricing', 'adminAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { id } = req.params;
     const hotelId = req.user.hotelId;
@@ -277,7 +283,8 @@ router.put('/rules/:id',
 router.post('/calculate',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('extraPersonPricing', 'staffAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
     const { extraPersons, baseBookingData, guestProfile = {}, useDynamicPricing = true } = req.body;
@@ -386,7 +393,8 @@ router.post('/calculate',
 router.post('/preview',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('extraPersonPricing', 'staffAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
     const previewData = {
@@ -427,7 +435,7 @@ router.post('/preview',
 router.get('/strategies',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin']),
+  authorizePolicy('extraPersonPricing', 'adminAccess'),
   catchAsync(async (req, res) => {
     const strategies = [
       {

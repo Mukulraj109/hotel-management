@@ -1,13 +1,17 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import SupplyRequest from '../models/SupplyRequest.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import logger from '../utils/logger.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
@@ -75,7 +79,7 @@ router.use(ensurePropertyAccess);
  *       201:
  *         description: Supply request created successfully
  */
-router.post('/', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
+router.post('/', authorizePolicy('supplyRequests', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const requestData = {
     ...req.body,
     hotelId: req.user.role === 'staff' ? req.user.hotelId : req.body.hotelId,
@@ -252,7 +256,7 @@ router.get('/', catchAsync(async (req, res) => {
  *       200:
  *         description: Supply request statistics
  */
-router.get('/stats', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
+router.get('/stats', authorizePolicy('supplyRequests', 'staffAccess'), catchAsync(async (req, res) => {
   const { department, startDate, endDate } = req.query;
   
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
@@ -403,7 +407,7 @@ router.get('/:id', catchAsync(async (req, res) => {
  *       200:
  *         description: Supply request updated successfully
  */
-router.patch('/:id', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
+router.patch('/:id', authorizePolicy('supplyRequests', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const supplyRequest = await SupplyRequest.findById(req.params.id);
   
   if (!supplyRequest) {
@@ -479,7 +483,7 @@ router.patch('/:id', authorize('staff', 'admin', 'frontdesk'), catchAsync(async 
  *       200:
  *         description: Supply request approved successfully
  */
-router.post('/:id/approve', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
+router.post('/:id/approve', authorizePolicy('supplyRequests', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { notes, budget } = req.body;
   
   const supplyRequest = await SupplyRequest.findById(req.params.id);
@@ -548,7 +552,7 @@ router.post('/:id/approve', authorize('admin', 'manager', 'frontdesk'), catchAsy
  *       200:
  *         description: Supply request rejected successfully
  */
-router.post('/:id/reject', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
+router.post('/:id/reject', authorizePolicy('supplyRequests', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { reason } = req.body;
   
   const supplyRequest = await SupplyRequest.findById(req.params.id).lean();
@@ -614,7 +618,7 @@ router.post('/:id/reject', authorize('admin', 'manager', 'frontdesk'), catchAsyn
  *       200:
  *         description: Request marked as ordered successfully
  */
-router.post('/:id/order', authorize('admin', 'manager', 'purchasing', 'frontdesk'), catchAsync(async (req, res) => {
+router.post('/:id/order', authorizePolicy('supplyRequests', 'purchasingAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { purchaseOrder, supplier, expectedDelivery } = req.body;
   
   const supplyRequest = await SupplyRequest.findById(req.params.id);
@@ -694,7 +698,7 @@ router.post('/:id/order', authorize('admin', 'manager', 'purchasing', 'frontdesk
  *       200:
  *         description: Item marked as received successfully
  */
-router.post('/:id/items/:itemIndex/receive', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
+router.post('/:id/items/:itemIndex/receive', authorizePolicy('supplyRequests', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { receivedQuantity, condition, actualCost, invoiceNumber, notes } = req.body;
   const { itemIndex } = req.params;
   
@@ -755,7 +759,7 @@ router.post('/:id/items/:itemIndex/receive', authorize('staff', 'admin', 'frontd
  *       200:
  *         description: Pending approval requests
  */
-router.get('/pending-approvals', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
+router.get('/pending-approvals', authorizePolicy('supplyRequests', 'managerAccess'), catchAsync(async (req, res) => {
   const hotelId = req.user.role === 'manager' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
@@ -790,7 +794,7 @@ router.get('/pending-approvals', authorize('admin', 'manager', 'frontdesk'), cat
  *       200:
  *         description: Overdue requests
  */
-router.get('/overdue', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
+router.get('/overdue', authorizePolicy('supplyRequests', 'staffAccess'), catchAsync(async (req, res) => {
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {

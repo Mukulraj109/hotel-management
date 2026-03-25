@@ -4,10 +4,14 @@ import allotmentController from '../controllers/allotmentController.js';
 import allotmentSettingsController from '../controllers/allotmentSettingsController.js';
 import { authenticate, optionalAuth } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import rateLimit from 'express-rate-limit';
 import logger from '../utils/logger.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true);
 
 // Rate limiting for allocation operations
 const allocationLimit = rateLimit({
@@ -468,25 +472,10 @@ const settingsValidation = [
 // Admin routes - require authentication, property access, and admin role
 router.use(authenticate);
 router.use(ensurePropertyAccess);
-router.use((req, res, next) => {
-  // For testing purposes, allow any authenticated user
-  if (!req.user) {
-    return res.status(401).json({
-      success: false,
-      error: 'Authentication required.'
-    });
-  }
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({
-      success: false,
-      error: 'Access denied. Admin role required.'
-    });
-  }
-  next();
-});
+router.use(authorizePolicy('allotment', 'adminAccess'));
 
 // Allotment CRUD operations
-router.post('/', createAllotmentValidation, allotmentController.createAllotment);
+router.post('/', validate(mutationBaselineSchema), createAllotmentValidation, allotmentController.createAllotment);
 router.get('/', paginationValidation, allotmentController.getAllotments);
 
 // Dashboard route MUST come before /:id to prevent "dashboard" being treated as an ID
@@ -511,26 +500,29 @@ router.get('/room-type/:roomTypeId',
 );
 
 router.get('/:id', allotmentIdValidation, allotmentController.getAllotment);
-router.put('/:id', updateAllotmentValidation, allotmentController.updateAllotment);
-router.delete('/:id', allotmentIdValidation, allotmentController.deleteAllotment);
+router.put('/:id', validate(mutationBaselineSchema), updateAllotmentValidation, allotmentController.updateAllotment);
+router.delete('/:id', validate(mutationBaselineSchema), allotmentIdValidation, allotmentController.deleteAllotment);
 
 // Date range operations
 router.get('/date-range', dateRangeValidation, allotmentController.getAllotmentsByDateRange);
 
 // Allocation management
 router.post('/:id/apply-rule', 
+  validate(mutationBaselineSchema),
   allocationLimit,
   applyRuleValidation, 
   allotmentController.applyAllocationRule
 );
 
 router.post('/:id/update-allocation',
+  validate(mutationBaselineSchema),
   allocationLimit,
   channelAllocationValidation,
   allotmentController.updateChannelAllocation
 );
 
 router.post('/:id/optimize',
+  validate(mutationBaselineSchema),
   allocationLimit,
   allotmentIdValidation,
   allotmentController.optimizeAllocations
@@ -538,12 +530,14 @@ router.post('/:id/optimize',
 
 // Booking operations
 router.post('/bookings/process',
+  validate(mutationBaselineSchema),
   bookingLimit,
   bookingValidation,
   allotmentController.processBooking
 );
 
 router.post('/bookings/release',
+  validate(mutationBaselineSchema),
   bookingLimit,
   releaseRoomsValidation,
   allotmentController.releaseRooms
@@ -589,24 +583,28 @@ router.get('/settings/summary', allotmentSettingsController.getSettingsSummary);
 
 // Global settings
 router.put('/settings/global',
+  validate(mutationBaselineSchema),
   globalSettingsValidation,
   allotmentSettingsController.updateGlobalSettings
 );
 
 // Integration settings
 router.put('/settings/integrations',
+  validate(mutationBaselineSchema),
   integrationSettingsValidation,
   allotmentSettingsController.updateIntegrationSettings
 );
 
 // Analytics settings
 router.put('/settings/analytics',
+  validate(mutationBaselineSchema),
   body('analyticsSettings').isObject().withMessage('Analytics settings must be an object'),
   allotmentSettingsController.updateAnalyticsSettings
 );
 
 // Allocation rule templates
 router.post('/settings/templates',
+  validate(mutationBaselineSchema),
   allocationRuleTemplateValidation,
   allotmentSettingsController.addAllocationRuleTemplate
 );
@@ -618,17 +616,19 @@ router.delete('/settings/templates/:templateId',
 
 // Integration testing
 router.post('/settings/test/:type',
+  validate(mutationBaselineSchema),
   integrationTestValidation,
   allotmentSettingsController.testIntegration
 );
 
 // Settings utilities
 router.post('/settings/validate',
+  validate(mutationBaselineSchema),
   settingsValidation,
   allotmentSettingsController.validateSettings
 );
 
-router.post('/settings/reset', allotmentSettingsController.resetToDefaults);
+router.post('/settings/reset', validate(mutationBaselineSchema), allotmentSettingsController.resetToDefaults);
 
 router.get('/settings/export', allotmentSettingsController.exportSettings);
 

@@ -1,6 +1,9 @@
 import express from 'express';
+import Joi from 'joi';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import housekeepingInventoryService from '../services/housekeepingInventoryService.js';
 import guestInventoryService from '../services/guestInventoryService.js';
 import InventoryConsumption from '../models/InventoryConsumption.js';
@@ -9,10 +12,12 @@ import GuestService from '../models/GuestService.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication and property access to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('inventoryConsumption', 'baseAccess'));
 
 /**
  * @swagger
@@ -53,7 +58,7 @@ router.use(ensurePropertyAccess);
  *       401:
  *         description: Unauthorized
  */
-router.post('/', authenticate, async (req, res) => {
+router.post('/', authenticate, validate(mutationBaselineSchema), async (req, res) => {
   try {
     const {
       consumptionType,
@@ -158,7 +163,7 @@ router.post('/', authenticate, async (req, res) => {
  *       200:
  *         description: Consumption prediction generated
  */
-router.post('/housekeeping/predict', authenticate, async (req, res) => {
+router.post('/housekeeping/predict', authenticate, validate(mutationBaselineSchema), async (req, res) => {
   try {
     const { roomId, taskTypes = [] } = req.body;
 
@@ -436,7 +441,7 @@ router.get('/guest/analytics', authenticate, async (req, res) => {
  *       200:
  *         description: Auto-consumption completed
  */
-router.post('/auto/housekeeping', authenticate, async (req, res) => {
+router.post('/auto/housekeeping', authenticate, validate(mutationBaselineSchema), async (req, res) => {
   try {
     const { housekeepingTaskId } = req.body;
 
@@ -710,7 +715,7 @@ router.get('/:id', authenticate, async (req, res) => {
  *       404:
  *         description: Consumption record not found
  */
-router.put('/:id/billing', authenticate, async (req, res) => {
+router.put('/:id/billing', authenticate, validate(mutationBaselineSchema), async (req, res) => {
   try {
     const { invoiceId, billed = true } = req.body;
 

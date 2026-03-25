@@ -1,13 +1,17 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import InventoryHistoricalService from '../services/inventoryHistoricalService.js';
 import CostOptimizationService from '../services/costOptimizationService.js';
 import ComplianceService from '../services/complianceService.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication and property access to all routes
 router.use(authenticate);
@@ -63,7 +67,7 @@ router.use(ensurePropertyAccess);
  *       200:
  *         description: Historical trend analysis data
  */
-router.get('/historical-trends', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/historical-trends', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), catchAsync(async (req, res) => {
   const {
     itemIds,
     categories,
@@ -128,7 +132,7 @@ router.get('/historical-trends', authenticate, authorize('admin', 'manager'), ca
  *       201:
  *         description: Snapshot created successfully
  */
-router.post('/create-snapshot', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/create-snapshot', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { snapshotType = 'manual', triggeredBy } = req.body;
 
   const snapshot = await InventoryHistoricalService.createSnapshot(req.user.hotelId, snapshotType, triggeredBy);
@@ -172,7 +176,7 @@ router.post('/create-snapshot', authenticate, authorize('admin', 'manager'), cat
  *       200:
  *         description: Detected anomalies
  */
-router.get('/anomalies', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/anomalies', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), catchAsync(async (req, res) => {
   const {
     threshold = 2,
     lookbackDays = 30,
@@ -218,7 +222,7 @@ router.get('/anomalies', authenticate, authorize('admin', 'manager'), catchAsync
  *       200:
  *         description: Seasonal patterns data
  */
-router.get('/seasonal-patterns', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/seasonal-patterns', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), catchAsync(async (req, res) => {
   const { itemId } = req.query;
 
   const patterns = await InventoryHistoricalService.getSeasonalPatterns(req.user.hotelId, itemId);
@@ -269,7 +273,7 @@ router.get('/seasonal-patterns', authenticate, authorize('admin', 'manager'), ca
  *       200:
  *         description: Demand forecast data
  */
-router.get('/predictive-demand', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/predictive-demand', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), catchAsync(async (req, res) => {
   const {
     forecastDays = 30,
     itemIds,
@@ -330,7 +334,7 @@ router.get('/predictive-demand', authenticate, authorize('admin', 'manager'), ca
  *       200:
  *         description: Analytics dashboard data
  */
-router.get('/dashboard', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/dashboard', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), catchAsync(async (req, res) => {
   const {
     period = 30,
     includeForecasting = true,
@@ -384,7 +388,7 @@ router.get('/dashboard', authenticate, authorize('admin', 'manager'), catchAsync
  *       200:
  *         description: Cost optimization data
  */
-router.get('/cost-optimization', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/cost-optimization', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), catchAsync(async (req, res) => {
   const {
     period = 90,
     includeForecasting = true,
@@ -435,7 +439,7 @@ router.get('/cost-optimization', authenticate, authorize('admin', 'manager'), ca
  *       201:
  *         description: Price comparison analysis completed
  */
-router.post('/price-comparison', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/price-comparison', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const {
     itemIds = [],
     categories = [],
@@ -488,7 +492,7 @@ router.post('/price-comparison', authenticate, authorize('admin', 'manager'), ca
  *       201:
  *         description: Bulk optimization analysis completed
  */
-router.post('/bulk-optimization', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/bulk-optimization', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const {
     itemIds = [],
     storageConstraints = {},
@@ -545,7 +549,7 @@ router.post('/bulk-optimization', authenticate, authorize('admin', 'manager'), c
  *       200:
  *         description: Supplier performance analysis
  */
-router.get('/supplier-performance', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/supplier-performance', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), catchAsync(async (req, res) => {
   const {
     timeframe = 180,
     includeQualityMetrics = true,
@@ -598,7 +602,7 @@ router.get('/supplier-performance', authenticate, authorize('admin', 'manager'),
  *       200:
  *         description: ROI calculation results
  */
-router.post('/roi-calculation', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/roi-calculation', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const {
     investmentScenarios = [],
     timeHorizon = 365,
@@ -652,7 +656,7 @@ router.post('/roi-calculation', authenticate, authorize('admin', 'manager'), cat
  *       200:
  *         description: Contract analysis results
  */
-router.get('/contract-analysis', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/contract-analysis', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), catchAsync(async (req, res) => {
   const {
     includeRenewalRecommendations = true,
     includeMarketComparison = true,
@@ -706,7 +710,7 @@ router.get('/contract-analysis', authenticate, authorize('admin', 'manager'), ca
  *       200:
  *         description: Compliance dashboard data
  */
-router.get('/compliance', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/compliance', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), catchAsync(async (req, res) => {
   const {
     period = 90,
     includeForecasting = true,
@@ -759,7 +763,7 @@ router.get('/compliance', authenticate, authorize('admin', 'manager'), catchAsyn
  *       201:
  *         description: Compliance report generated successfully
  */
-router.post('/compliance/generate-report', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/compliance/generate-report', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const {
     reportType,
     includePreviousPeriod = true,
@@ -821,7 +825,7 @@ router.post('/compliance/generate-report', authenticate, authorize('admin', 'man
  *       200:
  *         description: Real-time compliance monitoring data
  */
-router.get('/compliance/monitor', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/compliance/monitor', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), catchAsync(async (req, res) => {
   const {
     alertThreshold = 'medium',
     includePreventive = true,
@@ -876,7 +880,7 @@ router.get('/compliance/monitor', authenticate, authorize('admin', 'manager'), c
  *       201:
  *         description: Compliance audit completed
  */
-router.post('/compliance/audit', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/compliance/audit', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const {
     auditType = 'comprehensive',
     includeEvidence = true,
@@ -940,7 +944,7 @@ router.post('/compliance/audit', authenticate, authorize('admin', 'manager'), ca
  *       200:
  *         description: Corrective actions tracking data
  */
-router.get('/compliance/corrective-actions', authenticate, authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/compliance/corrective-actions', authenticate, authorizePolicy('inventoryAnalytics', 'managerAccess'), catchAsync(async (req, res) => {
   const {
     includeOverdue = true,
     includePending = true,

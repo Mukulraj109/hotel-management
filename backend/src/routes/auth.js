@@ -1,4 +1,5 @@
 import express from 'express';
+import Joi from 'joi';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
@@ -9,6 +10,7 @@ import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import emailService from '../services/emailService.js';
 import logger from '../utils/logger.js';
 
@@ -75,6 +77,7 @@ const strictAuthLimiter = rateLimit({
 });
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 /**
  * @swagger
@@ -123,7 +126,7 @@ const router = express.Router();
  *                   $ref: '#/components/schemas/User'
  */
 router.post('/register', authLimiter, validate(schemas.register), catchAsync(async (req, res) => {
-  const { name, email, password, phone, role } = req.body;
+  const { name, email, password, phone } = req.body;
 
   // Check if user exists
   const existingUser = await User.findOne({ email }).lean();
@@ -137,7 +140,7 @@ router.post('/register', authLimiter, validate(schemas.register), catchAsync(asy
     email,
     password,
     phone,
-    role: role || 'guest'
+    role: 'guest'
   });
 
   // Generate access token
@@ -203,7 +206,7 @@ router.post('/register', authLimiter, validate(schemas.register), catchAsync(asy
  *                 user:
  *                   $ref: '#/components/schemas/User'
  */
-router.post('/login', authLimiter, validate(schemas.login), catchAsync(async (req, res) => {
+router.post('/login', authLimiter, strictAuthLimiter, validate(schemas.login), catchAsync(async (req, res) => {
   const { email, password } = req.body;
 
   // Check for user and password
@@ -267,7 +270,7 @@ router.post('/login', authLimiter, validate(schemas.login), catchAsync(async (re
  *                 user:
  *                   $ref: '#/components/schemas/User'
  */
-router.get('/me', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
+router.get('/me', authenticate, authorizePolicy('auth', 'baseAccess'), catchAsync(async (req, res) => {
   res.json({
     status: 'success',
     user: req.user
@@ -309,7 +312,7 @@ router.get('/me', authenticate, ensurePropertyAccess, catchAsync(async (req, res
  *       200:
  *         description: Profile updated successfully
  */
-router.patch('/profile', authenticate, ensurePropertyAccess, validate(schemas.updateProfile), catchAsync(async (req, res) => {
+router.patch('/profile', authenticate, ensurePropertyAccess, authorizePolicy('auth', 'baseAccess'), validate(schemas.updateProfile), catchAsync(async (req, res) => {
   const { name, phone, preferences } = req.body;
   
   const updateData = {};
@@ -356,7 +359,7 @@ router.patch('/profile', authenticate, ensurePropertyAccess, validate(schemas.up
  *       200:
  *         description: Password changed successfully
  */
-router.patch('/change-password', authenticate, ensurePropertyAccess, validate(schemas.changePassword), catchAsync(async (req, res) => {
+router.patch('/change-password', authenticate, ensurePropertyAccess, authorizePolicy('auth', 'baseAccess'), validate(schemas.changePassword), catchAsync(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
 
   const user = await User.findById(req.user._id).select('+password');
@@ -378,7 +381,7 @@ router.patch('/change-password', authenticate, ensurePropertyAccess, validate(sc
 }));
 
 // Refresh access token using refresh token cookie
-router.post('/refresh', catchAsync(async (req, res) => {
+router.post('/refresh', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const rawRefreshToken = req.cookies?.refreshToken;
 
   if (!rawRefreshToken) {
@@ -462,7 +465,7 @@ router.post('/refresh', catchAsync(async (req, res) => {
 }));
 
 // Logout -- clear cookies and invalidate refresh token family
-router.post('/logout', catchAsync(async (req, res) => {
+router.post('/logout', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const rawRefreshToken = req.cookies?.refreshToken;
 
   if (rawRefreshToken) {

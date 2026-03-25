@@ -1,10 +1,14 @@
 import express from 'express';
+import Joi from 'joi';
 import roomBlockController from '../controllers/roomBlockController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { body } from 'express-validator';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Validation middleware
 const validateRoomBlock = [
@@ -48,7 +52,8 @@ const validateRoomBlock = [
 router.post('/',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('roomBlocks', 'adminStaffAccess'),
+  validate(mutationBaselineSchema),
   validateRoomBlock,
   roomBlockController.createRoomBlock
 );
@@ -56,49 +61,53 @@ router.post('/',
 router.get('/',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('roomBlocks', 'adminStaffAccess'),
   roomBlockController.getRoomBlocks
 );
 
 router.get('/stats',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('roomBlocks', 'adminStaffAccess'),
   roomBlockController.getRoomBlockStats
 );
 
 router.get('/:id',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('roomBlocks', 'adminStaffAccess'),
   roomBlockController.getRoomBlock
 );
 
 router.put('/:id',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('roomBlocks', 'adminStaffAccess'),
+  validate(mutationBaselineSchema),
   roomBlockController.updateRoomBlock
 );
 
 router.post('/:id/rooms/:roomId/release',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('roomBlocks', 'adminStaffAccess'),
+  validate(mutationBaselineSchema),
   roomBlockController.releaseRoom
 );
 
 router.post('/:id/rooms/:roomId/book',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('roomBlocks', 'adminStaffAccess'),
+  validate(mutationBaselineSchema),
   roomBlockController.bookRoom
 );
 
 router.post('/:id/notes',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('roomBlocks', 'adminStaffAccess'),
+  validate(mutationBaselineSchema),
   roomBlockController.addNote
 );
 

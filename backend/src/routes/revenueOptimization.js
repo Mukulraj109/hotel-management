@@ -6,19 +6,23 @@ import { CompetitorRate, Competitor } from '../models/CompetitorMonitoring.js';
 import dynamicPricingService from '../services/dynamicPricingService.js';
 import revenueManagementService from '../services/revenueManagementService.js';
 import revenueOptimizationController from '../controllers/revenueOptimizationController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import { param, body, query } from 'express-validator';
 import logger from '../utils/logger.js';
 import financialRateLimiter from '../middleware/financialRateLimiter.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply rate limiting and auth middleware to all routes
 router.use(financialRateLimiter);
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('revenueOptimization', 'baseAccess'));
 
 /**
  * @swagger
@@ -135,7 +139,7 @@ router.get('/yield-analysis', async (req, res) => {
  *       200:
  *         description: Calculated optimal rates
  */
-router.post('/pricing/calculate', async (req, res) => {
+router.post('/pricing/calculate', validate(mutationBaselineSchema), async (req, res) => {
   try {
     const hotelId = req.user.hotelId;
     const {
@@ -194,7 +198,7 @@ router.post('/pricing/calculate', async (req, res) => {
  *       200:
  *         description: Pricing changes applied
  */
-router.post('/pricing/apply', async (req, res) => {
+router.post('/pricing/apply', validate(mutationBaselineSchema), async (req, res) => {
   try {
     const hotelId = req.user.hotelId;
     const {
@@ -251,7 +255,7 @@ router.post('/pricing/apply', async (req, res) => {
  *       200:
  *         description: Automated pricing completed
  */
-router.post('/pricing/automated', async (req, res) => {
+router.post('/pricing/automated', validate(mutationBaselineSchema), async (req, res) => {
   try {
     const hotelId = req.user.hotelId;
     const {
@@ -336,7 +340,7 @@ router.get('/strategies', async (req, res) => {
  *       201:
  *         description: Pricing strategy created
  */
-router.post('/strategies', async (req, res) => {
+router.post('/strategies', validate(mutationBaselineSchema), async (req, res) => {
   try {
     const hotelId = req.user.hotelId;
     const strategyData = {
@@ -369,7 +373,7 @@ router.post('/strategies', async (req, res) => {
  *     summary: Update pricing strategy
  *     tags: [Revenue Management]
  */
-router.put('/strategies/:strategyId', async (req, res) => {
+router.put('/strategies/:strategyId', validate(mutationBaselineSchema), async (req, res) => {
   try {
     const { strategyId } = req.params;
     const hotelId = req.user.hotelId;
@@ -487,7 +491,7 @@ router.get('/forecasts', async (req, res) => {
  *       200:
  *         description: Forecasts generated
  */
-router.post('/forecasts/generate', async (req, res) => {
+router.post('/forecasts/generate', validate(mutationBaselineSchema), async (req, res) => {
   try {
     const hotelId = req.user.hotelId;
     const { startDate, endDate, roomTypeId } = req.body;
@@ -595,7 +599,7 @@ router.get('/competitors', async (req, res) => {
  *       201:
  *         description: Competitor added
  */
-router.post('/competitors', async (req, res) => {
+router.post('/competitors', validate(mutationBaselineSchema), async (req, res) => {
   try {
     const hotelId = req.user.hotelId;
     const competitorData = {
@@ -698,7 +702,8 @@ const hotelIdValidation = [
  *     tags: [Revenue Optimization]
  */
 router.post('/:hotelId/optimization/strategy',
-  authorize(['admin', 'revenue_manager']),
+  authorizePolicy('revenueOptimization', 'manageAccess'),
+  validate(mutationBaselineSchema),
   hotelIdValidation,
   revenueOptimizationController.generateOptimizationStrategy
 );
@@ -711,7 +716,7 @@ router.post('/:hotelId/optimization/strategy',
  *     tags: [Revenue Optimization]
  */
 router.get('/:hotelId/optimization/pricing',
-  authorize(['admin', 'revenue_manager']),
+  authorizePolicy('revenueOptimization', 'manageAccess'),
   hotelIdValidation,
   revenueOptimizationController.getPricingOptimization
 );
@@ -724,7 +729,7 @@ router.get('/:hotelId/optimization/pricing',
  *     tags: [Revenue Analytics]
  */
 router.get('/:hotelId/analytics/regional',
-  authorize(['admin', 'revenue_manager']),
+  authorizePolicy('revenueOptimization', 'manageAccess'),
   hotelIdValidation,
   revenueOptimizationController.getRegionalAnalysis
 );
@@ -737,7 +742,7 @@ router.get('/:hotelId/analytics/regional',
  *     tags: [Revenue Analytics]
  */
 router.get('/:hotelId/analytics/languages',
-  authorize(['admin', 'revenue_manager', 'content_manager']),
+  authorizePolicy('revenueOptimization', 'revenueContentAccess'),
   hotelIdValidation,
   revenueOptimizationController.getLanguageMetrics
 );
@@ -750,7 +755,8 @@ router.get('/:hotelId/analytics/languages',
  *     tags: [Revenue Reports]
  */
 router.post('/:hotelId/reports',
-  authorize(['admin', 'revenue_manager']),
+  authorizePolicy('revenueOptimization', 'manageAccess'),
+  validate(mutationBaselineSchema),
   hotelIdValidation,
   [
     body('startDate').isISO8601().withMessage('Valid start date is required'),
@@ -770,7 +776,7 @@ router.post('/:hotelId/reports',
  *     tags: [Revenue Reports]
  */
 router.get('/:hotelId/reports',
-  authorize(['admin', 'revenue_manager']),
+  authorizePolicy('revenueOptimization', 'manageAccess'),
   hotelIdValidation,
   revenueOptimizationController.getRevenueReports
 );
@@ -783,7 +789,7 @@ router.get('/:hotelId/reports',
  *     tags: [Revenue Reports]
  */
 router.get('/:hotelId/reports/:reportId',
-  authorize(['admin', 'revenue_manager']),
+  authorizePolicy('revenueOptimization', 'manageAccess'),
   [
     ...hotelIdValidation,
     param('reportId').notEmpty().withMessage('Report ID is required'),
@@ -800,7 +806,7 @@ router.get('/:hotelId/reports/:reportId',
  *     tags: [Revenue Analytics]
  */
 router.get('/:hotelId/dashboard',
-  authorize(['admin', 'revenue_manager']),
+  authorizePolicy('revenueOptimization', 'manageAccess'),
   hotelIdValidation,
   revenueOptimizationController.getDashboardAnalytics
 );
@@ -813,7 +819,7 @@ router.get('/:hotelId/dashboard',
  *     tags: [Revenue Analytics]
  */
 router.get('/:hotelId/optimization/kpis',
-  authorize(['admin', 'revenue_manager']),
+  authorizePolicy('revenueOptimization', 'manageAccess'),
   hotelIdValidation,
   revenueOptimizationController.getOptimizationKPIs
 );

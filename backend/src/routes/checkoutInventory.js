@@ -1,5 +1,5 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -8,8 +8,12 @@ import Booking from '../models/Booking.js';
 import Room from '../models/Room.js';
 import User from '../models/User.js';
 import logger from '../utils/logger.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
@@ -61,7 +65,7 @@ router.use(ensurePropertyAccess);
  *       201:
  *         description: Checkout inventory check created successfully
  */
-router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/', authorizePolicy('checkoutInventory', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { bookingId, roomId, items, notes } = req.body;
   const { _id: checkedBy } = req.user;
 
@@ -155,7 +159,7 @@ router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
  *       200:
  *         description: List of checkout inventory checks
  */
-router.get('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsync(async (req, res) => {
   const { status, paymentStatus, bookingId, page = 1, limit = 10 } = req.query;
   const { hotelId } = req.user;
 
@@ -218,7 +222,7 @@ router.get('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
  *       200:
  *         description: Checkout inventory check details
  */
-router.get('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/:id', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsync(async (req, res) => {
   const checkoutInventory = await CheckoutInventory.findById(req.params.id)
     .populate([
       { path: 'bookingId', select: 'bookingNumber checkIn checkOut totalAmount userId' },
@@ -267,7 +271,7 @@ router.get('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
  *       200:
  *         description: Checkout inventory check updated successfully
  */
-router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.patch('/:id', authorizePolicy('checkoutInventory', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { items, status, notes } = req.body;
 
   const updateFields = {};
@@ -324,7 +328,7 @@ router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =>
  *       200:
  *         description: Inventory check marked as completed
  */
-router.post('/:id/complete', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/:id/complete', authorizePolicy('checkoutInventory', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   // Atomic update: only update if status is 'pending'
   const checkoutInventory = await CheckoutInventory.findOneAndUpdate(
     { _id: req.params.id, status: 'pending' },
@@ -396,7 +400,7 @@ router.post('/:id/complete', authorize('staff', 'admin'), catchAsync(async (req,
  *       200:
  *         description: Payment processed successfully
  */
-router.post('/:id/payment', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/:id/payment', authorizePolicy('checkoutInventory', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { paymentMethod, notes } = req.body;
 
   // Atomic update: only update if not already paid
@@ -492,7 +496,7 @@ router.post('/:id/payment', authorize('staff', 'admin'), catchAsync(async (req, 
  *       200:
  *         description: Checkout inventory check for booking
  */
-router.get('/booking/:bookingId', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/booking/:bookingId', authorizePolicy('checkoutInventory', 'staffAccess'), catchAsync(async (req, res) => {
   const checkoutInventory = await CheckoutInventory.findByBooking(req.params.bookingId);
 
   if (!checkoutInventory) {

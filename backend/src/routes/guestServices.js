@@ -1,9 +1,11 @@
 import express from 'express';
+import Joi from 'joi';
 import mongoose from 'mongoose';
 import GuestService from '../models/GuestService.js';
 import Booking from '../models/Booking.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { serviceNotificationService } from '../services/serviceNotificationService.js';
@@ -14,10 +16,12 @@ import logger from '../utils/logger.js';
 import { validateStatusTransition, GUEST_SERVICE_TRANSITIONS } from '../utils/statusTransitions.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication and property access
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('guestServices', 'baseAccess'));
 
 /**
  * @swagger
@@ -76,7 +80,7 @@ router.use(ensurePropertyAccess);
  *       201:
  *         description: Service request created successfully
  */
-router.post('/', authenticate, catchAsync(async (req, res) => {
+router.post('/', authenticate, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const {
     bookingId,
     serviceType,
@@ -344,7 +348,7 @@ router.get('/', authenticate, catchAsync(async (req, res) => {
  *       200:
  *         description: Service statistics
  */
-router.get('/stats', authenticate, authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
+router.get('/stats', authenticate, authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
   const { startDate, endDate } = req.query;
 
   let hotelId;
@@ -410,7 +414,7 @@ router.get('/stats', authenticate, authorize('staff', 'admin', 'frontdesk'), cat
  *       200:
  *         description: Available staff list
  */
-router.get('/available-staff', authenticate, authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
+router.get('/available-staff', authenticate, authorizePolicy('guestServices', 'staffAccess'), catchAsync(async (req, res) => {
   let hotelId;
   if (req.user.role === 'staff' || req.user.role === 'frontdesk') {
     hotelId = req.user.hotelId;
@@ -520,7 +524,7 @@ router.get('/:id', authenticate, catchAsync(async (req, res) => {
  *       200:
  *         description: Service request updated successfully
  */
-router.patch('/:id', authenticate, catchAsync(async (req, res) => {
+router.patch('/:id', authenticate, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   // First fetch current state to validate permissions and transitions
   const currentRequest = await GuestService.findById(req.params.id).lean();
 
@@ -638,7 +642,7 @@ router.patch('/:id', authenticate, catchAsync(async (req, res) => {
  *       200:
  *         description: Feedback added successfully
  */
-router.post('/:id/feedback', authenticate, authorize('guest'), catchAsync(async (req, res) => {
+router.post('/:id/feedback', authenticate, authorizePolicy('guestServices', 'guestAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { rating, feedback } = req.body;
 
   const serviceRequest = await GuestService.findOneAndUpdate(

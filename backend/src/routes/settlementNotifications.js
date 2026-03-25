@@ -1,11 +1,15 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import settlementNotificationService from '../services/settlementNotificationService.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
@@ -38,7 +42,7 @@ router.use(ensurePropertyAccess);
  *       200:
  *         description: Reminder sent successfully
  */
-router.post('/send-reminder', authorize('admin', 'staff'), catchAsync(async (req, res) => {
+router.post('/send-reminder', authorizePolicy('settlementNotifications', 'adminStaffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { settlementId, reminderType = 'payment_reminder' } = req.body;
 
   if (!settlementId) {
@@ -79,7 +83,7 @@ router.post('/send-reminder', authorize('admin', 'staff'), catchAsync(async (req
  *       200:
  *         description: Overdue settlements processed successfully
  */
-router.post('/process-overdue', authorize('admin'), catchAsync(async (req, res) => {
+router.post('/process-overdue', authorizePolicy('settlementNotifications', 'adminAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   await settlementNotificationService.processOverdueSettlements();
 
   res.json({
@@ -101,7 +105,7 @@ router.post('/process-overdue', authorize('admin'), catchAsync(async (req, res) 
  *       200:
  *         description: Due today settlements processed successfully
  */
-router.post('/process-due-today', authorize('admin'), catchAsync(async (req, res) => {
+router.post('/process-due-today', authorizePolicy('settlementNotifications', 'adminAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   await settlementNotificationService.processDueTodaySettlements();
 
   res.json({
@@ -123,7 +127,7 @@ router.post('/process-due-today', authorize('admin'), catchAsync(async (req, res
  *       200:
  *         description: Settlement escalations processed successfully
  */
-router.post('/process-escalations', authorize('admin'), catchAsync(async (req, res) => {
+router.post('/process-escalations', authorizePolicy('settlementNotifications', 'adminAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   await settlementNotificationService.processEscalationReminders();
 
   res.json({
@@ -145,7 +149,7 @@ router.post('/process-escalations', authorize('admin'), catchAsync(async (req, r
  *       200:
  *         description: Settlement statistics retrieved successfully
  */
-router.get('/stats', authorize('admin', 'staff'), catchAsync(async (req, res) => {
+router.get('/stats', authorizePolicy('settlementNotifications', 'adminStaffAccess'), catchAsync(async (req, res) => {
   const stats = await settlementNotificationService.getSettlementStats();
 
   if (!stats) {
@@ -190,7 +194,7 @@ router.get('/stats', authorize('admin', 'staff'), catchAsync(async (req, res) =>
  *       200:
  *         description: Bulk reminders sent successfully
  */
-router.post('/bulk-remind', authorize('admin', 'staff'), catchAsync(async (req, res) => {
+router.post('/bulk-remind', authorizePolicy('settlementNotifications', 'adminStaffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { settlementIds, reminderType = 'payment_reminder' } = req.body;
 
   if (!settlementIds || !Array.isArray(settlementIds) || settlementIds.length === 0) {
@@ -253,7 +257,7 @@ router.post('/bulk-remind', authorize('admin', 'staff'), catchAsync(async (req, 
  *       200:
  *         description: Scheduler status retrieved successfully
  */
-router.get('/schedule-status', authorize('admin'), catchAsync(async (req, res) => {
+router.get('/schedule-status', authorizePolicy('settlementNotifications', 'adminAccess'), catchAsync(async (req, res) => {
   const status = {
     isRunning: true, // Since we're using cron-based scheduling
     scheduledTasks: [

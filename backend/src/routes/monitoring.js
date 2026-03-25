@@ -1,10 +1,13 @@
 import express from 'express';
+import Joi from 'joi';
 import auth from '../middleware/auth.js';
 import performanceMonitor from '../services/performanceMonitor.js';
 import cacheService from '../services/cacheService.js';
+import { validate } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 /**
  * @route   GET /api/v1/monitoring/metrics
@@ -229,7 +232,7 @@ router.get('/cache-stats', auth, async (req, res) => {
  * @desc    Reset performance metrics
  * @access  Private (Admin only)
  */
-router.post('/metrics/reset', auth, async (req, res) => {
+router.post('/metrics/reset', auth, validate(mutationBaselineSchema), async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
       return res.status(403).json({
@@ -258,7 +261,7 @@ router.post('/metrics/reset', auth, async (req, res) => {
  * @desc    Flush all cache
  * @access  Private (Admin only)
  */
-router.post('/cache/flush', auth, async (req, res) => {
+router.post('/cache/flush', auth, validate(mutationBaselineSchema), async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
       return res.status(403).json({
@@ -293,7 +296,7 @@ router.post('/cache/flush', auth, async (req, res) => {
  * @desc    Invalidate cache for a specific property
  * @access  Private (Admin/Manager)
  */
-router.post('/cache/invalidate-property/:propertyId', auth, async (req, res) => {
+router.post('/cache/invalidate-property/:propertyId', auth, validate(mutationBaselineSchema), async (req, res) => {
   try {
     if (req.user.role !== 'admin' && req.user.role !== 'manager') {
       return res.status(403).json({
@@ -326,7 +329,7 @@ router.post('/cache/invalidate-property/:propertyId', auth, async (req, res) => 
  * @desc    Invalidate cache for a property group
  * @access  Private (Admin/Manager)
  */
-router.post('/cache/invalidate-group/:groupId', auth, async (req, res) => {
+router.post('/cache/invalidate-group/:groupId', auth, validate(mutationBaselineSchema), async (req, res) => {
   try {
     if (req.user.role !== 'admin' && req.user.role !== 'manager') {
       return res.status(403).json({

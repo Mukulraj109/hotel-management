@@ -1,13 +1,17 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import { SettingsInheritanceService } from '../services/settingsInheritance.js';
 import Hotel from '../models/Hotel.js';
 import PropertyGroup from '../models/PropertyGroup.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const anySettingsMutationSchema = Joi.object({}).unknown(true);
 
 /**
  * Settings Routes with Group Inheritance Support
@@ -37,6 +41,8 @@ const router = express.Router();
  */
 router.put('/check-in-out',
   authenticate,
+  authorizePolicy('settings', 'baseAccess'),
+  validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { checkInTime, checkOutTime, applyToAll, applyToGroup, propertyId } = req.body;
 
@@ -134,6 +140,8 @@ router.put('/check-in-out',
  */
 router.put('/currency',
   authenticate,
+  authorizePolicy('settings', 'baseAccess'),
+  validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { currency, applyToAll, applyToGroup, propertyId } = req.body;
 
@@ -218,6 +226,8 @@ router.put('/currency',
  */
 router.put('/timezone',
   authenticate,
+  authorizePolicy('settings', 'baseAccess'),
+  validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { timezone, applyToAll, applyToGroup, propertyId } = req.body;
 
@@ -302,6 +312,8 @@ router.put('/timezone',
  */
 router.put('/cancellation-policy',
   authenticate,
+  authorizePolicy('settings', 'baseAccess'),
+  validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { cancellationPolicy, applyToAll, applyToGroup, propertyId } = req.body;
 
@@ -389,6 +401,8 @@ router.put('/cancellation-policy',
  */
 router.put('/general',
   authenticate,
+  authorizePolicy('settings', 'baseAccess'),
+  validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { settingType, settingUpdates, applyToAll, applyToGroup, propertyId } = req.body;
 
@@ -500,6 +514,8 @@ router.get('/inheritance-status/:propertyId',
  */
 router.post('/apply-group-settings',
   authenticate,
+  authorizePolicy('settings', 'baseAccess'),
+  validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { propertyId, groupId } = req.body;
 
@@ -550,6 +566,8 @@ router.post('/apply-group-settings',
  */
 router.put('/toggle-inheritance/:propertyId',
   authenticate,
+  authorizePolicy('settings', 'baseAccess'),
+  validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { propertyId } = req.params;
     const { inheritSettings } = req.body;
@@ -638,6 +656,8 @@ router.get('/group/:groupId',
  */
 router.post('/apply',
   authenticate,
+  authorizePolicy('settings', 'baseAccess'),
+  validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { scope, propertyId, settingType, settingUpdates } = req.body;
     const userId = req.user._id;
@@ -685,6 +705,8 @@ router.post('/apply',
  */
 router.post('/affected-count',
   authenticate,
+  authorizePolicy('settings', 'baseAccess'),
+  validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { scope, propertyId } = req.body;
 
@@ -721,6 +743,8 @@ router.post('/affected-count',
  */
 router.put('/toggle-inheritance',
   authenticate,
+  authorizePolicy('settings', 'baseAccess'),
+  validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { propertyId, settingType, enabled } = req.body;
 
@@ -759,6 +783,8 @@ router.put('/toggle-inheritance',
  */
 router.put('/override',
   authenticate,
+  authorizePolicy('settings', 'baseAccess'),
+  validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { propertyId, settingType, overrideValues } = req.body;
     const userId = req.user._id;
@@ -798,6 +824,8 @@ router.put('/override',
  */
 router.delete('/override',
   authenticate,
+  authorizePolicy('settings', 'baseAccess'),
+  validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { propertyId, settingType } = req.body;
 
@@ -858,6 +886,8 @@ router.get('/group-summary/:groupId',
  */
 router.post('/preview-changes',
   authenticate,
+  authorizePolicy('settings', 'baseAccess'),
+  validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { scope, propertyId, settingType, settingUpdates } = req.body;
 
@@ -933,6 +963,8 @@ router.get('/change-history/:propertyId/:settingType',
  */
 router.post('/rollback',
   authenticate,
+  authorizePolicy('settings', 'baseAccess'),
+  validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { propertyId, settingType, historyId } = req.body;
 
@@ -968,6 +1000,8 @@ router.post('/rollback',
  */
 router.post('/bulk-rollback',
   authenticate,
+  authorizePolicy('settings', 'baseAccess'),
+  validate(anySettingsMutationSchema),
   catchAsync(async (req, res) => {
     const { propertyIds, settingType, historyId } = req.body;
 

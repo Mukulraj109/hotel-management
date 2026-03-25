@@ -1,12 +1,15 @@
 import express from 'express';
+import Joi from 'joi';
 import roomChargeController from '../controllers/roomChargeController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import { body, param, query } from 'express-validator';
 import financialRateLimiter from '../middleware/financialRateLimiter.js';
 
 const router = express.Router({ mergeParams: true });
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Rate limiting for financial charge operations
 router.use(financialRateLimiter);
@@ -386,6 +389,7 @@ const idParamValidation = [
 // All routes require authentication
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('roomCharges', 'baseAccess'));
 
 // Public API endpoints for room charge information (accessible to all authenticated users)
 
@@ -402,6 +406,7 @@ router.get('/hotels/:hotelId/applicable',
 
 // Calculate room charges for booking preview (used by booking engine)
 router.post('/hotels/:hotelId/calculate', 
+  validate(mutationBaselineSchema),
   paramValidation,
   chargeCalculationValidation,
   roomChargeController.calculateRoomCharges
@@ -409,6 +414,7 @@ router.post('/hotels/:hotelId/calculate',
 
 // Calculate comprehensive booking total (room + charges + taxes)
 router.post('/hotels/:hotelId/calculate-comprehensive', 
+  validate(mutationBaselineSchema),
   paramValidation,
   chargeCalculationValidation,
   roomChargeController.calculateComprehensiveTotal
@@ -440,6 +446,7 @@ router.get('/:id',
 // Create new room charge (admin and finance only)
 router.post('/hotels/:hotelId', 
   authorize(['admin', 'finance']),
+  validate(mutationBaselineSchema),
   paramValidation,
   createChargeValidation,
   roomChargeController.createRoomCharge
@@ -448,6 +455,7 @@ router.post('/hotels/:hotelId',
 // Update room charge (admin and finance only)
 router.put('/:id', 
   authorize(['admin', 'finance']),
+  validate(mutationBaselineSchema),
   updateChargeValidation,
   roomChargeController.updateRoomCharge
 );
@@ -455,6 +463,7 @@ router.put('/:id',
 // Update charge audit information (system use)
 router.patch('/:id/audit', 
   authorize(['admin', 'finance', 'system']),
+  validate(mutationBaselineSchema),
   idParamValidation,
   body('totalCharges').optional().isFloat({ min: 0 }).withMessage('Total charges must be non-negative'),
   body('applicationCount').optional().isInt({ min: 0 }).withMessage('Application count must be non-negative'),
@@ -465,6 +474,7 @@ router.patch('/:id/audit',
 // Bulk update charge status (admin and finance only)
 router.patch('/hotels/:hotelId/bulk-update', 
   authorize(['admin', 'finance']),
+  validate(mutationBaselineSchema),
   paramValidation,
   bulkUpdateValidation,
   roomChargeController.bulkUpdateChargeStatus
@@ -473,6 +483,7 @@ router.patch('/hotels/:hotelId/bulk-update',
 // Delete/deactivate room charge (admin only)
 router.delete('/:id', 
   authorize(['admin']),
+  validate(mutationBaselineSchema),
   idParamValidation,
   roomChargeController.deleteRoomCharge
 );

@@ -2,13 +2,17 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import logger from '../utils/logger.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Ensure uploads directory exists
 const uploadsDir = path.join(process.cwd(), 'uploads', 'inventory-photos');
@@ -60,7 +64,8 @@ router.use(ensurePropertyAccess);
  * Upload single photo for inventory documentation
  */
 router.post('/upload', 
-  authorize('staff', 'admin'),
+  authorizePolicy('photoUpload', 'staffAccess'),
+  validate(mutationBaselineSchema),
   upload.single('photo'),
   catchAsync(async (req, res) => {
     const { roomId, itemId, description } = req.body;
@@ -102,7 +107,8 @@ router.post('/upload',
  * Used by staff for damage documentation, daily checks, etc.
  */
 router.post('/inventory', 
-  authorize('staff', 'admin'),
+  authorizePolicy('photoUpload', 'staffAccess'),
+  validate(mutationBaselineSchema),
   upload.array('photos', 10), // Accept up to 10 photos
   catchAsync(async (req, res) => {
     const { roomId, checkId, inspectionId, itemId, description } = req.body;
@@ -203,7 +209,8 @@ router.get('/inventory/:filename',
  * Delete uploaded photo
  */
 router.delete('/inventory/:filename',
-  authorize('staff', 'admin'),
+  validate(mutationBaselineSchema),
+  authorizePolicy('photoUpload', 'staffAccess'),
   catchAsync(async (req, res) => {
     const { filename } = req.params;
     const filePath = path.join(uploadsDir, filename);
@@ -248,7 +255,8 @@ router.delete('/inventory/:filename',
  * Update photo description or metadata
  */
 router.patch('/inventory/:filename',
-  authorize('staff', 'admin'),
+  authorizePolicy('photoUpload', 'staffAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { filename } = req.params;
     const { description } = req.body;
@@ -290,7 +298,8 @@ router.patch('/inventory/:filename',
  * Bulk upload for multiple inventory items
  */
 router.post('/inventory/bulk',
-  authorize('staff', 'admin'),
+  authorizePolicy('photoUpload', 'staffAccess'),
+  validate(mutationBaselineSchema),
   upload.array('photos', 50), // Higher limit for bulk operations
   catchAsync(async (req, res) => {
     const { metadata } = req.body; // JSON string with file-specific metadata

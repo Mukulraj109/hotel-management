@@ -1,7 +1,9 @@
 import express from 'express';
+import Joi from 'joi';
 import mongoose from 'mongoose';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import User from '../models/User.js';
@@ -14,13 +16,15 @@ import RoomInventory from '../models/RoomInventory.js';
 import Inventory from '../models/Inventory.js';
 import SupplyRequest from '../models/SupplyRequest.js';
 import CheckoutInventory from '../models/CheckoutInventory.js';
+import { validate } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require staff authentication and property access
 router.use(authenticate);
-router.use(authorize('staff', 'admin'));
+router.use(authorizePolicy('staffDashboard', 'staffAccess'));
 router.use(ensurePropertyAccess);
 
 // Simple health check for debugging
@@ -416,7 +420,7 @@ router.get('/inventory/summary', catchAsync(async (req, res) => {
 /**
  * Staff Dashboard - Order Inventory Item (Mark as Ordered)
  */
-router.post('/inventory/:itemId/order', catchAsync(async (req, res) => {
+router.post('/inventory/:itemId/order', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { itemId } = req.params;
   const { hotelId } = req.user;
   const { quantity = 50 } = req.body; // Default order quantity
@@ -461,7 +465,7 @@ router.post('/inventory/:itemId/order', catchAsync(async (req, res) => {
 /**
  * Staff Dashboard - Mark Room as Inspected
  */
-router.patch('/rooms/:roomId/inspect', catchAsync(async (req, res) => {
+router.patch('/rooms/:roomId/inspect', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { roomId } = req.params;
   const { hotelId } = req.user;
 

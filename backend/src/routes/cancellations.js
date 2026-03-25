@@ -1,13 +1,17 @@
 import express from 'express';
+import Joi from 'joi';
 import { catchAsync } from '../utils/catchAsync.js';
 import { authenticate } from '../middleware/auth.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { CancellationRefundService } from '../services/cancellationRefundService.js';
+import { validate } from '../middleware/validation.js';
 import Booking from '../models/Booking.js';
 import Payment from '../models/Payment.js';
 import Stripe from 'stripe';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Initialize (Stripe only if configured)
 let stripe = null;
@@ -28,6 +32,8 @@ const cancellationService = new CancellationRefundService({
 router.post(
   '/:bookingId/cancel',
   authenticate,
+  authorizePolicy('cancellations', 'baseAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { bookingId } = req.params;
     const hotelId = req.user.hotelId || req.user.hotel;

@@ -1,5 +1,5 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
@@ -7,8 +7,12 @@ import checkoutAutomationService from '../services/checkoutAutomationService.js'
 import CheckoutAutomationConfig from '../models/CheckoutAutomationConfig.js';
 import CheckoutAutomationLog from '../models/CheckoutAutomationLog.js';
 import Booking from '../models/Booking.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
@@ -35,7 +39,7 @@ router.use(ensurePropertyAccess);
  *       404:
  *         description: Configuration not found
  */
-router.get('/config', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/config', authorizePolicy('checkoutAutomation', 'managerAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
 
   let config = await CheckoutAutomationConfig.findOne({ hotelId }).lean();
@@ -86,7 +90,7 @@ router.get('/config', authorize('admin', 'manager'), catchAsync(async (req, res)
  *       400:
  *         description: Invalid configuration data
  */
-router.put('/config', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.put('/config', authorizePolicy('checkoutAutomation', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const updateData = req.body;
 
@@ -146,7 +150,7 @@ router.put('/config', authorize('admin', 'manager'), catchAsync(async (req, res)
  *       404:
  *         description: Booking not found
  */
-router.get('/status/:bookingId', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.get('/status/:bookingId', authorizePolicy('checkoutAutomation', 'staffAccess'), catchAsync(async (req, res) => {
   const { bookingId } = req.params;
   const { hotelId } = req.user;
 
@@ -195,7 +199,7 @@ router.get('/status/:bookingId', authorize('staff', 'admin'), catchAsync(async (
  *       404:
  *         description: Booking not found
  */
-router.post('/process/:bookingId', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/process/:bookingId', authorizePolicy('checkoutAutomation', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { bookingId } = req.params;
   const { forceProcessing = false } = req.body;
   const { hotelId, _id: userId } = req.user;
@@ -242,7 +246,7 @@ router.post('/process/:bookingId', authorize('staff', 'admin'), catchAsync(async
  *       404:
  *         description: Booking not found
  */
-router.post('/retry/:bookingId', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/retry/:bookingId', authorizePolicy('checkoutAutomation', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { bookingId } = req.params;
   const { hotelId, _id: userId } = req.user;
 
@@ -282,7 +286,7 @@ router.post('/retry/:bookingId', authorize('staff', 'admin'), catchAsync(async (
  *       200:
  *         description: Dashboard data retrieved successfully
  */
-router.get('/dashboard', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/dashboard', authorizePolicy('checkoutAutomation', 'managerAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { period = 'today' } = req.query;
 
@@ -389,7 +393,7 @@ router.get('/dashboard', authorize('admin', 'manager'), catchAsync(async (req, r
  *       200:
  *         description: Automation logs retrieved successfully
  */
-router.get('/logs', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/logs', authorizePolicy('checkoutAutomation', 'managerAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { 
     status, 
@@ -456,7 +460,7 @@ router.get('/logs', authorize('admin', 'manager'), catchAsync(async (req, res) =
  *       200:
  *         description: Automation toggled successfully
  */
-router.post('/toggle', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/toggle', authorizePolicy('checkoutAutomation', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { enabled, automationType } = req.body;
 

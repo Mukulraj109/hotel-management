@@ -1117,9 +1117,6 @@ bookingSchema.index({ 'otaAmendments.amendmentStatus': 1 });
 bookingSchema.index({ 'statusHistory.timestamp': -1 });
 bookingSchema.index({ 'otaAmendments.channelAmendmentId': 1 }, { sparse: true });
 
-// Index for extra person charge approval workflow
-bookingSchema.index({ 'extraPersonCharges.status': 1 });
-
 // Exclude soft-deleted bookings from all find queries by default
 bookingSchema.pre(/^find/, function(next) {
   if (this.getFilter().isDeleted === undefined) {
@@ -1556,24 +1553,68 @@ bookingSchema.methods.processSettlementPayment = function(paymentData, userConte
 };
 
 // Static method to find overlapping bookings
-bookingSchema.statics.findOverlapping = async function(roomIds, checkIn, checkOut, excludeBookingId = null) {
+bookingSchema.statics.findOverlapping = async function(
+  roomIds,
+  checkIn,
+  checkOut,
+  excludeBookingIdOrOptions = null,
+  maybeOptions = {}
+) {
   try {
+    let options = {};
+
+    // Backward compatible argument parsing:
+    // old: findOverlapping(roomIds, checkIn, checkOut, excludeBookingId)
+    // new: findOverlapping(roomIds, checkIn, checkOut, { hotelId, excludeBookingId, session })
+    const isOptionsObject =
+      excludeBookingIdOrOptions &&
+      typeof excludeBookingIdOrOptions === 'object' &&
+      !Array.isArray(excludeBookingIdOrOptions) &&
+      (
+        Object.prototype.hasOwnProperty.call(excludeBookingIdOrOptions, 'hotelId') ||
+        Object.prototype.hasOwnProperty.call(excludeBookingIdOrOptions, 'excludeBookingId') ||
+        Object.prototype.hasOwnProperty.call(excludeBookingIdOrOptions, 'session')
+      );
+
+    if (isOptionsObject) {
+      options = excludeBookingIdOrOptions;
+    } else {
+      options = {
+        ...maybeOptions,
+        excludeBookingId: excludeBookingIdOrOptions || maybeOptions.excludeBookingId || null
+      };
+    }
+
+    const {
+      hotelId,
+      excludeBookingId = null,
+      session = null
+    } = options;
+
     const query = {
       'rooms.roomId': { $in: roomIds },
       // Only include bookings that actually occupy the room (exclude checked_out, cancelled, no_show)
       status: { $in: ['pending', 'confirmed', 'modified', 'checked_in'] },
-      $or: [
-        { checkIn: { $lt: checkOut, $gte: checkIn } },
-        { checkOut: { $gt: checkIn, $lte: checkOut } },
-        { checkIn: { $lte: checkIn }, checkOut: { $gte: checkOut } }
-      ]
+      // Canonical overlap condition:
+      // existing.checkIn < requestedCheckOut && existing.checkOut > requestedCheckIn
+      checkIn: { $lt: checkOut },
+      checkOut: { $gt: checkIn }
     };
 
     if (excludeBookingId) {
       query._id = { $ne: excludeBookingId };
     }
 
-    return await this.find(query).lean().limit(1000);
+    if (hotelId) {
+      query.hotelId = hotelId;
+    }
+
+    let bookingQuery = this.find(query);
+    if (session) {
+      bookingQuery = bookingQuery.session(session);
+    }
+
+    return await bookingQuery.lean().limit(1000);
   } catch (error) {
     throw new Error(`${error.message}`);
   }

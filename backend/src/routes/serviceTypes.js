@@ -1,4 +1,5 @@
 import express from 'express';
+import Joi from 'joi';
 import {
   getServiceTypes,
   getServiceTypeById,
@@ -12,9 +13,12 @@ import {
 } from '../controllers/serviceTypeController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validateRoles } from '../middleware/roleValidation.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 /**
  * @swagger
@@ -26,6 +30,7 @@ const router = express.Router();
 // Apply authentication middleware to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('serviceTypes', 'baseAccess'));
 
 /**
  * Service Type CRUD Operations
@@ -41,33 +46,33 @@ router.get('/stats', getServiceTypeStats);
 router.get('/:id', getServiceTypeById);
 
 // POST /admin/service-types - Create new service type (Manager+ only)
-router.post('/', validateRoles(['admin', 'manager']), createServiceType);
+router.post('/', validateRoles(['admin', 'manager']), validate(mutationBaselineSchema), createServiceType);
 
 // PUT /admin/service-types/:id - Update service type (Manager+ only)
-router.put('/:id', validateRoles(['admin', 'manager']), updateServiceType);
+router.put('/:id', validateRoles(['admin', 'manager']), validate(mutationBaselineSchema), updateServiceType);
 
 // DELETE /admin/service-types/:id - Delete service type (Manager+ only)
-router.delete('/:id', validateRoles(['admin', 'manager']), deleteServiceType);
+router.delete('/:id', validateRoles(['admin', 'manager']), validate(mutationBaselineSchema), deleteServiceType);
 
 /**
  * Service Type Variations
  */
 
 // POST /admin/service-types/:id/variations - Add variation to service type
-router.post('/:id/variations', validateRoles(['admin', 'manager']), addVariation);
+router.post('/:id/variations', validateRoles(['admin', 'manager']), validate(mutationBaselineSchema), addVariation);
 
 /**
  * Service Type Templates
  */
 
 // POST /admin/service-types/:id/templates - Add template to service type
-router.post('/:id/templates', validateRoles(['admin', 'manager']), addTemplate);
+router.post('/:id/templates', validateRoles(['admin', 'manager']), validate(mutationBaselineSchema), addTemplate);
 
 /**
  * Pricing Calculations
  */
 
 // POST /admin/service-types/:type/calculate-price - Calculate price with variations
-router.post('/:type/calculate-price', calculatePrice);
+router.post('/:type/calculate-price', validate(mutationBaselineSchema), calculatePrice);
 
 export default router;

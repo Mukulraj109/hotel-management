@@ -2,10 +2,13 @@ import express from 'express';
 import billMessageController from '../controllers/billMessageController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import { body, param, query } from 'express-validator';
+import Joi from 'joi';
 
 const router = express.Router({ mergeParams: true });
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Validation schemas
 const createMessageValidation = [
@@ -491,6 +494,7 @@ const idParamValidation = [
 // All routes require authentication
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('billMessages', 'baseAccess'));
 
 // Public API endpoints (accessible to all authenticated users)
 
@@ -500,7 +504,7 @@ router.use(ensurePropertyAccess);
 // ); // Method does not exist - commented out
 
 // Template validation endpoint
-// router.post('/validate-template',
+// post('/validate-template',
 //   templateValidation,
 //   billMessageController.validateTemplate
 // ); // Method does not exist - commented out
@@ -538,6 +542,7 @@ router.get('/:id',
 // Create new bill message (admin and manager only)
 router.post('/hotels/:hotelId',
   authorize(['admin', 'manager']),
+  validate(mutationBaselineSchema),
   paramValidation,
   createMessageValidation,
   billMessageController.createBillMessage
@@ -546,6 +551,7 @@ router.post('/hotels/:hotelId',
 // Update bill message (admin and manager only)
 router.put('/:id',
   authorize(['admin', 'manager']),
+  validate(mutationBaselineSchema),
   updateMessageValidation,
   billMessageController.updateBillMessage
 );
@@ -553,6 +559,7 @@ router.put('/:id',
 // Process message template
 router.post('/:id/process',
   authorize(['admin', 'manager', 'front_desk', 'finance']),
+  validate(mutationBaselineSchema),
   idParamValidation,
   processMessageValidation,
   billMessageController.processMessage
@@ -561,6 +568,7 @@ router.post('/:id/process',
 // Generate message preview
 router.post('/:id/preview',
   authorize(['admin', 'manager', 'front_desk']),
+  validate(mutationBaselineSchema),
   idParamValidation,
   previewValidation,
   billMessageController.generatePreview
@@ -569,6 +577,7 @@ router.post('/:id/preview',
 // Duplicate message
 router.post('/:id/duplicate',
   authorize(['admin', 'manager']),
+  validate(mutationBaselineSchema),
   idParamValidation,
   duplicateValidation,
   billMessageController.duplicateMessage
@@ -577,6 +586,7 @@ router.post('/:id/duplicate',
 // Find applicable messages for trigger event
 router.post('/hotels/:hotelId/applicable',
   authorize(['admin', 'manager', 'front_desk', 'system']),
+  validate(mutationBaselineSchema),
   paramValidation,
   billMessageController.findApplicableMessages
 );
@@ -584,6 +594,7 @@ router.post('/hotels/:hotelId/applicable',
 // Auto-generate messages for trigger event
 router.post('/hotels/:hotelId/auto-generate',
   authorize(['admin', 'manager', 'front_desk', 'system']),
+  validate(mutationBaselineSchema),
   paramValidation,
   billMessageController.autoGenerateMessages
 );
@@ -591,6 +602,7 @@ router.post('/hotels/:hotelId/auto-generate',
 // Bulk update message status (admin and manager only)
 router.patch('/hotels/:hotelId/bulk-update',
   authorize(['admin', 'manager']),
+  validate(mutationBaselineSchema),
   paramValidation,
   bulkUpdateValidation,
   billMessageController.bulkUpdateStatus
@@ -599,6 +611,7 @@ router.patch('/hotels/:hotelId/bulk-update',
 // Import messages (admin only)
 router.post('/hotels/:hotelId/import',
   authorize(['admin']),
+  validate(mutationBaselineSchema),
   paramValidation,
   importValidation,
   billMessageController.importMessages
@@ -607,6 +620,7 @@ router.post('/hotels/:hotelId/import',
 // Delete bill message (admin only)
 router.delete('/:id',
   authorize(['admin']),
+  validate(mutationBaselineSchema),
   idParamValidation,
   billMessageController.deleteBillMessage
 );

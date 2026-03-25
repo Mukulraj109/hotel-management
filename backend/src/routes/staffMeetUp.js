@@ -1,6 +1,9 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import Joi from 'joi';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import {
   getSupervisionMeetUps,
   assignStaffToMeetUp,
@@ -13,11 +16,12 @@ import {
 } from '../controllers/staffMeetUpController.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
-router.use(authorize('staff', 'admin'));
+router.use(authorizePolicy('staffMeetUp', 'staffAccess'));
 
 /**
  * @swagger
@@ -182,7 +186,7 @@ router.get('/supervision', getSupervisionMeetUps);
  *       404:
  *         description: Meet-up not found
  */
-router.post('/:meetUpId/assign', assignStaffToMeetUp);
+router.post('/:meetUpId/assign', validate(mutationBaselineSchema), assignStaffToMeetUp);
 
 /**
  * @swagger
@@ -281,7 +285,7 @@ router.get('/my-assignments', getStaffAssignments);
  *       404:
  *         description: Meet-up assignment not found
  */
-router.put('/:meetUpId/supervision-status', updateSupervisionStatus);
+router.put('/:meetUpId/supervision-status', validate(mutationBaselineSchema), updateSupervisionStatus);
 
 /**
  * @swagger
@@ -396,7 +400,7 @@ router.get('/urgent', getUrgentSupervisionTasks);
  *       401:
  *         description: Unauthorized
  */
-router.post('/process-alerts', processSupervisionAlerts);
+router.post('/process-alerts', validate(mutationBaselineSchema), processSupervisionAlerts);
 
 /**
  * @swagger

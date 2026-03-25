@@ -1,10 +1,14 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import Joi from 'joi';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
@@ -57,7 +61,7 @@ router.use(ensurePropertyAccess);
  *       404:
  *         description: Booking or room not found
  */
-router.post('/process-checkout', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
+router.post('/process-checkout', authorizePolicy('inventoryAutomation', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { bookingId, roomId, options = {} } = req.body;
 
@@ -110,7 +114,7 @@ router.post('/process-checkout', authorize('admin', 'manager', 'staff'), catchAs
  *       404:
  *         description: Room not found
  */
-router.get('/assess-room/:roomId', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
+router.get('/assess-room/:roomId', authorizePolicy('inventoryAutomation', 'staffAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { roomId } = req.params;
   const { roomCondition } = req.query;
@@ -151,7 +155,7 @@ router.get('/assess-room/:roomId', authorize('admin', 'manager', 'staff'), catch
  *       200:
  *         description: Statistics retrieved successfully
  */
-router.get('/statistics', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/statistics', authorizePolicy('inventoryAutomation', 'managerAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { startDate, endDate } = req.query;
 
@@ -193,7 +197,7 @@ router.get('/statistics', authorize('admin', 'manager'), catchAsync(async (req, 
  *       200:
  *         description: Rooms retrieved successfully
  */
-router.get('/rooms-needing-attention', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
+router.get('/rooms-needing-attention', authorizePolicy('inventoryAutomation', 'staffAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { priority, status } = req.query;
 
@@ -257,7 +261,7 @@ router.get('/rooms-needing-attention', authorize('admin', 'manager', 'staff'), c
  *       404:
  *         description: Room not found
  */
-router.get('/replacement-items/:roomId', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
+router.get('/replacement-items/:roomId', authorizePolicy('inventoryAutomation', 'staffAccess'), catchAsync(async (req, res) => {
   const { roomId } = req.params;
 
   // Import inventory automation service
@@ -327,7 +331,7 @@ router.get('/replacement-items/:roomId', authorize('admin', 'manager', 'staff'),
  *       404:
  *         description: Room not found
  */
-router.put('/update-room-status/:roomId', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
+router.put('/update-room-status/:roomId', authorizePolicy('inventoryAutomation', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { roomId } = req.params;
   const { status, maintenanceNotes, items } = req.body;

@@ -1,17 +1,22 @@
 import express from 'express';
+import Joi from 'joi';
 import UserSettings from '../models/UserSettings.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
+import { validate } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
 import crypto from 'crypto';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('integrations', 'baseAccess'));
 router.use(authorize('admin', 'manager'));
 
 // Encryption key for sensitive data (in production, this should be in environment variables)
@@ -157,7 +162,7 @@ router.get('/settings', catchAsync(async (req, res, next) => {
  * PUT /api/v1/integrations/settings
  * Update integration settings
  */
-router.put('/settings', catchAsync(async (req, res, next) => {
+router.put('/settings', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const userId = req.user._id;
   const integrationData = req.body;
 

@@ -1,20 +1,23 @@
 import express from 'express';
 import HotelSettings from '../models/HotelSettings.js';
 import Hotel from '../models/Hotel.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication middleware to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
 
 // Only admin and manager can modify hotel settings
-router.use(authorize(['admin', 'manager']));
+router.use(authorizePolicy('hotelSettings', 'modifyAccess'));
 
 // Validation schemas for hotel settings
 const hotelSettingsSchemas = {
@@ -221,7 +224,7 @@ router.get('/:section', catchAsync(async (req, res, next) => {
 }));
 
 // PUT /api/v1/hotel-settings/basic-info - Update basic hotel information
-router.put('/basic-info', catchAsync(async (req, res, next) => {
+router.put('/basic-info', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { error } = hotelSettingsSchemas.basicInfo.validate(req.body);
   if (error) {
     return next(new ApplicationError(error.details[0].message, 400));
@@ -254,7 +257,7 @@ router.put('/basic-info', catchAsync(async (req, res, next) => {
 }));
 
 // PUT /api/v1/hotel-settings/operations - Update operational settings
-router.put('/operations', catchAsync(async (req, res, next) => {
+router.put('/operations', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { error } = hotelSettingsSchemas.operations.validate(req.body);
   if (error) {
     return next(new ApplicationError(error.details[0].message, 400));
@@ -276,7 +279,7 @@ router.put('/operations', catchAsync(async (req, res, next) => {
 }));
 
 // PUT /api/v1/hotel-settings/policies - Update hotel policies
-router.put('/policies', catchAsync(async (req, res, next) => {
+router.put('/policies', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { error } = hotelSettingsSchemas.policies.validate(req.body);
   if (error) {
     return next(new ApplicationError(error.details[0].message, 400));
@@ -298,7 +301,7 @@ router.put('/policies', catchAsync(async (req, res, next) => {
 }));
 
 // PUT /api/v1/hotel-settings/taxes - Update tax settings
-router.put('/taxes', catchAsync(async (req, res, next) => {
+router.put('/taxes', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { error } = hotelSettingsSchemas.taxes.validate(req.body);
   if (error) {
     return next(new ApplicationError(error.details[0].message, 400));
@@ -320,7 +323,7 @@ router.put('/taxes', catchAsync(async (req, res, next) => {
 }));
 
 // PUT /api/v1/hotel-settings/integrations - Update integration settings
-router.put('/integrations', catchAsync(async (req, res, next) => {
+router.put('/integrations', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { error } = hotelSettingsSchemas.integrations.validate(req.body);
   if (error) {
     return next(new ApplicationError(error.details[0].message, 400));
@@ -343,7 +346,7 @@ router.put('/integrations', catchAsync(async (req, res, next) => {
 }));
 
 // PUT /api/v1/hotel-settings/security - Update security settings
-router.put('/security', catchAsync(async (req, res, next) => {
+router.put('/security', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const hotelId = req.user.hotelId;
   if (!hotelId) {
     return next(new ApplicationError('User not associated with any hotel', 400));
@@ -368,7 +371,7 @@ router.put('/security', catchAsync(async (req, res, next) => {
 }));
 
 // PUT /api/v1/hotel-settings/maintenance - Update maintenance settings
-router.put('/maintenance', catchAsync(async (req, res, next) => {
+router.put('/maintenance', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const hotelId = req.user.hotelId;
   if (!hotelId) {
     return next(new ApplicationError('User not associated with any hotel', 400));
@@ -395,7 +398,7 @@ router.put('/maintenance', catchAsync(async (req, res, next) => {
 }));
 
 // POST /api/v1/hotel-settings/integrations/test - Test integration connection
-router.post('/integrations/test', catchAsync(async (req, res, next) => {
+router.post('/integrations/test', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { type, service } = req.body;
 
   const hotelId = req.user.hotelId;
@@ -431,7 +434,7 @@ router.post('/integrations/test', catchAsync(async (req, res, next) => {
 }));
 
 // POST /api/v1/hotel-settings/amenities - Add new amenity
-router.post('/amenities', catchAsync(async (req, res, next) => {
+router.post('/amenities', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { name, category, enabled = true, chargeable = false, price } = req.body;
 
   if (!name || !category) {
@@ -460,7 +463,7 @@ router.post('/amenities', catchAsync(async (req, res, next) => {
 }));
 
 // PUT /api/v1/hotel-settings/amenities/:amenityId - Update amenity
-router.put('/amenities/:amenityId', catchAsync(async (req, res, next) => {
+router.put('/amenities/:amenityId', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { amenityId } = req.params;
   const { name, category, enabled, chargeable, price } = req.body;
 
@@ -495,7 +498,7 @@ router.put('/amenities/:amenityId', catchAsync(async (req, res, next) => {
 }));
 
 // DELETE /api/v1/hotel-settings/amenities/:amenityId - Delete amenity
-router.delete('/amenities/:amenityId', catchAsync(async (req, res, next) => {
+router.delete('/amenities/:amenityId', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { amenityId } = req.params;
 
   const hotelId = req.user.hotelId;
@@ -523,7 +526,7 @@ router.delete('/amenities/:amenityId', catchAsync(async (req, res, next) => {
 }));
 
 // POST /api/v1/hotel-settings/restore - Restore settings from backup
-router.post('/restore', catchAsync(async (req, res, next) => {
+router.post('/restore', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { backup } = req.body;
 
   if (!backup || typeof backup !== 'object') {
@@ -576,7 +579,7 @@ router.get('/booking-rules', catchAsync(async (req, res, next) => {
 }));
 
 // PUT /api/v1/hotel-settings/booking-rules - Update booking rules
-router.put('/booking-rules', catchAsync(async (req, res, next) => {
+router.put('/booking-rules', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { propertyId, ...bookingRulesData } = req.body;
 
   const targetPropertyId = propertyId || req.user.hotelId;

@@ -2,6 +2,7 @@ import express from 'express';
 import posAttributeController from '../controllers/posAttributeController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
 
@@ -201,10 +202,12 @@ const updateVariantAvailabilitySchema = Joi.object({
     })).optional()
   }).optional()
 });
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Authentication required for all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('posAttributes', 'baseAccess'));
 
 /**
  * @swagger
@@ -401,6 +404,7 @@ router.put('/:id',
  */
 router.delete('/:id', 
   authorize(['admin', 'manager']), 
+  validate(mutationBaselineSchema),
   posAttributeController.deleteAttribute
 );
 
@@ -588,6 +592,7 @@ router.post('/:attributeId/values',
  */
 router.put('/:attributeId/values/:valueId', 
   authorize(['admin', 'manager']), 
+  validate(mutationBaselineSchema),
   posAttributeController.updateAttributeValue
 );
 
@@ -619,6 +624,7 @@ router.put('/:attributeId/values/:valueId',
  */
 router.delete('/:attributeId/values/:valueId', 
   authorize(['admin', 'manager']), 
+  validate(mutationBaselineSchema),
   posAttributeController.removeAttributeValue
 );
 
@@ -923,6 +929,7 @@ router.get('/variants/analytics',
  */
 router.post('/cache/clear', 
   authorize(['admin', 'manager']), 
+  validate(mutationBaselineSchema),
   posAttributeController.clearVariantCache
 );
 

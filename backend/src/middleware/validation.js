@@ -22,7 +22,7 @@ export const schemas = {
     email: Joi.string().email().required(),
     password: Joi.string().min(6).required(),
     phone: Joi.string().pattern(/^\+?[\d\s-()]+$/),
-    role: Joi.string().valid('guest', 'staff', 'admin', 'manager', 'travel_agent').default('guest')
+    role: Joi.string().valid('guest').default('guest')
   }),
 
   login: Joi.object({

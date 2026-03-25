@@ -1,9 +1,13 @@
 import express from 'express';
 import inventoryController from '../controllers/inventoryController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication and property access to all routes
 router.use(authenticate);
@@ -104,7 +108,7 @@ router.use(ensurePropertyAccess);
  *                   items:
  *                     $ref: '#/components/schemas/RoomAvailability'
  */
-router.get('/', authenticate, authorize(['admin', 'manager', 'front_desk']), inventoryController.getInventory);
+router.get('/', authenticate, authorizePolicy('inventoryManagement', 'readAccess'), inventoryController.getInventory);
 
 /**
  * @swagger
@@ -128,7 +132,7 @@ router.get('/', authenticate, authorize(['admin', 'manager', 'front_desk']), inv
  *       404:
  *         description: Room type not found
  */
-router.post('/update', authenticate, authorize(['admin', 'manager']), inventoryController.updateInventory);
+router.post('/update', authenticate, authorizePolicy('inventoryManagement', 'manageAccess'), validate(mutationBaselineSchema), inventoryController.updateInventory);
 
 /**
  * @swagger
@@ -177,7 +181,7 @@ router.post('/update', authenticate, authorize(['admin', 'manager']), inventoryC
  *       200:
  *         description: Bulk update completed
  */
-router.post('/bulk-update', authenticate, authorize(['admin', 'manager']), inventoryController.bulkUpdateInventory);
+router.post('/bulk-update', authenticate, authorizePolicy('inventoryManagement', 'manageAccess'), validate(mutationBaselineSchema), inventoryController.bulkUpdateInventory);
 
 /**
  * @swagger
@@ -222,7 +226,7 @@ router.post('/bulk-update', authenticate, authorize(['admin', 'manager']), inven
  *       200:
  *         description: Stop sell status updated successfully
  */
-router.post('/stop-sell', authenticate, authorize(['admin', 'manager']), inventoryController.setStopSell);
+router.post('/stop-sell', authenticate, authorizePolicy('inventoryManagement', 'manageAccess'), validate(mutationBaselineSchema), inventoryController.setStopSell);
 
 /**
  * @swagger
@@ -277,7 +281,7 @@ router.post('/stop-sell', authenticate, authorize(['admin', 'manager']), invento
  *                       type: object
  *                       description: Date-indexed calendar data
  */
-router.get('/calendar', authenticate, authorize(['admin', 'manager', 'front_desk']), inventoryController.getInventoryCalendar);
+router.get('/calendar', authenticate, authorizePolicy('inventoryManagement', 'readAccess'), inventoryController.getInventoryCalendar);
 
 /**
  * @swagger
@@ -351,7 +355,7 @@ router.get('/calendar', authenticate, authorize(['admin', 'manager', 'front_desk
  *                         endDate:
  *                           type: string
  */
-router.get('/summary', authenticate, authorize(['admin', 'manager', 'front_desk']), inventoryController.getInventorySummary);
+router.get('/summary', authenticate, authorizePolicy('inventoryManagement', 'readAccess'), inventoryController.getInventorySummary);
 
 /**
  * @swagger
@@ -398,6 +402,6 @@ router.get('/summary', authenticate, authorize(['admin', 'manager', 'front_desk'
  *       404:
  *         description: Room type not found
  */
-router.post('/create-range', authenticate, authorize(['admin', 'manager']), inventoryController.createInventoryRange);
+router.post('/create-range', authenticate, authorizePolicy('inventoryManagement', 'manageAccess'), validate(mutationBaselineSchema), inventoryController.createInventoryRange);
 
 export default router;

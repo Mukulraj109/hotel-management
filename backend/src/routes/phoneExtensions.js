@@ -1,11 +1,14 @@
 import express from 'express';
 import phoneExtensionController from '../controllers/phoneExtensionController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 import { body, param, query } from 'express-validator';
 
 const router = express.Router({ mergeParams: true });
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Validation schemas
 const createExtensionValidation = [
@@ -308,28 +311,29 @@ router.get('/hotels/:hotelId/directory',
 
 // Get all phone extensions for a hotel
 router.get('/hotels/:hotelId',
-  authorize(['admin', 'manager', 'front_desk', 'maintenance']),
+  authorizePolicy('phoneExtensions', 'staffAccess'),
   paramValidation,
   phoneExtensionController.getPhoneExtensions
 );
 
 // Get usage report
 router.get('/hotels/:hotelId/usage-report',
-  authorize(['admin', 'manager']),
+  authorizePolicy('phoneExtensions', 'manageAccess'),
   paramValidation,
   phoneExtensionController.getUsageReport
 );
 
 // Get single phone extension by ID
 router.get('/:id',
-  authorize(['admin', 'manager', 'front_desk', 'maintenance']),
+  authorizePolicy('phoneExtensions', 'staffAccess'),
   idParamValidation,
   phoneExtensionController.getPhoneExtension
 );
 
 // Create new phone extension (admin and manager only)
 router.post('/hotels/:hotelId',
-  authorize(['admin', 'manager']),
+  authorizePolicy('phoneExtensions', 'manageAccess'),
+  validate(mutationBaselineSchema),
   paramValidation,
   createExtensionValidation,
   phoneExtensionController.createPhoneExtension
@@ -337,14 +341,16 @@ router.post('/hotels/:hotelId',
 
 // Update phone extension (admin and manager only)
 router.put('/:id',
-  authorize(['admin', 'manager']),
+  authorizePolicy('phoneExtensions', 'manageAccess'),
+  validate(mutationBaselineSchema),
   updateExtensionValidation,
   phoneExtensionController.updatePhoneExtension
 );
 
 // Update extension usage statistics (system and maintenance use)
 router.patch('/:id/usage',
-  authorize(['admin', 'manager', 'system', 'maintenance']),
+  authorizePolicy('phoneExtensions', 'usageAccess'),
+  validate(mutationBaselineSchema),
   idParamValidation,
   usageUpdateValidation,
   phoneExtensionController.updateUsageStats
@@ -352,7 +358,8 @@ router.patch('/:id/usage',
 
 // Set maintenance mode
 router.patch('/:id/maintenance',
-  authorize(['admin', 'manager', 'maintenance']),
+  authorizePolicy('phoneExtensions', 'maintenanceAccess'),
+  validate(mutationBaselineSchema),
   idParamValidation,
   maintenanceValidation,
   phoneExtensionController.setMaintenanceMode
@@ -360,14 +367,16 @@ router.patch('/:id/maintenance',
 
 // Clear maintenance mode
 router.patch('/:id/maintenance/clear',
-  authorize(['admin', 'manager', 'maintenance']),
+  authorizePolicy('phoneExtensions', 'maintenanceAccess'),
+  validate(mutationBaselineSchema),
   idParamValidation,
   phoneExtensionController.clearMaintenanceMode
 );
 
 // Bulk update extension status (admin and manager only)
 router.patch('/hotels/:hotelId/bulk-update',
-  authorize(['admin', 'manager']),
+  authorizePolicy('phoneExtensions', 'manageAccess'),
+  validate(mutationBaselineSchema),
   paramValidation,
   bulkUpdateValidation,
   phoneExtensionController.bulkUpdateStatus
@@ -375,7 +384,8 @@ router.patch('/hotels/:hotelId/bulk-update',
 
 // Bulk assign extensions to rooms (admin and manager only)
 router.patch('/hotels/:hotelId/bulk-assign',
-  authorize(['admin', 'manager']),
+  authorizePolicy('phoneExtensions', 'manageAccess'),
+  validate(mutationBaselineSchema),
   paramValidation,
   bulkAssignValidation,
   phoneExtensionController.bulkAssignToRooms
@@ -383,7 +393,8 @@ router.patch('/hotels/:hotelId/bulk-assign',
 
 // Delete phone extension (admin only)
 router.delete('/:id',
-  authorize(['admin']),
+  authorizePolicy('phoneExtensions', 'adminAccess'),
+  validate(mutationBaselineSchema),
   idParamValidation,
   phoneExtensionController.deletePhoneExtension
 );

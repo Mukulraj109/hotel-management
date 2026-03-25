@@ -1,17 +1,21 @@
 import express from 'express';
+import Joi from 'joi';
 import StockMovement from '../models/StockMovement.js';
 import TransactionService from '../services/transactionService.js';
 import StockInventoryService from '../services/stockInventoryService.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
-import { requireRole } from '../middleware/roleAuth.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import { body, query, param, validationResult } from 'express-validator';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication and property access to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('stockMovements', 'baseAccess'));
 
 // Express-validator validation middleware
 const validateRequest = (req, res, next) => {
@@ -107,7 +111,7 @@ const consumptionValidation = [
  *       200:
  *         description: Transaction history retrieved successfully
  */
-router.get('/', authenticate, requireRole(['admin', 'staff']), transactionFilters, validateRequest, async (req, res) => {
+router.get('/', authenticate, authorizePolicy('stockMovements', 'staffAccess'), transactionFilters, validateRequest, async (req, res) => {
   try {
     const { hotelId } = req.user;
     const filters = {
@@ -156,7 +160,7 @@ router.get('/', authenticate, requireRole(['admin', 'staff']), transactionFilter
  *       200:
  *         description: Item transaction history retrieved successfully
  */
-router.get('/item/:itemId', authenticate, requireRole(['admin', 'staff']), [
+router.get('/item/:itemId', authenticate, authorizePolicy('stockMovements', 'staffAccess'), [
   param('itemId').isMongoId(),
   query('limit').optional().isInt({ min: 1, max: 500 }),
   query('startDate').optional().isISO8601(),
@@ -220,7 +224,7 @@ router.get('/item/:itemId', authenticate, requireRole(['admin', 'staff']), [
  *       201:
  *         description: Stock adjustment created successfully
  */
-router.post('/adjustment', authenticate, requireRole(['admin', 'staff']), adjustmentValidation, validateRequest, async (req, res) => {
+router.post('/adjustment', authenticate, authorizePolicy('stockMovements', 'staffAccess'), validate(mutationBaselineSchema), adjustmentValidation, validateRequest, async (req, res) => {
   try {
     const { hotelId, _id: performedBy } = req.user;
     const { inventoryItemId, quantity, reason, unitCost = 0 } = req.body;
@@ -286,7 +290,7 @@ router.post('/adjustment', authenticate, requireRole(['admin', 'staff']), adjust
  *       201:
  *         description: Transfer created successfully
  */
-router.post('/transfer', authenticate, requireRole(['admin', 'staff']), transferValidation, validateRequest, async (req, res) => {
+router.post('/transfer', authenticate, authorizePolicy('stockMovements', 'staffAccess'), validate(mutationBaselineSchema), transferValidation, validateRequest, async (req, res) => {
   try {
     const { hotelId, _id: performedBy } = req.user;
     const { inventoryItemId, quantity, fromLocation, toLocation, reason } = req.body;
@@ -348,7 +352,7 @@ router.post('/transfer', authenticate, requireRole(['admin', 'staff']), transfer
  *       201:
  *         description: Consumption logged successfully
  */
-router.post('/consumption', authenticate, requireRole(['admin', 'staff']), consumptionValidation, validateRequest, async (req, res) => {
+router.post('/consumption', authenticate, authorizePolicy('stockMovements', 'staffAccess'), validate(mutationBaselineSchema), consumptionValidation, validateRequest, async (req, res) => {
   try {
     const { hotelId, _id: performedBy } = req.user;
     const { inventoryItemId, quantity, reason, reference, location } = req.body;
@@ -407,7 +411,7 @@ router.post('/consumption', authenticate, requireRole(['admin', 'staff']), consu
  *       200:
  *         description: Analytics summary retrieved successfully
  */
-router.get('/summary', authenticate, requireRole(['admin', 'staff']), [
+router.get('/summary', authenticate, authorizePolicy('stockMovements', 'staffAccess'), [
   query('startDate').optional().isISO8601(),
   query('endDate').optional().isISO8601(),
   query('category').optional().isString()
@@ -463,7 +467,7 @@ router.get('/summary', authenticate, requireRole(['admin', 'staff']), [
  *       200:
  *         description: Reconciliation completed successfully
  */
-router.post('/reconcile', authenticate, requireRole(['admin', 'staff']), [
+router.post('/reconcile', authenticate, authorizePolicy('stockMovements', 'staffAccess'), [
   body('itemCounts').isArray({ min: 1 }),
   body('itemCounts.*.itemId').isMongoId(),
   body('itemCounts.*.physicalCount').isNumeric({ min: 0 }),
@@ -525,7 +529,7 @@ router.post('/reconcile', authenticate, requireRole(['admin', 'staff']), [
  *       200:
  *         description: Export data retrieved successfully
  */
-router.get('/export', authenticate, requireRole(['admin']), [
+router.get('/export', authenticate, authorizePolicy('stockMovements', 'adminAccess'), [
   query('format').optional().isIn(['csv', 'json']),
   query('startDate').optional().isISO8601(),
   query('endDate').optional().isISO8601(),
@@ -594,7 +598,7 @@ router.get('/export', authenticate, requireRole(['admin']), [
  *       200:
  *         description: Reorder suggestions retrieved successfully
  */
-router.get('/reorder-suggestions', authenticate, requireRole(['admin', 'staff']), [
+router.get('/reorder-suggestions', authenticate, authorizePolicy('stockMovements', 'staffAccess'), [
   query('includeScheduled').optional().isBoolean()
 ], validateRequest, async (req, res) => {
   try {
@@ -640,7 +644,7 @@ router.get('/reorder-suggestions', authenticate, requireRole(['admin', 'staff'])
  *       200:
  *         description: Low stock alerts retrieved successfully
  */
-router.get('/low-stock-alerts', authenticate, requireRole(['admin', 'staff']), [
+router.get('/low-stock-alerts', authenticate, authorizePolicy('stockMovements', 'staffAccess'), [
   query('threshold').optional().isInt({ min: 0 })
 ], validateRequest, async (req, res) => {
   try {
@@ -693,7 +697,7 @@ router.get('/low-stock-alerts', authenticate, requireRole(['admin', 'staff']), [
  *       200:
  *         description: Item statistics retrieved successfully
  */
-router.get('/item-statistics/:itemId', authenticate, requireRole(['admin', 'staff']), [
+router.get('/item-statistics/:itemId', authenticate, authorizePolicy('stockMovements', 'staffAccess'), [
   param('itemId').isMongoId(),
   query('days').optional().isInt({ min: 1, max: 365 })
 ], validateRequest, async (req, res) => {

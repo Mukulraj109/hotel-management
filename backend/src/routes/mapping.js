@@ -1,7 +1,10 @@
 import express from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import Joi from 'joi';
 import {
   // Room Mapping Controllers
   getRoomMappings,
@@ -28,10 +31,12 @@ import {
 } from '../controllers/mappingController.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('mapping', 'baseAccess'));
 
 /**
  * @swagger
@@ -143,7 +148,7 @@ router.get('/room-mappings/:id', getRoomMapping);
  *       409:
  *         description: Channel room ID already mapped
  */
-router.post('/room-mappings', createRoomMapping);
+router.post('/room-mappings', validate(mutationBaselineSchema), createRoomMapping);
 
 /**
  * @swagger
@@ -179,7 +184,7 @@ router.post('/room-mappings', createRoomMapping);
  *       404:
  *         description: Room mapping not found
  */
-router.patch('/room-mappings/:id', updateRoomMapping);
+router.patch('/room-mappings/:id', validate(mutationBaselineSchema), updateRoomMapping);
 
 /**
  * @swagger
@@ -202,7 +207,7 @@ router.patch('/room-mappings/:id', updateRoomMapping);
  *       404:
  *         description: Room mapping not found
  */
-router.delete('/room-mappings/:id', deleteRoomMapping);
+router.delete('/room-mappings/:id', validate(mutationBaselineSchema), deleteRoomMapping);
 
 // Room mapping queries
 router.get('/room-mappings/by-room-type/:roomTypeId', getRoomMappingsByRoomType);
@@ -253,16 +258,16 @@ router.get('/room-mappings/by-channel/:channel', getRoomMappingsByChannel);
  */
 router.get('/rate-mappings', getRateMappings);
 router.get('/rate-mappings/:id', getRateMapping);
-router.post('/rate-mappings', createRateMapping);
-router.patch('/rate-mappings/:id', updateRateMapping);
-router.delete('/rate-mappings/:id', deleteRateMapping);
+router.post('/rate-mappings', validate(mutationBaselineSchema), createRateMapping);
+router.patch('/rate-mappings/:id', validate(mutationBaselineSchema), updateRateMapping);
+router.delete('/rate-mappings/:id', validate(mutationBaselineSchema), deleteRateMapping);
 
 // Rate mapping queries
 router.get('/rate-mappings/by-room-mapping/:roomMappingId', getRateMappingsByRoomMapping);
 router.get('/rate-mappings/by-rate-plan/:pmsRatePlanId', getRateMappingsByRatePlan);
 
 // Rate calculation testing
-router.post('/rate-mappings/:id/test-calculation', testRateCalculation);
+router.post('/rate-mappings/:id/test-calculation', validate(mutationBaselineSchema), testRateCalculation);
 
 /**
  * Bulk Operations
@@ -293,7 +298,7 @@ router.post('/rate-mappings/:id/test-calculation', testRateCalculation);
  *       400:
  *         description: Invalid input data
  */
-router.post('/room-mappings/bulk', bulkCreateRoomMappings);
+router.post('/room-mappings/bulk', validate(mutationBaselineSchema), bulkCreateRoomMappings);
 
 /**
  * @swagger
@@ -326,7 +331,7 @@ router.post('/room-mappings/bulk', bulkCreateRoomMappings);
  *       200:
  *         description: Sync status updated successfully
  */
-router.patch('/sync-status/bulk', bulkUpdateSyncStatus);
+router.patch('/sync-status/bulk', validate(mutationBaselineSchema), bulkUpdateSyncStatus);
 
 /**
  * Utility Routes

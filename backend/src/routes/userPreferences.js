@@ -2,18 +2,21 @@ import express from 'express';
 import UserPreference from '../models/UserPreference.js';
 import HotelSettings from '../models/HotelSettings.js';
 import User from '../models/User.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication middleware to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('userPreferences', 'baseAccess'));
 
 // Validation schemas for different preference types
 const preferenceSchemas = {
@@ -189,7 +192,7 @@ router.put('/display', catchAsync(async (req, res, next) => {
 }));
 
 // PUT /api/v1/user-preferences/staff - Update staff preferences (staff only)
-router.put('/staff', authorize(['staff']), catchAsync(async (req, res, next) => {
+router.put('/staff', authorizePolicy('userPreferences', 'staffAccess'), catchAsync(async (req, res, next) => {
   const { error } = preferenceSchemas.staff.validate(req.body);
   if (error) {
     return next(new ApplicationError(error.details[0].message, 400));
@@ -208,7 +211,7 @@ router.put('/staff', authorize(['staff']), catchAsync(async (req, res, next) => 
 }));
 
 // PUT /api/v1/user-preferences/guest - Update guest preferences (guest only)
-router.put('/guest', authorize(['guest', 'travel_agent']), catchAsync(async (req, res, next) => {
+router.put('/guest', authorizePolicy('userPreferences', 'guestAccess'), catchAsync(async (req, res, next) => {
   const { error } = preferenceSchemas.guest.validate(req.body);
   if (error) {
     return next(new ApplicationError(error.details[0].message, 400));
@@ -227,7 +230,7 @@ router.put('/guest', authorize(['guest', 'travel_agent']), catchAsync(async (req
 }));
 
 // PUT /api/v1/user-preferences/system - Update system preferences (admin only)
-router.put('/system', authorize(['admin']), catchAsync(async (req, res, next) => {
+router.put('/system', authorizePolicy('userPreferences', 'adminAccess'), catchAsync(async (req, res, next) => {
   const { error } = preferenceSchemas.system.validate(req.body);
   if (error) {
     return next(new ApplicationError(error.details[0].message, 400));
@@ -246,7 +249,7 @@ router.put('/system', authorize(['admin']), catchAsync(async (req, res, next) =>
 }));
 
 // PATCH /api/v1/user-preferences/availability - Quick update staff availability
-router.patch('/availability', authorize(['staff']), catchAsync(async (req, res, next) => {
+router.patch('/availability', authorizePolicy('userPreferences', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { status } = req.body;
 
   const validStatuses = ['available', 'busy', 'break', 'offline'];
@@ -269,7 +272,7 @@ router.patch('/availability', authorize(['staff']), catchAsync(async (req, res, 
 }));
 
 // DELETE /api/v1/user-preferences - Reset preferences to defaults
-router.delete('/', catchAsync(async (req, res, next) => {
+router.delete('/', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const userId = req.user._id;
 
   await UserPreference.findOneAndDelete({ userId });
@@ -313,7 +316,7 @@ router.get('/export', catchAsync(async (req, res, next) => {
 }));
 
 // POST /api/v1/user-preferences/import - Import user preferences
-router.post('/import', catchAsync(async (req, res, next) => {
+router.post('/import', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { preferences } = req.body;
 
   if (!preferences || typeof preferences !== 'object') {

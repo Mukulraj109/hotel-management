@@ -5,14 +5,17 @@ import RoomInventoryTemplate from '../models/RoomInventoryTemplate.js';
 import RoomInventory from '../models/RoomInventory.js';
 import InventoryTransaction from '../models/InventoryTransaction.js';
 import CheckoutInspection from '../models/CheckoutInspection.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication and property access
 router.use(authenticate);
@@ -131,7 +134,7 @@ router.get('/items', catchAsync(async (req, res) => {
  *       201:
  *         description: Inventory item created successfully
  */
-router.post('/items', authorize('admin', 'staff'), catchAsync(async (req, res) => {
+router.post('/items', authorizePolicy('roomInventory', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const hotelId = req.user.hotelId;
   
   const itemData = {
@@ -168,7 +171,7 @@ router.post('/items', authorize('admin', 'staff'), catchAsync(async (req, res) =
  *       200:
  *         description: Item updated successfully
  */
-router.put('/items/:id', authorize('admin', 'staff'), catchAsync(async (req, res) => {
+router.put('/items/:id', authorizePolicy('roomInventory', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { id } = req.params;
   const hotelId = req.user.hotelId;
 
@@ -239,7 +242,7 @@ router.get('/templates', catchAsync(async (req, res) => {
  *       201:
  *         description: Template created successfully
  */
-router.post('/templates', authorize('admin', 'staff'), catchAsync(async (req, res) => {
+router.post('/templates', authorizePolicy('roomInventory', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const hotelId = req.user.hotelId;
 
   const templateData = {
@@ -319,7 +322,7 @@ router.get('/rooms/:roomId', catchAsync(async (req, res) => {
  *       200:
  *         description: Inspection recorded successfully
  */
-router.post('/rooms/:roomId/inspect', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/rooms/:roomId/inspect', authorizePolicy('roomInventory', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { roomId } = req.params;
   const hotelId = req.user.hotelId;
 
@@ -375,7 +378,7 @@ router.post('/rooms/:roomId/inspect', authorize('staff', 'admin'), catchAsync(as
  *       200:
  *         description: Replacement requested successfully
  */
-router.post('/rooms/:roomId/replace', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/rooms/:roomId/replace', authorizePolicy('roomInventory', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { roomId } = req.params;
   const { items, reason, notes } = req.body;
   const hotelId = req.user.hotelId;
@@ -512,7 +515,7 @@ router.get('/transactions', catchAsync(async (req, res) => {
  *       200:
  *         description: Inventory analytics data
  */
-router.get('/analytics', authorize('admin', 'staff'), catchAsync(async (req, res) => {
+router.get('/analytics', authorizePolicy('roomInventory', 'staffAccess'), catchAsync(async (req, res) => {
   const hotelId = req.user.hotelId;
   const { startDate, endDate } = req.query;
 
@@ -551,7 +554,7 @@ router.get('/analytics', authorize('admin', 'staff'), catchAsync(async (req, res
  *       201:
  *         description: Checkout inspection created
  */
-router.post('/checkout-inspection', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/checkout-inspection', authorizePolicy('roomInventory', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { roomId, bookingId, guestId, checklistItems, inventoryVerification } = req.body;
   const hotelId = req.user.hotelId;
   const inspectedBy = req.user._id;
@@ -687,7 +690,7 @@ router.get('/checkout-inspection/:bookingId', catchAsync(async (req, res) => {
  *       200:
  *         description: Inspection updated
  */
-router.put('/checkout-inspection/:bookingId', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.put('/checkout-inspection/:bookingId', authorizePolicy('roomInventory', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { bookingId } = req.params;
   const hotelId = req.user.hotelId;
 

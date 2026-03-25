@@ -8,8 +8,7 @@ import AuditLog from '../models/AuditLog.js';
 import bypassSecurityService from '../services/bypassSecurityService.js';
 import bypassApprovalService from '../services/bypassApprovalService.js';
 import {
-    authenticate,
-    authorize
+    authenticate
 } from '../middleware/auth.js';
 import {
     ApplicationError
@@ -30,14 +29,18 @@ import {
     handleBypassErrors
 } from '../middleware/bypassSecurityMiddleware.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import logger from '../utils/logger.js';
 import { validateTransition } from '../utils/bookingStateMachine.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all routes (same as other admin routes)
 router.use(authenticate);
-router.use(authorize('admin', 'manager', 'frontdesk'));
+router.use(authorizePolicy('adminBypassManagement', 'baseAccess'));
 router.use(ensurePropertyAccess);
 
 /**
@@ -247,7 +250,7 @@ router.get('/security/alerts', catchAsync(async (req, res) => {
 /**
  * Validate bypass operation before execution
  */
-router.post('/security/validate', sanitizeBypassRequest, validateBypassOperation, validateBypassSecurity, catchAsync(async (req, res) => {
+router.post('/security/validate', validate(mutationBaselineSchema), sanitizeBypassRequest, validateBypassOperation, validateBypassSecurity, catchAsync(async (req, res) => {
     const securityResult = req.bypassSecurity;
 
     res.status(200).json({
@@ -269,6 +272,7 @@ router.post('/security/validate', sanitizeBypassRequest, validateBypassOperation
  * Enhanced bypass checkout with full security tracking
  */
 router.post('/enhanced-checkout',
+    validate(mutationBaselineSchema),
     bypassRateLimit,
     sanitizeBypassRequest,
     validateBypassOperation,
@@ -659,7 +663,7 @@ router.get('/approvals/pending', catchAsync(async (req, res) => {
 /**
  * Process an approval (approve/reject)
  */
-router.post('/approvals/:workflowId/process', catchAsync(async (req, res) => {
+router.post('/approvals/:workflowId/process', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const {
         workflowId
     } = req.params;
@@ -710,7 +714,7 @@ router.post('/approvals/:workflowId/process', catchAsync(async (req, res) => {
 /**
  * Delegate an approval to another user
  */
-router.post('/approvals/:workflowId/delegate', catchAsync(async (req, res) => {
+router.post('/approvals/:workflowId/delegate', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const {
         workflowId
     } = req.params;
@@ -745,7 +749,7 @@ router.post('/approvals/:workflowId/delegate', catchAsync(async (req, res) => {
 /**
  * Escalate an approval workflow
  */
-router.post('/approvals/:workflowId/escalate', catchAsync(async (req, res) => {
+router.post('/approvals/:workflowId/escalate', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const {
         workflowId
     } = req.params;
@@ -934,7 +938,7 @@ async function executeApprovedBypass(workflow) {
 /**
  * Acknowledge security alert
  */
-router.post('/security/alerts/:alertId/acknowledge', catchAsync(async (req, res) => {
+router.post('/security/alerts/:alertId/acknowledge', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
     const {
         alertId
     } = req.params;

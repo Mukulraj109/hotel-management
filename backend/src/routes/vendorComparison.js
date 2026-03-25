@@ -1,16 +1,21 @@
 import express from 'express';
+import Joi from 'joi';
 import Vendor from '../models/Vendor.js';
 import SupplyRequest from '../models/SupplyRequest.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('vendorComparison', 'baseAccess'));
 
 /**
  * @swagger
@@ -169,7 +174,7 @@ router.get('/', catchAsync(async (req, res) => {
  *     summary: Get bulk ordering suggestions
  *     tags: [Vendor Comparison]
  */
-router.post('/bulk-suggestions', catchAsync(async (req, res) => {
+router.post('/bulk-suggestions', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { items } = req.body;
   const { hotelId } = req.user;
 
@@ -273,7 +278,7 @@ router.post('/bulk-suggestions', catchAsync(async (req, res) => {
  *     summary: Get cost optimization suggestions for items
  *     tags: [Vendor Comparison]
  */
-router.post('/cost-optimization', catchAsync(async (req, res) => {
+router.post('/cost-optimization', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { items } = req.body;
   const { hotelId } = req.user;
 

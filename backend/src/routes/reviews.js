@@ -1,4 +1,5 @@
 import express from 'express';
+import Joi from 'joi';
 import mongoose from 'mongoose';
 import Review from '../models/Review.js';
 import Booking from '../models/Booking.js';
@@ -6,11 +7,14 @@ import Hotel from '../models/Hotel.js';
 import User from '../models/User.js';
 import { authenticate, authorize, optionalAuth } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import logger from '../utils/logger.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply property access middleware to authenticated routes
 // Note: Some routes use optionalAuth and don't require property access
@@ -73,7 +77,7 @@ const router = express.Router();
  *       201:
  *         description: Review created successfully
  */
-router.post('/', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
+router.post('/', authenticate, authorizePolicy('reviews', 'baseAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const {
     hotelId,
     bookingId,
@@ -352,7 +356,7 @@ router.get('/:id', catchAsync(async (req, res) => {
  *       200:
  *         description: Response added successfully
  */
-router.post('/:id/response', authenticate, authorize('staff', 'admin'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.post('/:id/response', authenticate, authorizePolicy('reviews', 'staffAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { content } = req.body;
   
   const review = await Review.findById(req.params.id).lean();
@@ -394,7 +398,7 @@ router.post('/:id/response', authenticate, authorize('staff', 'admin'), ensurePr
  *       200:
  *         description: Review marked as helpful
  */
-router.post('/:id/helpful', catchAsync(async (req, res) => {
+router.post('/:id/helpful', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const review = await Review.findByIdAndUpdate(
     req.params.id,
     { $inc: { helpfulVotes: 1 } },
@@ -437,7 +441,7 @@ router.post('/:id/helpful', catchAsync(async (req, res) => {
  *       200:
  *         description: Review reported successfully
  */
-router.post('/:id/report', catchAsync(async (req, res) => {
+router.post('/:id/report', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { reason } = req.body;
   
   const review = await Review.findByIdAndUpdate(
@@ -495,7 +499,7 @@ router.post('/:id/report', catchAsync(async (req, res) => {
  *       200:
  *         description: Review moderated successfully
  */
-router.patch('/:id/moderate', authenticate, authorize('admin'), ensurePropertyAccess, catchAsync(async (req, res) => {
+router.patch('/:id/moderate', authenticate, authorizePolicy('reviews', 'adminAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { status, notes } = req.body;
   
   const review = await Review.findById(req.params.id).lean();

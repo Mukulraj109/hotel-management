@@ -1,4 +1,5 @@
 import express from 'express';
+import Joi from 'joi';
 import {
   getGuestProfile,
   getGuestInsights,
@@ -13,11 +14,12 @@ import {
 } from '../controllers/crmController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
-import authorize from '../middleware/authorize.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { body, param, query } from 'express-validator';
 import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 router.use(authenticate);
 router.use(ensurePropertyAccess);
@@ -109,27 +111,27 @@ const behaviorAnalyticsValidation = [
 ];
 
 // Guest profile management
-router.get('/guests/:userId/profile', authorize(['admin', 'manager', 'staff']), guestIdValidation, getGuestProfile);
+router.get('/guests/:userId/profile', authorizePolicy('crm', 'staffAccess'), guestIdValidation, getGuestProfile);
 
-router.get('/guests/:userId/insights', authorize(['admin', 'manager', 'staff']), guestIdValidation, getGuestInsights);
+router.get('/guests/:userId/insights', authorizePolicy('crm', 'staffAccess'), guestIdValidation, getGuestInsights);
 
-router.put('/guests/:userId/profile', authorize(['admin', 'manager']), profileUpdateValidation, updateGuestProfile);
+router.put('/guests/:userId/profile', authorizePolicy('crm', 'manageAccess'), validate(mutationBaselineSchema), profileUpdateValidation, updateGuestProfile);
 
-router.get('/guests/:userId/personalization', authorize(['admin', 'manager', 'staff']), guestIdValidation, getPersonalizationData);
+router.get('/guests/:userId/personalization', authorizePolicy('crm', 'staffAccess'), guestIdValidation, getPersonalizationData);
 
 // Behavior tracking and analytics
-router.get('/guests/:userId/behavior', authorize(['admin', 'manager', 'staff']), behaviorAnalyticsValidation, getGuestBehaviorAnalytics);
+router.get('/guests/:userId/behavior', authorizePolicy('crm', 'staffAccess'), behaviorAnalyticsValidation, getGuestBehaviorAnalytics);
 
-router.post('/guests/:userId/behavior', authorize(['admin', 'manager', 'staff']), guestIdValidation, behaviorTrackingValidation, trackGuestBehavior);
+router.post('/guests/:userId/behavior', authorizePolicy('crm', 'staffAccess'), validate(mutationBaselineSchema), guestIdValidation, behaviorTrackingValidation, trackGuestBehavior);
 
 // Segmentation and analytics
-router.get('/segments', authorize(['admin', 'manager', 'staff']), segmentationValidation, getSegmentedGuests);
+router.get('/segments', authorizePolicy('crm', 'staffAccess'), segmentationValidation, getSegmentedGuests);
 
-router.get('/analytics', authorize(['admin', 'manager', 'staff']), getCRMAnalytics);
+router.get('/analytics', authorizePolicy('crm', 'staffAccess'), getCRMAnalytics);
 
 // Metrics management
-router.post('/guests/:userId/refresh-metrics', authorize(['admin', 'manager']), guestIdValidation, refreshGuestMetrics);
+router.post('/guests/:userId/refresh-metrics', authorizePolicy('crm', 'manageAccess'), validate(mutationBaselineSchema), guestIdValidation, refreshGuestMetrics);
 
-router.post('/bulk-update-metrics', authorize(['admin', 'manager']), bulkUpdateMetrics);
+router.post('/bulk-update-metrics', authorizePolicy('crm', 'manageAccess'), validate(mutationBaselineSchema), bulkUpdateMetrics);
 
 export default router;

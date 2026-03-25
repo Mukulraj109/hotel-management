@@ -1,5 +1,6 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import Joi from 'joi';
+import { authenticate } from '../middleware/auth.js';
 import {
   getAllServices,
   getServiceById,
@@ -16,12 +17,15 @@ import {
   getAvailableStaff
 } from '../controllers/adminHotelServicesController.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication and admin authorization to all routes
 router.use(authenticate);
-router.use(authorize('admin', 'manager', 'frontdesk'));
+router.use(authorizePolicy('adminHotelServices', 'baseAccess'));
 router.use(ensurePropertyAccess);
 
 /**
@@ -32,7 +36,7 @@ router.use(ensurePropertyAccess);
  */
 
 // Bulk operations
-router.post('/bulk-operations', bulkOperations);
+router.post('/bulk-operations', validate(mutationBaselineSchema), bulkOperations);
 
 // Staff management
 router.get('/available-staff', getAvailableStaff);
@@ -40,24 +44,24 @@ router.get('/available-staff', getAvailableStaff);
 // CRUD operations
 router.route('/')
   .get(getAllServices)
-  .post(uploadImages, createService);
+  .post(validate(mutationBaselineSchema), uploadImages, createService);
 
 router.route('/:id')
   .get(getServiceById)
-  .put(uploadImages, updateService)
-  .delete(deleteService);
+  .put(validate(mutationBaselineSchema), uploadImages, updateService)
+  .delete(validate(mutationBaselineSchema), deleteService);
 
 // Service status toggle
-router.patch('/:id/toggle-status', toggleServiceStatus);
+router.patch('/:id/toggle-status', validate(mutationBaselineSchema), toggleServiceStatus);
 
 // Staff assignment routes
 router.route('/:id/staff')
   .get(getServiceStaff)
-  .post(assignStaffToService);
+  .post(validate(mutationBaselineSchema), assignStaffToService);
 
-router.delete('/:id/staff/:staffId', removeStaffFromService);
+router.delete('/:id/staff/:staffId', validate(mutationBaselineSchema), removeStaffFromService);
 
 // Image management
-router.delete('/:id/images/:imageIndex', deleteServiceImage);
+router.delete('/:id/images/:imageIndex', validate(mutationBaselineSchema), deleteServiceImage);
 
 export default router;

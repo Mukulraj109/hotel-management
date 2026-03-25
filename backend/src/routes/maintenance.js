@@ -3,13 +3,17 @@ import mongoose from 'mongoose';
 import MaintenanceTask from '../models/MaintenanceTask.js';
 import Room from '../models/Room.js';
 import Booking from '../models/Booking.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import logger from '../utils/logger.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication and property access
 router.use(authenticate);
@@ -83,7 +87,7 @@ router.use(ensurePropertyAccess);
  *       201:
  *         description: Maintenance task created successfully
  */
-router.post('/', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
+router.post('/', authorizePolicy('maintenance', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const taskData = {
     ...req.body,
     hotelId: req.user.role === 'staff' ? req.user.hotelId : req.body.hotelId,
@@ -273,7 +277,7 @@ router.get('/', catchAsync(async (req, res) => {
  *       200:
  *         description: Maintenance statistics
  */
-router.get('/stats', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
+router.get('/stats', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
   const { startDate, endDate } = req.query;
   
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
@@ -384,7 +388,7 @@ router.get('/stats', authorize('staff', 'admin', 'frontdesk'), catchAsync(async 
  *       200:
  *         description: Available staff members
  */
-router.get('/available-staff', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
+router.get('/available-staff', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
@@ -422,7 +426,7 @@ router.get('/available-staff', authorize('staff', 'admin', 'frontdesk'), catchAs
  *       200:
  *         description: Available rooms
  */
-router.get('/available-rooms', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
+router.get('/available-rooms', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
@@ -525,7 +529,7 @@ router.get('/:id', catchAsync(async (req, res) => {
  *       200:
  *         description: Task updated successfully
  */
-router.patch('/:id', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
+router.patch('/:id', authorizePolicy('maintenance', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { id } = req.params;
   logger.debug('Updating maintenance task', { id });
 
@@ -650,7 +654,7 @@ router.patch('/:id', authorize('staff', 'admin', 'frontdesk'), catchAsync(async 
  *       200:
  *         description: Task assigned successfully
  */
-router.post('/:id/assign', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
+router.post('/:id/assign', authorizePolicy('maintenance', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { assignedTo, scheduledDate, notes } = req.body;
 
   const existingTask = await MaintenanceTask.findById(req.params.id).lean();
@@ -706,7 +710,7 @@ router.post('/:id/assign', authorize('staff', 'admin', 'frontdesk'), catchAsync(
  *       200:
  *         description: Overdue maintenance tasks
  */
-router.get('/overdue', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
+router.get('/overdue', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   
   if (!hotelId) {
@@ -748,7 +752,7 @@ router.get('/overdue', authorize('staff', 'admin', 'frontdesk'), catchAsync(asyn
  *       200:
  *         description: Upcoming recurring maintenance tasks
  */
-router.get('/recurring/upcoming', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
+router.get('/recurring/upcoming', authorizePolicy('maintenance', 'staffAccess'), catchAsync(async (req, res) => {
   const { days = 30 } = req.query;
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.query.hotelId;
   

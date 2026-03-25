@@ -1,12 +1,15 @@
 import express from 'express';
 import Settlement from '../models/Settlement.js';
 import Booking from '../models/Booking.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import rateLimit from 'express-rate-limit';
+import Joi from 'joi';
+import { validate } from '../middleware/validation.js';
 import {
   validateSettlementCreation,
   validatePaymentAddition,
@@ -18,8 +21,11 @@ import {
   logFinancialOperation,
   handleValidationErrors
 } from '../middleware/settlementValidation.js';
+import bookingAuditService from '../services/bookingAuditService.js';
+import invoiceLifecycleSyncService from '../services/invoiceLifecycleSyncService.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Rate limiting for settlement/financial operations
 const financialLimiter = rateLimit({
@@ -79,7 +85,7 @@ router.get('/',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('settlements', 'staffAccess'),
   validateSettlementQuery,
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
@@ -148,7 +154,7 @@ router.get('/overdue',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('settlements', 'staffAccess'),
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
     const { gracePeriod = 0 } = req.query;
@@ -197,7 +203,7 @@ router.get('/analytics',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('settlements', 'staffAccess'),
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;
     const { startDate, endDate } = req.query;
@@ -267,7 +273,8 @@ router.post('/',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('settlements', 'staffAccess'),
+  validate(mutationBaselineSchema),
   validateSettlementCreation,
   logFinancialOperation('settlement_creation'),
   catchAsync(async (req, res) => {
@@ -275,7 +282,7 @@ router.post('/',
     const { bookingId, dueDate, notes, assignedTo } = req.body;
 
     // Find booking
-    const booking = await Booking.findById(bookingId).populate('userId', 'name email phone').lean();
+    const booking = await Booking.findById(bookingId).populate('userId', 'name email phone');
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
     }
@@ -293,6 +300,7 @@ router.post('/',
 
     // Calculate settlement data from booking
     const settlementTracking = booking.calculateSettlement();
+    await booking.save();
 
     // Create settlement
     const settlementData = {
@@ -370,7 +378,7 @@ router.get('/:id',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('settlements', 'staffAccess'),
   catchAsync(async (req, res) => {
     const { id } = req.params;
     const hotelId = req.user.hotelId;
@@ -448,7 +456,8 @@ router.post('/:id/payment',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('settlements', 'staffAccess'),
+  validate(mutationBaselineSchema),
   validatePaymentAddition,
   validateCalculationIntegrity,
   logFinancialOperation('payment_addition'),
@@ -466,6 +475,11 @@ router.post('/:id/payment',
       throw new ApplicationError('Settlement not found', 404);
     }
 
+    const linkedBooking = await Booking.findById(settlement.bookingId);
+    const linkedBookingBeforePayment = linkedBooking
+      ? bookingAuditService.buildSnapshot(linkedBooking)
+      : null;
+
     const userContext = {
       userId: req.user._id,
       userName: req.user.name,
@@ -476,6 +490,53 @@ router.post('/:id/payment',
     settlement.lastUpdatedBy = req.user._id;
 
     await settlement.save();
+
+    if (linkedBooking) {
+      try {
+        linkedBooking.processSettlementPayment({
+          amount,
+          method,
+          reference,
+          notes: notes || `Settlement payment mirrored from settlement ${settlement.settlementNumber || settlement._id}`
+        }, userContext);
+
+        await linkedBooking.save();
+
+        try {
+          await invoiceLifecycleSyncService.syncBookingPaymentStatus({
+            bookingId: linkedBooking._id,
+            paymentStatus: linkedBooking.paymentStatus,
+            actorUserId: req.user._id
+          });
+        } catch (invoiceSyncError) {
+          invoiceLifecycleSyncService.logSyncFailure(
+            { bookingId: linkedBooking._id, flow: 'settlement-route-payment' },
+            invoiceSyncError
+          );
+        }
+
+        await bookingAuditService.logBookingMutation({
+          booking: linkedBooking,
+          changeType: 'update',
+          user: req.user,
+          req,
+          oldValues: linkedBookingBeforePayment,
+          newValues: bookingAuditService.buildSnapshot(linkedBooking),
+          metadata: {
+            priority: 'high',
+            tags: ['settlement_payment_sync'],
+            settlementId: settlement._id.toString(),
+            settlementNumber: settlement.settlementNumber || null,
+            settlementPaymentAmount: amount
+          }
+        });
+      } catch (bookingSyncError) {
+        throw new ApplicationError(
+          `Settlement payment saved but booking synchronization failed: ${bookingSyncError.message}`,
+          409
+        );
+      }
+    }
 
     res.json({
       status: 'success',
@@ -527,7 +588,8 @@ router.post('/:id/escalate',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('settlements', 'staffAccess'),
+  validate(mutationBaselineSchema),
   validateEscalation,
   logFinancialOperation('settlement_escalation'),
   catchAsync(async (req, res) => {
@@ -621,7 +683,8 @@ router.post('/:id/communication',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('settlements', 'staffAccess'),
+  validate(mutationBaselineSchema),
   validateCommunication,
   logFinancialOperation('communication_addition'),
   catchAsync(async (req, res) => {
@@ -716,7 +779,8 @@ router.post('/:id/dispute',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('settlements', 'staffAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { id } = req.params;
     const hotelId = req.user.hotelId;
@@ -801,7 +865,8 @@ router.post('/:id/dispute/:disputeId/resolve',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('settlements', 'staffAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { id, disputeId } = req.params;
     const hotelId = req.user.hotelId;
@@ -864,7 +929,8 @@ router.post('/:id/validate',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('settlements', 'staffAccess'),
+  validate(mutationBaselineSchema),
   logFinancialOperation('calculation_validation'),
   catchAsync(async (req, res) => {
     const { id } = req.params;
@@ -946,7 +1012,8 @@ router.post('/:id/adjustment',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('settlements', 'staffAccess'),
+  validate(mutationBaselineSchema),
   validateAdjustment,
   validateCalculationIntegrity,
   logFinancialOperation('adjustment_addition'),
@@ -1010,7 +1077,7 @@ router.get('/:id/late-fee',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin', 'staff']),
+  authorizePolicy('settlements', 'staffAccess'),
   catchAsync(async (req, res) => {
     const { id } = req.params;
     const hotelId = req.user.hotelId;
@@ -1067,7 +1134,7 @@ router.get('/validation-statistics',
   authenticate,
   ensureTenantContext,
   ensurePropertyAccess,
-  authorize(['admin']),
+  authorizePolicy('settlements', 'adminAccess'),
   validateSettlementQuery,
   catchAsync(async (req, res) => {
     const hotelId = req.user.hotelId;

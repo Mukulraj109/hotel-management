@@ -1,12 +1,16 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import LaundryTemplate from '../models/LaundryTemplate.js';
 import InventoryItem from '../models/InventoryItem.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
@@ -42,7 +46,7 @@ router.use(ensurePropertyAccess);
  *       200:
  *         description: Laundry templates retrieved successfully
  */
-router.get('/', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
+router.get('/', authorizePolicy('laundryTemplates', 'staffAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { roomType, isActive } = req.query;
 
@@ -82,7 +86,7 @@ router.get('/', authorize('admin', 'manager', 'staff'), catchAsync(async (req, r
  *       404:
  *         description: Template not found
  */
-router.get('/:id', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
+router.get('/:id', authorizePolicy('laundryTemplates', 'staffAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { id } = req.params;
 
@@ -160,7 +164,7 @@ router.get('/:id', authorize('admin', 'manager', 'staff'), catchAsync(async (req
  *       400:
  *         description: Invalid input data
  */
-router.post('/', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/', authorizePolicy('laundryTemplates', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const templateData = req.body;
 
@@ -234,7 +238,7 @@ router.post('/', authorize('admin', 'manager'), catchAsync(async (req, res) => {
  *       404:
  *         description: Template not found
  */
-router.put('/:id', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.put('/:id', authorizePolicy('laundryTemplates', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { id } = req.params;
   const updateData = req.body;
@@ -306,7 +310,7 @@ router.put('/:id', authorize('admin', 'manager'), catchAsync(async (req, res) =>
  *       400:
  *         description: Cannot delete default template
  */
-router.delete('/:id', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.delete('/:id', authorizePolicy('laundryTemplates', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { id } = req.params;
 
@@ -353,7 +357,7 @@ router.delete('/:id', authorize('admin', 'manager'), catchAsync(async (req, res)
  *       404:
  *         description: Template not found
  */
-router.post('/:id/set-default', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/:id/set-default', authorizePolicy('laundryTemplates', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { id } = req.params;
 
@@ -403,7 +407,7 @@ router.post('/:id/set-default', authorize('admin', 'manager'), catchAsync(async 
  *       404:
  *         description: No default template found for room type
  */
-router.get('/room-type/:roomType', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
+router.get('/room-type/:roomType', authorizePolicy('laundryTemplates', 'staffAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { roomType } = req.params;
 
@@ -430,7 +434,7 @@ router.get('/room-type/:roomType', authorize('admin', 'manager', 'staff'), catch
  *       201:
  *         description: Default templates created successfully
  */
-router.post('/create-defaults', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/create-defaults', authorizePolicy('laundryTemplates', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
 
   // Check if default templates already exist
@@ -483,7 +487,7 @@ router.post('/create-defaults', authorize('admin', 'manager'), catchAsync(async 
  *       200:
  *         description: Template test completed successfully
  */
-router.post('/:id/test', authorize('admin', 'manager', 'staff'), catchAsync(async (req, res) => {
+router.post('/:id/test', authorizePolicy('laundryTemplates', 'staffAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { id } = req.params;
   const { guestCount = 2, season = 'normal', roomCondition = 'normal' } = req.body;
@@ -523,7 +527,7 @@ router.post('/:id/test', authorize('admin', 'manager', 'staff'), catchAsync(asyn
  *       200:
  *         description: Statistics retrieved successfully
  */
-router.get('/statistics', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.get('/statistics', authorizePolicy('laundryTemplates', 'managerAccess'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
 
   const templates = await LaundryTemplate.find({ hotelId, isActive: true }).lean().limit(1000);

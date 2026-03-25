@@ -3,11 +3,13 @@ import mongoose from 'mongoose';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import NotificationAnalytics from '../models/NotificationAnalytics.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
-import { validateAnalyticsRequest } from '../middleware/validation.js';
+import { validate, validateAnalyticsRequest } from '../middleware/validation.js';
 import logger from '../utils/logger.js';
+import Joi from 'joi';
 import {
   generateReport,
   getReportStatus,
@@ -38,22 +40,24 @@ import {
 } from '../controllers/analyticsController.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication and property access middleware to all analytics routes
 router.use(authenticate);
 router.use(ensureTenantContext);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('analytics', 'baseAccess'));
 
 // Basic report generation
-router.post('/reports/generate', authorize(['admin', 'manager']), generateReport);
+router.post('/reports/generate', authorize(['admin', 'manager']), validate(mutationBaselineSchema), generateReport);
 router.get('/reports/status/:reportId', authorize(['admin', 'manager']), getReportStatus);
 router.get('/reports/cached/:cacheKey', authorize(['admin', 'manager']), getCachedReport);
 
 // Report management
 router.get('/reports/templates', authorize(['admin', 'manager']), getReportTemplates);
-router.delete('/reports/cache/:reportType?', authorize(['admin']), clearReportCache);
-router.delete('/dashboard/cache/:cacheKey?', authorize(['admin']), clearDashboardCache);
-router.post('/reports/schedule', authorize(['admin']), scheduleReport);
+router.delete('/reports/cache/:reportType?', authorize(['admin']), validate(mutationBaselineSchema), clearReportCache);
+router.delete('/dashboard/cache/:cacheKey?', authorize(['admin']), validate(mutationBaselineSchema), clearDashboardCache);
+router.post('/reports/schedule', authorize(['admin']), validate(mutationBaselineSchema), scheduleReport);
 router.get('/reports/export/:reportId/:format', authorize(['admin', 'manager']), exportReport);
 
 // Dashboard and real-time metrics
@@ -103,7 +107,7 @@ router.get('/reports/seasonal-analysis', authorize(['admin', 'manager']), (req, 
 });
 
 // ETL management endpoints
-router.post('/etl/run', authorize(['admin']), async (req, res) => {
+router.post('/etl/run', authorize(['admin']), validate(mutationBaselineSchema), async (req, res) => {
   try {
     const { ETLService } = await import('../services/analytics/ETLService.js');
     const etlService = new ETLService();
@@ -158,17 +162,17 @@ router.get('/predict/demand/:hotelId', authorize(['admin', 'manager']), predictD
 router.get('/market/trends/:hotelId', authorize(['admin', 'manager']), analyzeMarketTrends);
 
 // Staff Productivity Analytics Routes
-router.post('/staff-productivity', authorize(['admin', 'manager']), getStaffProductivity);
-router.post('/staff-productivity/housekeeping', authorize(['admin', 'manager']), getHousekeepingEfficiency);
-router.post('/staff-productivity/front-desk', authorize(['admin', 'manager']), getFrontDeskPerformance);
+router.post('/staff-productivity', authorize(['admin', 'manager']), validate(mutationBaselineSchema), getStaffProductivity);
+router.post('/staff-productivity/housekeeping', authorize(['admin', 'manager']), validate(mutationBaselineSchema), getHousekeepingEfficiency);
+router.post('/staff-productivity/front-desk', authorize(['admin', 'manager']), validate(mutationBaselineSchema), getFrontDeskPerformance);
 
 // Corporate Analytics Routes
-router.post('/corporate-bookings', authorize(['admin', 'manager']), getCorporateBookings);
-router.post('/corporate-payments', authorize(['admin', 'manager']), getCorporatePayments);
+router.post('/corporate-bookings', authorize(['admin', 'manager']), validate(mutationBaselineSchema), getCorporateBookings);
+router.post('/corporate-payments', authorize(['admin', 'manager']), validate(mutationBaselineSchema), getCorporatePayments);
 
 // Booking Channel Analytics Routes
-router.post('/booking-channels', authorize(['admin', 'manager']), getBookingChannels);
-router.post('/booking-channels/roi', authorize(['admin', 'manager']), getChannelROI);
+router.post('/booking-channels', authorize(['admin', 'manager']), validate(mutationBaselineSchema), getBookingChannels);
+router.post('/booking-channels/roi', authorize(['admin', 'manager']), validate(mutationBaselineSchema), getChannelROI);
 
 // Enhanced Analytics Endpoints for Profitability Dashboard
 router.get('/room-type-profitability', authorize(['admin', 'manager']), getRoomTypeProfitability);
@@ -181,7 +185,7 @@ router.get('/hotel/:hotelId/metrics', authorize(['admin', 'manager', 'staff']), 
 
 // NOTIFICATION ANALYTICS ENDPOINTS
 // POST /api/v1/analytics/notification-events - Track notification events
-router.post('/notification-events', catchAsync(async (req, res, next) => {
+router.post('/notification-events', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { event, notificationId, channel = 'in_app', metadata = {}, deviceInfo = {} } = req.body;
 
   const analytics = new NotificationAnalytics({

@@ -3,6 +3,18 @@ import allotmentService from '../services/allotmentService.js';
 import { validationResult } from 'express-validator';
 import { withTransaction } from '../utils/transactionHelper.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
+import logger from '../utils/logger.js';
+import { ApplicationError } from '../middleware/errorHandler.js';
+
+const MAX_PAGE_SIZE = 100;
+
+const getUserHotelId = (req) => {
+  const hotelId = req.user?.hotelId;
+  if (!hotelId) {
+    throw new ApplicationError('Hotel context missing for authenticated user', 400);
+  }
+  return hotelId;
+};
 
 const allotmentController = {
   /**
@@ -21,7 +33,7 @@ const allotmentController = {
 
       const allotmentData = {
         ...req.body,
-        hotelId: req.user?.hotelId || '68c7e027ffdee5575f571414'
+        hotelId: getUserHotelId(req)
       };
 
       const allotment = await allotmentService.createAllotment(allotmentData, req.user?.id || 'system');
@@ -32,7 +44,7 @@ const allotmentController = {
         message: 'Room type allotment created successfully'
       });
     } catch (error) {
-      console.error('Error creating allotment:', error);
+      logger.error('Error creating allotment', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to create allotment',
@@ -47,8 +59,8 @@ const allotmentController = {
   async getAllotments(req, res) {
     try {
       const { 
-        page = 1, 
-        limit = 10, 
+        page = 1,
+        limit = 10,
         status, 
         roomTypeId,
         search,
@@ -56,7 +68,9 @@ const allotmentController = {
         sortOrder = 'desc'
       } = req.query;
 
-      const filter = { hotelId: req.user.hotelId || '68c7e027ffdee5575f571414' };
+      const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+      const limitNumber = Math.min(Math.max(parseInt(limit, 10) || 10, 1), MAX_PAGE_SIZE);
+      const filter = { hotelId: getUserHotelId(req) };
       
       if (status && status !== 'all') {
         filter.status = status;
@@ -73,7 +87,7 @@ const allotmentController = {
         ];
       }
 
-      const skip = (page - 1) * limit;
+      const skip = (pageNumber - 1) * limitNumber;
       const sort = {};
       sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
@@ -83,7 +97,7 @@ const allotmentController = {
         .populate('updatedBy', 'name email')
         .sort(sort)
         .skip(skip)
-        .limit(parseInt(limit)).lean();
+        .limit(limitNumber).lean();
 
       const total = await RoomTypeAllotment.countDocuments(filter);
 
@@ -92,15 +106,15 @@ const allotmentController = {
         data: {
           allotments,
           pagination: {
-            current: parseInt(page),
-            pages: Math.ceil(total / limit),
+            current: pageNumber,
+            pages: Math.ceil(total / limitNumber),
             total,
-            limit: parseInt(limit)
+            limit: limitNumber
           }
         }
       });
     } catch (error) {
-      console.error('Error fetching allotments:', error);
+      logger.error('Error fetching allotments', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to fetch allotments',
@@ -135,7 +149,7 @@ const allotmentController = {
         data: allotment
       });
     } catch (error) {
-      console.error('Error fetching allotment:', error);
+      logger.error('Error fetching allotment', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to fetch allotment',
@@ -187,7 +201,7 @@ const allotmentController = {
         message: 'Allotment updated successfully'
       });
     } catch (error) {
-      console.error('Error updating allotment:', error);
+      logger.error('Error updating allotment', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to update allotment',
@@ -223,7 +237,7 @@ const allotmentController = {
         message: 'Allotment deleted successfully'
       });
     } catch (error) {
-      console.error('Error deleting allotment:', error);
+      logger.error('Error deleting allotment', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to delete allotment',
@@ -272,7 +286,7 @@ const allotmentController = {
         data: result
       });
     } catch (error) {
-      console.error('Error fetching allotments by date range:', error);
+      logger.error('Error fetching allotments by date range', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to fetch allotments',
@@ -380,7 +394,7 @@ const allotmentController = {
           return allotment.getAllotmentForDate(date);
       
         } catch (error) {
-          console.error('Operation failed:', error.message);
+          logger.error('Channel allocation update transaction failed', { error: error.message });
           throw error;
         }
       });
@@ -398,7 +412,7 @@ const allotmentController = {
         data: result
       });
     } catch (error) {
-      console.error('Error updating channel allocation:', error);
+      logger.error('Error updating channel allocation', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to update channel allocation',
@@ -431,7 +445,7 @@ const allotmentController = {
           return await allotmentService.processBooking(bookingData, { session });
       
         } catch (error) {
-          console.error('Operation failed:', error.message);
+          logger.error('Process booking transaction failed', { error: error.message });
           throw error;
         }
       });
@@ -442,7 +456,7 @@ const allotmentController = {
         message: 'Booking processed successfully'
       });
     } catch (error) {
-      console.error('Error processing booking:', error);
+      logger.error('Error processing booking', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to process booking',
@@ -479,7 +493,7 @@ const allotmentController = {
         message: 'Rooms released successfully'
       });
     } catch (error) {
-      console.error('Error releasing rooms:', error);
+      logger.error('Error releasing rooms', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to release rooms',
@@ -500,8 +514,8 @@ const allotmentController = {
         groupBy = 'day'
       } = req.query;
 
-      // Verify allotment belongs to user's hotel (or use fallback for testing)
-      const hotelId = req.user?.hotelId || '68c7e027ffdee5575f571414';
+      // Verify allotment belongs to authenticated user's hotel
+      const hotelId = getUserHotelId(req);
       const allotment = await RoomTypeAllotment.findOne({
         _id: id,
         hotelId: hotelId
@@ -514,109 +528,17 @@ const allotmentController = {
         });
       }
 
-      let analytics;
-      try {
-        analytics = await allotmentService.generateAnalytics(id, {
-          startDate: new Date(startDate),
-          endDate: new Date(endDate)
-        });
-      } catch (analyticsError) {
-        console.log('Analytics generation failed, providing mock data:', analyticsError.message);
-        // Provide mock analytics data for testing
-        analytics = {
-          summary: {
-            averageOccupancy: 65.2,
-            totalRevenue: 125000,
-            totalBookings: 45,
-            occupancyTrend: 5.2,
-            revenueTrend: 8.1,
-            bookingsTrend: 12.3,
-            topChannel: {
-              name: 'Direct Booking',
-              occupancy: 78.5
-            }
-          },
-          dailyPerformance: [
-            { date: '2025-09-01', occupancy: 60, revenue: 5000 },
-            { date: '2025-09-02', occupancy: 65, revenue: 5500 },
-            { date: '2025-09-03', occupancy: 70, revenue: 6000 },
-            { date: '2025-09-04', occupancy: 68, revenue: 5800 },
-            { date: '2025-09-05', occupancy: 72, revenue: 6200 }
-          ],
-          channelPerformance: [
-            { channelName: 'Direct Booking', occupancy: 78.5, revenue: 45000, bookings: 25, adr: 1800, commission: 0 },
-            { channelName: 'Booking.com', occupancy: 65.2, revenue: 35000, bookings: 15, adr: 2333, commission: 15 },
-            { channelName: 'Expedia', occupancy: 58.1, revenue: 25000, bookings: 8, adr: 3125, commission: 18 },
-            { channelName: 'Agoda', occupancy: 45.3, revenue: 20000, bookings: 5, adr: 4000, commission: 20 }
-          ],
-          utilizationByDay: [
-            { day: 'Mon', utilization: 60 },
-            { day: 'Tue', utilization: 65 },
-            { day: 'Wed', utilization: 70 },
-            { day: 'Thu', utilization: 68 },
-            { day: 'Fri', utilization: 75 },
-            { day: 'Sat', utilization: 80 },
-            { day: 'Sun', utilization: 55 }
-          ],
-          leadTimeDistribution: [
-            { name: 'Same Day', count: 5 },
-            { name: '1-3 Days', count: 15 },
-            { name: '1 Week', count: 20 },
-            { name: '2+ Weeks', count: 5 }
-          ],
-          seasonalPatterns: [
-            { month: 'Jan', occupancy: 45 },
-            { month: 'Feb', occupancy: 50 },
-            { month: 'Mar', occupancy: 55 },
-            { month: 'Apr', occupancy: 60 },
-            { month: 'May', occupancy: 65 },
-            { month: 'Jun', occupancy: 70 }
-          ],
-          bookingPatterns: [
-            { day: 'Mon', bookings: 8 },
-            { day: 'Tue', bookings: 10 },
-            { day: 'Wed', bookings: 12 },
-            { day: 'Thu', bookings: 11 },
-            { day: 'Fri', bookings: 15 },
-            { day: 'Sat', bookings: 18 },
-            { day: 'Sun', bookings: 6 }
-          ],
-          recommendations: [
-            {
-              type: 'increase_allocation',
-              priority: 'high',
-              impact: 'Increase allocation for Direct Booking channel by 15%',
-              confidence: 85,
-              expectedImpact: 'Revenue increase of ₹8,000-12,000'
-            },
-            {
-              type: 'adjust_rates',
-              priority: 'medium',
-              impact: 'Consider rate adjustments for weekend periods',
-              confidence: 72,
-              expectedImpact: 'ADR improvement of 5-8%'
-            }
-          ],
-          channelEfficiency: [
-            { channelName: 'Direct Booking', revenuePerBooking: 1800 },
-            { channelName: 'Booking.com', revenuePerBooking: 2333 },
-            { channelName: 'Expedia', revenuePerBooking: 3125 },
-            { channelName: 'Agoda', revenuePerBooking: 4000 }
-          ],
-          allocationEfficiency: [
-            { method: 'percentage', efficiency: 78 },
-            { method: 'fixed', efficiency: 65 },
-            { method: 'dynamic', efficiency: 82 }
-          ]
-        };
-      }
+      const analytics = await allotmentService.generateAnalytics(id, {
+        startDate: new Date(startDate),
+        endDate: new Date(endDate)
+      });
 
       res.json({
         success: true,
         data: analytics
       });
     } catch (error) {
-      console.error('Error fetching analytics:', error);
+      logger.error('Error fetching analytics', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to fetch analytics',
@@ -678,7 +600,7 @@ const allotmentController = {
         }
       });
     } catch (error) {
-      console.error('Error fetching channel performance:', error);
+      logger.error('Error fetching channel performance', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to fetch channel performance',
@@ -715,7 +637,7 @@ const allotmentController = {
         message: 'Allocations optimized successfully'
       });
     } catch (error) {
-      console.error('Error optimizing allocations:', error);
+      logger.error('Error optimizing allocations', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to optimize allocations',
@@ -808,7 +730,7 @@ const allotmentController = {
         }
       });
     } catch (error) {
-      console.error('Error fetching availability:', error);
+      logger.error('Error fetching availability', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to fetch availability',
@@ -849,7 +771,7 @@ const allotmentController = {
         }
       });
     } catch (error) {
-      console.error('Error fetching recommendations:', error);
+      logger.error('Error fetching recommendations', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to fetch recommendations',
@@ -912,7 +834,7 @@ const allotmentController = {
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send(exportData);
     } catch (error) {
-      console.error('Error exporting allotment:', error);
+      logger.error('Error exporting allotment', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to export allotment',
@@ -967,25 +889,12 @@ const allotmentController = {
    */
   async getDashboard(req, res) {
     try {
-      console.log('🔍 getDashboard called, user:', req.user ? 'exists' : 'missing');
-      
-      const hotelId = req.user.hotelId || '68c7e027ffdee5575f571414'; // Fallback hotelId
-      if (!hotelId) {
-        console.log('❌ No hotelId found in user');
-        return res.status(400).json({
-          success: false,
-          error: 'Hotel ID not found'
-        });
-      }
-
-      console.log('🏨 Using hotelId:', hotelId);
+      const hotelId = getUserHotelId(req);
 
       // Get all allotments for the hotel
       const allotments = await RoomTypeAllotment.find({ hotelId })
         .populate('roomTypeId', 'name code baseRate')
         .lean().limit(1000);
-
-      console.log('📊 Found allotments:', allotments.length);
 
       // Calculate dashboard metrics
       const totalAllotments = allotments.length;
@@ -997,16 +906,13 @@ const allotmentController = {
       // Get unique channels from the allotment channels array
       const uniqueChannels = new Set();
       allotments.forEach(allotment => {
-        console.log('🔍 Processing allotment channels:', allotment.channels?.length || 0);
         if (allotment.channels) {
           allotment.channels.forEach(channel => {
-            console.log('📍 Adding channel:', channel.channelId);
             uniqueChannels.add(channel.channelId);
           });
         }
       });
       const totalChannels = uniqueChannels.size;
-      console.log('📊 Total unique channels found:', totalChannels, 'Channels:', Array.from(uniqueChannels));
 
       // Calculate occupancy and revenue from analytics data
       let totalOccupancy = 0;
@@ -1135,14 +1041,12 @@ const allotmentController = {
         recentRecommendations: [] // Could be populated with AI recommendations
       };
       
-      console.log('✅ Returning real dashboard data:', dashboardData);
-      
       res.json({
         success: true,
         data: dashboardData
       });
     } catch (error) {
-      console.error('❌ Error fetching dashboard data:', error);
+      logger.error('Error fetching dashboard data', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to fetch dashboard data',
@@ -1156,32 +1060,19 @@ const allotmentController = {
    */
   async getAllotmentByRoomType(req, res) {
     try {
-      console.log('🔍 [getAllotmentByRoomType] API called');
-
       const { roomTypeId } = req.params;
       const { startDate, endDate } = req.query;
 
-      console.log('📋 Request params:', { roomTypeId, startDate, endDate });
-      console.log('👤 User context:', {
-        userId: req.user?.id,
-        hotelId: req.user?.hotelId,
-        role: req.user?.role
-      });
-
       if (!roomTypeId) {
-        console.log('❌ Missing room type ID');
         return res.status(400).json({
           success: false,
           error: 'Room type ID is required'
         });
       }
 
-      const hotelId = req.user?.hotelId || '68c7e6ebca8aed0ec8036a9c';
-      console.log('🏨 Using hotelId:', hotelId);
+      const hotelId = getUserHotelId(req);
 
       // Find allotment for this room type
-      console.log('🔍 Searching for allotment with:', { roomTypeId, hotelId });
-
       const allotment = await RoomTypeAllotment.findOne({
         roomTypeId: roomTypeId,
         hotelId: hotelId
@@ -1189,59 +1080,24 @@ const allotmentController = {
       .populate('roomTypeId', 'name code maxOccupancy baseRate')
       .lean();
 
-      console.log('📊 Allotment found:', !!allotment);
-
-      if (allotment) {
-        console.log('📊 Allotment details:', {
-          _id: allotment._id,
-          roomType: allotment.roomTypeId,
-          channelsCount: allotment.channels?.length || 0,
-          dailyAllocationsCount: allotment.dailyAllotments?.length || 0,
-          status: allotment.status
-        });
-      }
-
       if (!allotment) {
-        console.log('❌ No allotment found for room type:', roomTypeId);
-
-        // Check if room type exists
-        const roomTypeExists = await RoomTypeAllotment.findOne({ roomTypeId }).lean();
-        console.log('🔍 Room type exists in any hotel:', !!roomTypeExists);
-
-        // Check all allotments for this hotel
-        const allAllocations = await RoomTypeAllotment.find({ hotelId }).lean().limit(1000);
-        console.log('📊 Total allotments for hotel:', allAllocations.length);
-        if (allAllocations.length > 0) {
-          console.log('📊 Available room types in hotel:', allAllocations.map(a => a.roomTypeId));
-        }
-
         return res.status(404).json({
           success: false,
-          error: 'No allotment found for this room type',
-          debug: {
-            roomTypeId,
-            hotelId,
-            totalAllocationsInHotel: allAllocations.length,
-            availableRoomTypes: allAllocations.map(a => a.roomTypeId)
-          }
+          error: 'No allotment found for this room type'
         });
       }
 
       // Filter daily allotments by date range if provided
       let dailyAllotments = allotment.dailyAllotments || [];
-      console.log('📅 Original daily allotments count:', dailyAllotments.length);
 
       if (startDate && endDate) {
         const start = new Date(startDate);
         const end = new Date(endDate);
-        console.log('📅 Filtering by date range:', { start, end });
 
         dailyAllotments = dailyAllotments.filter(daily => {
           const dailyDate = new Date(daily.date);
           return dailyDate >= start && dailyDate <= end;
         });
-
-        console.log('📅 Filtered daily allotments count:', dailyAllotments.length);
       }
 
       // Transform data structure for frontend compatibility
@@ -1250,8 +1106,6 @@ const allotmentController = {
         channels: daily.channelAllotments || [], // Map channelAllotments to channels
         warnings: daily.warnings || [] // Ensure warnings array exists
       }));
-
-      console.log('🔄 Transformed daily allotments sample:', transformedDailyAllotments.slice(0, 1));
 
       // Format response data for calendar
       const calendarData = {
@@ -1267,20 +1121,12 @@ const allotmentController = {
         analytics: allotment.analytics
       };
 
-      console.log('✅ Sending calendar data:', {
-        allotmentId: calendarData.allotmentId,
-        roomTypeName: calendarData.roomType?.name,
-        channelsCount: calendarData.channels?.length || 0,
-        dailyAllocationsCount: calendarData.dailyAllotments?.length || 0,
-        dateRange: calendarData.dateRange
-      });
-
       res.json({
         success: true,
         data: calendarData
       });
     } catch (error) {
-      console.error('❌ Error fetching allotment by room type:', error);
+      logger.error('Error fetching allotment by room type', { error: error.message });
       res.status(500).json({
         success: false,
         error: 'Failed to fetch allotment data',

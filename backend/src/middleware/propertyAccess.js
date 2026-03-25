@@ -2,6 +2,7 @@ import Hotel from '../models/Hotel.js';
 import PropertyGroup from '../models/PropertyGroup.js';
 import { ApplicationError } from './errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import logger from '../utils/logger.js';
 
 /**
  * Property Access Middleware
@@ -41,7 +42,11 @@ export const ensurePropertyAccess = catchAsync(async (req, res, next) => {
     // Admin read access - still verify the admin has this property in their scope
     const property = await Hotel.findById(hotelId).lean();
     if (!property) {
-      throw new ApplicationError('Property not found.', 404);
+      logger.warn(`Property not found: hotelId=${hotelId}, user=${req.user._id}, endpoint=${req.path}`);
+      throw new ApplicationError(
+        `Hotel with ID ${hotelId} not found in the system.`,
+        404
+      );
     }
 
     const hotelIdStr = hotelId.toString();
@@ -60,8 +65,14 @@ export const ensurePropertyAccess = catchAsync(async (req, res, next) => {
       userHotelId === hotelIdStr;
 
     if (!hasPropertyAccess) {
+      logger.debug(
+        `Admin access denied to property: hotelId=${hotelIdStr}, user=${req.user._id}, ` +
+        `owned=${isOwner}, inProperties=${userProperties.includes(hotelIdStr)}, ` +
+        `inAllowed=${allowedProperties.includes(hotelIdStr)}, primary=${primaryProperty}, userHotel=${userHotelId}`
+      );
       throw new ApplicationError(
-        'Access denied. You do not have permission to access this property.',
+        `Access denied. You do not have permission to access hotel ${hotelIdStr}. ` +
+        `Admin must own the property or have it in their multi-property access list.`,
         403
       );
     }
@@ -89,8 +100,12 @@ export const ensurePropertyAccess = catchAsync(async (req, res, next) => {
   const propertyExists = await Hotel.findById(hotelId).lean();
 
   if (!propertyExists) {
+    logger.warn(
+      `Property access denied - property not found: hotelId=${hotelId}, ` +
+      `user=${req.user._id}, role=${req.user.role}, method=${req.method}, path=${req.path}`
+    );
     throw new ApplicationError(
-      'Property not found.',
+      `Hotel with ID ${hotelId} not found in the system.`,
       404
     );
   }
@@ -109,8 +124,13 @@ export const ensurePropertyAccess = catchAsync(async (req, res, next) => {
     userHotelId === hotelIdStr;
 
   if (!hasAccess) {
+    logger.debug(
+      `Property access denied for non-admin user: hotelId=${hotelIdStr}, user=${req.user._id}, ` +
+      `role=${req.user.role}, inProperties=${userProperties.includes(hotelIdStr)}, ` +
+      `inAllowed=${allowedProperties.includes(hotelIdStr)}`
+    );
     throw new ApplicationError(
-      'Access denied. You do not have permission to access this property.',
+      `Access denied. You do not have permission to access hotel ${hotelIdStr}.`,
       403
     );
   }

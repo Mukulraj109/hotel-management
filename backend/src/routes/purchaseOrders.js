@@ -1,12 +1,15 @@
 import express from 'express';
+import Joi from 'joi';
 import purchaseOrderService from '../services/purchaseOrderService.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
-import { validateRequest } from '../middleware/validation.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate, validateRequest } from '../middleware/validation.js';
 import { body, param, query } from 'express-validator';
 import financialRateLimiter from '../middleware/financialRateLimiter.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require rate limiting and authentication
 router.use(financialRateLimiter);
@@ -119,7 +122,7 @@ const receivePOValidation = [
  *         description: Forbidden
  */
 router.get('/',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('purchaseOrders', 'staffAccess'),
   async (req, res) => {
     try {
       const { hotelId } = req.user;
@@ -220,7 +223,8 @@ router.get('/',
  *         description: Unauthorized
  */
 router.post('/',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('purchaseOrders', 'staffAccess'),
+  validate(mutationBaselineSchema),
   createPOValidation,
   validateRequest,
   async (req, res) => {
@@ -269,7 +273,7 @@ router.post('/',
  *         description: Purchase order not found
  */
 router.get('/:id',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('purchaseOrders', 'staffAccess'),
   [param('id').isMongoId().withMessage('Invalid purchase order ID')],
   validateRequest,
   async (req, res) => {
@@ -337,7 +341,8 @@ router.get('/:id',
  *         description: Purchase order not found
  */
 router.patch('/:id',
-  authorize(['admin', 'manager']),
+  authorizePolicy('purchaseOrders', 'managerAccess'),
+  validate(mutationBaselineSchema),
   updatePOValidation,
   validateRequest,
   async (req, res) => {
@@ -402,7 +407,8 @@ router.patch('/:id',
  *         description: Purchase order not found
  */
 router.post('/:id/send',
-  authorize(['admin', 'manager']),
+  authorizePolicy('purchaseOrders', 'managerAccess'),
+  validate(mutationBaselineSchema),
   [param('id').isMongoId().withMessage('Invalid purchase order ID')],
   validateRequest,
   async (req, res) => {
@@ -468,7 +474,8 @@ router.post('/:id/send',
  *         description: Purchase order not found
  */
 router.post('/:id/confirm',
-  authorize(['admin', 'manager']),
+  authorizePolicy('purchaseOrders', 'managerAccess'),
+  validate(mutationBaselineSchema),
   [
     param('id').isMongoId().withMessage('Invalid purchase order ID'),
     body('vendorOrderNumber').optional().trim().isLength({ min: 1 }).withMessage('Vendor order number required'),
@@ -554,7 +561,8 @@ router.post('/:id/confirm',
  *         description: Purchase order not found
  */
 router.post('/:id/receive',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('purchaseOrders', 'staffAccess'),
+  validate(mutationBaselineSchema),
   receivePOValidation,
   validateRequest,
   async (req, res) => {
@@ -620,7 +628,8 @@ router.post('/:id/receive',
  *         description: Purchase order not found
  */
 router.post('/:id/cancel',
-  authorize(['admin', 'manager']),
+  authorizePolicy('purchaseOrders', 'managerAccess'),
+  validate(mutationBaselineSchema),
   [
     param('id').isMongoId().withMessage('Invalid purchase order ID'),
     body('reason').trim().isLength({ min: 1 }).withMessage('Cancellation reason is required')
@@ -668,7 +677,7 @@ router.post('/:id/cancel',
  *         description: Pending purchase orders retrieved successfully
  */
 router.get('/pending',
-  authorize(['admin', 'manager', 'staff']),
+  authorizePolicy('purchaseOrders', 'staffAccess'),
   async (req, res) => {
     try {
       const { hotelId } = req.user;
@@ -723,7 +732,7 @@ router.get('/pending',
  *         description: Purchase order analytics retrieved successfully
  */
 router.get('/analytics',
-  authorize(['admin', 'manager']),
+  authorizePolicy('purchaseOrders', 'managerAccess'),
   async (req, res) => {
     try {
       const { hotelId } = req.user;
@@ -769,7 +778,7 @@ router.get('/analytics',
  *         description: Purchase order metrics retrieved successfully
  */
 router.get('/metrics',
-  authorize(['admin', 'manager']),
+  authorizePolicy('purchaseOrders', 'managerAccess'),
   async (req, res) => {
     try {
       const { hotelId } = req.user;

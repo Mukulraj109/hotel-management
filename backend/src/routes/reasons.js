@@ -1,4 +1,5 @@
 import express from 'express';
+import Joi from 'joi';
 import { body, param, query } from 'express-validator';
 import {
   createReason,
@@ -25,12 +26,16 @@ import {
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import authorize from '../middleware/authorize.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('reasons', 'baseAccess'));
 
 // Validation rules
 const createReasonValidation = [
@@ -225,6 +230,7 @@ const logUsageValidation = [
  */
 router.post('/', 
   authorize(['admin', 'manager']),
+  validate(mutationBaselineSchema),
   createReasonValidation,
   createReason
 );
@@ -550,6 +556,7 @@ router.get('/role/:role',
  */
 router.put('/bulk-update',
   authorize(['admin', 'manager']),
+  validate(mutationBaselineSchema),
   bulkUpdateValidation,
   bulkUpdateReasons
 );
@@ -585,6 +592,7 @@ router.put('/bulk-update',
  */
 router.post('/bulk-create',
   authorize(['admin', 'manager']),
+  validate(mutationBaselineSchema),
   bulkCreateValidation,
   bulkCreateReasons
 );
@@ -663,6 +671,7 @@ router.get('/:id',
  */
 router.put('/:id',
   authorize(['admin', 'manager']),
+  validate(mutationBaselineSchema),
   updateReasonValidation,
   updateReason
 );
@@ -692,6 +701,7 @@ router.put('/:id',
  */
 router.delete('/:id',
   authorize(['admin']),
+  validate(mutationBaselineSchema),
   reasonIdValidation,
   deleteReason
 );
@@ -785,6 +795,7 @@ router.get('/:id/validate',
  *         description: Usage logged successfully
  */
 router.post('/:id/log-usage',
+  validate(mutationBaselineSchema),
   logUsageValidation,
   logReasonUsage
 );
@@ -824,6 +835,7 @@ router.post('/:id/log-usage',
  */
 router.post('/:id/clone',
   authorize(['admin', 'manager']),
+  validate(mutationBaselineSchema),
   reasonIdValidation,
   body('newName').trim().isLength({ min: 1, max: 100 }).withMessage('New name is required'),
   body('newCode').trim().isLength({ min: 1, max: 20 }).matches(/^[A-Z0-9_-]+$/).withMessage('New code is required and must be uppercase'),
@@ -865,6 +877,7 @@ router.post('/:id/clone',
  */
 router.patch('/:id/status',
   authorize(['admin', 'manager']),
+  validate(mutationBaselineSchema),
   reasonIdValidation,
   body('isActive').isBoolean().withMessage('isActive must be a boolean'),
   body('reason').optional().trim().isLength({ max: 500 }).withMessage('Reason cannot exceed 500 characters'),

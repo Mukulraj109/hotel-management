@@ -22,11 +22,13 @@ import {
 } from '../controllers/emailTrackingController.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
-import authorize from '../middleware/authorize.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { body, param, query } from 'express-validator';
 import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 router.use(authenticate);
 router.use(ensurePropertyAccess);
@@ -163,27 +165,27 @@ const previewValidation = [
   validate
 ];
 
-router.post('/', authorize(['admin', 'manager']), createCampaignValidation, createCampaign);
+router.post('/', authorizePolicy('emailCampaigns', 'managerAccess'), validate(mutationBaselineSchema), createCampaignValidation, createCampaign);
 
-router.get('/', authorize(['admin', 'manager', 'staff']), getCampaignsValidation, getCampaigns);
+router.get('/', authorizePolicy('emailCampaigns', 'staffAccess'), getCampaignsValidation, getCampaigns);
 
-router.get('/scheduled', authorize(['admin', 'manager']), getScheduledCampaigns);
+router.get('/scheduled', authorizePolicy('emailCampaigns', 'managerAccess'), getScheduledCampaigns);
 
-router.post('/audience-count', authorize(['admin', 'manager']), audienceCountValidation, getAudienceCount);
+router.post('/audience-count', authorizePolicy('emailCampaigns', 'managerAccess'), validate(mutationBaselineSchema), audienceCountValidation, getAudienceCount);
 
-router.get('/:id', authorize(['admin', 'manager', 'staff']), campaignIdValidation, getCampaign);
+router.get('/:id', authorizePolicy('emailCampaigns', 'staffAccess'), campaignIdValidation, getCampaign);
 
-router.put('/:id', authorize(['admin', 'manager']), updateCampaignValidation, updateCampaign);
+router.put('/:id', authorizePolicy('emailCampaigns', 'managerAccess'), validate(mutationBaselineSchema), updateCampaignValidation, updateCampaign);
 
-router.post('/:id/send', authorize(['admin', 'manager']), campaignIdValidation, sendCampaign);
+router.post('/:id/send', authorizePolicy('emailCampaigns', 'managerAccess'), validate(mutationBaselineSchema), campaignIdValidation, sendCampaign);
 
-router.post('/:id/duplicate', authorize(['admin', 'manager']), campaignIdValidation, duplicateCampaign);
+router.post('/:id/duplicate', authorizePolicy('emailCampaigns', 'managerAccess'), validate(mutationBaselineSchema), campaignIdValidation, duplicateCampaign);
 
-router.delete('/:id', authorize(['admin', 'manager']), campaignIdValidation, deleteCampaign);
+router.delete('/:id', authorizePolicy('emailCampaigns', 'managerAccess'), validate(mutationBaselineSchema), campaignIdValidation, deleteCampaign);
 
-router.post('/:id/preview', authorize(['admin', 'manager']), previewValidation, previewCampaign);
+router.post('/:id/preview', authorizePolicy('emailCampaigns', 'managerAccess'), validate(mutationBaselineSchema), previewValidation, previewCampaign);
 
-router.get('/:id/analytics', authorize(['admin', 'manager', 'staff']), campaignIdValidation, getCampaignAnalytics);
+router.get('/:id/analytics', authorizePolicy('emailCampaigns', 'staffAccess'), campaignIdValidation, getCampaignAnalytics);
 
 // Email tracking routes (public - no authentication required)
 router.get('/track/open/:campaignId/:userId/:trackingId', trackEmailOpen);
@@ -191,8 +193,8 @@ router.get('/track/click/:campaignId/:userId/:linkId', trackEmailClick);
 router.get('/track/unsubscribe/:campaignId/:userId', trackUnsubscribe);
 
 // Analytics routes (authenticated)
-router.get('/:id/analytics/detailed', authorize(['admin', 'manager', 'staff']), campaignIdValidation, getEmailAnalytics);
-router.get('/analytics/bulk', authorize(['admin', 'manager', 'staff']), getBulkEmailAnalytics);
-router.get('/:id/analytics/realtime', authorize(['admin', 'manager', 'staff']), campaignIdValidation, getRealtimeMetrics);
+router.get('/:id/analytics/detailed', authorizePolicy('emailCampaigns', 'staffAccess'), campaignIdValidation, getEmailAnalytics);
+router.get('/analytics/bulk', authorizePolicy('emailCampaigns', 'staffAccess'), getBulkEmailAnalytics);
+router.get('/:id/analytics/realtime', authorizePolicy('emailCampaigns', 'staffAccess'), campaignIdValidation, getRealtimeMetrics);
 
 export default router;

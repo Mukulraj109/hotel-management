@@ -1,14 +1,18 @@
 import express from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import Joi from 'joi';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { guestManagementController } from '../controllers/guestManagementController.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Apply authentication and authorization to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
-router.use(authorize(['admin', 'manager']));
+router.use(authorizePolicy('guestManagement', 'managerAccess'));
 
 // Guest Management Overview
 router.get('/overview', guestManagementController.getGuestManagementOverview);
@@ -33,7 +37,7 @@ router.route('/guest-types/:id')
   .patch(guestManagementController.updateGuestType)
   .delete(guestManagementController.deleteGuestType);
 
-router.post('/guest-types/:id/duplicate', guestManagementController.duplicateGuestType);
+router.post('/guest-types/:id/duplicate', validate(mutationBaselineSchema), guestManagementController.duplicateGuestType);
 
 // Identification Types Routes
 router.route('/identification-types')
@@ -46,8 +50,8 @@ router.route('/identification-types/:id')
   .delete(guestManagementController.deleteIdentificationType);
 
 // Utility Routes
-router.post('/validate', guestManagementController.validateGuestData);
-router.patch('/display-order', guestManagementController.bulkUpdateDisplayOrder);
+router.post('/validate', validate(mutationBaselineSchema), guestManagementController.validateGuestData);
+router.patch('/display-order', validate(mutationBaselineSchema), guestManagementController.bulkUpdateDisplayOrder);
 
 // Analytics Routes
 router.get('/analytics/account-attributes', guestManagementController.getAccountAttributeAnalytics);

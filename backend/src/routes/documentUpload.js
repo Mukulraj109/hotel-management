@@ -1,17 +1,21 @@
 import express from 'express';
+import Joi from 'joi';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
+import { validate } from '../middleware/validation.js';
 import Document from '../models/Document.js';
 import DocumentRequirement from '../models/DocumentRequirement.js';
 import User from '../models/User.js';
 import Department from '../models/Department.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Ensure uploads directory exists
 const createUploadDirectories = () => {
@@ -105,6 +109,7 @@ const upload = multer({
 // All routes require authentication
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('documentUpload', 'baseAccess'));
 
 /**
  * @swagger
@@ -145,6 +150,7 @@ router.use(ensurePropertyAccess);
  *                 format: date
  */
 router.post('/upload',
+  validate(mutationBaselineSchema),
   upload.single('document'),
   catchAsync(async (req, res) => {
     const {
@@ -252,6 +258,7 @@ router.post('/upload',
  *       - bearerAuth: []
  */
 router.post('/bulk-upload',
+  validate(mutationBaselineSchema),
   upload.array('documents', 10),
   catchAsync(async (req, res) => {
     const { metadata } = req.body; // JSON string with file-specific metadata
@@ -464,7 +471,8 @@ router.get('/:id/download', catchAsync(async (req, res) => {
  *       - bearerAuth: []
  */
 router.patch('/:id/verify',
-  authorize('admin', 'manager'),
+  authorizePolicy('documentUpload', 'managerAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { comments, confidenceLevel = 5 } = req.body;
 
@@ -499,7 +507,8 @@ router.patch('/:id/verify',
  *       - bearerAuth: []
  */
 router.patch('/:id/reject',
-  authorize('admin', 'manager'),
+  authorizePolicy('documentUpload', 'managerAccess'),
+  validate(mutationBaselineSchema),
   catchAsync(async (req, res) => {
     const { rejectionReason } = req.body;
 
@@ -535,7 +544,7 @@ router.patch('/:id/reject',
  *     summary: Update document metadata
  *     tags: [Documents]
  */
-router.patch('/:id', catchAsync(async (req, res) => {
+router.patch('/:id', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { description, tags, category, documentType, expiryDate } = req.body;
 
   // Build ownership query
@@ -594,7 +603,7 @@ router.patch('/:id', catchAsync(async (req, res) => {
  *     summary: Delete a document
  *     tags: [Documents]
  */
-router.delete('/:id', catchAsync(async (req, res) => {
+router.delete('/:id', validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   // Build ownership query
   const ownershipQuery = { _id: req.params.id };
   if (req.user.role !== 'admin') {
@@ -648,7 +657,7 @@ router.delete('/:id', catchAsync(async (req, res) => {
  *       - bearerAuth: []
  */
 router.get('/staff/:staffId',
-  authorize('admin', 'manager'),
+  authorizePolicy('documentUpload', 'managerAccess'),
   catchAsync(async (req, res) => {
     const { staffId } = req.params;
     const { status, category, limit = 50, skip = 0 } = req.query;
@@ -693,7 +702,7 @@ router.get('/staff/:staffId',
  *       - bearerAuth: []
  */
 router.get('/guest/:guestId',
-  authorize('admin', 'staff'),
+  authorizePolicy('documentUpload', 'staffAccess'),
   catchAsync(async (req, res) => {
     const { guestId } = req.params;
     const { status, category, bookingId, limit = 50, skip = 0 } = req.query;
@@ -743,7 +752,7 @@ router.get('/guest/:guestId',
  *       - bearerAuth: []
  */
 router.get('/pending-verifications',
-  authorize('admin', 'manager'),
+  authorizePolicy('documentUpload', 'managerAccess'),
   catchAsync(async (req, res) => {
     const {
       userType,
@@ -827,7 +836,7 @@ router.get('/requirements/:userType', catchAsync(async (req, res) => {
  *       - bearerAuth: []
  */
 router.get('/analytics/compliance',
-  authorize('admin', 'manager'),
+  authorizePolicy('documentUpload', 'managerAccess'),
   catchAsync(async (req, res) => {
     const {
       userType,

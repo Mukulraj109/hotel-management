@@ -1,11 +1,15 @@
 import express from 'express';
 import { body, param, query } from 'express-validator';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 import { createCacheMiddleware, createCacheInvalidationMiddleware } from '../middleware/cache.js';
 import propertyGroupController from '../controllers/propertyGroupController.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // Property Group specific cache middlewares
 const propertyGroupCacheMiddleware = createCacheMiddleware({
@@ -122,7 +126,8 @@ const syncSettingsValidation = [
 router.post('/',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'manager']),
+  authorizePolicy('propertyGroups', 'managerAccess'),
+  validate(mutationBaselineSchema),
   createPropertyGroupValidation,
   propertyGroupInvalidationMiddleware,
   propertyGroupController.createPropertyGroup
@@ -172,7 +177,7 @@ router.post('/',
 router.get('/',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'manager']),
+  authorizePolicy('propertyGroups', 'managerAccess'),
   query('page').optional().isInt({ min: 1 }).withMessage('Page must be a positive integer'),
   query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),
   query('status').optional().isIn(['active', 'inactive', 'suspended']),
@@ -209,7 +214,7 @@ router.get('/',
 router.get('/:id',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'manager']),
+  authorizePolicy('propertyGroups', 'managerAccess'),
   param('id').isMongoId().withMessage('Invalid property group ID'),
   propertyGroupCacheMiddleware,
   propertyGroupController.getPropertyGroupById
@@ -259,7 +264,8 @@ router.get('/:id',
 router.put('/:id',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'manager']),
+  authorizePolicy('propertyGroups', 'managerAccess'),
+  validate(mutationBaselineSchema),
   updatePropertyGroupValidation,
   propertyGroupInvalidationMiddleware,
   propertyGroupController.updatePropertyGroup
@@ -295,7 +301,8 @@ router.put('/:id',
 router.delete('/:id',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin']),
+  authorizePolicy('propertyGroups', 'adminAccess'),
+  validate(mutationBaselineSchema),
   param('id').isMongoId().withMessage('Invalid property group ID'),
   propertyGroupInvalidationMiddleware,
   propertyGroupController.deletePropertyGroup
@@ -345,7 +352,8 @@ router.delete('/:id',
 router.post('/:id/properties',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'manager']),
+  authorizePolicy('propertyGroups', 'managerAccess'),
+  validate(mutationBaselineSchema),
   propertyIdValidation,
   propertyGroupInvalidationMiddleware,
   propertyGroupController.addPropertiesToGroup
@@ -395,7 +403,8 @@ router.post('/:id/properties',
 router.delete('/:id/properties',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'manager']),
+  authorizePolicy('propertyGroups', 'managerAccess'),
+  validate(mutationBaselineSchema),
   propertyIdValidation,
   propertyGroupInvalidationMiddleware,
   propertyGroupController.removePropertiesFromGroup
@@ -439,7 +448,8 @@ router.delete('/:id/properties',
 router.post('/:id/sync',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'manager']),
+  authorizePolicy('propertyGroups', 'managerAccess'),
+  validate(mutationBaselineSchema),
   syncSettingsValidation,
   propertyGroupInvalidationMiddleware,
   propertyGroupController.syncGroupSettings
@@ -479,7 +489,7 @@ router.post('/:id/sync',
 router.get('/:id/dashboard',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'manager']),
+  authorizePolicy('propertyGroups', 'managerAccess'),
   param('id').isMongoId().withMessage('Invalid property group ID'),
   query('period').optional().matches(/^\d+d$/).withMessage('Period must be in format: 7d, 30d, etc.'),
   dashboardCacheMiddleware,
@@ -526,7 +536,7 @@ router.get('/:id/dashboard',
 router.get('/:id/audit-log',
   authenticate,
   ensurePropertyAccess,
-  authorize(['admin', 'manager']),
+  authorizePolicy('propertyGroups', 'managerAccess'),
   param('id').isMongoId().withMessage('Invalid property group ID'),
   query('page').optional().isInt({ min: 1 }),
   query('limit').optional().isInt({ min: 1, max: 100 }),

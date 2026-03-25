@@ -1,11 +1,15 @@
 import express from 'express';
 import billingSessionController from '../controllers/billingSessionController.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import financialRateLimiter from '../middleware/financialRateLimiter.js';
 import { validateFinancial, billingSessionSchema } from '../middleware/financialValidation.js';
+import { validate } from '../middleware/validation.js';
+import Joi from 'joi';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require rate limiting and authentication
 router.use(financialRateLimiter);
@@ -43,7 +47,7 @@ router.use(ensurePropertyAccess);
  *       201:
  *         description: Billing session created successfully
  */
-router.post('/', authorize('staff', 'admin'), validateFinancial(billingSessionSchema), billingSessionController.createBillingSession);
+router.post('/', authorizePolicy('billingSessions', 'staffAccess'), validate(mutationBaselineSchema), validateFinancial(billingSessionSchema), billingSessionController.createBillingSession);
 
 /**
  * @swagger
@@ -89,7 +93,7 @@ router.get('/:id', billingSessionController.getBillingSession);
  *       200:
  *         description: Billing session updated successfully
  */
-router.put('/:id', authorize('staff', 'admin'), billingSessionController.updateBillingSession);
+router.put('/:id', authorizePolicy('billingSessions', 'staffAccess'), validate(mutationBaselineSchema), billingSessionController.updateBillingSession);
 
 /**
  * @swagger
@@ -109,7 +113,7 @@ router.put('/:id', authorize('staff', 'admin'), billingSessionController.updateB
  *       200:
  *         description: Billing session deleted successfully
  */
-router.delete('/:id', authorize('staff', 'admin'), billingSessionController.deleteBillingSession);
+router.delete('/:id', authorizePolicy('billingSessions', 'staffAccess'), validate(mutationBaselineSchema), billingSessionController.deleteBillingSession);
 
 /**
  * @swagger
@@ -151,7 +155,7 @@ router.delete('/:id', authorize('staff', 'admin'), billingSessionController.dele
  *       200:
  *         description: Item added successfully
  */
-router.post('/:id/items', authorize('staff', 'admin'), billingSessionController.addItemToSession);
+router.post('/:id/items', authorizePolicy('billingSessions', 'staffAccess'), validate(mutationBaselineSchema), billingSessionController.addItemToSession);
 
 /**
  * @swagger
@@ -187,7 +191,7 @@ router.post('/:id/items', authorize('staff', 'admin'), billingSessionController.
  *       200:
  *         description: Item quantity updated successfully
  */
-router.put('/:id/items/:itemId', authorize('staff', 'admin'), billingSessionController.updateItemInSession);
+router.put('/:id/items/:itemId', authorizePolicy('billingSessions', 'staffAccess'), validate(mutationBaselineSchema), billingSessionController.updateItemInSession);
 
 /**
  * @swagger
@@ -212,7 +216,7 @@ router.put('/:id/items/:itemId', authorize('staff', 'admin'), billingSessionCont
  *       200:
  *         description: Item removed successfully
  */
-router.delete('/:id/items/:itemId', authorize('staff', 'admin'), billingSessionController.removeItemFromSession);
+router.delete('/:id/items/:itemId', authorizePolicy('billingSessions', 'staffAccess'), validate(mutationBaselineSchema), billingSessionController.removeItemFromSession);
 
 /**
  * @swagger
@@ -255,7 +259,7 @@ router.delete('/:id/items/:itemId', authorize('staff', 'admin'), billingSessionC
  *       200:
  *         description: Billing session checked out successfully
  */
-router.post('/:id/checkout', authorize('staff', 'admin'), billingSessionController.checkoutSession);
+router.post('/:id/checkout', authorizePolicy('billingSessions', 'staffAccess'), validate(mutationBaselineSchema), billingSessionController.checkoutSession);
 
 /**
  * @swagger
@@ -283,7 +287,7 @@ router.post('/:id/checkout', authorize('staff', 'admin'), billingSessionControll
  *       200:
  *         description: Billing session voided successfully
  */
-router.post('/:id/void', authorize('staff', 'admin'), billingSessionController.voidSession);
+router.post('/:id/void', authorizePolicy('billingSessions', 'staffAccess'), validate(mutationBaselineSchema), billingSessionController.voidSession);
 
 /**
  * @swagger

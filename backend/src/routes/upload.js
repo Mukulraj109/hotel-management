@@ -1,15 +1,19 @@
 import express from 'express';
+import Joi from 'joi';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { authenticate } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
+import { validate } from '../middleware/validation.js';
 import User from '../models/User.js';
 import { cloudinaryStorage, deleteCloudinaryImage } from '../config/cloudinary.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 const UPLOADS_DIR = path.resolve(process.cwd(), 'uploads');
 
@@ -66,9 +70,10 @@ const upload = multer({
 // Apply authentication to all routes
 router.use(authenticate);
 router.use(ensurePropertyAccess);
+router.use(authorizePolicy('upload', 'baseAccess'));
 
 // Upload avatar endpoint
-router.post('/avatar', upload.single('avatar'), catchAsync(async (req, res, next) => {
+router.post('/avatar', validate(mutationBaselineSchema), upload.single('avatar'), catchAsync(async (req, res, next) => {
   if (!req.file) {
     return next(new ApplicationError('No file uploaded', 400));
   }
@@ -106,7 +111,7 @@ router.post('/avatar', upload.single('avatar'), catchAsync(async (req, res, next
 }));
 
 // Delete avatar endpoint
-router.delete('/avatar', catchAsync(async (req, res, next) => {
+router.delete('/avatar', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const user = await User.findById(req.user._id).lean();
 
   if (!user || !user.avatar) {

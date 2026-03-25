@@ -1,12 +1,16 @@
 import express from 'express';
+import Joi from 'joi';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import enhancedAnalyticsService from '../services/enhancedAnalyticsService.js';
 import logger from '../utils/logger.js';
+import { authorizePolicy } from '../middleware/rbacPolicy.js';
+import { validate } from '../middleware/validation.js';
 
 const router = express.Router();
+const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
 
 // All routes require authentication
 router.use(authenticate);
@@ -451,7 +455,7 @@ router.get('/system-health', authorize('admin', 'manager'), catchAsync(async (re
  *       200:
  *         description: Exported report data
  */
-router.post('/export', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/export', authorizePolicy('enhancedAnalytics', 'managerAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const { reportType, format, parameters = {} } = req.body;
   const hotelId = req.user.role === 'staff' ? req.user.hotelId : req.body.hotelId;
 
