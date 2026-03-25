@@ -52,6 +52,7 @@ import {
 import { toast } from 'react-hot-toast';
 import { useProperty } from '../../context/PropertyContext';
 import { ScheduledUpdateDialog } from '../../components/settings/ScheduledUpdateDialog';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface ScheduledUpdate {
   _id: string;
@@ -94,7 +95,7 @@ const STATUS_ICONS = {
   cancelled: X
 };
 
-export default function ScheduledUpdates() {
+function ScheduledUpdates() {
   const queryClient = useQueryClient();
   const { properties } = useProperty();
 
@@ -811,3 +812,6 @@ export default function ScheduledUpdates() {
     </div>
   );
 }
+
+
+export default withErrorBoundary(ScheduledUpdates, { level: 'page' });

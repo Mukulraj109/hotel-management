@@ -84,7 +84,7 @@ router.get('/', catchAsync(async (req, res) => {
   // Find attractions
   const attractions = await LocalAttraction.find(query)
     .sort({ distance: 1, rating: -1 }) // Sort by distance first, then rating
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   res.json({
     status: 'success',
@@ -218,7 +218,7 @@ router.get('/categories', catchAsync(async (req, res) => {
  */
 router.get('/:id', catchAsync(async (req, res) => {
   const attraction = await LocalAttraction.findById(req.params.id)
-    .populate('hotelId', 'name address');
+    .populate('hotelId', 'name address').lean();
 
   if (!attraction) {
     throw new ApplicationError('Attraction not found', 404);

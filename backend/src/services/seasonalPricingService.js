@@ -90,40 +90,48 @@ class SeasonalPricingService {
    * Get active seasons for a specific date
    */
   async getActiveSeasonsForDate(date, ratePlanId = null) {
-    const query = {
-      isActive: true,
-      startDate: { $lte: date },
-      endDate: { $gte: date }
-    };
+    try {
+      const query = {
+        isActive: true,
+        startDate: { $lte: date },
+        endDate: { $gte: date }
+      };
     
-    if (ratePlanId) {
-      query.$or = [
-        { applicableRatePlans: { $size: 0 } },
-        { applicableRatePlans: ratePlanId }
-      ];
+      if (ratePlanId) {
+        query.$or = [
+          { applicableRatePlans: { $size: 0 } },
+          { applicableRatePlans: ratePlanId }
+        ];
+      }
+    
+      return await Season.find(query).sort({ priority: -1 }).lean().limit(1000);
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    return await Season.find(query).sort({ priority: -1 });
   }
   
   /**
    * Get active special periods for a specific date
    */
   async getActiveSpecialPeriodsForDate(date, ratePlanId = null) {
-    const query = {
-      isActive: true,
-      startDate: { $lte: date },
-      endDate: { $gte: date }
-    };
+    try {
+      const query = {
+        isActive: true,
+        startDate: { $lte: date },
+        endDate: { $gte: date }
+      };
     
-    if (ratePlanId) {
-      query.$or = [
-        { applicableRatePlans: { $size: 0 } },
-        { applicableRatePlans: ratePlanId }
-      ];
+      if (ratePlanId) {
+        query.$or = [
+          { applicableRatePlans: { $size: 0 } },
+          { applicableRatePlans: ratePlanId }
+        ];
+      }
+    
+      return await SpecialPeriod.find(query).sort({ priority: -1 }).lean().limit(1000);
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    return await SpecialPeriod.find(query).sort({ priority: -1 });
   }
   
   /**
@@ -178,7 +186,7 @@ class SeasonalPricingService {
           }
         ],
         'restrictions.bookingRestriction': { $in: ['blocked', 'closed_to_arrival', 'closed_to_departure', 'closed_to_both'] }
-      });
+      }).lean().limit(1000);
       
       for (const period of blockingPeriods) {
         if (!period.isBookingAllowed(arrival, departure)) {
@@ -301,38 +309,46 @@ class SeasonalPricingService {
    * Get seasons by date range
    */
   async getSeasonsByDateRange(startDate, endDate, includeInactive = false) {
-    const query = {
-      $or: [
-        { startDate: { $gte: startDate, $lte: endDate } },
-        { endDate: { $gte: startDate, $lte: endDate } },
-        { startDate: { $lte: startDate }, endDate: { $gte: endDate } }
-      ]
-    };
+    try {
+      const query = {
+        $or: [
+          { startDate: { $gte: startDate, $lte: endDate } },
+          { endDate: { $gte: startDate, $lte: endDate } },
+          { startDate: { $lte: startDate }, endDate: { $gte: endDate } }
+        ]
+      };
     
-    if (!includeInactive) {
-      query.isActive = true;
+      if (!includeInactive) {
+        query.isActive = true;
+      }
+    
+      return await Season.find(query).sort({ startDate: 1 }).lean().limit(1000);
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    return await Season.find(query).sort({ startDate: 1 });
   }
   
   /**
    * Get special periods by date range
    */
   async getSpecialPeriodsByDateRange(startDate, endDate, includeInactive = false) {
-    const query = {
-      $or: [
-        { startDate: { $gte: startDate, $lte: endDate } },
-        { endDate: { $gte: startDate, $lte: endDate } },
-        { startDate: { $lte: startDate }, endDate: { $gte: endDate } }
-      ]
-    };
+    try {
+      const query = {
+        $or: [
+          { startDate: { $gte: startDate, $lte: endDate } },
+          { endDate: { $gte: startDate, $lte: endDate } },
+          { startDate: { $lte: startDate }, endDate: { $gte: endDate } }
+        ]
+      };
     
-    if (!includeInactive) {
-      query.isActive = true;
+      if (!includeInactive) {
+        query.isActive = true;
+      }
+    
+      return await SpecialPeriod.find(query).sort({ startDate: 1 }).lean().limit(1000);
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    return await SpecialPeriod.find(query).sort({ startDate: 1 });
   }
   
   /**

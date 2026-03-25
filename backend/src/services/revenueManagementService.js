@@ -41,7 +41,7 @@ class RevenueManagementService {
       logger.debug(`📊 Calculating revenue KPIs for hotel ${hotelId}...`);
 
       // Get all room types for this hotel
-      const roomTypes = await RoomType.find({ hotelId, isActive: true });
+      const roomTypes = await RoomType.find({ hotelId, isActive: true }).lean().limit(1000);
       const roomTypeIds = roomTypes.map(rt => rt._id);
 
       // Get availability data
@@ -49,14 +49,14 @@ class RevenueManagementService {
         hotelId,
         roomTypeId: { $in: roomTypeIds },
         date: { $gte: startDate, $lte: endDate }
-      }).populate('roomTypeId');
+      }).populate('roomTypeId').lean().limit(1000);
 
       // Get bookings data
       const bookings = await Booking.find({
         hotelId,
         checkIn: { $gte: startDate, $lte: endDate },
         status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-      });
+      }).lean().limit(1000);
 
       // Calculate core KPIs
       const kpis = await this.calculateCoreKPIs(availability, bookings, startDate, endDate);
@@ -105,161 +105,177 @@ class RevenueManagementService {
    * Calculate core revenue KPIs
    */
   async calculateCoreKPIs(availability, bookings, startDate, endDate) {
-    const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+    try {
+      const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
     
-    // Total rooms and revenue
-    const totalRoomNights = availability.reduce((sum, avail) => sum + avail.totalRooms, 0);
-    const occupiedRoomNights = availability.reduce((sum, avail) => sum + avail.soldRooms, 0);
-    const totalRevenue = bookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
+      // Total rooms and revenue
+      const totalRoomNights = availability.reduce((sum, avail) => sum + avail.totalRooms, 0);
+      const occupiedRoomNights = availability.reduce((sum, avail) => sum + avail.soldRooms, 0);
+      const totalRevenue = bookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
 
-    // Average Daily Rate (ADR)
-    const adr = occupiedRoomNights > 0 ? totalRevenue / occupiedRoomNights : 0;
+      // Average Daily Rate (ADR)
+      const adr = occupiedRoomNights > 0 ? totalRevenue / occupiedRoomNights : 0;
 
-    // Occupancy Rate
-    const occupancyRate = totalRoomNights > 0 ? (occupiedRoomNights / totalRoomNights) * 100 : 0;
+      // Occupancy Rate
+      const occupancyRate = totalRoomNights > 0 ? (occupiedRoomNights / totalRoomNights) * 100 : 0;
 
-    // Revenue Per Available Room (RevPAR)
-    const revPAR = totalRoomNights > 0 ? totalRevenue / totalRoomNights : 0;
+      // Revenue Per Available Room (RevPAR)
+      const revPAR = totalRoomNights > 0 ? totalRevenue / totalRoomNights : 0;
 
-    // Average Length of Stay (ALOS)
-    const totalNights = bookings.reduce((sum, booking) => {
-      const checkIn = new Date(booking.checkIn);
-      const checkOut = new Date(booking.checkOut);
-      return sum + Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
-    }, 0);
-    const alos = bookings.length > 0 ? totalNights / bookings.length : 0;
+      // Average Length of Stay (ALOS)
+      const totalNights = bookings.reduce((sum, booking) => {
+        const checkIn = new Date(booking.checkIn);
+        const checkOut = new Date(booking.checkOut);
+        return sum + Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24));
+      }, 0);
+      const alos = bookings.length > 0 ? totalNights / bookings.length : 0;
 
-    // Gross Operating Profit Per Available Room (GOPPAR)
-    // Simplified calculation - would need cost data for accurate GOPPAR
-    const estimatedCosts = totalRevenue * 0.35; // Assume 35% cost ratio
-    const gop = totalRevenue - estimatedCosts;
-    const goppar = totalRoomNights > 0 ? gop / totalRoomNights : 0;
+      // Gross Operating Profit Per Available Room (GOPPAR)
+      // Simplified calculation - would need cost data for accurate GOPPAR
+      const estimatedCosts = totalRevenue * 0.35; // Assume 35% cost ratio
+      const gop = totalRevenue - estimatedCosts;
+      const goppar = totalRoomNights > 0 ? gop / totalRoomNights : 0;
 
-    // Revenue Growth (comparing to same period last year - simplified)
-    const revenueGrowth = 0; // Would need historical data
+      // Revenue Growth (comparing to same period last year - simplified)
+      const revenueGrowth = 0; // Would need historical data
 
-    return {
-      totalRevenue: Math.round(totalRevenue),
-      adr: Math.round(adr),
-      occupancyRate: Math.round(occupancyRate * 100) / 100,
-      revPAR: Math.round(revPAR),
-      alos: Math.round(alos * 10) / 10,
-      goppar: Math.round(goppar),
-      revenueGrowth,
-      totalBookings: bookings.length,
-      totalRoomNights,
-      occupiedRoomNights,
-      availableRoomNights: totalRoomNights - occupiedRoomNights
-    };
+      return {
+        totalRevenue: Math.round(totalRevenue),
+        adr: Math.round(adr),
+        occupancyRate: Math.round(occupancyRate * 100) / 100,
+        revPAR: Math.round(revPAR),
+        alos: Math.round(alos * 10) / 10,
+        goppar: Math.round(goppar),
+        revenueGrowth,
+        totalBookings: bookings.length,
+        totalRoomNights,
+        occupiedRoomNights,
+        availableRoomNights: totalRoomNights - occupiedRoomNights
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Calculate advanced revenue metrics
    */
   async calculateAdvancedMetrics(hotelId, availability, bookings, startDate, endDate) {
-    // Market Share Index (MSI) - would need competitor data
-    const marketShareIndex = 100; // Placeholder
+    try {
+      // Market Share Index (MSI) - would need competitor data
+      const marketShareIndex = 100; // Placeholder
 
-    // Revenue Generation Index (RGI) - performance vs market
-    const revenueGenerationIndex = 105; // Placeholder - 5% above market
+      // Revenue Generation Index (RGI) - performance vs market
+      const revenueGenerationIndex = 105; // Placeholder - 5% above market
 
-    // Market Penetration Index (MPI) - occupancy vs market
-    const marketPenetrationIndex = 98; // Placeholder - 2% below market
+      // Market Penetration Index (MPI) - occupancy vs market
+      const marketPenetrationIndex = 98; // Placeholder - 2% below market
 
-    // Pickup Analysis - bookings pace
-    const bookingsBySource = this.groupBookingsBySource(bookings);
-    const channelMix = this.calculateChannelMix(bookings);
+      // Pickup Analysis - bookings pace
+      const bookingsBySource = this.groupBookingsBySource(bookings);
+      const channelMix = this.calculateChannelMix(bookings);
     
-    // Lead time analysis
-    const leadTimeAnalysis = this.calculateLeadTimeMetrics(bookings);
+      // Lead time analysis
+      const leadTimeAnalysis = this.calculateLeadTimeMetrics(bookings);
     
-    // Cancellation and no-show rates
-    const cancellationRate = await this.calculateCancellationRate(hotelId, startDate, endDate);
+      // Cancellation and no-show rates
+      const cancellationRate = await this.calculateCancellationRate(hotelId, startDate, endDate);
     
-    // Price optimization opportunities
-    const optimizationOpportunities = await this.identifyOptimizationOpportunities(hotelId, availability);
+      // Price optimization opportunities
+      const optimizationOpportunities = await this.identifyOptimizationOpportunities(hotelId, availability);
 
-    return {
-      marketShareIndex,
-      revenueGenerationIndex,
-      marketPenetrationIndex,
-      bookingsBySource,
-      channelMix,
-      leadTimeAnalysis,
-      cancellationRate,
-      optimizationOpportunities
-    };
+      return {
+        marketShareIndex,
+        revenueGenerationIndex,
+        marketPenetrationIndex,
+        bookingsBySource,
+        channelMix,
+        leadTimeAnalysis,
+        cancellationRate,
+        optimizationOpportunities
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Calculate room type performance metrics
    */
   async calculateRoomTypePerformance(roomTypes, availability, bookings) {
-    const performance = [];
+    try {
+      const performance = [];
 
-    for (const roomType of roomTypes) {
-      const roomTypeAvailability = availability.filter(av => 
-        av.roomTypeId.toString() === roomType._id.toString()
-      );
+      for (const roomType of roomTypes) {
+        const roomTypeAvailability = availability.filter(av => 
+          av.roomTypeId.toString() === roomType._id.toString()
+        );
       
-      const roomTypeBookings = bookings.filter(booking => 
-        booking.roomType === roomType.legacyType || 
-        booking.roomTypeId?.toString() === roomType._id.toString()
-      );
+        const roomTypeBookings = bookings.filter(booking => 
+          booking.roomType === roomType.legacyType || 
+          booking.roomTypeId?.toString() === roomType._id.toString()
+        );
 
-      const totalRoomNights = roomTypeAvailability.reduce((sum, av) => sum + av.totalRooms, 0);
-      const soldRoomNights = roomTypeAvailability.reduce((sum, av) => sum + av.soldRooms, 0);
-      const revenue = roomTypeBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
+        const totalRoomNights = roomTypeAvailability.reduce((sum, av) => sum + av.totalRooms, 0);
+        const soldRoomNights = roomTypeAvailability.reduce((sum, av) => sum + av.soldRooms, 0);
+        const revenue = roomTypeBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
 
-      const occupancyRate = totalRoomNights > 0 ? (soldRoomNights / totalRoomNights) * 100 : 0;
-      const adr = soldRoomNights > 0 ? revenue / soldRoomNights : 0;
-      const revPAR = totalRoomNights > 0 ? revenue / totalRoomNights : 0;
+        const occupancyRate = totalRoomNights > 0 ? (soldRoomNights / totalRoomNights) * 100 : 0;
+        const adr = soldRoomNights > 0 ? revenue / soldRoomNights : 0;
+        const revPAR = totalRoomNights > 0 ? revenue / totalRoomNights : 0;
 
-      performance.push({
-        roomTypeId: roomType._id,
-        roomTypeName: roomType.name,
-        roomTypeCode: roomType.code,
-        metrics: {
-          revenue: Math.round(revenue),
-          occupancyRate: Math.round(occupancyRate * 100) / 100,
-          adr: Math.round(adr),
-          revPAR: Math.round(revPAR),
-          totalBookings: roomTypeBookings.length,
-          totalRoomNights,
-          soldRoomNights
-        },
-        performance: {
-          revenueShare: totalRoomNights > 0 ? (revenue / (roomTypes.reduce((sum, rt) => sum + rt.basePrice, 0) * totalRoomNights)) * 100 : 0,
-          efficiencyScore: occupancyRate * (adr / roomType.basePrice) // Occupancy weighted by rate performance
-        }
-      });
+        performance.push({
+          roomTypeId: roomType._id,
+          roomTypeName: roomType.name,
+          roomTypeCode: roomType.code,
+          metrics: {
+            revenue: Math.round(revenue),
+            occupancyRate: Math.round(occupancyRate * 100) / 100,
+            adr: Math.round(adr),
+            revPAR: Math.round(revPAR),
+            totalBookings: roomTypeBookings.length,
+            totalRoomNights,
+            soldRoomNights
+          },
+          performance: {
+            revenueShare: totalRoomNights > 0 ? (revenue / (roomTypes.reduce((sum, rt) => sum + rt.basePrice, 0) * totalRoomNights)) * 100 : 0,
+            efficiencyScore: occupancyRate * (adr / roomType.basePrice) // Occupancy weighted by rate performance
+          }
+        });
+      }
+
+      return performance.sort((a, b) => b.metrics.revenue - a.metrics.revenue);
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return performance.sort((a, b) => b.metrics.revenue - a.metrics.revenue);
   }
 
   /**
    * Calculate pricing effectiveness metrics
    */
   async calculatePricingEffectiveness(hotelId, availability, bookings) {
-    // Price variance analysis
-    const priceVariance = this.calculatePriceVariance(availability);
+    try {
+      // Price variance analysis
+      const priceVariance = this.calculatePriceVariance(availability);
     
-    // Rate conversion analysis
-    const rateConversion = this.calculateRateConversion(availability, bookings);
+      // Rate conversion analysis
+      const rateConversion = this.calculateRateConversion(availability, bookings);
     
-    // Dynamic pricing impact
-    const dynamicPricingImpact = await this.calculateDynamicPricingImpact(hotelId);
+      // Dynamic pricing impact
+      const dynamicPricingImpact = await this.calculateDynamicPricingImpact(hotelId);
     
-    // Competitor rate analysis
-    const competitorAnalysis = await this.calculateCompetitorRateAnalysis(hotelId);
+      // Competitor rate analysis
+      const competitorAnalysis = await this.calculateCompetitorRateAnalysis(hotelId);
 
-    return {
-      priceVariance,
-      rateConversion,
-      dynamicPricingImpact,
-      competitorAnalysis
-    };
+      return {
+        priceVariance,
+        rateConversion,
+        dynamicPricingImpact,
+        competitorAnalysis
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -271,7 +287,7 @@ class RevenueManagementService {
         hotelId,
         date: { $gte: startDate, $lte: endDate },
         'validation.validated': true
-      });
+      }).lean().limit(1000);
 
       if (forecasts.length === 0) {
         return {
@@ -313,81 +329,85 @@ class RevenueManagementService {
    * @param {Object} kpiResults - KPI calculation results
    */
   async generateOptimizationRecommendations(hotelId, kpiResults) {
-    const recommendations = [];
+    try {
+      const recommendations = [];
 
-    // Low occupancy recommendations
-    if (kpiResults.kpis.occupancyRate < 60) {
-      recommendations.push({
-        category: 'occupancy',
-        priority: 'high',
-        title: 'Increase Occupancy Rate',
-        description: `Current occupancy at ${kpiResults.kpis.occupancyRate}% is below optimal range`,
-        actions: [
-          'Consider reducing rates for low-demand periods',
-          'Increase marketing spend for direct bookings',
-          'Create special packages and promotions',
-          'Review and improve online presence'
-        ],
-        estimatedImpact: 'Revenue increase of 15-25%'
+      // Low occupancy recommendations
+      if (kpiResults.kpis.occupancyRate < 60) {
+        recommendations.push({
+          category: 'occupancy',
+          priority: 'high',
+          title: 'Increase Occupancy Rate',
+          description: `Current occupancy at ${kpiResults.kpis.occupancyRate}% is below optimal range`,
+          actions: [
+            'Consider reducing rates for low-demand periods',
+            'Increase marketing spend for direct bookings',
+            'Create special packages and promotions',
+            'Review and improve online presence'
+          ],
+          estimatedImpact: 'Revenue increase of 15-25%'
+        });
+      }
+
+      // Low ADR recommendations
+      if (kpiResults.kpis.adr < kpiResults.roomTypePerformance[0]?.metrics.adr * 0.8) {
+        recommendations.push({
+          category: 'pricing',
+          priority: 'medium',
+          title: 'Optimize Average Daily Rate',
+          description: 'ADR appears to be below potential based on room type analysis',
+          actions: [
+            'Implement dynamic pricing strategies',
+            'Review rate structures and eliminate low-performing rates',
+            'Introduce upselling opportunities',
+            'Analyze competitor pricing more frequently'
+          ],
+          estimatedImpact: 'ADR increase of 8-15%'
+        });
+      }
+
+      // Revenue mix recommendations
+      const directBookingShare = kpiResults.advancedMetrics.channelMix.direct || 0;
+      if (directBookingShare < 30) {
+        recommendations.push({
+          category: 'distribution',
+          priority: 'medium',
+          title: 'Increase Direct Booking Share',
+          description: `Direct bookings at ${directBookingShare}% - opportunity to reduce commission costs`,
+          actions: [
+            'Improve website booking engine',
+            'Implement rate parity or best rate guarantee',
+            'Create loyalty program benefits',
+            'Increase direct marketing efforts'
+          ],
+          estimatedImpact: 'Cost savings of 5-12% in distribution costs'
+        });
+      }
+
+      // Forecasting recommendations
+      if (kpiResults.forecastAccuracy.accuracy < 70) {
+        recommendations.push({
+          category: 'forecasting',
+          priority: 'low',
+          title: 'Improve Demand Forecasting',
+          description: `Forecast accuracy at ${kpiResults.forecastAccuracy.accuracy}% needs improvement`,
+          actions: [
+            'Collect more granular historical data',
+            'Include more market factors in forecasting',
+            'Regular model retraining and calibration',
+            'Manual forecast adjustments for special events'
+          ],
+          estimatedImpact: 'Better pricing decisions and inventory control'
+        });
+      }
+
+      return recommendations.sort((a, b) => {
+        const priorityOrder = { high: 3, medium: 2, low: 1 };
+        return priorityOrder[b.priority] - priorityOrder[a.priority];
       });
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Low ADR recommendations
-    if (kpiResults.kpis.adr < kpiResults.roomTypePerformance[0]?.metrics.adr * 0.8) {
-      recommendations.push({
-        category: 'pricing',
-        priority: 'medium',
-        title: 'Optimize Average Daily Rate',
-        description: 'ADR appears to be below potential based on room type analysis',
-        actions: [
-          'Implement dynamic pricing strategies',
-          'Review rate structures and eliminate low-performing rates',
-          'Introduce upselling opportunities',
-          'Analyze competitor pricing more frequently'
-        ],
-        estimatedImpact: 'ADR increase of 8-15%'
-      });
-    }
-
-    // Revenue mix recommendations
-    const directBookingShare = kpiResults.advancedMetrics.channelMix.direct || 0;
-    if (directBookingShare < 30) {
-      recommendations.push({
-        category: 'distribution',
-        priority: 'medium',
-        title: 'Increase Direct Booking Share',
-        description: `Direct bookings at ${directBookingShare}% - opportunity to reduce commission costs`,
-        actions: [
-          'Improve website booking engine',
-          'Implement rate parity or best rate guarantee',
-          'Create loyalty program benefits',
-          'Increase direct marketing efforts'
-        ],
-        estimatedImpact: 'Cost savings of 5-12% in distribution costs'
-      });
-    }
-
-    // Forecasting recommendations
-    if (kpiResults.forecastAccuracy.accuracy < 70) {
-      recommendations.push({
-        category: 'forecasting',
-        priority: 'low',
-        title: 'Improve Demand Forecasting',
-        description: `Forecast accuracy at ${kpiResults.forecastAccuracy.accuracy}% needs improvement`,
-        actions: [
-          'Collect more granular historical data',
-          'Include more market factors in forecasting',
-          'Regular model retraining and calibration',
-          'Manual forecast adjustments for special events'
-        ],
-        estimatedImpact: 'Better pricing decisions and inventory control'
-      });
-    }
-
-    return recommendations.sort((a, b) => {
-      const priorityOrder = { high: 3, medium: 2, low: 1 };
-      return priorityOrder[b.priority] - priorityOrder[a.priority];
-    });
   }
 
   /**
@@ -506,37 +526,45 @@ class RevenueManagementService {
   }
 
   async calculateCancellationRate(hotelId, startDate, endDate) {
-    const cancelled = await Booking.countDocuments({
-      hotelId,
-      checkIn: { $gte: startDate, $lte: endDate },
-      status: 'cancelled'
-    });
+    try {
+      const cancelled = await Booking.countDocuments({
+        hotelId,
+        checkIn: { $gte: startDate, $lte: endDate },
+        status: 'cancelled'
+      });
 
-    const total = await Booking.countDocuments({
-      hotelId,
-      checkIn: { $gte: startDate, $lte: endDate }
-    });
+      const total = await Booking.countDocuments({
+        hotelId,
+        checkIn: { $gte: startDate, $lte: endDate }
+      });
 
-    return total > 0 ? Math.round((cancelled / total) * 10000) / 100 : 0;
+      return total > 0 ? Math.round((cancelled / total) * 10000) / 100 : 0;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async identifyOptimizationOpportunities(hotelId, availability) {
-    // Simplified optimization opportunity identification
-    const opportunities = [];
+    try {
+      // Simplified optimization opportunity identification
+      const opportunities = [];
 
-    const lowOccupancyDays = availability.filter(av => 
-      (av.soldRooms / av.totalRooms) < 0.6
-    );
+      const lowOccupancyDays = availability.filter(av => 
+        (av.soldRooms / av.totalRooms) < 0.6
+      );
 
-    if (lowOccupancyDays.length > 0) {
-      opportunities.push({
-        type: 'rate_reduction',
-        description: `${lowOccupancyDays.length} days with occupancy below 60%`,
-        recommendation: 'Consider rate reductions to stimulate demand'
-      });
+      if (lowOccupancyDays.length > 0) {
+        opportunities.push({
+          type: 'rate_reduction',
+          description: `${lowOccupancyDays.length} days with occupancy below 60%`,
+          recommendation: 'Consider rate reductions to stimulate demand'
+        });
+      }
+
+      return opportunities;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return opportunities;
   }
 
   calculateOverallPerformanceScore(kpis) {
@@ -571,11 +599,35 @@ class RevenueManagementService {
   // Placeholder methods for advanced calculations
   calculatePriceVariance(availability) { return { variance: 15, trend: 'stable' }; }
   calculateRateConversion(availability, bookings) { return { conversionRate: 12.5 }; }
-  async calculateDynamicPricingImpact(hotelId) { return { impact: '+8.5%' }; }
-  async calculateCompetitorRateAnalysis(hotelId) { return { position: 'competitive' }; }
+  async calculateDynamicPricingImpact(hotelId) {
+    try {
+      return { impact: '+8.5%' };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
+  }
+  async calculateCompetitorRateAnalysis(hotelId) {
+    try {
+      return { position: 'competitive' };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
+  }
   calculateAccuracyTrend(forecasts) { return 'improving'; }
-  async identifyPricingOpportunities(hotelId) { return []; }
-  async generateUpcomingForecasts(hotelId) { return []; }
+  async identifyPricingOpportunities(hotelId) {
+    try {
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
+  }
+  async generateUpcomingForecasts(hotelId) {
+    try {
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
+  }
 }
 
 export default new RevenueManagementService();

@@ -424,7 +424,7 @@ const AdminLoginActivity: React.FC = () => {
               ].map((tab) => {
                 const Icon = tab.icon;
                 return (
-                  <button
+                  <button aria-label="Close"
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as unknown)}
                     className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm ${
@@ -563,7 +563,7 @@ const AdminLoginActivity: React.FC = () => {
                       <span className="text-sm text-gray-500">
                         {formatDuration(session.sessionDuration)}
                       </span>
-                      <button
+                      <button aria-label="View"
                         onClick={() => {
                           setSelectedSession(session);
                           setShowSessionManager(true);

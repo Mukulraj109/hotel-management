@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { bypassFinancialService } from '../../services/bypassFinancialService';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface FinancialSummary {
   totalImpacts: number;
@@ -280,7 +281,7 @@ const BypassFinancialDashboard: React.FC = () => {
           ].map(tab => {
             const Icon = tab.icon;
             return (
-              <button
+              <button aria-label="Close"
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as unknown)}
                 className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center ${
@@ -797,4 +798,4 @@ const BypassFinancialDashboard: React.FC = () => {
   );
 };
 
-export default BypassFinancialDashboard;
+export default withErrorBoundary(BypassFinancialDashboard, { level: 'component' });

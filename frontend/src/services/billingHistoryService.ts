@@ -126,29 +126,37 @@ class BillingHistoryService {
    * Get comprehensive billing history (invoices, transactions, refunds)
    */
   async getBillingHistory(filters: BillingHistoryFilters = {}): Promise<BillingHistoryResponse> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/billing-history?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/billing-history?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get billing history statistics and analytics
    */
   async getBillingStats(period: 'week' | 'month' | 'quarter' | 'year' = 'month', hotelId?: string): Promise<BillingStatsResponse> {
-    const params = new URLSearchParams({ period });
-    if (hotelId) {
-      params.append('hotelId', hotelId);
-    }
+    try {
+      const params = new URLSearchParams({ period });
+      if (hotelId) {
+        params.append('hotelId', hotelId);
+      }
 
-    const response = await api.get(`/billing-history/stats?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/billing-history/stats?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -163,24 +171,32 @@ class BillingHistoryService {
       hotelId?: string;
     } = {}
   ): Promise<ExportResponse> {
-    const params = new URLSearchParams({ format });
+    try {
+      const params = new URLSearchParams({ format });
     
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/billing-history/export?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/billing-history/export?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get invoice details by ID
    */
   async getInvoiceDetails(invoiceId: string) {
-    const response = await api.get(`/invoices/${invoiceId}`);
-    return response.data;
+    try {
+      const response = await api.get(`/invoices/${invoiceId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -192,8 +208,12 @@ class BillingHistoryService {
     transactionId?: string;
     notes?: string;
   }) {
-    const response = await api.post(`/invoices/${invoiceId}/payments`, paymentData);
-    return response.data;
+    try {
+      const response = await api.post(`/invoices/${invoiceId}/payments`, paymentData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -204,8 +224,12 @@ class BillingHistoryService {
     type: 'percentage' | 'fixed_amount' | 'loyalty_points';
     value: number;
   }) {
-    const response = await api.post(`/invoices/${invoiceId}/discounts`, discountData);
-    return response.data;
+    try {
+      const response = await api.post(`/invoices/${invoiceId}/discounts`, discountData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -216,8 +240,12 @@ class BillingHistoryService {
     amount?: number;
     reason?: string;
   }) {
-    const response = await api.post('/payments/refund', refundData);
-    return response.data;
+    try {
+      const response = await api.post('/payments/refund', refundData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**

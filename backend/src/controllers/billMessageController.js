@@ -47,7 +47,7 @@ class BillMessageController {
     const existingMessage = await BillMessage.findOne({
       hotelId: req.user.hotelId,
       name: { $regex: new RegExp(`^${name}$`, 'i') }
-    });
+    }).lean();
 
     if (existingMessage) {
       return next(new ApplicationError('Message with this name already exists', 409));
@@ -150,7 +150,7 @@ class BillMessageController {
       .populate('createdBy updatedBy', 'firstName lastName email')
       .sort(sortOptions)
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit)).lean();
 
     const total = await BillMessage.countDocuments(filter);
 
@@ -175,7 +175,7 @@ class BillMessageController {
       _id: req.params.id,
       hotelId: req.user.hotelId
     })
-      .populate('createdBy updatedBy', 'firstName lastName email');
+      .populate('createdBy updatedBy', 'firstName lastName email').lean();
 
     if (!message) {
       return next(new ApplicationError('Bill message not found', 404));
@@ -196,7 +196,7 @@ class BillMessageController {
     const message = await BillMessage.findOne({
       _id: req.params.id,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!message) {
       return next(new ApplicationError('Bill message not found', 404));
@@ -208,7 +208,7 @@ class BillMessageController {
         hotelId: req.user.hotelId,
         name: { $regex: new RegExp(`^${req.body.name}$`, 'i') },
         _id: { $ne: req.params.id }
-      });
+      }).lean();
 
       if (existingMessage) {
         return next(new ApplicationError('Message with this name already exists', 409));
@@ -246,7 +246,7 @@ class BillMessageController {
     const message = await BillMessage.findOne({
       _id: req.params.id,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!message) {
       return next(new ApplicationError('Bill message not found', 404));
@@ -384,7 +384,7 @@ class BillMessageController {
     const message = await BillMessage.findOne({
       _id: messageId,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!message) {
       return next(new ApplicationError('Bill message not found', 404));
@@ -424,7 +424,7 @@ class BillMessageController {
     const message = await BillMessage.findOne({
       _id: messageId,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!message) {
       return next(new ApplicationError('Bill message not found', 404));
@@ -461,6 +461,8 @@ class BillMessageController {
       await BillMessage.findOneAndUpdate(
         { _id: messageId, hotelId: req.user.hotelId },
         { $pull: { 'localization.translations': { language } } }
+      ,
+        { new: true }
       );
 
       // Then push the new translation
@@ -563,7 +565,7 @@ class BillMessageController {
     const message = await BillMessage.findOne({
       _id: messageId,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!message) {
       return next(new ApplicationError('Bill message not found', 404));
@@ -591,7 +593,7 @@ class BillMessageController {
     const message = await BillMessage.findOne({
       _id: messageId,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!message) {
       return next(new ApplicationError('Bill message not found', 404));

@@ -394,73 +394,85 @@ maintenanceTaskSchema.methods.calculateTotalCost = function() {
 
 // Static method to get maintenance statistics
 maintenanceTaskSchema.statics.getMaintenanceStats = async function(hotelId, startDate, endDate, staffFilter = {}) {
-  const matchQuery = { hotelId, ...staffFilter };
+  try {
+    const matchQuery = { hotelId, ...staffFilter };
   
-  if (startDate && endDate) {
-    matchQuery.createdAt = {
-      $gte: new Date(startDate),
-      $lte: new Date(endDate)
-    };
-  }
-
-  const pipeline = [
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: {
-          type: '$type',
-          status: '$status'
-        },
-        count: { $sum: 1 },
-        avgDuration: { $avg: '$actualDuration' },
-        totalCost: { $sum: '$actualCost' }
-      }
-    },
-    {
-      $group: {
-        _id: '$_id.type',
-        stats: {
-          $push: {
-            status: '$_id.status',
-            count: '$count',
-            avgDuration: '$avgDuration',
-            totalCost: '$totalCost'
-          }
-        },
-        totalTasks: { $sum: '$count' }
-      }
+    if (startDate && endDate) {
+      matchQuery.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
     }
-  ];
 
-  return await this.aggregate(pipeline);
+    const pipeline = [
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: {
+            type: '$type',
+            status: '$status'
+          },
+          count: { $sum: 1 },
+          avgDuration: { $avg: '$actualDuration' },
+          totalCost: { $sum: '$actualCost' }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.type',
+          stats: {
+            $push: {
+              status: '$_id.status',
+              count: '$count',
+              avgDuration: '$avgDuration',
+              totalCost: '$totalCost'
+            }
+          },
+          totalTasks: { $sum: '$count' }
+        }
+      }
+    ];
+
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get overdue tasks
 maintenanceTaskSchema.statics.getOverdueTasks = async function(hotelId, staffFilter = {}) {
-  return await this.find({
-    hotelId,
-    ...staffFilter,
-    dueDate: { $lt: new Date() },
-    status: { $in: ['pending', 'assigned', 'in_progress'] }
-  })
-  .populate('roomId', 'number type')
-  .populate('assignedTo', 'name')
-  .sort('dueDate');
+  try {
+    return await this.find({
+      hotelId,
+      ...staffFilter,
+      dueDate: { $lt: new Date() },
+      status: { $in: ['pending', 'assigned', 'in_progress'] }
+    })
+    .populate('roomId', 'number type')
+    .populate('assignedTo', 'name')
+    .sort('dueDate').lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get upcoming recurring tasks
 maintenanceTaskSchema.statics.getUpcomingRecurringTasks = async function(hotelId, days = 7, staffFilter = {}) {
-  const futureDate = new Date();
-  futureDate.setDate(futureDate.getDate() + days);
+  try {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + days);
 
-  return await this.find({
-    hotelId,
-    ...staffFilter,
-    isRecurring: true,
-    'recurringSchedule.nextDue': { $lte: futureDate }
-  })
-  .populate('roomId', 'number type')
-  .sort('recurringSchedule.nextDue');
+    return await this.find({
+      hotelId,
+      ...staffFilter,
+      isRecurring: true,
+      'recurringSchedule.nextDue': { $lte: futureDate }
+    })
+    .populate('roomId', 'number type')
+    .sort('recurringSchedule.nextDue').lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // NOTIFICATION AUTOMATION HOOKS

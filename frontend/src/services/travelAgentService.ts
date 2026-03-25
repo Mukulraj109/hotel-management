@@ -182,8 +182,12 @@ export interface TravelDashboardOverview {
 class TravelAgentService {
   // Travel Agent Management
   async registerTravelAgent(data: Partial<TravelAgent>): Promise<TravelAgent> {
-    const response = await api.post('/travel-agents', data);
-    return response.data.travelAgent;
+    try {
+      const response = await api.post('/travel-agents', data);
+      return response.data.travelAgent;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getAllTravelAgents(filters?: {
@@ -191,23 +195,39 @@ class TravelAgentService {
     search?: string;
     sortBy?: string;
   }): Promise<{ travelAgents: TravelAgent[]; total: number }> {
-    const response = await api.get('/travel-agents', { params: filters });
-    return response.data.data;
+    try {
+      const response = await api.get('/travel-agents', { params: filters });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getTravelAgentById(id: string): Promise<TravelAgent> {
-    const response = await api.get(`/travel-agents/${id}`);
-    return response.data.travelAgent;
+    try {
+      const response = await api.get(`/travel-agents/${id}`);
+      return response.data.travelAgent;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getMyTravelAgentProfile(): Promise<TravelAgent> {
-    const response = await api.get('/travel-agents/me');
-    return response.data.data.travelAgent;
+    try {
+      const response = await api.get('/travel-agents/me');
+      return response.data.data.travelAgent;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateTravelAgent(id: string, data: Partial<TravelAgent>): Promise<TravelAgent> {
-    const response = await api.put(`/travel-agents/${id}`, data);
-    return response.data.travelAgent;
+    try {
+      const response = await api.put(`/travel-agents/${id}`, data);
+      return response.data.travelAgent;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateTravelAgentStatus(
@@ -215,24 +235,40 @@ class TravelAgentService {
     status: string,
     reason?: string
   ): Promise<TravelAgent> {
-    const response = await api.patch(`/travel-agents/${id}/status`, { status, reason });
-    return response.data.travelAgent;
+    try {
+      const response = await api.patch(`/travel-agents/${id}/status`, { status, reason });
+      return response.data.travelAgent;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getTravelAgentPerformance(id: string): Promise<unknown> {
-    const response = await api.get(`/travel-agents/${id}/performance`);
-    return response.data.performance;
+    try {
+      const response = await api.get(`/travel-agents/${id}/performance`);
+      return response.data.performance;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async validateAgentCode(code: string): Promise<{ valid: boolean; agent?: TravelAgent }> {
-    const response = await api.get(`/travel-agents/validate-code/${code}`);
-    return response.data;
+    try {
+      const response = await api.get(`/travel-agents/validate-code/${code}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Travel Agent Bookings
   async createTravelAgentBooking(data: Partial<TravelAgentBooking>): Promise<TravelAgentBooking> {
-    const response = await api.post('/travel-agents/bookings', data);
-    return response.data.booking;
+    try {
+      const response = await api.post('/travel-agents/bookings', data);
+      return response.data.booking;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getMyBookings(filters?: {
@@ -240,16 +276,24 @@ class TravelAgentService {
     fromDate?: string;
     toDate?: string;
   }): Promise<{ bookings: TravelAgentBooking[]; total: number }> {
-    const response = await api.get('/travel-agents/me/bookings', { params: filters });
-    return response.data.data; // Extract the nested data object
+    try {
+      const response = await api.get('/travel-agents/me/bookings', { params: filters });
+      return response.data.data; // Extract the nested data object
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getTravelAgentBookings(
     agentId: string,
     filters?: Record<string, unknown>
   ): Promise<{ bookings: TravelAgentBooking[]; total: number }> {
-    const response = await api.get(`/travel-agents/${agentId}/bookings`, { params: filters });
-    return response.data;
+    try {
+      const response = await api.get(`/travel-agents/${agentId}/bookings`, { params: filters });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateBookingCommissionStatus(
@@ -257,43 +301,67 @@ class TravelAgentService {
     status: string,
     paymentReference?: string
   ): Promise<TravelAgentBooking> {
-    const response = await api.patch(`/travel-agents/bookings/${bookingId}/commission`, {
-      paymentStatus: status,
-      paymentReference
-    });
-    return response.data.booking;
+    try {
+      const response = await api.patch(`/travel-agents/bookings/${bookingId}/commission`, {
+        paymentStatus: status,
+        paymentReference
+      });
+      return response.data.booking;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Travel Agent Rates
   async createTravelAgentRate(data: Partial<TravelAgentRate>): Promise<TravelAgentRate> {
-    const response = await api.post('/travel-agents/rates', data);
-    return response.data.rate;
+    try {
+      const response = await api.post('/travel-agents/rates', data);
+      return response.data.rate;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getTravelAgentRates(
     agentId: string,
     filters?: Record<string, unknown>
   ): Promise<{ rates: TravelAgentRate[]; total: number }> {
-    const response = await api.get(`/travel-agents/${agentId}/rates`, { params: filters });
-    return response.data;
+    try {
+      const response = await api.get(`/travel-agents/${agentId}/rates`, { params: filters });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateTravelAgentRate(
     rateId: string,
     data: Partial<TravelAgentRate>
   ): Promise<TravelAgentRate> {
-    const response = await api.put(`/travel-agents/rates/${rateId}`, data);
-    return response.data.rate;
+    try {
+      const response = await api.put(`/travel-agents/rates/${rateId}`, data);
+      return response.data.rate;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async deleteTravelAgentRate(rateId: string): Promise<void> {
-    await api.delete(`/travel-agents/rates/${rateId}`);
+    try {
+      await api.delete(`/travel-agents/rates/${rateId}`);
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Admin Travel Dashboard
   async getTravelDashboardOverview(): Promise<TravelDashboardOverview> {
-    const response = await api.get('/admin/travel-dashboard');
-    return response.data.data;
+    try {
+      const response = await api.get('/admin/travel-dashboard');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getTravelAnalytics(params?: {
@@ -301,8 +369,12 @@ class TravelAgentService {
     endDate?: string;
     agentId?: string;
   }): Promise<unknown> {
-    const response = await api.get('/admin/travel-dashboard/analytics', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/admin/travel-dashboard/analytics', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getPendingCommissions(): Promise<{
@@ -315,13 +387,21 @@ class TravelAgentService {
     }>;
     totalAmount: number;
   }> {
-    const response = await api.get('/admin/travel-dashboard/pending-commissions');
-    return response.data;
+    try {
+      const response = await api.get('/admin/travel-dashboard/pending-commissions');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getTravelAgentRatesOverview(): Promise<unknown> {
-    const response = await api.get('/admin/travel-dashboard/rates');
-    return response.data.rates;
+    try {
+      const response = await api.get('/admin/travel-dashboard/rates');
+      return response.data.rates;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async exportTravelData(params: {
@@ -330,17 +410,25 @@ class TravelAgentService {
     startDate?: string;
     endDate?: string;
   }): Promise<Blob> {
-    const response = await api.get('/admin/travel-dashboard/export', {
-      params,
-      responseType: 'blob'
-    });
-    return response.data;
+    try {
+      const response = await api.get('/admin/travel-dashboard/export', {
+        params,
+        responseType: 'blob'
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Phase 2 Methods: Core Travel Agent Pages
   async createSingleBooking(data: Partial<TravelAgentBooking>): Promise<TravelAgentBooking> {
-    const response = await api.post('/travel-agents/bookings/single', data);
-    return response.data.booking;
+    try {
+      const response = await api.post('/travel-agents/bookings/single', data);
+      return response.data.booking;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getAgentRates(filters?: {
@@ -348,21 +436,33 @@ class TravelAgentService {
     season?: string;
     validDate?: string;
   }): Promise<{ rates: TravelAgentRate[]; total: number }> {
-    const response = await api.get('/travel-agents/me/rates', { params: filters });
-    return response.data;
+    try {
+      const response = await api.get('/travel-agents/me/rates', { params: filters });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateAgentProfile(data: Partial<TravelAgent>): Promise<TravelAgent> {
-    const response = await api.put('/travel-agents/me', data);
-    return response.data.travelAgent;
+    try {
+      const response = await api.put('/travel-agents/me', data);
+      return response.data.travelAgent;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async downloadRateSheet(format: 'csv' | 'excel' | 'pdf' = 'excel'): Promise<Blob> {
-    const response = await api.get('/travel-agents/me/rates/download', {
-      params: { format },
-      responseType: 'blob'
-    });
-    return response.data;
+    try {
+      const response = await api.get('/travel-agents/me/rates/download', {
+        params: { format },
+        responseType: 'blob'
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getAvailableRooms(params: {
@@ -370,8 +470,12 @@ class TravelAgentService {
     checkOut: string;
     guests?: number;
   }): Promise<unknown[]> {
-    const response = await api.get('/travel-agents/available-rooms', { params });
-    return response.data.rooms;
+    try {
+      const response = await api.get('/travel-agents/available-rooms', { params });
+      return response.data.rooms;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async validateBookingData(data: Partial<TravelAgentBooking>): Promise<{
@@ -379,27 +483,39 @@ class TravelAgentService {
     errors?: string[];
     warnings?: string[];
   }> {
-    const response = await api.post('/travel-agents/bookings/validate', data);
-    return response.data;
+    try {
+      const response = await api.post('/travel-agents/bookings/validate', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getSeasonalRates(year?: number): Promise<unknown[]> {
-    const response = await api.get('/travel-agents/me/seasonal-rates', {
-      params: { year: year || new Date().getFullYear() }
-    });
-    return response.data.seasonalRates;
+    try {
+      const response = await api.get('/travel-agents/me/seasonal-rates', {
+        params: { year: year || new Date().getFullYear() }
+      });
+      return response.data.seasonalRates;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async uploadProfileImage(file: File): Promise<string> {
-    const formData = new FormData();
-    formData.append('image', file);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
 
-    const response = await api.post('/travel-agents/me/profile-image', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data'
-      }
-    });
-    return response.data.imageUrl;
+      const response = await api.post('/travel-agents/me/profile-image', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      return response.data.imageUrl;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getRoomAvailabilityCalendar(params: {
@@ -407,8 +523,12 @@ class TravelAgentService {
     startDate: string;
     endDate: string;
   }): Promise<Record<string, number>> {
-    const response = await api.get('/travel-agents/room-availability', { params });
-    return response.data.availability;
+    try {
+      const response = await api.get('/travel-agents/room-availability', { params });
+      return response.data.availability;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getCommissionProjection(params: {
@@ -423,8 +543,12 @@ class TravelAgentService {
     commissionRate: number;
     bonusRate: number;
   }> {
-    const response = await api.post('/travel-agents/commission-projection', params);
-    return response.data.projection;
+    try {
+      const response = await api.post('/travel-agents/commission-projection', params);
+      return response.data.projection;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Utility Methods
@@ -562,8 +686,12 @@ class TravelAgentService {
       }
     };
 
-    const response = await api.post('/travel-agents/multi-booking', transformedData);
-    return response.data;
+    try {
+      const response = await api.post('/travel-agents/multi-booking', transformedData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async calculateBulkPricing(data: {
@@ -599,8 +727,12 @@ class TravelAgentService {
     }>;
     appliedDiscounts: string[];
   }> {
-    const response = await api.post('/travel-agents/calculate-bulk-pricing', data);
-    return response.data.pricing;
+    try {
+      const response = await api.post('/travel-agents/calculate-bulk-pricing', data);
+      return response.data.pricing;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getMultiBookingDetails(multiBookingId: string): Promise<{
@@ -666,8 +798,12 @@ class TravelAgentService {
     createdAt: Date;
     updatedAt: Date;
   }> {
-    const response = await api.get(`/travel-agents/multi-booking/${multiBookingId}`);
-    return response.data.multiBooking;
+    try {
+      const response = await api.get(`/travel-agents/multi-booking/${multiBookingId}`);
+      return response.data.multiBooking;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateMultiBookingStatus(
@@ -688,8 +824,12 @@ class TravelAgentService {
     multiBooking: unknown;
     updatedRooms: string[];
   }> {
-    const response = await api.patch(`/travel-agents/multi-booking/${multiBookingId}`, updates);
-    return response.data;
+    try {
+      const response = await api.patch(`/travel-agents/multi-booking/${multiBookingId}`, updates);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getMyMultiBookings(filters?: {
@@ -719,8 +859,12 @@ class TravelAgentService {
     }>;
     total: number;
   }> {
-    const response = await api.get('/travel-agents/me/multi-bookings', { params: filters });
-    return response.data;
+    try {
+      const response = await api.get('/travel-agents/me/multi-bookings', { params: filters });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Utility Methods for Multi-Booking

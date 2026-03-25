@@ -473,7 +473,7 @@ export function PaymentCollectionModal({
                           )}
                         </div>
                       </div>
-                      <button
+                      <button aria-label="Delete"
                         onClick={() => removePaymentMethod(index)}
                         className="text-red-600 hover:text-red-700 p-2 hover:bg-red-50 rounded-lg transition-colors"
                         title="Remove payment method"
@@ -525,7 +525,7 @@ export function PaymentCollectionModal({
           </button>
           <div className="flex gap-3 flex-1">
             {mode === 'checkin' && (
-              <button
+              <button aria-label="Close"
                 onClick={handleSkipPayment}
                 disabled={isProcessing}
                 className="flex-1 bg-orange-500 text-white px-4 py-2.5 rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-medium transition-colors"

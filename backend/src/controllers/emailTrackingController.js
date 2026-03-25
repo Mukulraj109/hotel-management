@@ -8,41 +8,51 @@ const trackEmailOpen = catchAsync(async (req, res, next) => {
   const { campaignId, userId, trackingId } = req.params;
 
   try {
-    const campaign = await EmailCampaign.findById(campaignId);
-    if (!campaign) {
-      return res.status(200).send(''); // Silent fail for tracking pixels
-    }
-
-    // Update campaign analytics
-    await campaign.incrementOpens();
-
     // Get basic device info from user agent
     const userAgent = req.get('User-Agent') || '';
     const deviceType = /mobile/i.test(userAgent) ? 'mobile' :
                       /tablet/i.test(userAgent) ? 'tablet' : 'desktop';
 
-    // Track device breakdown
-    if (campaign.analytics.deviceBreakdown[deviceType] !== undefined) {
-      campaign.analytics.deviceBreakdown[deviceType] += 1;
-    }
-
-    // Track time breakdown
     const hour = new Date().getHours();
-    const existingTime = campaign.analytics.timeBreakdown.find(t => t.hour === hour);
-    if (existingTime) {
-      existingTime.opens += 1;
-    } else {
-      campaign.analytics.timeBreakdown.push({
-        hour,
-        opens: 1,
-        clicks: 0
-      });
+
+    // Atomically update all analytics in one operation
+    const campaign = await EmailCampaign.findOneAndUpdate(
+      { _id: campaignId },
+      {
+        $inc: {
+          'analytics.totalOpened': 1,
+          [`analytics.deviceBreakdown.${deviceType}`]: 1
+        }
+      },
+      { new: true }
+    );
+
+    if (!campaign) {
+      return res.status(200).send(''); // Silent fail for tracking pixels
     }
 
-    await campaign.save();
+    // Track time breakdown atomically
+    const timeEntryExists = await EmailCampaign.findOne({
+      _id: campaignId,
+      'analytics.timeBreakdown.hour': hour
+    }).lean();
+
+    if (timeEntryExists) {
+      await EmailCampaign.findOneAndUpdate(
+        { _id: campaignId, 'analytics.timeBreakdown.hour': hour },
+        { $inc: { 'analytics.timeBreakdown.$.opens': 1 } },
+        { new: true }
+      );
+    } else {
+      await EmailCampaign.findOneAndUpdate(
+        { _id: campaignId },
+        { $push: { 'analytics.timeBreakdown': { hour, opens: 1, clicks: 0 } } },
+        { new: true }
+      );
+    }
 
     // Log detailed tracking data
-    console.log(`📧 Email opened - Campaign: ${campaign.name}, User: ${userId}, Device: ${deviceType}`);
+    console.log(`Email opened - Campaign: ${campaign.name}, User: ${userId}, Device: ${deviceType}`);
 
     // Return 1x1 transparent pixel
     const pixel = Buffer.from(
@@ -76,31 +86,40 @@ const trackEmailClick = catchAsync(async (req, res, next) => {
   const { url } = req.query;
 
   try {
-    const campaign = await EmailCampaign.findById(campaignId);
+    // Atomically increment click count
+    const campaign = await EmailCampaign.findOneAndUpdate(
+      { _id: campaignId },
+      { $inc: { 'analytics.totalClicked': 1 } },
+      { new: true }
+    );
+
     if (!campaign) {
       return res.redirect(url || 'https://thepentouz.com');
     }
 
-    // Update campaign analytics
-    await campaign.incrementClicks();
-
-    // Track time breakdown
+    // Track time breakdown atomically
     const hour = new Date().getHours();
-    const existingTime = campaign.analytics.timeBreakdown.find(t => t.hour === hour);
-    if (existingTime) {
-      existingTime.clicks += 1;
+    const timeEntryExists = await EmailCampaign.findOne({
+      _id: campaignId,
+      'analytics.timeBreakdown.hour': hour
+    }).lean();
+
+    if (timeEntryExists) {
+      await EmailCampaign.findOneAndUpdate(
+        { _id: campaignId, 'analytics.timeBreakdown.hour': hour },
+        { $inc: { 'analytics.timeBreakdown.$.clicks': 1 } },
+        { new: true }
+      );
     } else {
-      campaign.analytics.timeBreakdown.push({
-        hour,
-        opens: 0,
-        clicks: 1
-      });
+      await EmailCampaign.findOneAndUpdate(
+        { _id: campaignId },
+        { $push: { 'analytics.timeBreakdown': { hour, opens: 0, clicks: 1 } } },
+        { new: true }
+      );
     }
 
-    await campaign.save();
-
     // Log click tracking
-    console.log(`🔗 Email link clicked - Campaign: ${campaign.name}, User: ${userId}, URL: ${url}`);
+    console.log(`Email link clicked - Campaign: ${campaign.name}, User: ${userId}, URL: ${url}`);
 
     // Redirect to original URL
     res.redirect(url || 'https://thepentouz.com');
@@ -115,21 +134,28 @@ const trackUnsubscribe = catchAsync(async (req, res, next) => {
   const { campaignId, userId } = req.params;
 
   try {
-    const campaign = await EmailCampaign.findById(campaignId);
-    if (campaign) {
-      await campaign.incrementUnsubscribes();
-    }
+    // Atomically increment unsubscribe count
+    const campaign = await EmailCampaign.findOneAndUpdate(
+      { _id: campaignId },
+      { $inc: { 'analytics.totalUnsubscribed': 1 } },
+      { new: true }
+    );
 
-    // Update user's email preferences
-    const user = await User.findById(userId);
+    // Atomically update user's email preferences
+    const user = await User.findOneAndUpdate(
+      { _id: userId },
+      {
+        $set: {
+          'emailPreferences.marketing': false,
+          'emailPreferences.unsubscribedAt': new Date(),
+          'emailPreferences.unsubscribedFromCampaign': campaignId
+        }
+      },
+      { new: true }
+    );
+
     if (user) {
-      user.emailPreferences = user.emailPreferences || {};
-      user.emailPreferences.marketing = false;
-      user.emailPreferences.unsubscribedAt = new Date();
-      user.emailPreferences.unsubscribedFromCampaign = campaignId;
-      await user.save();
-
-      console.log(`📧 User unsubscribed - Campaign: ${campaign?.name || 'unknown'}, User: ${user.email}`);
+      console.log(`User unsubscribed - Campaign: ${campaign?.name || 'unknown'}, User: ${user.email}`);
     }
 
     res.status(200).json({
@@ -152,7 +178,7 @@ const getEmailAnalytics = catchAsync(async (req, res, next) => {
   const campaign = await EmailCampaign.findOne({
     _id: campaignId,
     hotelId: req.user.hotelId
-  });
+  }).lean();
 
   if (!campaign) {
     return next(new AppError('Campaign not found', 404));
@@ -233,7 +259,7 @@ const getBulkEmailAnalytics = catchAsync(async (req, res, next) => {
   const campaigns = await EmailCampaign.find(filter)
     .sort({ sentAt: -1 })
     .limit(parseInt(limit))
-    .select('name status sentAt analytics engagementScore');
+    .select('name status sentAt analytics engagementScore').lean();
 
   const performanceSummary = await EmailCampaign.getCampaignPerformance(
     req.user.hotelId,
@@ -289,7 +315,7 @@ const getCampaignBenchmarks = async (hotelId, campaign) => {
       status: 'sent',
       _id: { $ne: campaign._id },
       'analytics.totalSent': { $gte: 10 } // Only include campaigns with meaningful data
-    }).select('analytics');
+    }).select('analytics').lean().limit(1000);
 
     if (similarCampaigns.length === 0) {
       return {
@@ -327,7 +353,7 @@ const getRealtimeMetrics = catchAsync(async (req, res, next) => {
   const campaign = await EmailCampaign.findOne({
     _id: campaignId,
     hotelId: req.user.hotelId
-  }).select('name status analytics sentAt');
+  }).select('name status analytics sentAt').lean();
 
   if (!campaign) {
     return next(new AppError('Campaign not found', 404));

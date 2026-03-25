@@ -304,79 +304,87 @@ checkoutInventorySchema.methods.getSettlementSummary = function() {
 
 // Static method to find checkouts ready for settlement integration
 checkoutInventorySchema.statics.findReadyForSettlement = async function(hotelId, bookingId = null) {
-  const query = {
-    status: 'completed',
-    settlementStatus: 'pending',
-    totalAmount: { $gt: 0 }
-  };
+  try {
+    const query = {
+      status: 'completed',
+      settlementStatus: 'pending',
+      totalAmount: { $gt: 0 }
+    };
 
-  if (bookingId) {
-    query.bookingId = bookingId;
+    if (bookingId) {
+      query.bookingId = bookingId;
+    }
+
+    const results = await this.find(query)
+      .populate([
+        {
+          path: 'bookingId',
+          select: 'bookingNumber checkIn checkOut totalAmount hotelId',
+          match: hotelId ? { hotelId } : {}
+        },
+        { path: 'roomId', select: 'roomNumber type' },
+        { path: 'checkedBy', select: 'name email' }
+      ]).lean().limit(1000);
+
+    return results.filter(result => result.bookingId && result.hasChargeableItems());
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  const results = await this.find(query)
-    .populate([
-      {
-        path: 'bookingId',
-        select: 'bookingNumber checkIn checkOut totalAmount hotelId',
-        match: hotelId ? { hotelId } : {}
-      },
-      { path: 'roomId', select: 'roomNumber type' },
-      { path: 'checkedBy', select: 'name email' }
-    ]);
-
-  return results.filter(result => result.bookingId && result.hasChargeableItems());
 };
 
 // Static method to get checkout integration statistics
 checkoutInventorySchema.statics.getCheckoutIntegrationStats = async function(hotelId, dateRange = {}) {
-  const matchStage = {};
+  try {
+    const matchStage = {};
 
-  if (dateRange.start || dateRange.end) {
-    matchStage.checkedAt = {};
-    if (dateRange.start) matchStage.checkedAt.$gte = new Date(dateRange.start);
-    if (dateRange.end) matchStage.checkedAt.$lte = new Date(dateRange.end);
-  }
-
-  // First get all checkouts, then filter by hotel through booking population
-  const pipeline = [
-    { $match: matchStage },
-    {
-      $lookup: {
-        from: 'bookings',
-        localField: 'bookingId',
-        foreignField: '_id',
-        as: 'booking'
-      }
-    },
-    { $unwind: '$booking' },
-    { $match: { 'booking.hotelId': hotelId } },
-    {
-      $group: {
-        _id: '$settlementStatus',
-        count: { $sum: 1 },
-        totalAmount: { $sum: '$totalAmount' },
-        avgAmount: { $avg: '$totalAmount' }
-      }
-    },
-    {
-      $group: {
-        _id: null,
-        byStatus: {
-          $push: {
-            status: '$_id',
-            count: '$count',
-            totalAmount: '$totalAmount',
-            avgAmount: '$avgAmount'
-          }
-        },
-        totalCheckouts: { $sum: '$count' },
-        totalCharges: { $sum: '$totalAmount' }
-      }
+    if (dateRange.start || dateRange.end) {
+      matchStage.checkedAt = {};
+      if (dateRange.start) matchStage.checkedAt.$gte = new Date(dateRange.start);
+      if (dateRange.end) matchStage.checkedAt.$lte = new Date(dateRange.end);
     }
-  ];
 
-  return await this.aggregate(pipeline);
+    // First get all checkouts, then filter by hotel through booking population
+    const pipeline = [
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: 'bookings',
+          localField: 'bookingId',
+          foreignField: '_id',
+          as: 'booking'
+        }
+      },
+      { $unwind: '$booking' },
+      { $match: { 'booking.hotelId': hotelId } },
+      {
+        $group: {
+          _id: '$settlementStatus',
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$totalAmount' },
+          avgAmount: { $avg: '$totalAmount' }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          byStatus: {
+            $push: {
+              status: '$_id',
+              count: '$count',
+              totalAmount: '$totalAmount',
+              avgAmount: '$avgAmount'
+            }
+          },
+          totalCheckouts: { $sum: '$count' },
+          totalCharges: { $sum: '$totalAmount' }
+        }
+      }
+    ];
+
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Compound indexes for performance

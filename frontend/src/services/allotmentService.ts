@@ -220,8 +220,12 @@ class AllotmentService {
       limit: number;
     };
   }> {
-    const response = await api.get('/allotments', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/allotments', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getAllotment(id: string): Promise<RoomTypeAllotment> {
@@ -260,8 +264,12 @@ class AllotmentService {
   }
 
   async getDashboard(params?: { startDate?: string; endDate?: string; roomTypeId?: string }): Promise<DashboardData> {
-    const response = await api.get('/allotments/dashboard', { params });
-    return response.data;
+    try {
+      const response = await api.get('/allotments/dashboard', { params });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async bulkUpdateAllotments(updates: Array<{

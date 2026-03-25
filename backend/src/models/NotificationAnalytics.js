@@ -64,194 +64,214 @@ notificationAnalyticsSchema.index({ channel: 1, eventType: 1 });
 
 // Static methods for analytics queries
 notificationAnalyticsSchema.statics.getDeliveryStats = async function(hotelId, timeRange = 7) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - timeRange);
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - timeRange);
 
-  const pipeline = [
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        createdAt: { $gte: startDate }
-      }
-    },
-    {
-      $group: {
-        _id: {
-          channel: '$channel',
-          eventType: '$eventType',
-          date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }
-        },
-        count: { $sum: 1 }
-      }
-    },
-    {
-      $group: {
-        _id: {
-          channel: '$_id.channel',
-          date: '$_id.date'
-        },
-        events: {
-          $push: {
-            type: '$_id.eventType',
-            count: '$count'
+    const pipeline = [
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          createdAt: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            channel: '$channel',
+            eventType: '$eventType',
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            channel: '$_id.channel',
+            date: '$_id.date'
+          },
+          events: {
+            $push: {
+              type: '$_id.eventType',
+              count: '$count'
+            }
           }
         }
-      }
-    },
-    { $sort: { '_id.date': -1 } }
-  ];
+      },
+      { $sort: { '_id.date': -1 } }
+    ];
 
-  return await this.aggregate(pipeline);
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 notificationAnalyticsSchema.statics.getUserEngagement = async function(hotelId, timeRange = 30) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - timeRange);
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - timeRange);
 
-  const pipeline = [
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        createdAt: { $gte: startDate }
-      }
-    },
-    {
-      $group: {
-        _id: '$userId',
-        totalNotifications: { $sum: 1 },
-        readNotifications: {
-          $sum: { $cond: [{ $eq: ['$eventType', 'read'] }, 1, 0] }
-        },
-        clickedNotifications: {
-          $sum: { $cond: [{ $eq: ['$eventType', 'clicked'] }, 1, 0] }
-        },
-        avgResponseTime: {
-          $avg: '$timing.responseTime'
+    const pipeline = [
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          createdAt: { $gte: startDate }
         }
-      }
-    },
-    {
-      $addFields: {
-        readRate: {
-          $divide: ['$readNotifications', '$totalNotifications']
-        },
-        clickRate: {
-          $divide: ['$clickedNotifications', '$totalNotifications']
+      },
+      {
+        $group: {
+          _id: '$userId',
+          totalNotifications: { $sum: 1 },
+          readNotifications: {
+            $sum: { $cond: [{ $eq: ['$eventType', 'read'] }, 1, 0] }
+          },
+          clickedNotifications: {
+            $sum: { $cond: [{ $eq: ['$eventType', 'clicked'] }, 1, 0] }
+          },
+          avgResponseTime: {
+            $avg: '$timing.responseTime'
+          }
         }
-      }
-    },
-    { $sort: { totalNotifications: -1 } }
-  ];
+      },
+      {
+        $addFields: {
+          readRate: {
+            $divide: ['$readNotifications', '$totalNotifications']
+          },
+          clickRate: {
+            $divide: ['$clickedNotifications', '$totalNotifications']
+          }
+        }
+      },
+      { $sort: { totalNotifications: -1 } }
+    ];
 
-  return await this.aggregate(pipeline);
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 notificationAnalyticsSchema.statics.getCategoryPerformance = async function(hotelId, timeRange = 30) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - timeRange);
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - timeRange);
 
-  const pipeline = [
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        createdAt: { $gte: startDate },
-        'metadata.category': { $exists: true }
-      }
-    },
-    {
-      $group: {
-        _id: '$metadata.category',
-        sent: { $sum: { $cond: [{ $eq: ['$eventType', 'sent'] }, 1, 0] } },
-        delivered: { $sum: { $cond: [{ $eq: ['$eventType', 'delivered'] }, 1, 0] } },
-        read: { $sum: { $cond: [{ $eq: ['$eventType', 'read'] }, 1, 0] } },
-        clicked: { $sum: { $cond: [{ $eq: ['$eventType', 'clicked'] }, 1, 0] } },
-        failed: { $sum: { $cond: [{ $eq: ['$eventType', 'failed'] }, 1, 0] } },
-        avgResponseTime: { $avg: '$timing.responseTime' }
-      }
-    },
-    {
-      $addFields: {
-        deliveryRate: { $divide: ['$delivered', '$sent'] },
-        readRate: { $divide: ['$read', '$delivered'] },
-        clickRate: { $divide: ['$clicked', '$read'] },
-        failureRate: { $divide: ['$failed', '$sent'] }
-      }
-    },
-    { $sort: { sent: -1 } }
-  ];
+    const pipeline = [
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          createdAt: { $gte: startDate },
+          'metadata.category': { $exists: true }
+        }
+      },
+      {
+        $group: {
+          _id: '$metadata.category',
+          sent: { $sum: { $cond: [{ $eq: ['$eventType', 'sent'] }, 1, 0] } },
+          delivered: { $sum: { $cond: [{ $eq: ['$eventType', 'delivered'] }, 1, 0] } },
+          read: { $sum: { $cond: [{ $eq: ['$eventType', 'read'] }, 1, 0] } },
+          clicked: { $sum: { $cond: [{ $eq: ['$eventType', 'clicked'] }, 1, 0] } },
+          failed: { $sum: { $cond: [{ $eq: ['$eventType', 'failed'] }, 1, 0] } },
+          avgResponseTime: { $avg: '$timing.responseTime' }
+        }
+      },
+      {
+        $addFields: {
+          deliveryRate: { $divide: ['$delivered', '$sent'] },
+          readRate: { $divide: ['$read', '$delivered'] },
+          clickRate: { $divide: ['$clicked', '$read'] },
+          failureRate: { $divide: ['$failed', '$sent'] }
+        }
+      },
+      { $sort: { sent: -1 } }
+    ];
 
-  return await this.aggregate(pipeline);
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 notificationAnalyticsSchema.statics.getChannelPerformance = async function(hotelId, timeRange = 30) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - timeRange);
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - timeRange);
 
-  const pipeline = [
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        createdAt: { $gte: startDate }
-      }
-    },
-    {
-      $group: {
-        _id: '$channel',
-        sent: { $sum: { $cond: [{ $eq: ['$eventType', 'sent'] }, 1, 0] } },
-        delivered: { $sum: { $cond: [{ $eq: ['$eventType', 'delivered'] }, 1, 0] } },
-        read: { $sum: { $cond: [{ $eq: ['$eventType', 'read'] }, 1, 0] } },
-        clicked: { $sum: { $cond: [{ $eq: ['$eventType', 'clicked'] }, 1, 0] } },
-        failed: { $sum: { $cond: [{ $eq: ['$eventType', 'failed'] }, 1, 0] } },
-        avgResponseTime: { $avg: '$timing.responseTime' }
-      }
-    },
-    {
-      $addFields: {
-        deliveryRate: { $divide: ['$delivered', '$sent'] },
-        readRate: { $divide: ['$read', '$delivered'] },
-        clickRate: { $divide: ['$clicked', '$read'] },
-        failureRate: { $divide: ['$failed', '$sent'] }
-      }
-    },
-    { $sort: { sent: -1 } }
-  ];
+    const pipeline = [
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          createdAt: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: '$channel',
+          sent: { $sum: { $cond: [{ $eq: ['$eventType', 'sent'] }, 1, 0] } },
+          delivered: { $sum: { $cond: [{ $eq: ['$eventType', 'delivered'] }, 1, 0] } },
+          read: { $sum: { $cond: [{ $eq: ['$eventType', 'read'] }, 1, 0] } },
+          clicked: { $sum: { $cond: [{ $eq: ['$eventType', 'clicked'] }, 1, 0] } },
+          failed: { $sum: { $cond: [{ $eq: ['$eventType', 'failed'] }, 1, 0] } },
+          avgResponseTime: { $avg: '$timing.responseTime' }
+        }
+      },
+      {
+        $addFields: {
+          deliveryRate: { $divide: ['$delivered', '$sent'] },
+          readRate: { $divide: ['$read', '$delivered'] },
+          clickRate: { $divide: ['$clicked', '$read'] },
+          failureRate: { $divide: ['$failed', '$sent'] }
+        }
+      },
+      { $sort: { sent: -1 } }
+    ];
 
-  return await this.aggregate(pipeline);
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 notificationAnalyticsSchema.statics.getRealTimeMetrics = async function(hotelId) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-  const pipeline = [
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        createdAt: { $gte: today }
+    const pipeline = [
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          createdAt: { $gte: today }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalSent: { $sum: { $cond: [{ $eq: ['$eventType', 'sent'] }, 1, 0] } },
+          totalDelivered: { $sum: { $cond: [{ $eq: ['$eventType', 'delivered'] }, 1, 0] } },
+          totalRead: { $sum: { $cond: [{ $eq: ['$eventType', 'read'] }, 1, 0] } },
+          totalClicked: { $sum: { $cond: [{ $eq: ['$eventType', 'clicked'] }, 1, 0] } },
+          totalFailed: { $sum: { $cond: [{ $eq: ['$eventType', 'failed'] }, 1, 0] } },
+          avgResponseTime: { $avg: '$timing.responseTime' }
+        }
       }
-    },
-    {
-      $group: {
-        _id: null,
-        totalSent: { $sum: { $cond: [{ $eq: ['$eventType', 'sent'] }, 1, 0] } },
-        totalDelivered: { $sum: { $cond: [{ $eq: ['$eventType', 'delivered'] }, 1, 0] } },
-        totalRead: { $sum: { $cond: [{ $eq: ['$eventType', 'read'] }, 1, 0] } },
-        totalClicked: { $sum: { $cond: [{ $eq: ['$eventType', 'clicked'] }, 1, 0] } },
-        totalFailed: { $sum: { $cond: [{ $eq: ['$eventType', 'failed'] }, 1, 0] } },
-        avgResponseTime: { $avg: '$timing.responseTime' }
-      }
-    }
-  ];
+    ];
 
-  const result = await this.aggregate(pipeline);
-  return result[0] || {
-    totalSent: 0,
-    totalDelivered: 0,
-    totalRead: 0,
-    totalClicked: 0,
-    totalFailed: 0,
-    avgResponseTime: 0
-  };
+    const result = await this.aggregate(pipeline);
+    return result[0] || {
+      totalSent: 0,
+      totalDelivered: 0,
+      totalRead: 0,
+      totalClicked: 0,
+      totalFailed: 0,
+      avgResponseTime: 0
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance methods
@@ -269,5 +289,8 @@ notificationAnalyticsSchema.methods.trackEvent = function(eventType, additionalD
 
   return this.save();
 };
+
+// Data retention TTL: auto-delete analytics records after 180 days
+notificationAnalyticsSchema.index({ createdAt: 1 }, { expireAfterSeconds: 180 * 24 * 60 * 60 });
 
 export default mongoose.model('NotificationAnalytics', notificationAnalyticsSchema);

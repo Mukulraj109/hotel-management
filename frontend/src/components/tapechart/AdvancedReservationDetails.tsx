@@ -29,6 +29,7 @@ import {
 import { format } from 'date-fns';
 import { AdvancedReservation } from '@/services/advancedReservationsService';
 import advancedReservationsService from '@/services/advancedReservationsService';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface AdvancedReservationDetailsProps {
   reservation: AdvancedReservation;
@@ -854,4 +855,4 @@ const AdvancedReservationDetails: React.FC<AdvancedReservationDetailsProps> = ({
   );
 };
 
-export default AdvancedReservationDetails;
+export default withErrorBoundary(AdvancedReservationDetails, { level: 'component' });

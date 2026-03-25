@@ -20,6 +20,7 @@ import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../settings/
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface TemplateVariable {
   name: string;
@@ -319,7 +320,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
                 )}
                 Save
               </button>
-              <button
+              <button aria-label="Close"
                 onClick={onClose}
                 className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
               >
@@ -339,7 +340,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
               { key: 'routing', label: 'Routing', icon: Zap },
               { key: 'preview', label: 'Preview', icon: Eye }
             ].map(({ key, label, icon: Icon }) => (
-              <button
+              <button aria-label="Close"
                 key={key}
                 onClick={() => setActiveTab(key as unknown)}
                 className={`flex items-center gap-2 pb-2 border-b-2 transition-colors ${
@@ -864,7 +865,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
               >
                 Cancel
               </button>
-              <button
+              <button aria-label="Save"
                 onClick={handleSave}
                 disabled={saveTemplateMutation.isPending || !formData.name || !formData.subject || !formData.message}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -884,4 +885,4 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
   );
 };
 
-export default TemplateEditor;
+export default withErrorBoundary(TemplateEditor, { level: 'component' });

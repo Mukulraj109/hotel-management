@@ -32,7 +32,7 @@ router.get('/', catchAsync(async (req, res) => {
     .populate('hotelId', 'name address')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
   
   const total = await DigitalKey.countDocuments(filter);
   
@@ -91,7 +91,7 @@ router.post('/generate', validate(schemas.generateDigitalKey), catchAsync(async 
     _id: bookingId, 
     userId: req.user.id,
     status: { $in: ['confirmed', 'checked_in'] }
-  }).populate('hotelId').populate('rooms.roomId');
+  }).populate('hotelId').populate('rooms.roomId').lean();
   
   if (!booking) {
     throw new ApplicationError('Booking not found or not eligible for digital key', 404);
@@ -106,7 +106,7 @@ router.post('/generate', validate(schemas.generateDigitalKey), catchAsync(async 
     bookingId, 
     userId: req.user.id,
     status: { $in: ['active', 'expired'] }
-  });
+  }).lean();
   
   if (existingKey && type === 'primary') {
     throw new ApplicationError('A primary key already exists for this booking', 400);
@@ -199,7 +199,7 @@ router.get('/admin', authenticate, authorize(['admin']), catchAsync(async (req, 
     .populate('hotelId', 'name address')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
   
   const total = await DigitalKey.countDocuments(filter);
   
@@ -433,7 +433,7 @@ router.get('/:keyId', catchAsync(async (req, res) => {
   .populate('bookingId', 'bookingNumber checkIn checkOut')
   .populate('roomId', 'number type floor')
   .populate('hotelId', 'name address')
-  .populate('sharedWith.userId', 'name email');
+  .populate('sharedWith.userId', 'name email').lean();
   
   if (!digitalKey) {
     throw new ApplicationError('Digital key not found', 404);
@@ -498,7 +498,7 @@ router.post('/:keyId/share', validate(schemas.shareDigitalKey), catchAsync(async
   const digitalKey = await DigitalKey.findOne({
     _id: keyId,
     userId: req.user.id
-  });
+  }).lean();
   
   if (!digitalKey) {
     throw new ApplicationError('Digital key not found', 404);
@@ -511,7 +511,7 @@ router.post('/:keyId/share', validate(schemas.shareDigitalKey), catchAsync(async
   // Find user by email if provided
   let sharedUserId = null;
   if (email) {
-    const sharedUser = await User.findOne({ email });
+    const sharedUser = await User.findOne({ email }).lean();
     if (sharedUser) {
       sharedUserId = sharedUser._id;
     }
@@ -543,7 +543,7 @@ router.delete('/:keyId/share/:userIdOrEmail', catchAsync(async (req, res) => {
   const digitalKey = await DigitalKey.findOne({
     _id: keyId,
     userId: req.user.id
-  });
+  }).lean();
   
   if (!digitalKey) {
     throw new ApplicationError('Digital key not found', 404);
@@ -566,7 +566,7 @@ router.get('/:keyId/logs', catchAsync(async (req, res) => {
   const digitalKey = await DigitalKey.findOne({
     _id: keyId,
     userId: req.user.id
-  }).populate('accessLogs.userId', 'name email');
+  }).populate('accessLogs.userId', 'name email').lean();
   
   if (!digitalKey) {
     throw new ApplicationError('Digital key not found', 404);
@@ -598,7 +598,7 @@ router.delete('/:keyId', catchAsync(async (req, res) => {
   const digitalKey = await DigitalKey.findOne({
     _id: keyId,
     userId: req.user.id
-  });
+  }).lean();
   
   if (!digitalKey) {
     throw new ApplicationError('Digital key not found', 404);
@@ -837,7 +837,7 @@ router.get('/admin/export', authenticate, authorize(['admin']), catchAsync(async
     .populate('roomId', 'roomNumber floor type')
     .populate('hotelId', 'name')
     .populate('bookingId', 'bookingNumber')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 }).lean().limit(1000);
 
   // Prepare data for export
   const exportData = keys.map(key => ({

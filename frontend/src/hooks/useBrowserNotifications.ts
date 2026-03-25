@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 export interface BrowserNotificationOptions {
@@ -26,6 +26,17 @@ export function useBrowserNotifications() {
     supported: false,
     enabled: false
   });
+  const autoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduledTimersRef = useRef<Set<number>>(new Set());
+
+  // Cleanup all timers on unmount
+  useEffect(() => {
+    return () => {
+      if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+      scheduledTimersRef.current.forEach(id => clearTimeout(id));
+      scheduledTimersRef.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     // Check if browser supports notifications
@@ -102,7 +113,8 @@ export function useBrowserNotifications() {
 
       // Auto-close after 8 seconds if not requiring interaction
       if (!requireInteraction) {
-        setTimeout(() => {
+        if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+        autoCloseTimerRef.current = setTimeout(() => {
           notification.close();
         }, 8000);
       }
@@ -191,13 +203,17 @@ export function useBrowserNotifications() {
     options: BrowserNotificationOptions,
     delay: number
   ): Promise<number> => {
-    return window.setTimeout(() => {
+    const id = window.setTimeout(() => {
+      scheduledTimersRef.current.delete(id);
       sendNotification(options);
     }, delay);
+    scheduledTimersRef.current.add(id);
+    return id;
   }, [sendNotification]);
 
   const cancelScheduledNotification = useCallback((timeoutId: number) => {
     clearTimeout(timeoutId);
+    scheduledTimersRef.current.delete(timeoutId);
   }, []);
 
   // Listen for page visibility changes

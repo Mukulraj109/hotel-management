@@ -173,7 +173,7 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
       const hasContent = dateSeasons.length > 0 || datePeriods.length > 0;
 
       days.push(
-        <div
+        <div role="button" tabIndex={0}
           key={day}
           className={`h-24 border border-gray-200 p-1 cursor-pointer transition-all duration-200 ${
             hasContent ? 'hover:shadow-md hover:z-10 relative' : ''
@@ -191,7 +191,13 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
               onSeasonClick(dateSeasons[0]);
             }
           }}
-        >
+         onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => {
+            if (datePeriods.length > 0) {
+              onSpecialPeriodClick(datePeriods[0]);
+            } else if (dateSeasons.length > 0) {
+              onSeasonClick(dateSeasons[0]);
+            }
+          }; if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
           <div className="text-sm font-medium text-gray-800">{day}</div>
           
           {hasContent && (
@@ -238,14 +244,14 @@ const SeasonCalendar: React.FC<SeasonCalendarProps> = ({
           </h3>
           
           <div className="flex items-center space-x-2">
-            <button
+            <button aria-label="Previous"
               onClick={() => setCurrentMonth(prev => prev === 0 ? 11 : prev - 1)}
               className="p-2 hover:bg-gray-100 rounded-lg"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
             
-            <button
+            <button aria-label="Previous"
               onClick={() => setCurrentMonth(prev => prev === 11 ? 0 : prev + 1)}
               className="p-2 hover:bg-gray-100 rounded-lg"
             >

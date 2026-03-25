@@ -169,7 +169,7 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
               <h3 className="text-lg font-semibold text-gray-900">Select Notification Template</h3>
               <p className="text-sm text-gray-600">Choose a template to customize your notification</p>
             </div>
-            <button
+            <button aria-label="Close"
               onClick={onClose}
               className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
             >
@@ -303,7 +303,7 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2 ml-4">
-                        <button
+                        <button aria-label="Settings"
                           onClick={() => handleTemplateSelect(template)}
                           className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
                         >
@@ -321,7 +321,7 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                         </button>
 
                         {template.variables && template.variables.length > 0 && (
-                          <button
+                          <button aria-label="Expand"
                             onClick={() => setExpandedTemplate(expandedTemplate === template._id ? null : template._id)}
                             className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
                           >

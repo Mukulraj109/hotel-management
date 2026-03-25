@@ -249,137 +249,153 @@ guestBlacklistSchema.virtual('reviewer', {
 
 // Static method to check if guest is blacklisted
 guestBlacklistSchema.statics.isGuestBlacklisted = async function(guestId, hotelId) {
-  const currentDate = new Date();
+  try {
+    const currentDate = new Date();
   
-  const blacklistEntry = await this.findOne({
-    guestId,
-    hotelId,
-    isActive: true,
-    $or: [
-      { type: 'permanent' },
-      { type: 'conditional' },
-      { 
-        type: 'temporary',
-        expiryDate: { $gt: currentDate }
-      }
-    ]
-  }).populate('guestId', 'name email phone');
+    const blacklistEntry = await this.findOne({
+      guestId,
+      hotelId,
+      isActive: true,
+      $or: [
+        { type: 'permanent' },
+        { type: 'conditional' },
+        { 
+          type: 'temporary',
+          expiryDate: { $gt: currentDate }
+        }
+      ]
+    }).populate('guestId', 'name email phone').lean();
 
-  return blacklistEntry;
+    return blacklistEntry;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get blacklist statistics
 guestBlacklistSchema.statics.getBlacklistStats = async function(hotelId) {
-  const stats = await this.aggregate([
-    { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
-    {
-      $group: {
-        _id: null,
-        total: { $sum: 1 },
-        active: { $sum: { $cond: ['$isActive', 1, 0] } },
-        inactive: { $sum: { $cond: ['$isActive', 0, 1] } },
-        byType: {
-          $push: {
-            type: '$type',
-            isActive: '$isActive'
+  try {
+    const stats = await this.aggregate([
+      { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          active: { $sum: { $cond: ['$isActive', 1, 0] } },
+          inactive: { $sum: { $cond: ['$isActive', 0, 1] } },
+          byType: {
+            $push: {
+              type: '$type',
+              isActive: '$isActive'
+            }
+          },
+          byCategory: {
+            $push: {
+              category: '$category',
+              isActive: '$isActive'
+            }
+          },
+          pendingAppeals: {
+            $sum: { $cond: [{ $eq: ['$appealStatus', 'pending'] }, 1, 0] }
           }
-        },
-        byCategory: {
-          $push: {
-            category: '$category',
-            isActive: '$isActive'
-          }
-        },
-        pendingAppeals: {
-          $sum: { $cond: [{ $eq: ['$appealStatus', 'pending'] }, 1, 0] }
         }
       }
+    ]);
+
+    if (stats.length === 0) {
+      return {
+        total: 0,
+        active: 0,
+        inactive: 0,
+        byType: {},
+        byCategory: {},
+        pendingAppeals: 0
+      };
     }
-  ]);
 
-  if (stats.length === 0) {
-    return {
-      total: 0,
-      active: 0,
-      inactive: 0,
-      byType: {},
-      byCategory: {},
-      pendingAppeals: 0
-    };
-  }
-
-  const result = stats[0];
+    const result = stats[0];
   
-  // Calculate type breakdown
-  const typeStats = {};
-  result.byType.forEach(item => {
-    if (!typeStats[item.type]) {
-      typeStats[item.type] = { total: 0, active: 0, inactive: 0 };
-    }
-    typeStats[item.type].total++;
-    if (item.isActive) {
-      typeStats[item.type].active++;
-    } else {
-      typeStats[item.type].inactive++;
-    }
-  });
+    // Calculate type breakdown
+    const typeStats = {};
+    result.byType.forEach(item => {
+      if (!typeStats[item.type]) {
+        typeStats[item.type] = { total: 0, active: 0, inactive: 0 };
+      }
+      typeStats[item.type].total++;
+      if (item.isActive) {
+        typeStats[item.type].active++;
+      } else {
+        typeStats[item.type].inactive++;
+      }
+    });
 
-  // Calculate category breakdown
-  const categoryStats = {};
-  result.byCategory.forEach(item => {
-    if (!categoryStats[item.category]) {
-      categoryStats[item.category] = { total: 0, active: 0, inactive: 0 };
-    }
-    categoryStats[item.category].total++;
-    if (item.isActive) {
-      categoryStats[item.category].active++;
-    } else {
-      categoryStats[item.category].inactive++;
-    }
-  });
+    // Calculate category breakdown
+    const categoryStats = {};
+    result.byCategory.forEach(item => {
+      if (!categoryStats[item.category]) {
+        categoryStats[item.category] = { total: 0, active: 0, inactive: 0 };
+      }
+      categoryStats[item.category].total++;
+      if (item.isActive) {
+        categoryStats[item.category].active++;
+      } else {
+        categoryStats[item.category].inactive++;
+      }
+    });
 
-  return {
-    total: result.total,
-    active: result.active,
-    inactive: result.inactive,
-    byType: typeStats,
-    byCategory: categoryStats,
-    pendingAppeals: result.pendingAppeals
-  };
+    return {
+      total: result.total,
+      active: result.active,
+      inactive: result.inactive,
+      byType: typeStats,
+      byCategory: categoryStats,
+      pendingAppeals: result.pendingAppeals
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get expired blacklists
 guestBlacklistSchema.statics.getExpiredBlacklists = async function(hotelId) {
-  const currentDate = new Date();
+  try {
+    const currentDate = new Date();
   
-  return await this.find({
-    hotelId: new mongoose.Types.ObjectId(hotelId),
-    type: 'temporary',
-    isActive: true,
-    expiryDate: { $lte: currentDate }
-  }).populate('guestId', 'name email');
-};
-
-// Static method to auto-expire temporary blacklists
-guestBlacklistSchema.statics.autoExpireBlacklists = async function(hotelId) {
-  const currentDate = new Date();
-  
-  const result = await this.updateMany(
-    {
+    return await this.find({
       hotelId: new mongoose.Types.ObjectId(hotelId),
       type: 'temporary',
       isActive: true,
       expiryDate: { $lte: currentDate }
-    },
-    {
-      $set: {
-        isActive: false,
-        updatedBy: null // System update
-      }
-    }
-  );
+    }).populate('guestId', 'name email').lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
+};
 
-  return result.modifiedCount;
+// Static method to auto-expire temporary blacklists
+guestBlacklistSchema.statics.autoExpireBlacklists = async function(hotelId) {
+  try {
+    const currentDate = new Date();
+  
+    const result = await this.updateMany(
+      {
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        type: 'temporary',
+        isActive: true,
+        expiryDate: { $lte: currentDate }
+      },
+      {
+        $set: {
+          isActive: false,
+          updatedBy: null // System update
+        }
+      }
+    );
+
+    return result.modifiedCount;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance method to submit appeal

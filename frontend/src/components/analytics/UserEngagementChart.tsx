@@ -203,7 +203,7 @@ const UserEngagementChart: React.FC<UserEngagementChartProps> = ({
               <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </button>
-            <button
+            <button aria-label="Close"
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600"
             >

@@ -137,7 +137,7 @@ export function VirtualDataTable<T extends Record<string, unknown>>({
   }, [sortConfig]);
 
   const renderRow = useCallback((item: T, index: number) => (
-    <tr
+    <tr role="button" tabIndex={0}
       key={`item-${index}`}
       className={cn(
         'hover:bg-gray-50 border-b border-gray-200',
@@ -145,7 +145,7 @@ export function VirtualDataTable<T extends Record<string, unknown>>({
       )}
       style={{ height: itemHeight }}
       onClick={() => onRowClick && onRowClick(item)}
-    >
+     onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => onRowClick && onRowClick(item); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
       {columns.map((column, colIndex) => {
         const value = item[column.key];
         return (
@@ -235,7 +235,7 @@ export function VirtualDataTable<T extends Record<string, unknown>>({
                 <thead>
                   <tr>
                     {columns.map((column, index) => (
-                      <th
+                      <th role="button" tabIndex={0}
                         key={column.key}
                         className={cn(
                           'px-6 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider',
@@ -245,7 +245,7 @@ export function VirtualDataTable<T extends Record<string, unknown>>({
                         )}
                         style={{ width: column.width }}
                         onClick={() => (column.sortable || sortable) && handleSort(column.key)}
-                      >
+                       onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => (column.sortable || sortable) && handleSort(column.key); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                         <div className="flex items-center space-x-1">
                           <span>{column.header}</span>
                           {(column.sortable || sortable) && getSortIcon(column.key)}

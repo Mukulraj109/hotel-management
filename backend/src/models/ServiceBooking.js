@@ -99,12 +99,16 @@ const serviceBookingSchema = new mongoose.Schema({
     min: [1, 'At least 1 person is required'],
     validate: {
       validator: async function(value) {
-        // Check if service capacity allows this many people
-        const service = await mongoose.model('HotelService').findById(this.serviceId);
-        if (service && service.capacity && value > service.capacity) {
-          return false;
+        try {
+          // Check if service capacity allows this many people
+          const service = await mongoose.model('HotelService').findById(this.serviceId);
+          if (service && service.capacity && value > service.capacity) {
+            return false;
+          }
+          return true;
+        } catch (error) {
+          throw new Error(`${error.message}`);
         }
-        return true;
       },
       message: 'Number of people exceeds service capacity'
     }
@@ -243,137 +247,165 @@ serviceBookingSchema.virtual('statusColor').get(function() {
 
 // Static method to get user bookings
 serviceBookingSchema.statics.getUserBookings = async function(userId, options = {}) {
-  const { page = 1, limit = 20, status } = options;
-  const skip = (page - 1) * limit;
+  try {
+    const { page = 1, limit = 20, status } = options;
+    const skip = (page - 1) * limit;
   
-  const matchQuery = { userId };
-  if (status) {
-    matchQuery.status = status;
-  }
-  
-  const bookings = await this.find(matchQuery)
-    .sort({ bookingDate: -1 })
-    .skip(skip)
-    .limit(limit)
-    .populate('serviceId', 'name type price images')
-    .populate('hotelId', 'name');
-    
-  const total = await this.countDocuments(matchQuery);
-  
-  return {
-    bookings,
-    pagination: {
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
-      totalItems: total,
-      hasNext: page * limit < total,
-      hasPrev: page > 1
+    const matchQuery = { userId };
+    if (status) {
+      matchQuery.status = status;
     }
-  };
+  
+    const bookings = await this.find(matchQuery)
+      .sort({ bookingDate: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate('serviceId', 'name type price images')
+      .populate('hotelId', 'name').lean();
+    
+    const total = await this.countDocuments(matchQuery);
+  
+    return {
+      bookings,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        totalItems: total,
+        hasNext: page * limit < total,
+        hasPrev: page > 1
+      }
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get service bookings
 serviceBookingSchema.statics.getServiceBookings = async function(serviceId, date) {
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
+  try {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
   
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
   
-  return await this.find({
-    serviceId,
-    bookingDate: { $gte: startOfDay, $lte: endOfDay },
-    status: { $in: ['pending', 'confirmed'] }
-  }).populate('userId', 'name email');
+    return await this.find({
+      serviceId,
+      bookingDate: { $gte: startOfDay, $lte: endOfDay },
+      status: { $in: ['pending', 'confirmed'] }
+    }).populate('userId', 'name email').lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to check availability
 serviceBookingSchema.statics.checkAvailability = async function(serviceId, date, numberOfPeople) {
-  const service = await mongoose.model('HotelService').findById(serviceId);
-  if (!service) return { available: false, reason: 'Service not found' };
+  try {
+    const service = await mongoose.model('HotelService').findById(serviceId);
+    if (!service) return { available: false, reason: 'Service not found' };
   
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
   
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
   
-  const existingBookings = await this.find({
-    serviceId,
-    bookingDate: { $gte: startOfDay, $lte: endOfDay },
-    status: { $in: ['pending', 'confirmed'] }
-  });
+    const existingBookings = await this.find({
+      serviceId,
+      bookingDate: { $gte: startOfDay, $lte: endOfDay },
+      status: { $in: ['pending', 'confirmed'] }
+    }).lean().limit(1000);
   
-  const totalBookedPeople = existingBookings.reduce((sum, booking) => sum + booking.numberOfPeople, 0);
-  const availableCapacity = service.capacity - totalBookedPeople;
+    const totalBookedPeople = existingBookings.reduce((sum, booking) => sum + booking.numberOfPeople, 0);
+    const availableCapacity = service.capacity - totalBookedPeople;
   
-  if (availableCapacity < numberOfPeople) {
-    return {
-      available: false,
-      reason: `Only ${availableCapacity} people can be accommodated`,
-      availableCapacity
-    };
+    if (availableCapacity < numberOfPeople) {
+      return {
+        available: false,
+        reason: `Only ${availableCapacity} people can be accommodated`,
+        availableCapacity
+      };
+    }
+  
+    return { available: true, availableCapacity };
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  return { available: true, availableCapacity };
 };
 
 // Instance method to cancel booking
 serviceBookingSchema.methods.cancelBooking = async function(reason, cancelledBy) {
-  if (this.status === 'cancelled') {
-    throw new Error('Booking is already cancelled');
+  try {
+    if (this.status === 'cancelled') {
+      throw new Error('Booking is already cancelled');
+    }
+  
+    if (this.status === 'completed') {
+      throw new Error('Cannot cancel completed booking');
+    }
+  
+    this.status = 'cancelled';
+    this.cancellationReason = reason;
+    this.cancelledAt = new Date();
+    this.cancelledBy = cancelledBy;
+  
+    return await this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  if (this.status === 'completed') {
-    throw new Error('Cannot cancel completed booking');
-  }
-  
-  this.status = 'cancelled';
-  this.cancellationReason = reason;
-  this.cancelledAt = new Date();
-  this.cancelledBy = cancelledBy;
-  
-  return await this.save();
 };
 
 // Instance method to confirm booking
 serviceBookingSchema.methods.confirmBooking = async function() {
-  if (this.status !== 'pending') {
-    throw new Error('Only pending bookings can be confirmed');
-  }
+  try {
+    if (this.status !== 'pending') {
+      throw new Error('Only pending bookings can be confirmed');
+    }
   
-  this.status = 'confirmed';
-  return await this.save();
+    this.status = 'confirmed';
+    return await this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance method to complete booking
 serviceBookingSchema.methods.completeBooking = async function() {
-  if (this.status !== 'confirmed') {
-    throw new Error('Only confirmed bookings can be completed');
-  }
+  try {
+    if (this.status !== 'confirmed') {
+      throw new Error('Only confirmed bookings can be completed');
+    }
   
-  this.status = 'completed';
-  return await this.save();
+    this.status = 'completed';
+    return await this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Pre-save middleware to validate booking
 serviceBookingSchema.pre('save', async function(next) {
-  if (this.isNew || this.isModified('bookingDate')) {
-    // Check if booking date is in the future
-    if (this.bookingDate <= new Date()) {
-      return next(new Error('Booking date must be in the future'));
+  try {
+    if (this.isNew || this.isModified('bookingDate')) {
+      // Check if booking date is in the future
+      if (this.bookingDate <= new Date()) {
+        return next(new Error('Booking date must be in the future'));
+      }
     }
-  }
   
-  if (this.isNew || this.isModified('numberOfPeople')) {
-    // Check service capacity
-    const service = await mongoose.model('HotelService').findById(this.serviceId);
-    if (service && service.capacity && this.numberOfPeople > service.capacity) {
-      return next(new Error('Number of people exceeds service capacity'));
+    if (this.isNew || this.isModified('numberOfPeople')) {
+      // Check service capacity
+      const service = await mongoose.model('HotelService').findById(this.serviceId);
+      if (service && service.capacity && this.numberOfPeople > service.capacity) {
+        return next(new Error('Number of people exceeds service capacity'));
+      }
     }
-  }
   
-  next();
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 });
 
 export default mongoose.model('ServiceBooking', serviceBookingSchema);

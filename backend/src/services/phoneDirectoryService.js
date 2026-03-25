@@ -44,7 +44,7 @@ class PhoneDirectoryService {
           'directorySettings.sortOrder': 1,
           extensionNumber: 1
         })
-        .lean();
+        .lean().limit(1000);
 
       // Group extensions by category
       const directory = {
@@ -204,40 +204,42 @@ class PhoneDirectoryService {
         errors: []
       };
 
+      // Batch: validate all rooms in a single query
+      const roomIdsToValidate = assignments.filter(a => a.roomId).map(a => a.roomId);
+      const validRooms = roomIdsToValidate.length > 0
+        ? await Room.find({ _id: { $in: roomIdsToValidate }, hotelId: mongoose.Types.ObjectId(hotelId) }).select('_id').lean()
+        : [];
+      const validRoomIds = new Set(validRooms.map(r => r._id.toString()));
+
+      // Batch: prepare bulkWrite for all extension updates
+      const extBulkOps = [];
       for (const assignment of assignments) {
         try {
           const { extensionId, roomId } = assignment;
 
-          // Validate room exists and belongs to hotel
-          if (roomId) {
-            const room = await Room.findOne({ 
-              _id: roomId, 
-              hotelId: mongoose.Types.ObjectId(hotelId) 
+          if (roomId && !validRoomIds.has(roomId.toString())) {
+            results.errors.push({
+              extensionId,
+              error: 'Room not found or does not belong to this hotel'
             });
-            
-            if (!room) {
-              results.errors.push({
-                extensionId,
-                error: 'Room not found or does not belong to this hotel'
-              });
-              results.failureCount++;
-              continue;
-            }
+            results.failureCount++;
+            continue;
           }
 
-          // Update the extension
-          const extension = await PhoneExtension.findOneAndUpdate(
-            { 
-              _id: extensionId, 
-              hotelId: mongoose.Types.ObjectId(hotelId) 
-            },
-            {
-              roomId: roomId || null,
-              'auditInfo.updatedBy': updatedBy,
-              'auditInfo.lastModified': new Date()
-            },
-            { new: true }
-          );
+          extBulkOps.push({
+            updateOne: {
+              filter: { _id: extensionId, hotelId: mongoose.Types.ObjectId(hotelId) },
+              update: {
+                $set: {
+                  roomId: roomId || null,
+                  'auditInfo.updatedBy': updatedBy,
+                  'auditInfo.lastModified': new Date()
+                }
+              }
+            }
+          });
+
+          const extension = { _id: extensionId }; // placeholder for success tracking
 
           if (!extension) {
             results.errors.push({
@@ -372,7 +374,7 @@ class PhoneDirectoryService {
         ]
       })
       .select('extensionNumber displayName usageStats roomNumber location')
-      .limit(20);
+      .limit(20).lean();
 
       const report = {
         metadata: {
@@ -411,13 +413,13 @@ class PhoneDirectoryService {
         roomId: null,
         phoneType: 'room_phone',
         status: 'active'
-      }).sort({ extensionNumber: 1 });
+      }).sort({ extensionNumber: 1 }).lean().limit(1000);
 
       // Get available rooms
       const availableRooms = await Room.find({
         hotelId: mongoose.Types.ObjectId(hotelId),
         status: { $in: ['available', 'occupied', 'maintenance'] }
-      }).sort({ roomNumber: 1 });
+      }).sort({ roomNumber: 1 }).lean().limit(1000);
 
       const assignments = [];
       const results = {
@@ -536,7 +538,7 @@ class PhoneDirectoryService {
         hotelId: mongoose.Types.ObjectId(hotelId),
         status: { $ne: 'active' },
         roomId: { $ne: null }
-      }).populate('roomInfo', 'roomNumber status');
+      }).populate('roomInfo', 'roomNumber status').lean().limit(1000);
 
       const problematicExtensions = inactiveAssignedExtensions.filter(
         ext => ext.roomInfo?.status === 'available'

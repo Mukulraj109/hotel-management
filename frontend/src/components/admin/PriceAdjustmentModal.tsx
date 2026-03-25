@@ -155,14 +155,14 @@ const PriceAdjustmentModal: React.FC<PriceAdjustmentModalProps> = ({
   return (
     <div className="fixed inset-0 z-[100] overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose} />
+        <div aria-hidden="true" className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose} />
 
         <div className="inline-block w-full max-w-4xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-medium text-gray-900">
               Price Adjustment - Booking #{booking.bookingNumber}
             </h3>
-            <button
+            <button aria-label="Close"
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600"
             >
@@ -339,7 +339,7 @@ const PriceAdjustmentModal: React.FC<PriceAdjustmentModalProps> = ({
                   >
                     Cancel
                   </button>
-                  <button
+                  <button aria-label="Close"
                     type="submit"
                     disabled={loading || newAmount < 0 || !reason.trim() || adjustmentAmount === 0}
                     className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"

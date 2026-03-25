@@ -51,7 +51,7 @@ export function PopoverTrigger({ children, asChild }: PopoverTriggerProps) {
   }
   
   return (
-    <button
+    <button aria-label="Previous"
       ref={triggerRef}
       onClick={() => setOpen(prev => !prev)}
       className="inline-flex items-center justify-center"

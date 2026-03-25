@@ -19,7 +19,7 @@ class AdvancedReservationsController {
       const userId = req.user.id;
 
       // Validate booking exists
-      const booking = await Booking.findById(req.body.bookingId);
+      const booking = await Booking.findById(req.body.bookingId).lean();
       if (!booking) {
         return res.status(404).json({
           success: false,
@@ -30,7 +30,7 @@ class AdvancedReservationsController {
       // Check if advanced reservation already exists for this booking
       const existingReservation = await AdvancedReservation.findOne({
         bookingId: req.body.bookingId
-      });
+      }).lean();
 
       if (existingReservation) {
         return res.status(400).json({
@@ -147,7 +147,7 @@ class AdvancedReservationsController {
         .populate('createdBy', 'name email')
         .populate('updatedBy', 'name email')
         .populate('roomAssignments.roomId', 'roomNumber roomType floor')
-        .populate('roomAssignments.assignedBy', 'name email');
+        .populate('roomAssignments.assignedBy', 'name email').lean();
 
       if (!reservation) {
         return res.status(404).json({
@@ -247,7 +247,7 @@ class AdvancedReservationsController {
       const upgradeData = req.body;
       const hotelId = req.user.hotelId;
 
-      const reservation = await AdvancedReservation.findOne({ _id: id, hotelId });
+      const reservation = await AdvancedReservation.findOne({ _id: id, hotelId }).lean();
       if (!reservation) {
         return res.status(404).json({
           success: false,
@@ -297,7 +297,7 @@ class AdvancedReservationsController {
         .populate('bookingId', 'bookingNumber guestDetails')
         .sort({ createdAt: -1 })
         .limit(5)
-        .select('reservationId reservationType priority guestProfile.vipStatus createdAt');
+        .select('reservationId reservationType priority guestProfile.vipStatus createdAt').lean();
 
       // Format stats for frontend consumption
       const formattedStats = {
@@ -361,7 +361,7 @@ class AdvancedReservationsController {
       await advancedReservation.save();
 
       const updatedReservation = await AdvancedReservation.findById(id)
-        .populate('reservationFlags.createdBy', 'name');
+        .populate('reservationFlags.createdBy', 'name').lean();
 
       res.json({
         success: true,
@@ -390,7 +390,7 @@ class AdvancedReservationsController {
       // Get booking IDs that already have advanced reservations
       const existingAdvancedReservations = await AdvancedReservation.find({ hotelId })
         .select('bookingId')
-        .lean();
+        .lean().limit(1000);
 
       const existingBookingIds = existingAdvancedReservations.map(ar => ar.bookingId);
 

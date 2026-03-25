@@ -507,58 +507,66 @@ kpiSchema.methods.getPerformanceScore = function() {
 
 // Static methods for aggregation
 kpiSchema.statics.getAggregatedKPIs = async function(hotelId, startDate, endDate, period = 'daily') {
-  const pipeline = [
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        date: { $gte: new Date(startDate), $lte: new Date(endDate) },
-        period
+  try {
+    const pipeline = [
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          date: { $gte: new Date(startDate), $lte: new Date(endDate) },
+          period
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalRoomRevenue: { $sum: '$revenue.roomRevenue' },
+          totalNonRoomRevenue: { $sum: '$revenue.nonRoomRevenue' },
+          totalRoomNightsSold: { $sum: '$occupancy.roomNightsSold' },
+          totalAvailableRoomNights: { $sum: '$occupancy.availableRoomNights' },
+          avgADR: { $avg: '$rates.adr' },
+          avgRevPAR: { $avg: '$rates.revpar' },
+          avgOccupancy: { $avg: '$occupancy.occupancyRate' },
+          totalGOP: { $sum: '$profitability.gop' },
+          avgGuestSatisfaction: { $avg: '$risk.guestSatisfaction.averageRating' },
+          avgNoShowRate: { $avg: '$risk.noShowRate' },
+          avgCancellationRate: { $avg: '$risk.cancellationRate' }
+        }
       }
-    },
-    {
-      $group: {
-        _id: null,
-        totalRoomRevenue: { $sum: '$revenue.roomRevenue' },
-        totalNonRoomRevenue: { $sum: '$revenue.nonRoomRevenue' },
-        totalRoomNightsSold: { $sum: '$occupancy.roomNightsSold' },
-        totalAvailableRoomNights: { $sum: '$occupancy.availableRoomNights' },
-        avgADR: { $avg: '$rates.adr' },
-        avgRevPAR: { $avg: '$rates.revpar' },
-        avgOccupancy: { $avg: '$occupancy.occupancyRate' },
-        totalGOP: { $sum: '$profitability.gop' },
-        avgGuestSatisfaction: { $avg: '$risk.guestSatisfaction.averageRating' },
-        avgNoShowRate: { $avg: '$risk.noShowRate' },
-        avgCancellationRate: { $avg: '$risk.cancellationRate' }
-      }
-    }
-  ];
+    ];
 
-  const result = await this.aggregate(pipeline);
-  return result[0] || {};
+    const result = await this.aggregate(pipeline);
+    return result[0] || {};
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 kpiSchema.statics.getTrendData = async function(hotelId, metric, days = 30) {
-  const endDate = new Date();
-  const startDate = new Date(endDate.getTime() - (days * 24 * 60 * 60 * 1000));
+  try {
+    const endDate = new Date();
+    const startDate = new Date(endDate.getTime() - (days * 24 * 60 * 60 * 1000));
 
-  const pipeline = [
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        date: { $gte: startDate, $lte: endDate },
-        period: 'daily'
+    const pipeline = [
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          date: { $gte: startDate, $lte: endDate },
+          period: 'daily'
+        }
+      },
+      { $sort: { date: 1 } },
+      {
+        $project: {
+          date: 1,
+          value: `$${metric}`
+        }
       }
-    },
-    { $sort: { date: 1 } },
-    {
-      $project: {
-        date: 1,
-        value: `$${metric}`
-      }
-    }
-  ];
+    ];
 
-  return await this.aggregate(pipeline);
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 export default mongoose.model('KPI', kpiSchema);

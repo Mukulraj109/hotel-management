@@ -1249,150 +1249,162 @@ bookingSchema.methods.calculateTotalAmount = function() {
 
 // Instance method to add extra person
 bookingSchema.methods.addExtraPerson = async function(personData, userContext) {
-  if (!['admin', 'staff'].includes(userContext.userRole)) {
-    throw new Error('Only admin and staff can add extra persons');
-  }
-
-  // Validate person data
-  if (!personData.name || !personData.type) {
-    throw new Error('Person name and type are required');
-  }
-
-  if (personData.type === 'child' && (personData.age === undefined || personData.age < 0 || personData.age > 17)) {
-    throw new Error('Valid age is required for children (0-17)');
-  }
-
-  // Check if booking allows extra persons
-  if (this.status === 'cancelled' || this.status === 'no_show') {
-    throw new Error('Cannot add extra persons to cancelled or no-show bookings');
-  }
-
-  const extraPerson = {
-    name: personData.name,
-    type: personData.type,
-    age: personData.age,
-    addedBy: {
-      userId: userContext.userId,
-      userName: userContext.userName,
-      userRole: userContext.userRole
+  try {
+    if (!['admin', 'staff'].includes(userContext.userRole)) {
+      throw new Error('Only admin and staff can add extra persons');
     }
-  };
 
-  this.extraPersons.push(extraPerson);
+    // Validate person data
+    if (!personData.name || !personData.type) {
+      throw new Error('Person name and type are required');
+    }
 
-  // Update guest details count
-  if (personData.type === 'adult') {
-    this.guestDetails.adults += 1;
-  } else {
-    this.guestDetails.children += 1;
+    if (personData.type === 'child' && (personData.age === undefined || personData.age < 0 || personData.age > 17)) {
+      throw new Error('Valid age is required for children (0-17)');
+    }
+
+    // Check if booking allows extra persons
+    if (this.status === 'cancelled' || this.status === 'no_show') {
+      throw new Error('Cannot add extra persons to cancelled or no-show bookings');
+    }
+
+    const extraPerson = {
+      name: personData.name,
+      type: personData.type,
+      age: personData.age,
+      addedBy: {
+        userId: userContext.userId,
+        userName: userContext.userName,
+        userRole: userContext.userRole
+      }
+    };
+
+    this.extraPersons.push(extraPerson);
+
+    // Update guest details count
+    if (personData.type === 'adult') {
+      this.guestDetails.adults += 1;
+    } else {
+      this.guestDetails.children += 1;
+    }
+
+    return extraPerson;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  return extraPerson;
 };
 
 // Instance method to remove extra person
 bookingSchema.methods.removeExtraPerson = async function(personId, userContext) {
-  if (!['admin', 'staff'].includes(userContext.userRole)) {
-    throw new Error('Only admin and staff can remove extra persons');
+  try {
+    if (!['admin', 'staff'].includes(userContext.userRole)) {
+      throw new Error('Only admin and staff can remove extra persons');
+    }
+
+    const personIndex = this.extraPersons.findIndex(p => p.personId === personId);
+    if (personIndex === -1) {
+      throw new Error('Extra person not found');
+    }
+
+    const person = this.extraPersons[personIndex];
+
+    // Update guest details count
+    if (person.type === 'adult') {
+      this.guestDetails.adults = Math.max(1, this.guestDetails.adults - 1);
+    } else {
+      this.guestDetails.children = Math.max(0, this.guestDetails.children - 1);
+    }
+
+    // Remove person
+    this.extraPersons.splice(personIndex, 1);
+
+    // Remove associated charges
+    this.extraPersonCharges = this.extraPersonCharges.filter(charge => charge.personId !== personId);
+
+    return person;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  const personIndex = this.extraPersons.findIndex(p => p.personId === personId);
-  if (personIndex === -1) {
-    throw new Error('Extra person not found');
-  }
-
-  const person = this.extraPersons[personIndex];
-
-  // Update guest details count
-  if (person.type === 'adult') {
-    this.guestDetails.adults = Math.max(1, this.guestDetails.adults - 1);
-  } else {
-    this.guestDetails.children = Math.max(0, this.guestDetails.children - 1);
-  }
-
-  // Remove person
-  this.extraPersons.splice(personIndex, 1);
-
-  // Remove associated charges
-  this.extraPersonCharges = this.extraPersonCharges.filter(charge => charge.personId !== personId);
-
-  return person;
 };
 
 // Instance method to calculate and apply extra person charges
 bookingSchema.methods.calculateExtraPersonCharges = async function() {
-  if (this.extraPersons.length === 0) {
-    return { totalCharges: 0, charges: [] };
-  }
-
-  const ExtraPersonCharge = mongoose.model('ExtraPersonCharge');
-
-  // Get room type from the first room, or the booking's roomType field as fallback
-  let roomType = this.roomType;
-  if (!roomType && this.rooms.length > 0) {
-    // Check if already populated
-    if (this.rooms[0].roomId && typeof this.rooms[0].roomId === 'object' && this.rooms[0].roomId.type) {
-      roomType = this.rooms[0].roomId.type;
-    } else {
-      // Need to populate
-      await this.populate('rooms.roomId', 'type');
-      roomType = this.rooms[0].roomId?.type;
+  try {
+    if (this.extraPersons.length === 0) {
+      return { totalCharges: 0, charges: [] };
     }
-  }
 
-  const bookingData = {
-    roomType: roomType,
-    baseRoomRate: this.rooms.reduce((total, room) => total + room.rate, 0) / this.rooms.length,
-    extraPersons: this.extraPersons.map(p => ({
-      id: p.personId,
-      name: p.name,
-      type: p.type,
-      age: p.age
-    })),
-    checkIn: this.checkIn,
-    checkOut: this.checkOut,
-    bookingSource: this.source,
-    nights: this.nights
-  };
+    const ExtraPersonCharge = mongoose.model('ExtraPersonCharge');
 
-  const chargeResult = await ExtraPersonCharge.calculateExtraPersonCharge(this.hotelId, bookingData);
+    // Get room type from the first room, or the booking's roomType field as fallback
+    let roomType = this.roomType;
+    if (!roomType && this.rooms.length > 0) {
+      // Check if already populated
+      if (this.rooms[0].roomId && typeof this.rooms[0].roomId === 'object' && this.rooms[0].roomId.type) {
+        roomType = this.rooms[0].roomId.type;
+      } else {
+        // Need to populate
+        await this.populate('rooms.roomId', 'type');
+        roomType = this.rooms[0].roomId?.type;
+      }
+    }
 
-  // Update extra person charges while preserving payment and approval status
-  const existingCharges = this.extraPersonCharges || [];
-  this.extraPersonCharges = chargeResult.chargeBreakdown.map(charge => {
-    // Find existing charge for this person to preserve payment and approval status
-    const existingCharge = existingCharges.find(existing => existing.personId === charge.personId);
-
-    return {
-      personId: charge.personId,
-      chargeRuleId: charge.ruleApplied,
-      baseCharge: charge.baseCharge,
-      multipliers: {
-        seasonal: charge.seasonMultiplier,
-        dayOfWeek: charge.dayMultiplier,
-        source: charge.sourceMultiplier
-      },
-      chargeBeforeTax: charge.chargeBeforeTax,
-      taxAmount: charge.taxAmount,
-      totalCharge: charge.totalCharge,
-      currency: charge.currency,
-      description: `Extra ${charge.personType} charge for ${charge.personName}`,
-      // Preserve payment status from existing charge, or set defaults for new charges
-      paidAmount: existingCharge ? existingCharge.paidAmount : 0,
-      isPaid: existingCharge ? existingCharge.isPaid : false,
-      paidAt: existingCharge ? existingCharge.paidAt : undefined,
-      // NEW: Approval workflow fields
-      status: existingCharge ? existingCharge.status : 'pending',
-      calculatedAmount: charge.totalCharge, // Store the original calculated amount
-      adjustedAmount: existingCharge ? existingCharge.adjustedAmount : undefined,
-      adjustmentReason: existingCharge ? existingCharge.adjustmentReason : undefined,
-      adjustedBy: existingCharge ? existingCharge.adjustedBy : undefined,
-      approvedBy: existingCharge ? existingCharge.approvedBy : undefined,
-      approvedAt: existingCharge ? existingCharge.approvedAt : undefined
+    const bookingData = {
+      roomType: roomType,
+      baseRoomRate: this.rooms.reduce((total, room) => total + room.rate, 0) / this.rooms.length,
+      extraPersons: this.extraPersons.map(p => ({
+        id: p.personId,
+        name: p.name,
+        type: p.type,
+        age: p.age
+      })),
+      checkIn: this.checkIn,
+      checkOut: this.checkOut,
+      bookingSource: this.source,
+      nights: this.nights
     };
-  });
 
-  return chargeResult;
+    const chargeResult = await ExtraPersonCharge.calculateExtraPersonCharge(this.hotelId, bookingData);
+
+    // Update extra person charges while preserving payment and approval status
+    const existingCharges = this.extraPersonCharges || [];
+    this.extraPersonCharges = chargeResult.chargeBreakdown.map(charge => {
+      // Find existing charge for this person to preserve payment and approval status
+      const existingCharge = existingCharges.find(existing => existing.personId === charge.personId);
+
+      return {
+        personId: charge.personId,
+        chargeRuleId: charge.ruleApplied,
+        baseCharge: charge.baseCharge,
+        multipliers: {
+          seasonal: charge.seasonMultiplier,
+          dayOfWeek: charge.dayMultiplier,
+          source: charge.sourceMultiplier
+        },
+        chargeBeforeTax: charge.chargeBeforeTax,
+        taxAmount: charge.taxAmount,
+        totalCharge: charge.totalCharge,
+        currency: charge.currency,
+        description: `Extra ${charge.personType} charge for ${charge.personName}`,
+        // Preserve payment status from existing charge, or set defaults for new charges
+        paidAmount: existingCharge ? existingCharge.paidAmount : 0,
+        isPaid: existingCharge ? existingCharge.isPaid : false,
+        paidAt: existingCharge ? existingCharge.paidAt : undefined,
+        // NEW: Approval workflow fields
+        status: existingCharge ? existingCharge.status : 'pending',
+        calculatedAmount: charge.totalCharge, // Store the original calculated amount
+        adjustedAmount: existingCharge ? existingCharge.adjustedAmount : undefined,
+        adjustmentReason: existingCharge ? existingCharge.adjustmentReason : undefined,
+        adjustedBy: existingCharge ? existingCharge.adjustedBy : undefined,
+        approvedBy: existingCharge ? existingCharge.approvedBy : undefined,
+        approvedAt: existingCharge ? existingCharge.approvedAt : undefined
+      };
+    });
+
+    return chargeResult;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance method to calculate settlement
@@ -1545,22 +1557,26 @@ bookingSchema.methods.processSettlementPayment = function(paymentData, userConte
 
 // Static method to find overlapping bookings
 bookingSchema.statics.findOverlapping = async function(roomIds, checkIn, checkOut, excludeBookingId = null) {
-  const query = {
-    'rooms.roomId': { $in: roomIds },
-    // Only include bookings that actually occupy the room (exclude checked_out, cancelled, no_show)
-    status: { $in: ['pending', 'confirmed', 'modified', 'checked_in'] },
-    $or: [
-      { checkIn: { $lt: checkOut, $gte: checkIn } },
-      { checkOut: { $gt: checkIn, $lte: checkOut } },
-      { checkIn: { $lte: checkIn }, checkOut: { $gte: checkOut } }
-    ]
-  };
+  try {
+    const query = {
+      'rooms.roomId': { $in: roomIds },
+      // Only include bookings that actually occupy the room (exclude checked_out, cancelled, no_show)
+      status: { $in: ['pending', 'confirmed', 'modified', 'checked_in'] },
+      $or: [
+        { checkIn: { $lt: checkOut, $gte: checkIn } },
+        { checkOut: { $gt: checkIn, $lte: checkOut } },
+        { checkIn: { $lte: checkIn }, checkOut: { $gte: checkOut } }
+      ]
+    };
 
-  if (excludeBookingId) {
-    query._id = { $ne: excludeBookingId };
+    if (excludeBookingId) {
+      query._id = { $ne: excludeBookingId };
+    }
+
+    return await this.find(query).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  return await this.find(query);
 };
 
 // Instance method to check if booking can be cancelled
@@ -1586,179 +1602,191 @@ const STATUS_TRANSITIONS = {
 
 // Instance method for safe status transitions with validation
 bookingSchema.methods.changeStatus = async function(newStatus, context = {}) {
-  const currentStatus = this.status;
+  try {
+    const currentStatus = this.status;
   
-  // Validate transition is allowed
-  if (!STATUS_TRANSITIONS[currentStatus]?.includes(newStatus)) {
-    throw new Error(
-      `Invalid status transition from '${currentStatus}' to '${newStatus}'. ` +
-      `Allowed transitions: ${STATUS_TRANSITIONS[currentStatus]?.join(', ') || 'none'}`
-    );
+    // Validate transition is allowed
+    if (!STATUS_TRANSITIONS[currentStatus]?.includes(newStatus)) {
+      throw new Error(
+        `Invalid status transition from '${currentStatus}' to '${newStatus}'. ` +
+        `Allowed transitions: ${STATUS_TRANSITIONS[currentStatus]?.join(', ') || 'none'}`
+      );
+    }
+  
+    // Business rule validations
+    await this.validateStatusTransition(currentStatus, newStatus, context);
+  
+    // Store context for pre-save middleware
+    this._previousStatus = currentStatus;
+    this._statusChangeContext = {
+      source: context.source || 'system',
+      userId: context.userId,
+      userName: context.userName || 'System',
+      channel: context.channel,
+      reason: context.reason || `Status changed from ${currentStatus} to ${newStatus}`,
+      automatic: context.automatic || false,
+      validationPassed: true
+    };
+  
+    // Update status
+    this.status = newStatus;
+  
+    // Handle status-specific logic
+    await this.handleStatusSpecificActions(newStatus, currentStatus, context);
+  
+    return this;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  // Business rule validations
-  await this.validateStatusTransition(currentStatus, newStatus, context);
-  
-  // Store context for pre-save middleware
-  this._previousStatus = currentStatus;
-  this._statusChangeContext = {
-    source: context.source || 'system',
-    userId: context.userId,
-    userName: context.userName || 'System',
-    channel: context.channel,
-    reason: context.reason || `Status changed from ${currentStatus} to ${newStatus}`,
-    automatic: context.automatic || false,
-    validationPassed: true
-  };
-  
-  // Update status
-  this.status = newStatus;
-  
-  // Handle status-specific logic
-  await this.handleStatusSpecificActions(newStatus, currentStatus, context);
-  
-  return this;
 };
 
 // Business rule validation for status transitions
 bookingSchema.methods.validateStatusTransition = async function(fromStatus, toStatus, context) {
-  const now = new Date();
-  const checkInTime = new Date(this.checkIn);
-  const checkOutTime = new Date(this.checkOut);
+  try {
+    const now = new Date();
+    const checkInTime = new Date(this.checkIn);
+    const checkOutTime = new Date(this.checkOut);
   
-  switch (toStatus) {
-    case 'confirmed':
-      // Must have valid payment or be within payment terms
-      if (this.paymentStatus === 'failed') {
-        throw new Error('Cannot confirm booking with failed payment');
-      }
-      if (this.amendmentFlags.hasActivePendingAmendments && !context.bypassAmendmentCheck) {
-        throw new Error('Cannot confirm booking with pending amendments. Resolve amendments first.');
-      }
-      break;
-      
-    case 'checked_in':
-      // Can only check in on or after check-in date
-      if (now < checkInTime && !context.earlyCheckIn) {
-        throw new Error(`Cannot check in before check-in date: ${checkInTime.toISOString()}`);
-      }
-      // Must be confirmed first (unless coming from modified)
-      if (fromStatus !== 'confirmed' && fromStatus !== 'modified') {
-        throw new Error('Can only check in confirmed or modified bookings');
-      }
-      break;
-      
-    case 'checked_out':
-      // Must be checked in first
-      if (fromStatus !== 'checked_in') {
-        throw new Error('Must be checked in before checking out');
-      }
-      break;
-      
-    case 'cancelled':
-      // Check cancellation policy if not system/admin
-      if (context.source === 'guest' || context.source === 'ota') {
-        const canCancel = this.canCancel();
-        if (!canCancel && !context.bypassCancellationPolicy) {
-          throw new Error('Booking cannot be cancelled due to cancellation policy restrictions');
+    switch (toStatus) {
+      case 'confirmed':
+        // Must have valid payment or be within payment terms
+        if (this.paymentStatus === 'failed') {
+          throw new Error('Cannot confirm booking with failed payment');
         }
-      }
-      break;
+        if (this.amendmentFlags.hasActivePendingAmendments && !context.bypassAmendmentCheck) {
+          throw new Error('Cannot confirm booking with pending amendments. Resolve amendments first.');
+        }
+        break;
       
-    case 'no_show':
-      // Can only mark as no-show after check-in time has passed
-      const hoursAfterCheckIn = (now - checkInTime) / (1000 * 60 * 60);
-      if (hoursAfterCheckIn < 2 && !context.manualNoShow) { // 2 hour grace period
-        throw new Error('Cannot mark as no-show before grace period expires');
-      }
-      break;
+      case 'checked_in':
+        // Can only check in on or after check-in date
+        if (now < checkInTime && !context.earlyCheckIn) {
+          throw new Error(`Cannot check in before check-in date: ${checkInTime.toISOString()}`);
+        }
+        // Must be confirmed first (unless coming from modified)
+        if (fromStatus !== 'confirmed' && fromStatus !== 'modified') {
+          throw new Error('Can only check in confirmed or modified bookings');
+        }
+        break;
       
-    case 'modified':
-      // Ensure there are pending amendments to justify modified status
-      if (!this.amendmentFlags.hasActivePendingAmendments && !context.forceModified) {
-        throw new Error('Cannot set status to modified without pending amendments');
-      }
-      break;
-  }
+      case 'checked_out':
+        // Must be checked in first
+        if (fromStatus !== 'checked_in') {
+          throw new Error('Must be checked in before checking out');
+        }
+        break;
+      
+      case 'cancelled':
+        // Check cancellation policy if not system/admin
+        if (context.source === 'guest' || context.source === 'ota') {
+          const canCancel = this.canCancel();
+          if (!canCancel && !context.bypassCancellationPolicy) {
+            throw new Error('Booking cannot be cancelled due to cancellation policy restrictions');
+          }
+        }
+        break;
+      
+      case 'no_show':
+        // Can only mark as no-show after check-in time has passed
+        const hoursAfterCheckIn = (now - checkInTime) / (1000 * 60 * 60);
+        if (hoursAfterCheckIn < 2 && !context.manualNoShow) { // 2 hour grace period
+          throw new Error('Cannot mark as no-show before grace period expires');
+        }
+        break;
+      
+      case 'modified':
+        // Ensure there are pending amendments to justify modified status
+        if (!this.amendmentFlags.hasActivePendingAmendments && !context.forceModified) {
+          throw new Error('Cannot set status to modified without pending amendments');
+        }
+        break;
+    }
   
-  return true;
+    return true;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Handle status-specific actions and side effects
 bookingSchema.methods.handleStatusSpecificActions = async function(newStatus, oldStatus, context) {
-  const now = new Date();
+  try {
+    const now = new Date();
   
-  switch (newStatus) {
-    case 'confirmed':
-      // Clear any temporary holds
-      this.reservedUntil = undefined;
-      // Mark as needing sync to channels
-      if (this.source !== 'direct') {
-        this.syncStatus.needsSync = true;
-      }
-      break;
+    switch (newStatus) {
+      case 'confirmed':
+        // Clear any temporary holds
+        this.reservedUntil = undefined;
+        // Mark as needing sync to channels
+        if (this.source !== 'direct') {
+          this.syncStatus.needsSync = true;
+        }
+        break;
       
-    case 'checked_in':
-      // Record actual check-in time
-      if (!this.actualCheckIn) {
-        this.actualCheckIn = now;
-      }
-      // Update room occupancy status if available
-      if (this.rooms?.length > 0 && context.updateRoomStatus !== false) {
-        // This would typically trigger room status updates
+      case 'checked_in':
+        // Record actual check-in time
+        if (!this.actualCheckIn) {
+          this.actualCheckIn = now;
+        }
+        // Update room occupancy status if available
+        if (this.rooms?.length > 0 && context.updateRoomStatus !== false) {
+          // This would typically trigger room status updates
+          this.needsRoomStatusUpdate = true;
+        }
+        break;
+      
+      case 'checked_out':
+        // Record actual check-out time
+        if (!this.actualCheckOut) {
+          this.actualCheckOut = now;
+        }
+        // Calculate final billing if needed
+        this.needsFinalBilling = true;
+        // Mark rooms as needing cleaning
         this.needsRoomStatusUpdate = true;
-      }
-      break;
       
-    case 'checked_out':
-      // Record actual check-out time
-      if (!this.actualCheckOut) {
-        this.actualCheckOut = now;
-      }
-      // Calculate final billing if needed
-      this.needsFinalBilling = true;
-      // Mark rooms as needing cleaning
-      this.needsRoomStatusUpdate = true;
+        // NEW: Trigger automatic checkout processing
+        if (context.enableAutomation !== false) {
+          this.needsAutomaticProcessing = true;
+          this.automationStatus = 'pending';
+          this.automationTriggeredAt = now;
+        }
+        break;
       
-      // NEW: Trigger automatic checkout processing
-      if (context.enableAutomation !== false) {
-        this.needsAutomaticProcessing = true;
-        this.automationStatus = 'pending';
-        this.automationTriggeredAt = now;
-      }
-      break;
+      case 'cancelled':
+        // Clear room assignments
+        this.reservedUntil = undefined;
+        // Handle refund processing
+        if (this.paymentStatus === 'paid' && context.processRefund !== false) {
+          this.needsRefundProcessing = true;
+        }
+        // Sync cancellation to OTAs
+        if (this.source !== 'direct') {
+          this.syncStatus.needsSync = true;
+        }
+        break;
       
-    case 'cancelled':
-      // Clear room assignments
-      this.reservedUntil = undefined;
-      // Handle refund processing
-      if (this.paymentStatus === 'paid' && context.processRefund !== false) {
-        this.needsRefundProcessing = true;
-      }
-      // Sync cancellation to OTAs
-      if (this.source !== 'direct') {
+      case 'modified':
+        // Ensure amendment tracking is properly set
+        this.amendmentFlags.requiresReconfirmation = true;
+        // Mark as needing sync
         this.syncStatus.needsSync = true;
-      }
-      break;
+        break;
       
-    case 'modified':
-      // Ensure amendment tracking is properly set
-      this.amendmentFlags.requiresReconfirmation = true;
-      // Mark as needing sync
-      this.syncStatus.needsSync = true;
-      break;
-      
-    case 'no_show':
-      // Apply no-show penalties if configured
-      this.noShowRecorded = now;
-      // Still may need refund processing based on policy
-      if (context.applyNoShowPenalty !== false) {
-        this.needsPenaltyProcessing = true;
-      }
-      break;
-  }
+      case 'no_show':
+        // Apply no-show penalties if configured
+        this.noShowRecorded = now;
+        // Still may need refund processing based on policy
+        if (context.applyNoShowPenalty !== false) {
+          this.needsPenaltyProcessing = true;
+        }
+        break;
+    }
   
-  return this;
+    return this;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Price Adjustment Methods
@@ -1895,139 +1923,151 @@ bookingSchema.methods.canAdjustPrice = function(userRole, adjustmentAmount) {
 
 // Method to handle OTA amendments with status management
 bookingSchema.methods.processOTAAmendment = async function(amendmentData, context = {}) {
-  const amendmentId = `AM${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  try {
+    const amendmentId = `AM${Date.now()}${Math.floor(Math.random() * 1000)}`;
   
-  // Create amendment record
-  const amendment = {
-    amendmentId,
-    channelAmendmentId: amendmentData.channelAmendmentId,
-    amendmentType: amendmentData.type,
-    requestedBy: {
-      channel: amendmentData.channel || this.channel,
-      guestId: amendmentData.guestId,
-      timestamp: new Date()
-    },
-    amendmentStatus: 'pending',
-    originalData: amendmentData.originalData,
-    requestedChanges: amendmentData.requestedChanges,
-    requiresManualApproval: amendmentData.requiresManualApproval || false,
-    processingNotes: amendmentData.notes
-  };
+    // Create amendment record
+    const amendment = {
+      amendmentId,
+      channelAmendmentId: amendmentData.channelAmendmentId,
+      amendmentType: amendmentData.type,
+      requestedBy: {
+        channel: amendmentData.channel || this.channel,
+        guestId: amendmentData.guestId,
+        timestamp: new Date()
+      },
+      amendmentStatus: 'pending',
+      originalData: amendmentData.originalData,
+      requestedChanges: amendmentData.requestedChanges,
+      requiresManualApproval: amendmentData.requiresManualApproval || false,
+      processingNotes: amendmentData.notes
+    };
   
-  // Add to amendments array
-  if (!this.otaAmendments) {
-    this.otaAmendments = [];
+    // Add to amendments array
+    if (!this.otaAmendments) {
+      this.otaAmendments = [];
+    }
+    this.otaAmendments.push(amendment);
+  
+    // Update status to modified if not already
+    if (this.status !== 'modified') {
+      await this.changeStatus('modified', {
+        source: 'ota',
+        channel: amendmentData.channel,
+        reason: `OTA amendment received: ${amendmentData.type}`,
+        automatic: true,
+        ...context
+      });
+    }
+  
+    // Update flags
+    this.amendmentFlags.hasActivePendingAmendments = true;
+    this.amendmentFlags.lastAmendmentDate = new Date();
+    this.amendmentFlags.amendmentCount++;
+  
+    return amendmentId;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  this.otaAmendments.push(amendment);
-  
-  // Update status to modified if not already
-  if (this.status !== 'modified') {
-    await this.changeStatus('modified', {
-      source: 'ota',
-      channel: amendmentData.channel,
-      reason: `OTA amendment received: ${amendmentData.type}`,
-      automatic: true,
-      ...context
-    });
-  }
-  
-  // Update flags
-  this.amendmentFlags.hasActivePendingAmendments = true;
-  this.amendmentFlags.lastAmendmentDate = new Date();
-  this.amendmentFlags.amendmentCount++;
-  
-  return amendmentId;
 };
 
 // Method to approve/reject amendments
 bookingSchema.methods.resolveAmendment = async function(amendmentId, decision, approverInfo = {}) {
-  const amendment = this.otaAmendments.find(a => a.amendmentId === amendmentId);
-  if (!amendment) {
-    throw new Error(`Amendment ${amendmentId} not found`);
-  }
-  
-  if (amendment.amendmentStatus !== 'pending') {
-    throw new Error(`Amendment ${amendmentId} is already ${amendment.amendmentStatus}`);
-  }
-  
-  // Update amendment status
-  amendment.amendmentStatus = decision;
-  amendment.approvedBy = {
-    userId: approverInfo.userId,
-    userName: approverInfo.userName || 'System',
-    timestamp: new Date()
-  };
-  
-  if (decision === 'approved' || decision === 'partially_approved') {
-    // Apply approved changes
-    amendment.approvedChanges = decision === 'approved' ? 
-      amendment.requestedChanges : 
-      approverInfo.partialChanges;
-      
-    // Apply changes to booking
-    await this.applyAmendmentChanges(amendment.approvedChanges);
-    
-  } else if (decision === 'rejected') {
-    amendment.rejectionReason = approverInfo.rejectionReason || 'Amendment rejected';
-  }
-  
-  // Check if all amendments are resolved
-  const pendingAmendments = this.otaAmendments.filter(a => a.amendmentStatus === 'pending');
-  if (pendingAmendments.length === 0) {
-    this.amendmentFlags.hasActivePendingAmendments = false;
-    
-    // If all approved, change status back to confirmed
-    const hasApprovedAmendments = this.otaAmendments.some(
-      a => ['approved', 'partially_approved'].includes(a.amendmentStatus)
-    );
-    
-    if (hasApprovedAmendments && this.status === 'modified') {
-      await this.changeStatus('confirmed', {
-        source: 'system',
-        reason: 'All amendments processed, booking reconfirmed',
-        automatic: true,
-        bypassAmendmentCheck: true
-      });
+  try {
+    const amendment = this.otaAmendments.find(a => a.amendmentId === amendmentId);
+    if (!amendment) {
+      throw new Error(`Amendment ${amendmentId} not found`);
     }
-  }
   
-  return amendment;
+    if (amendment.amendmentStatus !== 'pending') {
+      throw new Error(`Amendment ${amendmentId} is already ${amendment.amendmentStatus}`);
+    }
+  
+    // Update amendment status
+    amendment.amendmentStatus = decision;
+    amendment.approvedBy = {
+      userId: approverInfo.userId,
+      userName: approverInfo.userName || 'System',
+      timestamp: new Date()
+    };
+  
+    if (decision === 'approved' || decision === 'partially_approved') {
+      // Apply approved changes
+      amendment.approvedChanges = decision === 'approved' ? 
+        amendment.requestedChanges : 
+        approverInfo.partialChanges;
+      
+      // Apply changes to booking
+      await this.applyAmendmentChanges(amendment.approvedChanges);
+    
+    } else if (decision === 'rejected') {
+      amendment.rejectionReason = approverInfo.rejectionReason || 'Amendment rejected';
+    }
+  
+    // Check if all amendments are resolved
+    const pendingAmendments = this.otaAmendments.filter(a => a.amendmentStatus === 'pending');
+    if (pendingAmendments.length === 0) {
+      this.amendmentFlags.hasActivePendingAmendments = false;
+    
+      // If all approved, change status back to confirmed
+      const hasApprovedAmendments = this.otaAmendments.some(
+        a => ['approved', 'partially_approved'].includes(a.amendmentStatus)
+      );
+    
+      if (hasApprovedAmendments && this.status === 'modified') {
+        await this.changeStatus('confirmed', {
+          source: 'system',
+          reason: 'All amendments processed, booking reconfirmed',
+          automatic: true,
+          bypassAmendmentCheck: true
+        });
+      }
+    }
+  
+    return amendment;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Helper method to apply amendment changes to booking
 bookingSchema.methods.applyAmendmentChanges = async function(changes) {
-  const originalData = {};
+  try {
+    const originalData = {};
   
-  // Store original values for audit
-  for (const [field, newValue] of Object.entries(changes)) {
-    originalData[field] = this[field];
+    // Store original values for audit
+    for (const [field, newValue] of Object.entries(changes)) {
+      originalData[field] = this[field];
     
-    // Apply change based on field type
-    if (field === 'checkIn' || field === 'checkOut') {
-      this[field] = new Date(newValue);
-    } else if (field === 'guestInfo') {
-      Object.assign(this.guestInfo, newValue);
-    } else if (field === 'rooms') {
-      this.rooms = newValue;
-    } else {
-      this[field] = newValue;
+      // Apply change based on field type
+      if (field === 'checkIn' || field === 'checkOut') {
+        this[field] = new Date(newValue);
+      } else if (field === 'guestInfo') {
+        Object.assign(this.guestInfo, newValue);
+      } else if (field === 'rooms') {
+        this.rooms = newValue;
+      } else {
+        this[field] = newValue;
+      }
     }
+  
+    // Add modification record
+    this.modifications.push({
+      timestamp: new Date(),
+      type: 'ota_modification',
+      details: {
+        amendmentApplied: true,
+        originalData,
+        appliedChanges: changes
+      },
+      source: 'ota',
+      userName: 'OTA Amendment System'
+    });
+  
+    return this;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  // Add modification record
-  this.modifications.push({
-    timestamp: new Date(),
-    type: 'ota_modification',
-    details: {
-      amendmentApplied: true,
-      originalData,
-      appliedChanges: changes
-    },
-    source: 'ota',
-    userName: 'OTA Amendment System'
-  });
-  
-  return this;
 };
 
 // Import and integrate checkout automation middleware

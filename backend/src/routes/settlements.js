@@ -104,7 +104,7 @@ router.get('/',
       .populate('assignedTo', 'name email')
       .sort({ dueDate: 1, escalationLevel: -1, createdAt: -1 })
       .limit(parseInt(limit))
-      .skip(parseInt(offset));
+      .skip(parseInt(offset)).lean();
 
     const totalCount = await Settlement.countDocuments(query);
 
@@ -275,7 +275,7 @@ router.post('/',
     const { bookingId, dueDate, notes, assignedTo } = req.body;
 
     // Find booking
-    const booking = await Booking.findById(bookingId).populate('userId', 'name email phone');
+    const booking = await Booking.findById(bookingId).populate('userId', 'name email phone').lean();
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
     }
@@ -286,7 +286,7 @@ router.post('/',
     }
 
     // Check if settlement already exists
-    const existingSettlement = await Settlement.findOne({ bookingId });
+    const existingSettlement = await Settlement.findOne({ bookingId }).lean();
     if (existingSettlement) {
       throw new ApplicationError('Settlement already exists for this booking', 400);
     }
@@ -380,7 +380,7 @@ router.get('/:id',
       .populate('guestDetails.guestId', 'name email phone')
       .populate('assignedTo', 'name email')
       .populate('createdBy', 'name email')
-      .populate('lastUpdatedBy', 'name email');
+      .populate('lastUpdatedBy', 'name email').lean();
 
     if (!settlement) {
       throw new ApplicationError('Settlement not found', 404);
@@ -726,11 +726,6 @@ router.post('/:id/dispute',
       throw new ApplicationError('Dispute type, description, and raisedBy are required', 400);
     }
 
-    const settlement = await Settlement.findOne({ _id: id, hotelId });
-    if (!settlement) {
-      throw new ApplicationError('Settlement not found', 404);
-    }
-
     const dispute = {
       type,
       amount,
@@ -738,10 +733,18 @@ router.post('/:id/dispute',
       raisedBy
     };
 
-    settlement.disputes.push(dispute);
-    settlement.lastUpdatedBy = req.user._id;
+    const settlement = await Settlement.findOneAndUpdate(
+      { _id: id, hotelId },
+      {
+        $push: { disputes: dispute },
+        $set: { lastUpdatedBy: req.user._id }
+      },
+      { new: true, runValidators: true }
+    );
 
-    await settlement.save();
+    if (!settlement) {
+      throw new ApplicationError('Settlement not found', 404);
+    }
 
     res.json({
       status: 'success',
@@ -872,7 +875,7 @@ router.post('/:id/validate',
       throw new ApplicationError('Settlement not found', 404);
     }
 
-    // Perform comprehensive validation
+    // Perform comprehensive validation (requires Mongoose document for instance methods)
     const validationResult = settlement.validateCalculations();
     const businessRulesResult = settlement.validateBusinessRules();
 

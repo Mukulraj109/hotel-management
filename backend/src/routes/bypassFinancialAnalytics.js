@@ -98,7 +98,7 @@ router.get('/impact/:impactId', catchAsync(async (req, res) => {
         .populate('bypassAuditId', 'bypassId reason securityMetadata')
         .populate('approvalWorkflowId', 'workflowId workflowStatus')
         .populate('bookingContext.bookingId', 'bookingNumber')
-        .populate('bookingContext.roomId', 'roomNumber type');
+        .populate('bookingContext.roomId', 'roomNumber type').lean();
 
     if (!impact) {
         throw new ApplicationError('Financial impact record not found', 404);
@@ -287,7 +287,7 @@ router.get('/impacts', catchAsync(async (req, res) => {
             [sortBy]: sortOrder === 'desc' ? -1 : 1
         })
         .limit(parseInt(limit))
-        .skip(parseInt(offset));
+        .skip(parseInt(offset)).lean();
 
     const total = await BypassFinancialImpact.countDocuments(query);
 

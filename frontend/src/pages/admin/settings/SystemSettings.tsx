@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -28,6 +28,7 @@ import { useProperty } from '../../../context/PropertyContext';
 import { CreateUserModal } from '../../../components/user/CreateUserModal';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../services/api';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
 interface SystemFormData {
   twoFactorAuth: boolean;
@@ -84,7 +85,7 @@ interface SystemSettingsProps {
   onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function SystemSettings({ onSettingsChange }: SystemSettingsProps = {}) {
+function SystemSettings({ onSettingsChange }: SystemSettingsProps = {}) {
   const { selectedProperty, selectedPropertyId } = useProperty();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -156,6 +157,15 @@ export default function SystemSettings({ onSettingsChange }: SystemSettingsProps
   });
 
   // Update form values when system settings data changes
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (systemSettings) {
       const { security, maintenance } = systemSettings;
@@ -396,7 +406,8 @@ export default function SystemSettings({ onSettingsChange }: SystemSettingsProps
       }
 
       setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 3000);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
 
       toast.success(`System settings updated successfully${
         applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
@@ -420,7 +431,8 @@ export default function SystemSettings({ onSettingsChange }: SystemSettingsProps
 
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
 
         toast.success(`System settings updated for ${result.propertiesUpdated} properties`);
 
@@ -961,3 +973,5 @@ export default function SystemSettings({ onSettingsChange }: SystemSettingsProps
     </div>
   );
 }
+
+export default withErrorBoundary(SystemSettings, { level: 'page' });

@@ -84,377 +84,435 @@ class KPICalculationService {
    * Calculate revenue metrics
    */
   static async calculateRevenueMetrics(hotelId, startDate, endDate) {
-    const pipeline = [
-      {
-        $match: {
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          status: { $in: ['confirmed', 'checked_in', 'checked_out'] },
-          $or: [
-            { checkIn: { $gte: startDate, $lte: endDate } },
-            { checkOut: { $gte: startDate, $lte: endDate } },
-            { checkIn: { $lte: startDate }, checkOut: { $gte: endDate } }
-          ]
+    try {
+      const pipeline = [
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            status: { $in: ['confirmed', 'checked_in', 'checked_out'] },
+            $or: [
+              { checkIn: { $gte: startDate, $lte: endDate } },
+              { checkOut: { $gte: startDate, $lte: endDate } },
+              { checkIn: { $lte: startDate }, checkOut: { $gte: endDate } }
+            ]
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalAmount: { $sum: '$totalAmount' },
+            bookings: { $push: '$$ROOT' }
+          }
         }
-      },
-      {
-        $group: {
-          _id: null,
-          totalAmount: { $sum: '$totalAmount' },
-          bookings: { $push: '$$ROOT' }
+      ];
+
+      const result = await Booking.aggregate(pipeline);
+      const data = result[0] || { totalAmount: 0, bookings: [] };
+
+      // Calculate revenue breakdown
+      let roomRevenue = 0;
+      let addOns = 0;
+      let taxes = 0;
+      let discounts = 0;
+
+      data.bookings.forEach(booking => {
+        const baseAmount = booking.totalAmount || 0;
+      
+        // Estimate room revenue (75% of total, rest is taxes and services)
+        const roomAmount = baseAmount * 0.75;
+        roomRevenue += roomAmount;
+      
+        // Estimate taxes (18% GST on room amount)
+        const taxAmount = roomAmount * 0.18;
+        taxes += taxAmount;
+      
+        // Add-ons and extras
+        if (booking.extras && booking.extras.length > 0) {
+          const extraAmount = booking.extras.reduce((sum, extra) => 
+            sum + (extra.price * extra.quantity), 0);
+          addOns += extraAmount;
         }
-      }
-    ];
 
-    const result = await Booking.aggregate(pipeline);
-    const data = result[0] || { totalAmount: 0, bookings: [] };
-
-    // Calculate revenue breakdown
-    let roomRevenue = 0;
-    let addOns = 0;
-    let taxes = 0;
-    let discounts = 0;
-
-    data.bookings.forEach(booking => {
-      const baseAmount = booking.totalAmount || 0;
+        // Note: Discounts would need to be tracked separately in booking model
+        // For now, we'll estimate based on difference
+        const calculatedTotal = roomAmount + taxAmount + (booking.extras ? 
+          booking.extras.reduce((sum, extra) => sum + (extra.price * extra.quantity), 0) : 0);
       
-      // Estimate room revenue (75% of total, rest is taxes and services)
-      const roomAmount = baseAmount * 0.75;
-      roomRevenue += roomAmount;
-      
-      // Estimate taxes (18% GST on room amount)
-      const taxAmount = roomAmount * 0.18;
-      taxes += taxAmount;
-      
-      // Add-ons and extras
-      if (booking.extras && booking.extras.length > 0) {
-        const extraAmount = booking.extras.reduce((sum, extra) => 
-          sum + (extra.price * extra.quantity), 0);
-        addOns += extraAmount;
-      }
+        if (calculatedTotal > baseAmount) {
+          discounts += calculatedTotal - baseAmount;
+        }
+      });
 
-      // Note: Discounts would need to be tracked separately in booking model
-      // For now, we'll estimate based on difference
-      const calculatedTotal = roomAmount + taxAmount + (booking.extras ? 
-        booking.extras.reduce((sum, extra) => sum + (extra.price * extra.quantity), 0) : 0);
-      
-      if (calculatedTotal > baseAmount) {
-        discounts += calculatedTotal - baseAmount;
-      }
-    });
-
-    return {
-      roomRevenue,
-      nonRoomRevenue: 0, // Would come from F&B, Spa services - not currently tracked
-      totalRevenue: roomRevenue,
-      addOns,
-      discounts,
-      taxes
-    };
+      return {
+        roomRevenue,
+        nonRoomRevenue: 0, // Would come from F&B, Spa services - not currently tracked
+        totalRevenue: roomRevenue,
+        addOns,
+        discounts,
+        taxes
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Calculate occupancy metrics
    */
   static async calculateOccupancyMetrics(hotelId, startDate, endDate) {
-    // Get total available rooms for the hotel
-    const totalRooms = await Room.countDocuments({ 
-      hotelId: new mongoose.Types.ObjectId(hotelId),
-      isActive: true 
-    });
+    try {
+      // Get total available rooms for the hotel
+      const totalRooms = await Room.countDocuments({ 
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        isActive: true 
+      });
 
-    // Calculate days in period
-    const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-    const availableRoomNights = totalRooms * days;
+      // Calculate days in period
+      const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+      const availableRoomNights = totalRooms * days;
 
-    // Calculate occupied room nights
-    const occupancyPipeline = [
-      {
-        $match: {
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          status: { $in: ['confirmed', 'checked_in', 'checked_out'] },
-          $or: [
-            { checkIn: { $gte: startDate, $lte: endDate } },
-            { checkOut: { $gte: startDate, $lte: endDate } },
-            { checkIn: { $lte: startDate }, checkOut: { $gte: endDate } }
-          ]
-        }
-      },
-      {
-        $addFields: {
-          roomNights: {
-            $multiply: [
-              { $size: '$rooms' },
-              '$nights'
+      // Calculate occupied room nights
+      const occupancyPipeline = [
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            status: { $in: ['confirmed', 'checked_in', 'checked_out'] },
+            $or: [
+              { checkIn: { $gte: startDate, $lte: endDate } },
+              { checkOut: { $gte: startDate, $lte: endDate } },
+              { checkIn: { $lte: startDate }, checkOut: { $gte: endDate } }
             ]
           }
+        },
+        {
+          $addFields: {
+            roomNights: {
+              $multiply: [
+                { $size: '$rooms' },
+                '$nights'
+              ]
+            }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalRoomNights: { $sum: '$roomNights' },
+            bookingCount: { $sum: 1 }
+          }
         }
-      },
-      {
-        $group: {
-          _id: null,
-          totalRoomNights: { $sum: '$roomNights' },
-          bookingCount: { $sum: 1 }
-        }
-      }
-    ];
+      ];
 
-    const occupancyResult = await Booking.aggregate(occupancyPipeline);
-    const occupancyData = occupancyResult[0] || { totalRoomNights: 0, bookingCount: 0 };
+      const occupancyResult = await Booking.aggregate(occupancyPipeline);
+      const occupancyData = occupancyResult[0] || { totalRoomNights: 0, bookingCount: 0 };
 
-    // Calculate room nights sold (rooms × nights for each booking)
-    const roomNightsSold = occupancyData.totalRoomNights || 0;
+      // Calculate room nights sold (rooms × nights for each booking)
+      const roomNightsSold = occupancyData.totalRoomNights || 0;
 
-    return {
-      roomNightsSold,
-      availableRoomNights,
-      occupancyRate: availableRoomNights > 0 ? (roomNightsSold / availableRoomNights) * 100 : 0
-    };
+      return {
+        roomNightsSold,
+        availableRoomNights,
+        occupancyRate: availableRoomNights > 0 ? (roomNightsSold / availableRoomNights) * 100 : 0
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Calculate productivity metrics
    */
   static async calculateProductivityMetrics(hotelId, startDate, endDate) {
-    const [housekeepingData, maintenanceData, frontDeskData] = await Promise.all([
-      this.calculateHousekeepingProductivity(hotelId, startDate, endDate),
-      this.calculateMaintenanceProductivity(hotelId, startDate, endDate),
-      this.calculateFrontDeskProductivity(hotelId, startDate, endDate)
-    ]);
+    try {
+      const [housekeepingData, maintenanceData, frontDeskData] = await Promise.all([
+        this.calculateHousekeepingProductivity(hotelId, startDate, endDate),
+        this.calculateMaintenanceProductivity(hotelId, startDate, endDate),
+        this.calculateFrontDeskProductivity(hotelId, startDate, endDate)
+      ]);
 
-    return {
-      housekeeping: housekeepingData,
-      maintenance: maintenanceData,
-      frontDesk: frontDeskData
-    };
+      return {
+        housekeeping: housekeepingData,
+        maintenance: maintenanceData,
+        frontDesk: frontDeskData
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Calculate housekeeping productivity
    */
   static async calculateHousekeepingProductivity(hotelId, startDate, endDate) {
-    const housekeepingTasks = await Housekeeping.find({
-      hotelId: new mongoose.Types.ObjectId(hotelId),
-      createdAt: { $gte: startDate, $lte: endDate },
-      status: 'completed'
-    });
+    try {
+      const housekeepingTasks = await Housekeeping.find({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        createdAt: { $gte: startDate, $lte: endDate },
+        status: 'completed'
+      }).lean().limit(1000);
 
-    const cleanedRooms = housekeepingTasks.length;
+      const cleanedRooms = housekeepingTasks.length;
     
-    // Estimate paid hours (8 hours per day per housekeeper, assuming 2 housekeepers)
-    const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-    const paidHours = days * 8 * 2; // 2 housekeepers, 8 hours per day
+      // Estimate paid hours (8 hours per day per housekeeper, assuming 2 housekeepers)
+      const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+      const paidHours = days * 8 * 2; // 2 housekeepers, 8 hours per day
 
-    return {
-      cleanedRooms,
-      paidHours,
-      productivity: paidHours > 0 ? cleanedRooms / paidHours : 0
-    };
+      return {
+        cleanedRooms,
+        paidHours,
+        productivity: paidHours > 0 ? cleanedRooms / paidHours : 0
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Calculate maintenance productivity
    */
   static async calculateMaintenanceProductivity(hotelId, startDate, endDate) {
-    const maintenanceTasks = await MaintenanceTask.find({
-      hotelId: new mongoose.Types.ObjectId(hotelId),
-      createdAt: { $gte: startDate, $lte: endDate },
-      status: 'completed'
-    });
+    try {
+      const maintenanceTasks = await MaintenanceTask.find({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        createdAt: { $gte: startDate, $lte: endDate },
+        status: 'completed'
+      }).lean().limit(1000);
 
-    const workOrdersClosed = maintenanceTasks.length;
+      const workOrdersClosed = maintenanceTasks.length;
     
-    // Estimate paid hours (8 hours per day per maintenance staff, assuming 1 staff)
-    const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-    const paidHours = days * 8 * 1; // 1 maintenance staff, 8 hours per day
+      // Estimate paid hours (8 hours per day per maintenance staff, assuming 1 staff)
+      const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+      const paidHours = days * 8 * 1; // 1 maintenance staff, 8 hours per day
 
-    return {
-      workOrdersClosed,
-      paidHours,
-      productivity: paidHours > 0 ? workOrdersClosed / paidHours : 0
-    };
+      return {
+        workOrdersClosed,
+        paidHours,
+        productivity: paidHours > 0 ? workOrdersClosed / paidHours : 0
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Calculate front desk productivity
    */
   static async calculateFrontDeskProductivity(hotelId, startDate, endDate) {
-    const checkInsData = await Booking.aggregate([
-      {
-        $match: {
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          checkInTime: { $gte: startDate, $lte: endDate }
-        }
-      },
-      { $count: "checkIns" }
-    ]);
+    try {
+      // Consider caching this aggregation result for 5 minutes
 
-    const checkOutsData = await Booking.aggregate([
-      {
-        $match: {
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          checkOutTime: { $gte: startDate, $lte: endDate }
-        }
-      },
-      { $count: "checkOuts" }
-    ]);
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
 
-    const checkIns = checkInsData[0]?.checkIns || 0;
-    const checkOuts = checkOutsData[0]?.checkOuts || 0;
+      const checkInsData = await Booking.aggregate([
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            checkInTime: { $gte: startDate, $lte: endDate }
+          }
+        },
+        { $count: "checkIns" }
+      ]);
 
-    // Estimate paid hours (12 hours per day, 2 shifts, assuming 2 front desk staff)
-    const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-    const paidHours = days * 12 * 2; // 2 front desk staff, 12 hours per day
+      // Consider caching this aggregation result for 5 minutes
 
-    return {
-      checkIns,
-      checkOuts,
-      paidHours,
-      productivity: paidHours > 0 ? (checkIns + checkOuts) / paidHours : 0
-    };
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+
+      const checkOutsData = await Booking.aggregate([
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            checkOutTime: { $gte: startDate, $lte: endDate }
+          }
+        },
+        { $count: "checkOuts" }
+      ]);
+
+      const checkIns = checkInsData[0]?.checkIns || 0;
+      const checkOuts = checkOutsData[0]?.checkOuts || 0;
+
+      // Estimate paid hours (12 hours per day, 2 shifts, assuming 2 front desk staff)
+      const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+      const paidHours = days * 12 * 2; // 2 front desk staff, 12 hours per day
+
+      return {
+        checkIns,
+        checkOuts,
+        paidHours,
+        productivity: paidHours > 0 ? (checkIns + checkOuts) / paidHours : 0
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Calculate risk metrics
    */
   static async calculateRiskMetrics(hotelId, startDate, endDate) {
-    const bookingStats = await Booking.aggregate([
-      {
-        $match: {
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          createdAt: { $gte: startDate, $lte: endDate }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          totalBookings: { $sum: 1 },
-          confirmedBookings: {
-            $sum: { $cond: [{ $eq: ['$status', 'confirmed'] }, 1, 0] }
-          },
-          cancelledBookings: {
-            $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] }
-          },
-          noShowBookings: {
-            $sum: { $cond: [{ $eq: ['$status', 'no_show'] }, 1, 0] }
+    try {
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const bookingStats = await Booking.aggregate([
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            createdAt: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalBookings: { $sum: 1 },
+            confirmedBookings: {
+              $sum: { $cond: [{ $eq: ['$status', 'confirmed'] }, 1, 0] }
+            },
+            cancelledBookings: {
+              $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0] }
+            },
+            noShowBookings: {
+              $sum: { $cond: [{ $eq: ['$status', 'no_show'] }, 1, 0] }
+            }
           }
         }
-      }
-    ]);
+      ]);
 
-    const stats = bookingStats[0] || {
-      totalBookings: 0,
-      confirmedBookings: 0,
-      cancelledBookings: 0,
-      noShowBookings: 0
-    };
+      const stats = bookingStats[0] || {
+        totalBookings: 0,
+        confirmedBookings: 0,
+        cancelledBookings: 0,
+        noShowBookings: 0
+      };
 
-    // Calculate guest satisfaction from reviews
-    const reviewStats = await Review.aggregate([
-      {
-        $match: {
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          createdAt: { $gte: startDate, $lte: endDate }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          averageRating: { $avg: '$rating' },
-          totalReviews: { $sum: 1 },
-          fiveStarReviews: {
-            $sum: { $cond: [{ $eq: ['$rating', 5] }, 1, 0] }
+      // Calculate guest satisfaction from reviews
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const reviewStats = await Review.aggregate([
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            createdAt: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            averageRating: { $avg: '$rating' },
+            totalReviews: { $sum: 1 },
+            fiveStarReviews: {
+              $sum: { $cond: [{ $eq: ['$rating', 5] }, 1, 0] }
+            }
           }
         }
-      }
-    ]);
+      ]);
 
-    const reviewData = reviewStats[0] || {
-      averageRating: 0,
-      totalReviews: 0,
-      fiveStarReviews: 0
-    };
+      const reviewData = reviewStats[0] || {
+        averageRating: 0,
+        totalReviews: 0,
+        fiveStarReviews: 0
+      };
 
-    return {
-      noShowRate: stats.confirmedBookings > 0 ? (stats.noShowBookings / stats.confirmedBookings) * 100 : 0,
-      cancellationRate: stats.totalBookings > 0 ? (stats.cancelledBookings / stats.totalBookings) * 100 : 0,
-      guestSatisfaction: {
-        averageRating: reviewData.averageRating || 0,
-        npsScore: this.calculateNPS(reviewData.averageRating || 0),
-        fiveStarPercentage: reviewData.totalReviews > 0 ? (reviewData.fiveStarReviews / reviewData.totalReviews) * 100 : 0
-      }
-    };
+      return {
+        noShowRate: stats.confirmedBookings > 0 ? (stats.noShowBookings / stats.confirmedBookings) * 100 : 0,
+        cancellationRate: stats.totalBookings > 0 ? (stats.cancelledBookings / stats.totalBookings) * 100 : 0,
+        guestSatisfaction: {
+          averageRating: reviewData.averageRating || 0,
+          npsScore: this.calculateNPS(reviewData.averageRating || 0),
+          fiveStarPercentage: reviewData.totalReviews > 0 ? (reviewData.fiveStarReviews / reviewData.totalReviews) * 100 : 0
+        }
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Calculate floor-wise metrics
    */
   static async calculateFloorMetrics(hotelId, startDate, endDate) {
-    const floorData = await Room.aggregate([
-      {
-        $match: {
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          isActive: true
-        }
-      },
-      {
-        $lookup: {
-          from: 'bookings',
-          let: { roomId: '$_id' },
-          pipeline: [
-            {
-              $match: {
-                $expr: { $in: ['$$roomId', '$rooms.roomId'] },
-                status: { $in: ['confirmed', 'checked_in', 'checked_out'] },
-                $or: [
-                  { checkIn: { $gte: startDate, $lte: endDate } },
-                  { checkOut: { $gte: startDate, $lte: endDate } },
-                  { checkIn: { $lte: startDate }, checkOut: { $gte: endDate } }
-                ]
-              }
-            }
-          ],
-          as: 'bookings'
-        }
-      },
-      {
-        $group: {
-          _id: '$floor',
-          roomRevenue: {
-            $sum: {
-              $reduce: {
-                input: '$bookings',
-                initialValue: 0,
-                in: { $add: ['$$value', '$$this.totalAmount'] }
-              }
-            }
-          },
-          roomCount: { $sum: 1 }
-        }
-      }
-    ]);
+    try {
+      // Consider caching this aggregation result for 5 minutes
 
-    return floorData.map(floor => ({
-      floor: floor._id,
-      roomRevenue: floor.roomRevenue || 0,
-      directCosts: this.estimateFloorDirectCosts(floor.roomRevenue),
-      allocatedOverheads: this.estimateFloorOverheads(floor.roomRevenue),
-      floorProfit: 0 // Will be calculated in pre-save middleware
-    }));
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const floorData = await Room.aggregate([
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            isActive: true
+          }
+        },
+        {
+          $lookup: {
+            from: 'bookings',
+            let: { roomId: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: { $in: ['$$roomId', '$rooms.roomId'] },
+                  status: { $in: ['confirmed', 'checked_in', 'checked_out'] },
+                  $or: [
+                    { checkIn: { $gte: startDate, $lte: endDate } },
+                    { checkOut: { $gte: startDate, $lte: endDate } },
+                    { checkIn: { $lte: startDate }, checkOut: { $gte: endDate } }
+                  ]
+                }
+              }
+            ],
+            as: 'bookings'
+          }
+        },
+        {
+          $group: {
+            _id: '$floor',
+            roomRevenue: {
+              $sum: {
+                $reduce: {
+                  input: '$bookings',
+                  initialValue: 0,
+                  in: { $add: ['$$value', '$$this.totalAmount'] }
+                }
+              }
+            },
+            roomCount: { $sum: 1 }
+          }
+        }
+      ]);
+
+      return floorData.map(floor => ({
+        floor: floor._id,
+        roomRevenue: floor.roomRevenue || 0,
+        directCosts: this.estimateFloorDirectCosts(floor.roomRevenue),
+        allocatedOverheads: this.estimateFloorOverheads(floor.roomRevenue),
+        floorProfit: 0 // Will be calculated in pre-save middleware
+      }));
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Calculate operating expenses
    */
   static async calculateOperatingExpenses(hotelId, startDate, endDate) {
-    // This would typically come from accounting system
-    // For now, we'll estimate based on revenue percentages
-    const revenueData = await this.calculateRevenueMetrics(hotelId, startDate, endDate);
-    const totalRevenue = revenueData.totalRevenue;
+    try {
+      // This would typically come from accounting system
+      // For now, we'll estimate based on revenue percentages
+      const revenueData = await this.calculateRevenueMetrics(hotelId, startDate, endDate);
+      const totalRevenue = revenueData.totalRevenue;
 
-    return {
-      operatingExpenses: totalRevenue * 0.65, // Estimate 65% of revenue as operating expenses
-      roomDirectCosts: totalRevenue * 0.15    // Estimate 15% as direct room costs
-    };
+      return {
+        operatingExpenses: totalRevenue * 0.65, // Estimate 65% of revenue as operating expenses
+        roomDirectCosts: totalRevenue * 0.15    // Estimate 15% as direct room costs
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

@@ -133,57 +133,85 @@ class WaitlistService {
 
   // Get active waitlist with filtering and pagination
   async getActiveWaitlist(filters: WaitlistFilters = {}) {
-    const queryParams = new URLSearchParams();
+    try {
+      const queryParams = new URLSearchParams();
 
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        queryParams.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          queryParams.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`${this.baseUrl}?${queryParams}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}?${queryParams}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Create new waitlist entry
   async createWaitlistEntry(entryData: CreateWaitlistEntry) {
-    const response = await api.post(this.baseUrl, entryData);
-    return response.data;
+    try {
+      const response = await api.post(this.baseUrl, entryData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get specific waitlist entry
   async getWaitlistEntry(id: string) {
-    const response = await api.get(`${this.baseUrl}/${id}`);
-    return response.data;
+    try {
+      const response = await api.get(`${this.baseUrl}/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Update waitlist entry
   async updateWaitlistEntry(id: string, updateData: Partial<WaitlistEntry>) {
-    const response = await api.patch(`${this.baseUrl}/${id}`, updateData);
-    return response.data;
+    try {
+      const response = await api.patch(`${this.baseUrl}/${id}`, updateData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Process waitlist matches
   async processWaitlistMatches(forceRefresh: boolean = false) {
-    const response = await api.post(`${this.baseUrl}/process-matches`, {
-      forceRefresh
-    });
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseUrl}/process-matches`, {
+        forceRefresh
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get waitlist analytics
   async getWaitlistAnalytics(period: 'day' | 'week' | 'month' = 'month') {
-    const response = await api.get(`${this.baseUrl}/analytics?period=${period}`);
-    return response.data.data.analytics;
+    try {
+      const response = await api.get(`${this.baseUrl}/analytics?period=${period}`);
+      return response.data.data.analytics;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Handle match action (confirm, decline, contact)
   async handleMatchAction(waitlistId: string, matchId: string, action: 'confirm' | 'decline' | 'contact', notes?: string) {
-    const response = await api.post(`${this.baseUrl}/${waitlistId}/match/${matchId}/action`, {
-      action,
-      notes
-    });
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseUrl}/${waitlistId}/match/${matchId}/action`, {
+        action,
+        notes
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Add contact history
@@ -192,20 +220,32 @@ class WaitlistService {
     status: 'attempted' | 'successful' | 'failed' | 'no_response';
     notes?: string;
   }) {
-    const response = await api.post(`${this.baseUrl}/${waitlistId}/contact`, contactData);
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseUrl}/${waitlistId}/contact`, contactData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Find match candidates
   async findMatchCandidates(criteria: MatchCandidatesRequest) {
-    const response = await api.post(`${this.baseUrl}/find-candidates`, criteria);
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseUrl}/find-candidates`, criteria);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Process expired entries
   async processExpiredEntries() {
-    const response = await api.post(`${this.baseUrl}/process-expired`);
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseUrl}/process-expired`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Helper methods for status management
@@ -246,12 +286,16 @@ class WaitlistService {
   }
 
   async bulkProcessMatches(ids: string[]) {
-    // Process matches for specific waitlist entries
-    // This would require backend support for bulk operations
-    const response = await api.post(`${this.baseUrl}/bulk/process-matches`, {
-      waitlistIds: ids
-    });
-    return response.data;
+    try {
+      // Process matches for specific waitlist entries
+      // This would require backend support for bulk operations
+      const response = await api.post(`${this.baseUrl}/bulk/process-matches`, {
+        waitlistIds: ids
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Real-time updates (if WebSocket is available)
@@ -324,28 +368,32 @@ class WaitlistService {
 
   // Export/Import functionality
   async exportWaitlist(filters: WaitlistFilters = {}, format: 'csv' | 'excel' = 'csv') {
-    const queryParams = new URLSearchParams();
-    queryParams.append('format', format);
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append('format', format);
 
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        queryParams.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          queryParams.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`${this.baseUrl}/export?${queryParams}`, {
-      responseType: 'blob'
-    });
+      const response = await api.get(`${this.baseUrl}/export?${queryParams}`, {
+        responseType: 'blob'
+      });
 
-    // Create download link
-    const url = window.URL.createObjectURL(new Blob([response.data]));
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `waitlist-export-${new Date().toISOString().split('T')[0]}.${format}`);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(url);
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `waitlist-export-${new Date().toISOString().split('T')[0]}.${format}`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Validation helpers

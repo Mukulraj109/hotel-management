@@ -47,7 +47,7 @@ class POSAttributeController {
     const existingAttribute = await POSAttribute.findOne({
       hotelId: req.user.hotelId,
       name: { $regex: new RegExp(`^${name}$`, 'i') }
-    });
+    }).lean();
 
     if (existingAttribute) {
       return next(new ApplicationError('Attribute with this name already exists', 409));
@@ -137,7 +137,7 @@ class POSAttributeController {
       .populate('createdBy updatedBy', 'firstName lastName email')
       .sort(sortOptions)
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit)).lean();
 
     const total = await POSAttribute.countDocuments(filter);
 
@@ -163,7 +163,7 @@ class POSAttributeController {
       hotelId: req.user.hotelId
     })
       .populate('createdBy updatedBy', 'firstName lastName email')
-      .populate('values.attributeValueId', 'name displayName value priceModifier');
+      .populate('values.attributeValueId', 'name displayName value priceModifier').lean();
 
     if (!attribute) {
       return next(new ApplicationError('POS attribute not found', 404));
@@ -184,7 +184,7 @@ class POSAttributeController {
     const attribute = await POSAttribute.findOne({
       _id: req.params.id,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!attribute) {
       return next(new ApplicationError('POS attribute not found', 404));
@@ -196,7 +196,7 @@ class POSAttributeController {
         hotelId: req.user.hotelId,
         name: { $regex: new RegExp(`^${req.body.name}$`, 'i') },
         _id: { $ne: req.params.id }
-      });
+      }).lean();
 
       if (existingAttribute) {
         return next(new ApplicationError('Attribute with this name already exists', 409));
@@ -234,7 +234,7 @@ class POSAttributeController {
     const attribute = await POSAttribute.findOne({
       _id: req.params.id,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!attribute) {
       return next(new ApplicationError('POS attribute not found', 404));
@@ -367,7 +367,7 @@ class POSAttributeController {
     const attribute = await POSAttribute.findOne({
       _id: attributeId,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!attribute) {
       return next(new ApplicationError('POS attribute not found', 404));
@@ -401,7 +401,7 @@ class POSAttributeController {
     const attribute = await POSAttribute.findOne({
       _id: attributeId,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!attribute) {
       return next(new ApplicationError('POS attribute not found', 404));
@@ -434,7 +434,7 @@ class POSAttributeController {
     const attribute = await POSAttribute.findOne({
       _id: attributeId,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!attribute) {
       return next(new ApplicationError('POS attribute not found', 404));

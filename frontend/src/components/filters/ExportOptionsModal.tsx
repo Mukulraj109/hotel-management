@@ -122,7 +122,7 @@ const ExportOptionsModal: React.FC<ExportOptionsModalProps> = ({
               <Download className="h-5 w-5 text-indigo-600" />
               <h2 className="text-lg font-semibold text-gray-900">Export Options</h2>
             </div>
-            <button
+            <button aria-label="Close"
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600 transition-colors"
             >
@@ -139,7 +139,7 @@ const ExportOptionsModal: React.FC<ExportOptionsModalProps> = ({
               {formatOptions.map((format) => {
                 const Icon = format.icon;
                 return (
-                  <button
+                  <button aria-label="Favorite"
                     key={format.value}
                     onClick={() => updateOptions({ format: format.value as ExportOptions['format'] })}
                     className={`p-4 text-left border rounded-lg transition-colors ${
@@ -341,7 +341,7 @@ const ExportOptionsModal: React.FC<ExportOptionsModalProps> = ({
               >
                 Cancel
               </button>
-              <button
+              <button aria-label="Download"
                 onClick={handleExport}
                 disabled={loading || !options.fileName?.trim()}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"

@@ -98,14 +98,14 @@ router.post('/',
     // Get default hotel if no hotelId provided
     let targetHotelId = hotelId;
     if (!targetHotelId) {
-      const defaultHotel = await Hotel.findOne().sort({ createdAt: 1 });
+      const defaultHotel = await Hotel.findOne().sort({ createdAt: 1 }).lean();
       if (!defaultHotel) {
         throw new ApplicationError('No hotel found to send message to', 500);
       }
       targetHotelId = defaultHotel._id;
     } else {
       // Verify hotel exists
-      const hotel = await Hotel.findById(targetHotelId);
+      const hotel = await Hotel.findById(targetHotelId).lean();
       if (!hotel) {
         throw new ApplicationError('Hotel not found', 404);
       }
@@ -116,7 +116,7 @@ router.post('/',
       hotelId: targetHotelId,
       role: { $in: ['admin', 'staff'] }
     }).select('name email')
-      .limit(50);
+      .limit(50).lean();
 
     if (hotelStaff.length === 0) {
       throw new ApplicationError('No hotel staff found to receive the message', 500);

@@ -65,9 +65,13 @@ class CacheService {
   }
 
   async disconnect() {
-    if (this.client) {
-      await this.client.quit();
-      this.connected = false;
+    try {
+      if (this.client) {
+        await this.client.quit();
+        this.connected = false;
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -179,53 +183,65 @@ class CacheService {
 
   // Cache invalidation strategies
   async invalidateUser(userId) {
-    const patterns = [
-      `user:${userId}:*`,
-      `booking:user:${userId}:*`,
-      `profile:${userId}:*`
-    ];
+    try {
+      const patterns = [
+        `user:${userId}:*`,
+        `booking:user:${userId}:*`,
+        `profile:${userId}:*`
+      ];
 
-    let totalDeleted = 0;
-    for (const pattern of patterns) {
-      totalDeleted += await this.delPattern(pattern);
+      let totalDeleted = 0;
+      for (const pattern of patterns) {
+        totalDeleted += await this.delPattern(pattern);
+      }
+
+      logger.info(`Invalidated ${totalDeleted} cache entries for user ${userId}`);
+      return totalDeleted;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    logger.info(`Invalidated ${totalDeleted} cache entries for user ${userId}`);
-    return totalDeleted;
   }
 
   async invalidateHotel(hotelId) {
-    const patterns = [
-      `hotel:${hotelId}:*`,
-      `room:hotel:${hotelId}:*`,
-      `booking:hotel:${hotelId}:*`,
-      `dashboard:hotel:${hotelId}:*`,
-      `analytics:hotel:${hotelId}:*`
-    ];
+    try {
+      const patterns = [
+        `hotel:${hotelId}:*`,
+        `room:hotel:${hotelId}:*`,
+        `booking:hotel:${hotelId}:*`,
+        `dashboard:hotel:${hotelId}:*`,
+        `analytics:hotel:${hotelId}:*`
+      ];
 
-    let totalDeleted = 0;
-    for (const pattern of patterns) {
-      totalDeleted += await this.delPattern(pattern);
+      let totalDeleted = 0;
+      for (const pattern of patterns) {
+        totalDeleted += await this.delPattern(pattern);
+      }
+
+      logger.info(`Invalidated ${totalDeleted} cache entries for hotel ${hotelId}`);
+      return totalDeleted;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    logger.info(`Invalidated ${totalDeleted} cache entries for hotel ${hotelId}`);
-    return totalDeleted;
   }
 
   async invalidateBooking(bookingId) {
-    const patterns = [
-      `booking:${bookingId}:*`,
-      `booking:user:*:${bookingId}:*`,
-      `booking:hotel:*:${bookingId}:*`
-    ];
+    try {
+      const patterns = [
+        `booking:${bookingId}:*`,
+        `booking:user:*:${bookingId}:*`,
+        `booking:hotel:*:${bookingId}:*`
+      ];
 
-    let totalDeleted = 0;
-    for (const pattern of patterns) {
-      totalDeleted += await this.delPattern(pattern);
+      let totalDeleted = 0;
+      for (const pattern of patterns) {
+        totalDeleted += await this.delPattern(pattern);
+      }
+
+      logger.info(`Invalidated ${totalDeleted} cache entries for booking ${bookingId}`);
+      return totalDeleted;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    logger.info(`Invalidated ${totalDeleted} cache entries for booking ${bookingId}`);
-    return totalDeleted;
   }
 
   /**
@@ -235,24 +251,28 @@ class CacheService {
    * @returns {Promise<Number>} Number of keys deleted
    */
   async invalidateProperty(propertyId) {
-    if (!this.connected || !this.client) {
-      return 0;
+    try {
+      if (!this.connected || !this.client) {
+        return 0;
+      }
+
+      const patterns = [
+        `property:${propertyId}:*`,
+        `inheritance:${propertyId}:*`,
+        `settings:${propertyId}:*`,
+        `api:*propertyId=${propertyId}*`
+      ];
+
+      let totalDeleted = 0;
+      for (const pattern of patterns) {
+        totalDeleted += await this.delPattern(pattern);
+      }
+
+      logger.info(`Invalidated ${totalDeleted} cache entries for property ${propertyId}`);
+      return totalDeleted;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    const patterns = [
-      `property:${propertyId}:*`,
-      `inheritance:${propertyId}:*`,
-      `settings:${propertyId}:*`,
-      `api:*propertyId=${propertyId}*`
-    ];
-
-    let totalDeleted = 0;
-    for (const pattern of patterns) {
-      totalDeleted += await this.delPattern(pattern);
-    }
-
-    logger.info(`Invalidated ${totalDeleted} cache entries for property ${propertyId}`);
-    return totalDeleted;
   }
 
   /**
@@ -261,22 +281,26 @@ class CacheService {
    * @returns {Promise<Number>} Number of keys deleted
    */
   async invalidateGroup(groupId) {
-    if (!this.connected || !this.client) {
-      return 0;
+    try {
+      if (!this.connected || !this.client) {
+        return 0;
+      }
+
+      const patterns = [
+        `group:${groupId}:*`,
+        `api:*groupId=${groupId}*`
+      ];
+
+      let totalDeleted = 0;
+      for (const pattern of patterns) {
+        totalDeleted += await this.delPattern(pattern);
+      }
+
+      logger.info(`Invalidated ${totalDeleted} cache entries for group ${groupId}`);
+      return totalDeleted;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    const patterns = [
-      `group:${groupId}:*`,
-      `api:*groupId=${groupId}*`
-    ];
-
-    let totalDeleted = 0;
-    for (const pattern of patterns) {
-      totalDeleted += await this.delPattern(pattern);
-    }
-
-    logger.info(`Invalidated ${totalDeleted} cache entries for group ${groupId}`);
-    return totalDeleted;
   }
 
   /**
@@ -285,16 +309,20 @@ class CacheService {
    * @returns {Promise<Number>} Total keys deleted
    */
   async invalidateProperties(propertyIds) {
-    if (!this.connected || !this.client) {
-      return 0;
-    }
+    try {
+      if (!this.connected || !this.client) {
+        return 0;
+      }
 
-    let totalDeleted = 0;
-    for (const propertyId of propertyIds) {
-      totalDeleted += await this.invalidateProperty(propertyId);
-    }
+      let totalDeleted = 0;
+      for (const propertyId of propertyIds) {
+        totalDeleted += await this.invalidateProperty(propertyId);
+      }
 
-    return totalDeleted;
+      return totalDeleted;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -302,23 +330,27 @@ class CacheService {
    * @returns {Promise<Number>} Number of keys deleted
    */
   async invalidateAllSettings() {
-    if (!this.connected || !this.client) {
-      return 0;
+    try {
+      if (!this.connected || !this.client) {
+        return 0;
+      }
+
+      const patterns = [
+        'settings:*',
+        'inheritance:*',
+        'api:*settings*'
+      ];
+
+      let totalDeleted = 0;
+      for (const pattern of patterns) {
+        totalDeleted += await this.delPattern(pattern);
+      }
+
+      logger.info(`Invalidated ${totalDeleted} settings cache entries`);
+      return totalDeleted;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    const patterns = [
-      'settings:*',
-      'inheritance:*',
-      'api:*settings*'
-    ];
-
-    let totalDeleted = 0;
-    for (const pattern of patterns) {
-      totalDeleted += await this.delPattern(pattern);
-    }
-
-    logger.info(`Invalidated ${totalDeleted} settings cache entries`);
-    return totalDeleted;
   }
 
   /**
@@ -329,19 +361,23 @@ class CacheService {
    * @returns {Promise<any>} Cached or computed value
    */
   async getOrSet(key, computeFn, ttl = 300) {
-    // Try to get from cache
-    const cached = await this.get(key);
-    if (cached !== null) {
-      return cached;
+    try {
+      // Try to get from cache
+      const cached = await this.get(key);
+      if (cached !== null) {
+        return cached;
+      }
+
+      // Not in cache, compute value
+      const value = await computeFn();
+
+      // Cache the result
+      await this.set(key, value, ttl);
+
+      return value;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Not in cache, compute value
-    const value = await computeFn();
-
-    // Cache the result
-    await this.set(key, value, ttl);
-
-    return value;
   }
 
   // Cache middleware

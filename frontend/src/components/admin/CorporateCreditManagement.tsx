@@ -16,6 +16,7 @@ import { BarChart } from '../dashboard/charts/BarChart';
 import { DonutChart } from '../dashboard/charts/PieChart';
 import { formatCurrency, formatDate, formatPercent } from '../../utils/formatters';
 import { corporateService } from '../../services/corporateService';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface CreditTransaction {
   _id: string;
@@ -1013,4 +1014,4 @@ const RejectTransactionModal: React.FC<{
   );
 };
 
-export default CorporateCreditManagement;
+export default withErrorBoundary(CorporateCreditManagement, { level: 'component' });

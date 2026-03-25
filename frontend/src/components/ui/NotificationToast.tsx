@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef} from 'react';
 import { createPortal } from 'react-dom';
 
 interface NotificationToastProps {
@@ -26,6 +26,15 @@ const NotificationToast: React.FC<NotificationToastProps> = ({
 }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isLeaving, setIsLeaving] = useState(false);
+  const isLoading = !isVisible && !isLeaving;
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     // Trigger animation on mount
@@ -47,7 +56,8 @@ const NotificationToast: React.FC<NotificationToastProps> = ({
 
   const handleClose = () => {
     setIsLeaving(true);
-    setTimeout(() => onClose(id), 300); // Wait for animation to complete
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => onClose(id), 300); // Wait for animation to complete
   };
 
   const getToastStyles = () => {
@@ -121,7 +131,7 @@ const NotificationToast: React.FC<NotificationToastProps> = ({
           {actions && actions.length > 0 && (
             <div className="mt-3 flex space-x-2">
               {actions.map((action, index) => (
-                <button
+                <button aria-label="Close"
                   key={`actions-${index}-${action.label}`}
                   onClick={action.onClick}
                   className={`

@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { RoomSetupWizard } from './RoomSetupWizard';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface EditPropertyModalProps {
   isOpen: boolean;
@@ -996,7 +997,7 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
                     <label className="block text-sm font-semibold text-gray-800 mb-4">Quick Add Amenities</label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                       {COMMON_AMENITIES.map(amenity => (
-                        <button
+                        <button aria-label="Add"
                           key={amenity}
                           type="button"
                           onClick={() => handleAddAmenity(amenity)}
@@ -1056,7 +1057,7 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
                             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl shadow-md"
                           >
                             <span className="font-medium">{amenity}</span>
-                            <button
+                            <button aria-label="Delete"
                               type="button"
                               onClick={() => handleRemoveAmenity(amenity)}
                               className="hover:bg-white/20 rounded-full p-1 transition-colors"
@@ -1260,3 +1261,5 @@ export const EditPropertyModal: React.FC<EditPropertyModalProps> = ({
     </Dialog>
   );
 };
+
+export default withErrorBoundary(EditPropertyModal, { level: 'component' });

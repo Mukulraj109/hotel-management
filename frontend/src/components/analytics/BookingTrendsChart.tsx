@@ -215,7 +215,7 @@ const BookingTrendsChart: React.FC<BookingTrendsChartProps> = ({
         {/* Time Range Selector */}
         <div className="flex bg-gray-100 rounded-lg p-1">
           {(['week', 'month', 'quarter', 'year'] as const).map((range) => (
-            <button
+            <button aria-label="Close"
               key={range}
               onClick={() => onTimeRangeChange(range)}
               className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
@@ -235,7 +235,7 @@ const BookingTrendsChart: React.FC<BookingTrendsChartProps> = ({
         {(['bookings', 'revenue', 'guests', 'rate'] as const).map((metric) => {
           const Icon = getMetricIcon(metric);
           return (
-            <button
+            <button aria-label="Close"
               key={metric}
               onClick={() => setActiveMetric(metric)}
               className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${

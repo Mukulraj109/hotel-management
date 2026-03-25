@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import DOMPurify from 'dompurify';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
@@ -110,6 +110,14 @@ const BillMessagePreview: React.FC<BillMessagePreviewProps> = ({
   const [processedContent, setProcessedContent] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const processingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (processingTimerRef.current) clearTimeout(processingTimerRef.current);
+    };
+  }, []);
 
   // Sample variable mappings for preview
   const variableMap: Record<string, string> = {
@@ -165,10 +173,11 @@ const BillMessagePreview: React.FC<BillMessagePreviewProps> = ({
       setIsProcessing(true);
       
       // Simulate processing delay
-      setTimeout(() => {
+      if (processingTimerRef.current) clearTimeout(processingTimerRef.current);
+      processingTimerRef.current = setTimeout(() => {
         const processed = processTemplate(message.template.content);
         const errors = validateTemplate(message.template.content);
-        
+
         setProcessedContent(processed);
         setValidationErrors(errors);
         setIsProcessing(false);

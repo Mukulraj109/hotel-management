@@ -109,7 +109,7 @@ class GuestServicePOSIntegrationService {
         const roomServiceOutlet = await POSOutlet.findOne({
           type: 'room_service',
           isActive: true
-        });
+        }).lean();
         if (roomServiceOutlet) return roomServiceOutlet;
       }
 
@@ -117,11 +117,11 @@ class GuestServicePOSIntegrationService {
       const mainRestaurant = await POSOutlet.findOne({
         type: 'restaurant',
         isActive: true
-      });
+      }).lean();
       if (mainRestaurant) return mainRestaurant;
 
       // Last resort - any active outlet
-      const anyOutlet = await POSOutlet.findOne({ isActive: true });
+      const anyOutlet = await POSOutlet.findOne({ isActive: true }).lean();
       return anyOutlet;
 
     } catch (error) {
@@ -138,57 +138,61 @@ class GuestServicePOSIntegrationService {
    * @returns {Object} Prepared order data
    */
   async prepareOrderData(serviceRequest, outlet, options = {}) {
-    const orderData = {
-      orderId: uuidv4(),
-      outlet: outlet._id,
-      type: 'room_service',
-      status: 'pending',
+    try {
+      const orderData = {
+        orderId: uuidv4(),
+        outlet: outlet._id,
+        type: 'room_service',
+        status: 'pending',
 
-      // Customer information
-      customer: {},
+        // Customer information
+        customer: {},
 
-      // Items from service request
-      items: this.formatItemsForPOS(serviceRequest.items || []),
+        // Items from service request
+        items: this.formatItemsForPOS(serviceRequest.items || []),
 
-      // Payment defaults for room service
-      payment: {
-        method: 'room_charge',
-        status: 'pending'
-      },
+        // Payment defaults for room service
+        payment: {
+          method: 'room_charge',
+          status: 'pending'
+        },
 
-      // Special instructions
-      specialRequests: serviceRequest.specialInstructions || serviceRequest.description,
+        // Special instructions
+        specialRequests: serviceRequest.specialInstructions || serviceRequest.description,
 
-      // Link to original service request
-      serviceRequestId: serviceRequest._id,
+        // Link to original service request
+        serviceRequestId: serviceRequest._id,
 
-      // Delivery details for room service
-      deliveryDetails: {},
+        // Delivery details for room service
+        deliveryDetails: {},
 
-      // Default discounts array
-      discounts: [],
+        // Default discounts array
+        discounts: [],
 
-      // Staff assignment
-      staff: {
-        server: serviceRequest.assignedTo
-      }
-    };
+        // Staff assignment
+        staff: {
+          server: serviceRequest.assignedTo
+        }
+      };
 
-    // Set customer information
-    if (serviceRequest.userId) {
-      orderData.customer.guest = serviceRequest.userId._id || serviceRequest.userId;
+      // Set customer information
+      if (serviceRequest.userId) {
+        orderData.customer.guest = serviceRequest.userId._id || serviceRequest.userId;
 
-      // Try to get room number from booking
-      if (serviceRequest.bookingId && serviceRequest.bookingId.rooms && serviceRequest.bookingId.rooms.length > 0) {
-        const room = serviceRequest.bookingId.rooms[0];
-        if (room.roomId && room.roomId.roomNumber) {
-          orderData.customer.roomNumber = room.roomId.roomNumber;
-          orderData.deliveryDetails.address = `Room ${room.roomId.roomNumber}`;
+        // Try to get room number from booking
+        if (serviceRequest.bookingId && serviceRequest.bookingId.rooms && serviceRequest.bookingId.rooms.length > 0) {
+          const room = serviceRequest.bookingId.rooms[0];
+          if (room.roomId && room.roomId.roomNumber) {
+            orderData.customer.roomNumber = room.roomId.roomNumber;
+            orderData.deliveryDetails.address = `Room ${room.roomId.roomNumber}`;
+          }
         }
       }
-    }
 
-    return orderData;
+      return orderData;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -293,12 +297,16 @@ class GuestServicePOSIntegrationService {
    * @returns {string} Generated order number
    */
   async generateOrderNumber() {
-    const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
-    const count = await POSOrder.countDocuments({
-      orderNumber: new RegExp(`^${dateStr}`)
-    });
-    return `${dateStr}${(count + 1).toString().padStart(4, '0')}`;
+    try {
+      const today = new Date();
+      const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+      const count = await POSOrder.countDocuments({
+        orderNumber: new RegExp(`^${dateStr}`)
+      });
+      return `${dateStr}${(count + 1).toString().padStart(4, '0')}`;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

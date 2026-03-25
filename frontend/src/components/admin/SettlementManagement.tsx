@@ -4,6 +4,7 @@ import { bookingEditingService } from '../../services/bookingEditingService';
 import { Modal } from '../ui/Modal';
 import { SettlementPayment } from '../payments/SettlementPayment';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface Settlement {
   _id: string;
@@ -123,7 +124,7 @@ const SettlementRowInfo = React.memo(({ settlement }: { settlement: Settlement }
 ));
 SettlementRowInfo.displayName = 'SettlementRowInfo';
 
-export function SettlementManagement() {
+function SettlementManagement() {
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [analytics, setAnalytics] = useState<SettlementAnalytics | null>(null);
   const [overdueSettlements, setOverdueSettlements] = useState<Settlement[]>([]);
@@ -502,7 +503,7 @@ export function SettlementManagement() {
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2">
           <AlertTriangle className="w-5 h-5" />
           {error}
-          <button onClick={() => setError(null)} className="ml-auto text-red-600 hover:text-red-800">×</button>
+          <button aria-label="Close" onClick={() => setError(null)} className="ml-auto text-red-600 hover:text-red-800">×</button>
         </div>
       )}
 
@@ -554,7 +555,7 @@ export function SettlementManagement() {
                     <SettlementRowInfo settlement={settlement} />
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <button
+                        <button aria-label="View"
                           onClick={() => {
                             setSelectedSettlement(settlement);
                             setIsDetailsModalOpen(true);
@@ -567,7 +568,7 @@ export function SettlementManagement() {
 
                         {settlement.outstandingBalance > 0 && (
                           <>
-                            <button
+                            <button aria-label="Add"
                               onClick={() => {
                                 setSelectedSettlement(settlement);
                                 setIsPaymentModalOpen(true);
@@ -577,7 +578,7 @@ export function SettlementManagement() {
                             >
                               <DollarSign className="w-4 h-4" />
                             </button>
-                            <button
+                            <button aria-label="Edit"
                               onClick={() => {
                                 setSettlementForPayment(settlement);
                                 setShowPaymentModal(true);
@@ -590,7 +591,7 @@ export function SettlementManagement() {
                           </>
                         )}
 
-                        <button
+                        <button aria-label="Send"
                           onClick={() => {
                             setSelectedSettlement(settlement);
                             setIsCommunicationModalOpen(true);
@@ -602,7 +603,7 @@ export function SettlementManagement() {
                         </button>
 
                         {settlement.status !== 'completed' && settlement.escalationLevel < 5 && (
-                          <button
+                          <button aria-label="Close"
                             onClick={() => escalateSettlement(settlement)}
                             className="text-orange-600 hover:text-orange-800"
                             title="Escalate"
@@ -638,6 +639,7 @@ export function SettlementManagement() {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               min="0"
               step="0.01"
+              required
             />
           </div>
 
@@ -647,6 +649,7 @@ export function SettlementManagement() {
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              required
             >
               <option value="">Select method</option>
               <option value="cash">Cash</option>
@@ -686,7 +689,7 @@ export function SettlementManagement() {
             >
               Cancel
             </button>
-            <button
+            <button aria-label="Add"
               onClick={handlePaymentSubmit}
               disabled={isProcessingPayment || !paymentAmount || !paymentMethod}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
@@ -739,6 +742,7 @@ export function SettlementManagement() {
               placeholder="Communication message"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               rows={5}
+              required
             />
           </div>
 
@@ -749,7 +753,7 @@ export function SettlementManagement() {
             >
               Cancel
             </button>
-            <button
+            <button aria-label="Send"
               onClick={handleCommunicationSubmit}
               disabled={isSendingCommunication || !communicationMessage}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
@@ -872,7 +876,7 @@ export function SettlementManagement() {
                 >
                   Cancel
                 </button>
-                <button
+                <button aria-label="Next"
                   onClick={handleBulkPOSIntegration}
                   disabled={isIntegrating}
                   className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
@@ -889,3 +893,6 @@ export function SettlementManagement() {
     </div>
   );
 }
+
+export { SettlementManagement };
+export default withErrorBoundary(SettlementManagement, { level: 'component' });

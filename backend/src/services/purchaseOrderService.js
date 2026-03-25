@@ -27,7 +27,7 @@ class PurchaseOrderService {
       const vendor = await Vendor.findOne({
         _id: orderData.vendorId,
         hotelId: orderData.hotelId
-      });
+      }).lean();
 
       if (!vendor) {
         throw new Error('Vendor not found');
@@ -39,7 +39,7 @@ class PurchaseOrderService {
         const inventoryItems = await InventoryItem.find({
           _id: { $in: itemIds },
           hotelId: orderData.hotelId
-        });
+        }).lean().limit(1000);
 
         if (inventoryItems.length !== itemIds.length) {
           throw new Error('Some inventory items not found');
@@ -148,7 +148,7 @@ class PurchaseOrderService {
       const purchaseOrder = await PurchaseOrder.findById(orderId)
         .populate('vendorId', 'name contactInfo email')
         .populate('requestedBy', 'name email')
-        .populate('hotelId', 'name address');
+        .populate('hotelId', 'name address').lean();
 
       if (!purchaseOrder) {
         throw new Error('Purchase order not found');
@@ -265,7 +265,7 @@ class PurchaseOrderService {
    */
   async cancelPurchaseOrder(orderId, userId, reason) {
     try {
-      const purchaseOrder = await PurchaseOrder.findById(orderId);
+      const purchaseOrder = await PurchaseOrder.findById(orderId).lean();
       if (!purchaseOrder) {
         throw new Error('Purchase order not found');
       }
@@ -481,7 +481,7 @@ class PurchaseOrderService {
         status: { $nin: ['completed', 'cancelled', 'fully_received'] }
       })
       .populate('vendorId', 'name contactInfo')
-      .sort({ expectedDeliveryDate: 1 });
+      .sort({ expectedDeliveryDate: 1 }).lean().limit(1000);
 
       // Get orders due soon (within 3 days)
       const soonDueDate = new Date();
@@ -493,7 +493,7 @@ class PurchaseOrderService {
         status: { $nin: ['completed', 'cancelled', 'fully_received'] }
       })
       .populate('vendorId', 'name contactInfo')
-      .sort({ expectedDeliveryDate: 1 });
+      .sort({ expectedDeliveryDate: 1 }).lean().limit(1000);
 
       // Get orders awaiting approval
       const awaitingApproval = await PurchaseOrder.find({
@@ -501,7 +501,7 @@ class PurchaseOrderService {
         status: 'pending_approval'
       })
       .populate('requestedBy', 'name')
-      .sort({ orderDate: 1 });
+      .sort({ orderDate: 1 }).lean().limit(1000);
 
       return {
         overdue: overdueOrders,
@@ -605,7 +605,9 @@ class PurchaseOrderService {
           lastOrderDate: new Date(),
           lastContactDate: new Date()
         }
-      });
+      },
+        { new: true }
+      );
     } catch (error) {
       logger.error('Error updating vendor metrics:', error);
     }
@@ -616,22 +618,21 @@ class PurchaseOrderService {
    */
   async updateInventoryFromPO(purchaseOrder) {
     try {
-      for (const item of purchaseOrder.items) {
-        if (item.quantityReceived > 0) {
-          await InventoryItem.findByIdAndUpdate(
-            item.inventoryItemId,
-            {
-              $inc: {
-                currentStock: item.quantityReceived,
-                totalReceived: item.quantityReceived
-              },
-              $set: {
-                lastRestockDate: new Date(),
-                updatedAt: new Date()
-              }
+      // Batch: use bulkWrite to update all inventory items at once
+      const inventoryBulkOps = purchaseOrder.items
+        .filter(item => item.quantityReceived > 0)
+        .map(item => ({
+          updateOne: {
+            filter: { _id: item.inventoryItemId },
+            update: {
+              $inc: { currentStock: item.quantityReceived, totalReceived: item.quantityReceived },
+              $set: { lastRestockDate: new Date(), updatedAt: new Date() }
             }
-          );
-        }
+          }
+        }));
+
+      if (inventoryBulkOps.length > 0) {
+        await InventoryItem.bulkWrite(inventoryBulkOps);
       }
     } catch (error) {
       logger.error('Error updating inventory:', error);
@@ -758,118 +759,138 @@ class PurchaseOrderService {
    * Get overall PO statistics
    */
   async getOverallPOStats(matchQuery) {
-    const stats = await PurchaseOrder.aggregate([
-      { $match: matchQuery },
-      {
-        $group: {
-          _id: null,
-          totalOrders: { $sum: 1 },
-          totalValue: { $sum: '$grandTotal' },
-          avgOrderValue: { $avg: '$grandTotal' },
-          completedOrders: {
-            $sum: { $cond: [{ $in: ['$status', ['completed', 'fully_received']] }, 1, 0] }
+    try {
+      const stats = await PurchaseOrder.aggregate([
+        { $match: matchQuery },
+        {
+          $group: {
+            _id: null,
+            totalOrders: { $sum: 1 },
+            totalValue: { $sum: '$grandTotal' },
+            avgOrderValue: { $avg: '$grandTotal' },
+            completedOrders: {
+              $sum: { $cond: [{ $in: ['$status', ['completed', 'fully_received']] }, 1, 0] }
+            }
           }
         }
-      }
-    ]);
+      ]);
 
-    return stats[0] || { totalOrders: 0, totalValue: 0, avgOrderValue: 0, completedOrders: 0 };
+      return stats[0] || { totalOrders: 0, totalValue: 0, avgOrderValue: 0, completedOrders: 0 };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Get status breakdown
    */
   async getStatusBreakdown(matchQuery) {
-    return await PurchaseOrder.aggregate([
-      { $match: matchQuery },
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
-          totalValue: { $sum: '$grandTotal' }
-        }
-      },
-      { $sort: { count: -1 } }
-    ]);
+    try {
+      return await PurchaseOrder.aggregate([
+        { $match: matchQuery },
+        {
+          $group: {
+            _id: '$status',
+            count: { $sum: 1 },
+            totalValue: { $sum: '$grandTotal' }
+          }
+        },
+        { $sort: { count: -1 } }
+      ]);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Get department statistics
    */
   async getDepartmentStats(matchQuery) {
-    return await PurchaseOrder.aggregate([
-      { $match: matchQuery },
-      {
-        $group: {
-          _id: '$department',
-          orders: { $sum: 1 },
-          totalValue: { $sum: '$grandTotal' },
-          avgOrderValue: { $avg: '$grandTotal' }
-        }
-      },
-      { $sort: { totalValue: -1 } }
-    ]);
+    try {
+      return await PurchaseOrder.aggregate([
+        { $match: matchQuery },
+        {
+          $group: {
+            _id: '$department',
+            orders: { $sum: 1 },
+            totalValue: { $sum: '$grandTotal' },
+            avgOrderValue: { $avg: '$grandTotal' }
+          }
+        },
+        { $sort: { totalValue: -1 } }
+      ]);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Get vendor statistics
    */
   async getVendorStats(matchQuery) {
-    return await PurchaseOrder.aggregate([
-      { $match: matchQuery },
-      {
-        $lookup: {
-          from: 'vendors',
-          localField: 'vendorId',
-          foreignField: '_id',
-          as: 'vendor'
-        }
-      },
-      { $unwind: '$vendor' },
-      {
-        $group: {
-          _id: '$vendorId',
-          vendorName: { $first: '$vendor.name' },
-          orders: { $sum: 1 },
-          totalValue: { $sum: '$grandTotal' },
-          avgOrderValue: { $avg: '$grandTotal' }
-        }
-      },
-      { $sort: { totalValue: -1 } },
-      { $limit: 10 }
-    ]);
+    try {
+      return await PurchaseOrder.aggregate([
+        { $match: matchQuery },
+        {
+          $lookup: {
+            from: 'vendors',
+            localField: 'vendorId',
+            foreignField: '_id',
+            as: 'vendor'
+          }
+        },
+        { $unwind: '$vendor' },
+        {
+          $group: {
+            _id: '$vendorId',
+            vendorName: { $first: '$vendor.name' },
+            orders: { $sum: 1 },
+            totalValue: { $sum: '$grandTotal' },
+            avgOrderValue: { $avg: '$grandTotal' }
+          }
+        },
+        { $sort: { totalValue: -1 } },
+        { $limit: 10 }
+      ]);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Get PO trend data
    */
   async getPOTrendData(hotelId, period, periods) {
-    const trends = [];
-    const now = new Date();
+    try {
+      const trends = [];
+      const now = new Date();
 
-    for (let i = periods - 1; i >= 0; i--) {
-      let startDate, endDate;
+      for (let i = periods - 1; i >= 0; i--) {
+        let startDate, endDate;
 
-      if (period === 'month') {
-        startDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        endDate = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-      } else if (period === 'week') {
-        startDate = new Date(now.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
-        endDate = new Date(startDate.getTime() + (7 * 24 * 60 * 60 * 1000));
+        if (period === 'month') {
+          startDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+          endDate = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+        } else if (period === 'week') {
+          startDate = new Date(now.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
+          endDate = new Date(startDate.getTime() + (7 * 24 * 60 * 60 * 1000));
+        }
+
+        const stats = await this.getOverallPOStats({
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          orderDate: { $gte: startDate, $lte: endDate }
+        });
+
+        trends.push({
+          period: startDate.toISOString().substring(0, 7), // YYYY-MM format
+          ...stats
+        });
       }
 
-      const stats = await this.getOverallPOStats({
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        orderDate: { $gte: startDate, $lte: endDate }
-      });
-
-      trends.push({
-        period: startDate.toISOString().substring(0, 7), // YYYY-MM format
-        ...stats
-      });
+      return trends;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return trends;
   }
 
   /**

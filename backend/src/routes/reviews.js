@@ -87,14 +87,14 @@ router.post('/', authenticate, ensurePropertyAccess, catchAsync(async (req, res)
   } = req.body;
 
   // Verify hotel exists
-  const hotel = await Hotel.findById(hotelId);
+  const hotel = await Hotel.findById(hotelId).lean();
   if (!hotel) {
     throw new ApplicationError('Hotel not found', 404);
   }
 
   // Check if booking exists and belongs to user (if provided)
   if (bookingId) {
-    const booking = await Booking.findById(bookingId);
+    const booking = await Booking.findById(bookingId).lean();
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
     }
@@ -106,7 +106,7 @@ router.post('/', authenticate, ensurePropertyAccess, catchAsync(async (req, res)
     }
 
     // Check if review already exists for this booking
-    const existingReview = await Review.findOne({ bookingId });
+    const existingReview = await Review.findOne({ bookingId }).lean();
     if (existingReview) {
       throw new ApplicationError('You have already reviewed this booking', 400);
     }
@@ -116,7 +116,7 @@ router.post('/', authenticate, ensurePropertyAccess, catchAsync(async (req, res)
       hotelId, 
       userId: req.user._id,
       bookingId: { $exists: false }
-    });
+    }).lean();
     if (existingReview) {
       throw new ApplicationError('You have already reviewed this hotel', 400);
     }
@@ -311,7 +311,7 @@ router.get('/:id', catchAsync(async (req, res) => {
     .populate('hotelId', 'name address')
     .populate('userId', 'name')
     .populate('bookingId', 'bookingNumber checkIn checkOut')
-    .populate('response.respondedBy', 'name role');
+    .populate('response.respondedBy', 'name role').lean();
 
   if (!review || (!review.isPublished && review.moderationStatus !== 'approved')) {
     throw new ApplicationError('Review not found', 404);
@@ -355,7 +355,7 @@ router.get('/:id', catchAsync(async (req, res) => {
 router.post('/:id/response', authenticate, authorize('staff', 'admin'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const { content } = req.body;
   
-  const review = await Review.findById(req.params.id);
+  const review = await Review.findById(req.params.id).lean();
   if (!review) {
     throw new ApplicationError('Review not found', 404);
   }
@@ -498,7 +498,7 @@ router.post('/:id/report', catchAsync(async (req, res) => {
 router.patch('/:id/moderate', authenticate, authorize('admin'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const { status, notes } = req.body;
   
-  const review = await Review.findById(req.params.id);
+  const review = await Review.findById(req.params.id).lean();
   if (!review) {
     throw new ApplicationError('Review not found', 404);
   }

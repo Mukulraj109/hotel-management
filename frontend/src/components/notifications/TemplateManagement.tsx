@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef} from 'react';
 import {
   Plus,
   Search,
@@ -151,7 +151,8 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Settings updated for ${result.propertiesUpdated} properties`);
         setApplyToScope('single');
         // Refresh data
@@ -190,7 +191,8 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
           if (!result) return; // Confirmation dialog shown
 
           setShowSuccess(true);
-          setTimeout(() => setShowSuccess(false), 3000);
+          if (timerRef.current) clearTimeout(timerRef.current);
+          timerRef.current = setTimeout(() => setShowSuccess(false), 3000);
           toast.success(`Email templates initialized successfully${
             applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
           }`);
@@ -351,7 +353,7 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
               ))}
             </select>
 
-            <button
+            <button aria-label="Search"
               onClick={() => {
                 setSearchQuery('');
                 setCategoryFilter('');
@@ -552,7 +554,7 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
 
                   {hasPermission && (
                     <div className="flex items-center gap-2 ml-4">
-                      <button
+                      <button aria-label="Edit"
                         onClick={() => handleEditTemplate(template._id)}
                         className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                         title="Edit template"
@@ -561,7 +563,7 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
                       </button>
 
                       {!template.metadata.isSystem && (
-                        <button
+                        <button aria-label="Delete"
                           onClick={() => handleDeleteTemplate(template._id)}
                           disabled={deleteTemplateMutation.isPending}
                           className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -600,7 +602,7 @@ export const TemplateManagement: React.FC<TemplateManagementProps> = ({
                     {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
                       const pageNum = i + 1;
                       return (
-                        <button
+                        <button aria-label="Close"
                           key={pageNum}
                           onClick={() => setPage(pageNum)}
                           className={`px-3 py-1 text-sm rounded ${

@@ -98,60 +98,100 @@ export interface GroupBooking extends CreateGroupBookingData {
 
 class GroupBookingService {
   async createGroupBooking(bookingData: CreateGroupBookingData): Promise<ApiResponse<{ groupBooking: GroupBooking }>> {
-    const response = await api.post('/corporate/group-bookings', bookingData);
-    return response.data;
+    try {
+      const response = await api.post('/corporate/group-bookings', bookingData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getAllGroupBookings(filters: Record<string, unknown> = {}): Promise<ApiResponse<{ groupBookings: GroupBooking[] }>> {
-    const params = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/corporate/group-bookings?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/corporate/group-bookings?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getGroupBooking(id: string): Promise<ApiResponse<{ groupBooking: GroupBooking }>> {
-    const response = await api.get(`/corporate/group-bookings/${id}`);
-    return response.data;
+    try {
+      const response = await api.get(`/corporate/group-bookings/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateGroupBooking(id: string, updateData: Partial<CreateGroupBookingData>): Promise<ApiResponse<{ groupBooking: GroupBooking }>> {
-    const response = await api.patch(`/corporate/group-bookings/${id}`, updateData);
-    return response.data;
+    try {
+      const response = await api.patch(`/corporate/group-bookings/${id}`, updateData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async deleteGroupBooking(id: string): Promise<ApiResponse<{ message: string }>> {
-    const response = await api.delete(`/corporate/group-bookings/${id}`);
-    return response.data;
+    try {
+      const response = await api.delete(`/corporate/group-bookings/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async toggleGroupBookingStatus(id: string, status: string): Promise<ApiResponse<{ groupBooking: GroupBooking }>> {
-    const response = await api.patch(`/corporate/group-bookings/${id}/toggle-status`, { status });
-    return response.data;
+    try {
+      const response = await api.patch(`/corporate/group-bookings/${id}/toggle-status`, { status });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async confirmGroupBooking(id: string): Promise<ApiResponse<{ message: string; groupBooking: GroupBooking }>> {
-    const response = await api.post(`/corporate/group-bookings/${id}/confirm`);
-    return response.data;
+    try {
+      const response = await api.post(`/corporate/group-bookings/${id}/confirm`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async cancelGroupBooking(id: string, reason?: string, roomIndices?: number[]): Promise<ApiResponse<{ message: string; groupBooking: GroupBooking }>> {
-    const response = await api.post(`/corporate/group-bookings/${id}/cancel`, { reason, roomIndices });
-    return response.data;
+    try {
+      const response = await api.post(`/corporate/group-bookings/${id}/cancel`, { reason, roomIndices });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getUpcomingGroupBookings(days: number = 30): Promise<ApiResponse<{ groupBookings: GroupBooking[] }>> {
-    const response = await api.get(`/corporate/group-bookings/upcoming?days=${days}`);
-    return response.data;
+    try {
+      const response = await api.get(`/corporate/group-bookings/upcoming?days=${days}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateGroupBookingRoom(id: string, roomIndex: number, roomData: Partial<GroupBookingRoom>): Promise<ApiResponse<{ groupBooking: GroupBooking }>> {
-    const response = await api.patch(`/corporate/group-bookings/${id}/rooms/${roomIndex}`, roomData);
-    return response.data;
+    try {
+      const response = await api.patch(`/corporate/group-bookings/${id}/rooms/${roomIndex}`, roomData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

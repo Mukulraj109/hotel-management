@@ -12,6 +12,7 @@ import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { validate, schemas } from '../middleware/validation.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
+import { validateStatusTransition, MEETUP_TRANSITIONS } from '../utils/statusTransitions.js';
 
 const router = express.Router();
 
@@ -68,7 +69,7 @@ router.get('/admin/all', authorize('admin', 'staff', 'frontdesk'), catchAsync(as
     .populate('meetingRoomBooking.roomId', 'number type')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   const total = await MeetUpRequest.countDocuments(query);
 
@@ -395,22 +396,34 @@ router.get('/admin/analytics', authorize('admin', 'staff', 'frontdesk'), catchAs
 router.post('/admin/:requestId/force-cancel', authorize('admin', 'staff', 'frontdesk'), catchAsync(async (req, res) => {
   const { reason } = req.body;
 
-  const meetUpRequest = await MeetUpRequest.findById(req.params.requestId);
+  const existingRequest = await MeetUpRequest.findById(req.params.requestId).lean();
 
-  if (!meetUpRequest) {
+  if (!existingRequest) {
     throw new ApplicationError('Meet-up request not found', 404);
   }
 
-  // Add admin cancellation info
-  meetUpRequest.status = 'cancelled';
-  meetUpRequest.adminAction = {
-    action: 'force_cancelled',
-    adminId: req.user._id,
-    reason: reason || 'Cancelled by administrator',
-    timestamp: new Date()
-  };
+  // Validate status transition
+  const transition = validateStatusTransition(MEETUP_TRANSITIONS, existingRequest.status, 'cancelled');
+  if (!transition.valid) {
+    throw new ApplicationError(transition.error, 400);
+  }
 
-  await meetUpRequest.save();
+  // Atomic update: set status and admin action
+  const meetUpRequest = await MeetUpRequest.findByIdAndUpdate(
+    req.params.requestId,
+    {
+      $set: {
+        status: 'cancelled',
+        adminAction: {
+          action: 'force_cancelled',
+          adminId: req.user._id,
+          reason: reason || 'Cancelled by administrator',
+          timestamp: new Date()
+        }
+      }
+    },
+    { new: true, runValidators: true }
+  );
 
   // Populate for response
   await meetUpRequest.populate([
@@ -459,7 +472,7 @@ router.get('/', catchAsync(async (req, res) => {
     .populate('meetingRoomBooking.roomId', 'number type')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
   
   const total = await MeetUpRequest.countDocuments(query);
   
@@ -562,13 +575,13 @@ router.post('/', validate(schemas.createMeetUpRequest), catchAsync(async (req, r
   } = req.body;
   
   // Verify target user exists
-  const targetUser = await User.findById(targetUserId);
+  const targetUser = await User.findById(targetUserId).lean();
   if (!targetUser) {
     throw new ApplicationError('Target user not found', 404);
   }
   
   // Verify hotel exists
-  const hotel = await Hotel.findById(hotelId);
+  const hotel = await Hotel.findById(hotelId).lean();
   if (!hotel) {
     throw new ApplicationError('Hotel not found', 404);
   }
@@ -579,7 +592,7 @@ router.post('/', validate(schemas.createMeetUpRequest), catchAsync(async (req, r
       throw new ApplicationError('Meeting room is required', 400);
     }
     
-    const room = await Room.findById(meetingRoomBooking.roomId);
+    const room = await Room.findById(meetingRoomBooking.roomId).lean();
     if (!room) {
       throw new ApplicationError('Meeting room not found', 404);
     }
@@ -597,7 +610,7 @@ router.post('/', validate(schemas.createMeetUpRequest), catchAsync(async (req, r
       { requesterId: targetUserId, targetUserId: req.user._id }
     ],
     status: 'pending'
-  });
+  }).lean();
   
   if (existingRequest) {
     throw new ApplicationError('A pending meet-up request already exists between these users', 400);
@@ -656,7 +669,7 @@ router.get('/:requestId', catchAsync(async (req, res) => {
   .populate('targetUserId', 'name email avatar')
   .populate('hotelId', 'name address')
   .populate('meetingRoomBooking.roomId', 'number type')
-  .populate('participants.confirmedParticipants.userId', 'name email avatar');
+  .populate('participants.confirmedParticipants.userId', 'name email avatar').lean();
   
   if (!meetUpRequest) {
     throw new ApplicationError('Meet-up request not found', 404);
@@ -671,26 +684,34 @@ router.get('/:requestId', catchAsync(async (req, res) => {
 // Accept a meet-up request
 router.post('/:requestId/accept', validate(schemas.respondToMeetUpRequest), catchAsync(async (req, res) => {
   const { message } = req.body;
-  
-  const meetUpRequest = await MeetUpRequest.findOne({
-    _id: req.params.requestId,
-    targetUserId: req.user._id,
-    status: 'pending'
-  });
-  
+
+  const meetUpRequest = await MeetUpRequest.findOneAndUpdate(
+    {
+      _id: req.params.requestId,
+      targetUserId: req.user._id,
+      status: 'pending'
+    },
+    {
+      $set: {
+        status: 'accepted',
+        'response.message': message,
+        'response.respondedAt': new Date()
+      }
+    },
+    { new: true, runValidators: true }
+  );
+
   if (!meetUpRequest) {
     throw new ApplicationError('Meet-up request not found or cannot be accepted', 404);
   }
-  
-  await meetUpRequest.acceptRequest(message);
-  
+
   // Populate references for response
   await meetUpRequest.populate([
     { path: 'requesterId', select: 'name email avatar' },
     { path: 'targetUserId', select: 'name email avatar' },
     { path: 'hotelId', select: 'name address' }
   ]);
-  
+
   res.json({
     success: true,
     message: 'Meet-up request accepted successfully',
@@ -701,26 +722,34 @@ router.post('/:requestId/accept', validate(schemas.respondToMeetUpRequest), catc
 // Decline a meet-up request
 router.post('/:requestId/decline', validate(schemas.respondToMeetUpRequest), catchAsync(async (req, res) => {
   const { message } = req.body;
-  
-  const meetUpRequest = await MeetUpRequest.findOne({
-    _id: req.params.requestId,
-    targetUserId: req.user._id,
-    status: 'pending'
-  });
-  
+
+  const meetUpRequest = await MeetUpRequest.findOneAndUpdate(
+    {
+      _id: req.params.requestId,
+      targetUserId: req.user._id,
+      status: 'pending'
+    },
+    {
+      $set: {
+        status: 'declined',
+        'response.message': message,
+        'response.respondedAt': new Date()
+      }
+    },
+    { new: true, runValidators: true }
+  );
+
   if (!meetUpRequest) {
     throw new ApplicationError('Meet-up request not found or cannot be declined', 404);
   }
-  
-  await meetUpRequest.declineRequest(message);
-  
+
   // Populate references for response
   await meetUpRequest.populate([
     { path: 'requesterId', select: 'name email avatar' },
     { path: 'targetUserId', select: 'name email avatar' },
     { path: 'hotelId', select: 'name address' }
   ]);
-  
+
   res.json({
     success: true,
     message: 'Meet-up request declined successfully',
@@ -730,18 +759,20 @@ router.post('/:requestId/decline', validate(schemas.respondToMeetUpRequest), cat
 
 // Cancel a meet-up request
 router.post('/:requestId/cancel', catchAsync(async (req, res) => {
-  const meetUpRequest = await MeetUpRequest.findOne({
-    _id: req.params.requestId,
-    requesterId: req.user._id,
-    status: { $in: ['pending', 'accepted'] }
-  });
-  
+  const meetUpRequest = await MeetUpRequest.findOneAndUpdate(
+    {
+      _id: req.params.requestId,
+      requesterId: req.user._id,
+      status: { $in: ['pending', 'accepted'] }
+    },
+    { $set: { status: 'cancelled' } },
+    { new: true }
+  );
+
   if (!meetUpRequest) {
     throw new ApplicationError('Meet-up request not found or cannot be cancelled', 404);
   }
-  
-  await meetUpRequest.cancelRequest();
-  
+
   res.json({
     success: true,
     message: 'Meet-up request cancelled successfully'
@@ -750,21 +781,23 @@ router.post('/:requestId/cancel', catchAsync(async (req, res) => {
 
 // Complete a meet-up request
 router.post('/:requestId/complete', catchAsync(async (req, res) => {
-  const meetUpRequest = await MeetUpRequest.findOne({
-    _id: req.params.requestId,
-    $or: [
-      { requesterId: req.user._id },
-      { targetUserId: req.user._id }
-    ],
-    status: 'accepted'
-  });
-  
+  const meetUpRequest = await MeetUpRequest.findOneAndUpdate(
+    {
+      _id: req.params.requestId,
+      $or: [
+        { requesterId: req.user._id },
+        { targetUserId: req.user._id }
+      ],
+      status: 'accepted'
+    },
+    { $set: { status: 'completed', completedAt: new Date() } },
+    { new: true }
+  );
+
   if (!meetUpRequest) {
     throw new ApplicationError('Meet-up request not found or cannot be completed', 404);
   }
-  
-  await meetUpRequest.completeRequest();
-  
+
   res.json({
     success: true,
     message: 'Meet-up request marked as completed'
@@ -774,22 +807,33 @@ router.post('/:requestId/complete', catchAsync(async (req, res) => {
 // Add participant to a meet-up
 router.post('/:requestId/participants', validate(schemas.addParticipant), catchAsync(async (req, res) => {
   const { userId, name, email } = req.body;
-  
-  const meetUpRequest = await MeetUpRequest.findOne({
-    _id: req.params.requestId,
-    $or: [
-      { requesterId: req.user._id },
-      { targetUserId: req.user._id }
-    ],
-    status: 'accepted'
-  });
-  
+
+  const meetUpRequest = await MeetUpRequest.findOneAndUpdate(
+    {
+      _id: req.params.requestId,
+      $or: [
+        { requesterId: req.user._id },
+        { targetUserId: req.user._id }
+      ],
+      status: 'accepted'
+    },
+    {
+      $push: {
+        'participants.confirmedParticipants': {
+          userId,
+          name,
+          email,
+          joinedAt: new Date()
+        }
+      }
+    },
+    { new: true }
+  );
+
   if (!meetUpRequest) {
     throw new ApplicationError('Meet-up request not found or cannot add participants', 404);
   }
-  
-  await meetUpRequest.addParticipant(userId, name, email);
-  
+
   res.json({
     success: true,
     message: 'Participant added successfully'
@@ -798,21 +842,27 @@ router.post('/:requestId/participants', validate(schemas.addParticipant), catchA
 
 // Remove participant from a meet-up
 router.delete('/:requestId/participants/:userId', catchAsync(async (req, res) => {
-  const meetUpRequest = await MeetUpRequest.findOne({
-    _id: req.params.requestId,
-    $or: [
-      { requesterId: req.user._id },
-      { targetUserId: req.user._id }
-    ],
-    status: 'accepted'
-  });
-  
+  const meetUpRequest = await MeetUpRequest.findOneAndUpdate(
+    {
+      _id: req.params.requestId,
+      $or: [
+        { requesterId: req.user._id },
+        { targetUserId: req.user._id }
+      ],
+      status: 'accepted'
+    },
+    {
+      $pull: {
+        'participants.confirmedParticipants': { userId: req.params.userId }
+      }
+    },
+    { new: true }
+  );
+
   if (!meetUpRequest) {
     throw new ApplicationError('Meet-up request not found or cannot remove participants', 404);
   }
-  
-  await meetUpRequest.removeParticipant(req.params.userId);
-  
+
   res.json({
     success: true,
     message: 'Participant removed successfully'
@@ -822,19 +872,28 @@ router.delete('/:requestId/participants/:userId', catchAsync(async (req, res) =>
 // Suggest alternative time/date
 router.post('/:requestId/suggest-alternative', validate(schemas.suggestAlternative), catchAsync(async (req, res) => {
   const { date, time } = req.body;
-  
-  const meetUpRequest = await MeetUpRequest.findOne({
-    _id: req.params.requestId,
-    targetUserId: req.user._id,
-    status: 'pending'
-  });
-  
+
+  const meetUpRequest = await MeetUpRequest.findOneAndUpdate(
+    {
+      _id: req.params.requestId,
+      targetUserId: req.user._id,
+      status: 'pending'
+    },
+    {
+      $set: {
+        'alternativeSuggestion.date': new Date(date),
+        'alternativeSuggestion.time': time,
+        'alternativeSuggestion.suggestedBy': req.user._id,
+        'alternativeSuggestion.suggestedAt': new Date()
+      }
+    },
+    { new: true }
+  );
+
   if (!meetUpRequest) {
     throw new ApplicationError('Meet-up request not found or cannot suggest alternative', 404);
   }
-  
-  await meetUpRequest.suggestAlternative(new Date(date), time);
-  
+
   res.json({
     success: true,
     message: 'Alternative time suggested successfully'
@@ -883,7 +942,7 @@ router.get('/search/partners', catchAsync(async (req, res) => {
   const users = await User.find(query)
     .select('name email avatar interests languages ageGroup gender')
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
   
   const total = await User.countDocuments(query);
   

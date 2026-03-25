@@ -84,47 +84,75 @@ class RevenueManagementService {
     startDate?: string;
     endDate?: string;
   }): Promise<DashboardMetricsResponse> {
-    const queryParams = new URLSearchParams();
-    if (params?.startDate) queryParams.append('startDate', params.startDate);
-    if (params?.endDate) queryParams.append('endDate', params.endDate);
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.startDate) queryParams.append('startDate', params.startDate);
+      if (params?.endDate) queryParams.append('endDate', params.endDate);
 
-    const response = await api.get(`${this.baseURL}/dashboard/metrics?${queryParams.toString()}`);
-    return response.data.data;
+      const response = await api.get(`${this.baseURL}/dashboard/metrics?${queryParams.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get pricing rules
   async getPricingRules(): Promise<unknown[]> {
-    const response = await api.get(`${this.baseURL}/pricing-rules`);
-    return response.data.data;
+    try {
+      const response = await api.get(`${this.baseURL}/pricing-rules`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Create pricing rule
   async createPricingRule(ruleData: Record<string, unknown>): Promise<unknown> {
-    const response = await api.post(`${this.baseURL}/pricing-rules`, ruleData);
-    return response.data.data;
+    try {
+      const response = await api.post(`${this.baseURL}/pricing-rules`, ruleData);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Update pricing rule
   async updatePricingRule(id: string, ruleData: Record<string, unknown>): Promise<unknown> {
-    const response = await api.put(`${this.baseURL}/pricing-rules/${id}`, ruleData);
-    return response.data.data;
+    try {
+      const response = await api.put(`${this.baseURL}/pricing-rules/${id}`, ruleData);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Delete pricing rule
   async deletePricingRule(id: string): Promise<void> {
-    await api.delete(`${this.baseURL}/pricing-rules/${id}`);
+    try {
+      await api.delete(`${this.baseURL}/pricing-rules/${id}`);
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Update room type rate
   async updateRoomTypeRate(id: string, rateData: Partial<RoomTypeRate>): Promise<unknown> {
-    const response = await api.put(`${this.baseURL}/room-type-rates/${id}`, rateData);
-    return response.data;
+    try {
+      const response = await api.put(`${this.baseURL}/room-type-rates/${id}`, rateData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Bulk update room type rates
   async bulkUpdateRoomTypeRates(updates: Array<{id: string} & Partial<RoomTypeRate>>): Promise<unknown> {
-    const response = await api.post(`${this.baseURL}/room-type-rates/bulk-update`, { updates });
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseURL}/room-type-rates/bulk-update`, { updates });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get demand forecast
@@ -133,13 +161,17 @@ class RevenueManagementService {
     endDate?: string;
     roomTypeId?: string;
   }): Promise<DemandForecast[]> {
-    const queryParams = new URLSearchParams();
-    if (params?.startDate) queryParams.append('startDate', params.startDate);
-    if (params?.endDate) queryParams.append('endDate', params.endDate);
-    if (params?.roomTypeId) queryParams.append('roomTypeId', params.roomTypeId);
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.startDate) queryParams.append('startDate', params.startDate);
+      if (params?.endDate) queryParams.append('endDate', params.endDate);
+      if (params?.roomTypeId) queryParams.append('roomTypeId', params.roomTypeId);
 
-    const response = await api.get(`${this.baseURL}/demand-forecast?${queryParams.toString()}`);
-    return response.data.data;
+      const response = await api.get(`${this.baseURL}/demand-forecast?${queryParams.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get competitor rates
@@ -147,27 +179,39 @@ class RevenueManagementService {
     date?: string;
     competitorId?: string;
   }): Promise<CompetitorRate[]> {
-    const queryParams = new URLSearchParams();
-    if (params?.date) queryParams.append('date', params.date);
-    if (params?.competitorId) queryParams.append('competitorId', params.competitorId);
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.date) queryParams.append('date', params.date);
+      if (params?.competitorId) queryParams.append('competitorId', params.competitorId);
 
-    const response = await api.get(`${this.baseURL}/competitor-rates?${queryParams.toString()}`);
-    return response.data.data;
+      const response = await api.get(`${this.baseURL}/competitor-rates?${queryParams.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Add competitor rate
   async addCompetitorRate(rateData: Record<string, unknown>): Promise<unknown> {
-    const response = await api.post(`${this.baseURL}/competitor-rates`, rateData);
-    return response.data.data;
+    try {
+      const response = await api.post(`${this.baseURL}/competitor-rates`, rateData);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Update competitor rates
   async updateCompetitorRates(competitorId: string, rates: unknown[]): Promise<unknown> {
-    const response = await api.put(`${this.baseURL}/competitor-rates`, {
-      competitorId,
-      rates
-    });
-    return response.data.data;
+    try {
+      const response = await api.put(`${this.baseURL}/competitor-rates`, {
+        competitorId,
+        rates
+      });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get revenue analytics
@@ -177,14 +221,18 @@ class RevenueManagementService {
     roomTypeId?: string;
     groupBy?: 'day' | 'week' | 'month';
   }): Promise<unknown[]> {
-    const queryParams = new URLSearchParams();
-    if (params?.startDate) queryParams.append('startDate', params.startDate);
-    if (params?.endDate) queryParams.append('endDate', params.endDate);
-    if (params?.roomTypeId) queryParams.append('roomTypeId', params.roomTypeId);
-    if (params?.groupBy) queryParams.append('groupBy', params.groupBy);
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.startDate) queryParams.append('startDate', params.startDate);
+      if (params?.endDate) queryParams.append('endDate', params.endDate);
+      if (params?.roomTypeId) queryParams.append('roomTypeId', params.roomTypeId);
+      if (params?.groupBy) queryParams.append('groupBy', params.groupBy);
 
-    const response = await api.get(`${this.baseURL}/analytics?${queryParams.toString()}`);
-    return response.data.data;
+      const response = await api.get(`${this.baseURL}/analytics?${queryParams.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get revenue summary
@@ -192,18 +240,26 @@ class RevenueManagementService {
     startDate?: string;
     endDate?: string;
   }): Promise<unknown> {
-    const queryParams = new URLSearchParams();
-    if (params?.startDate) queryParams.append('startDate', params.startDate);
-    if (params?.endDate) queryParams.append('endDate', params.endDate);
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.startDate) queryParams.append('startDate', params.startDate);
+      if (params?.endDate) queryParams.append('endDate', params.endDate);
 
-    const response = await api.get(`${this.baseURL}/analytics/summary?${queryParams.toString()}`);
-    return response.data.data;
+      const response = await api.get(`${this.baseURL}/analytics/summary?${queryParams.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get optimization recommendations
   async getOptimizationRecommendations(): Promise<unknown> {
-    const response = await api.get(`${this.baseURL}/optimization/recommendations`);
-    return response.data.data;
+    try {
+      const response = await api.get(`${this.baseURL}/optimization/recommendations`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Calculate dynamic rate
@@ -212,43 +268,67 @@ class RevenueManagementService {
     checkInDate: string;
     checkOutDate?: string;
   }): Promise<unknown> {
-    const queryParams = new URLSearchParams();
-    queryParams.append('roomTypeId', params.roomTypeId);
-    queryParams.append('checkInDate', params.checkInDate);
-    if (params.checkOutDate) queryParams.append('checkOutDate', params.checkOutDate);
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append('roomTypeId', params.roomTypeId);
+      queryParams.append('checkInDate', params.checkInDate);
+      if (params.checkOutDate) queryParams.append('checkOutDate', params.checkOutDate);
 
-    const response = await api.get(`${this.baseURL}/dynamic-rate?${queryParams.toString()}`);
-    return response.data.data;
+      const response = await api.get(`${this.baseURL}/dynamic-rate?${queryParams.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get packages
   async getPackages(): Promise<unknown[]> {
-    const response = await api.get(`${this.baseURL}/packages`);
-    return response.data.data;
+    try {
+      const response = await api.get(`${this.baseURL}/packages`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Create package
   async createPackage(packageData: Record<string, unknown>): Promise<unknown> {
-    const response = await api.post(`${this.baseURL}/packages`, packageData);
-    return response.data.data;
+    try {
+      const response = await api.post(`${this.baseURL}/packages`, packageData);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Update package
   async updatePackage(id: string, packageData: Record<string, unknown>): Promise<unknown> {
-    const response = await api.put(`${this.baseURL}/packages/${id}`, packageData);
-    return response.data.data;
+    try {
+      const response = await api.put(`${this.baseURL}/packages/${id}`, packageData);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get corporate rates
   async getCorporateRates(): Promise<unknown[]> {
-    const response = await api.get(`${this.baseURL}/corporate-rates`);
-    return response.data.data;
+    try {
+      const response = await api.get(`${this.baseURL}/corporate-rates`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Create corporate rate
   async createCorporateRate(rateData: Record<string, unknown>): Promise<unknown> {
-    const response = await api.post(`${this.baseURL}/corporate-rates`, rateData);
-    return response.data.data;
+    try {
+      const response = await api.post(`${this.baseURL}/corporate-rates`, rateData);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

@@ -52,7 +52,7 @@ class RoomBookingService {
         roomQuery.type = roomType;
       }
 
-      const availableRooms = await Room.find(roomQuery);
+      const availableRooms = await Room.find(roomQuery).lean().limit(1000);
 
       if (availableRooms.length === 0) {
         return {
@@ -117,95 +117,101 @@ class RoomBookingService {
 
     try {
       return await withTransaction(async (session) => {
-        // Get meet-up details
-        const meetUp = await MeetUpRequest.findById(meetUpId).session(session);
-        if (!meetUp) {
-          throw new ApplicationError('Meet-up request not found', 404);
-        }
-
-        // Verify room exists and is available
-        const room = await Room.findById(roomId).session(session);
-        if (!room) {
-          throw new ApplicationError('Room not found', 404);
-        }
-
-        if (room.hotelId.toString() !== meetUp.hotelId.toString()) {
-          throw new ApplicationError('Room does not belong to the meet-up hotel', 400);
-        }
-
-        // Check availability one more time (within transaction for consistency)
-        const startDateTime = this._createDateTime(meetUp.proposedDate, meetUp.proposedTime.start);
-        const endDateTime = this._createDateTime(meetUp.proposedDate, meetUp.proposedTime.end);
-
-        // Find conflicting bookings within the transaction
-        const roomIds = [room._id];
-        const conflictingBookings = await ServiceBooking.find({
-          'rooms.roomId': { $in: roomIds },
-          status: { $in: ['confirmed', 'checked_in'] },
-          $or: [
-            {
-              bookingDate: { $lt: endDateTime },
-              $expr: {
-                $gt: [
-                  { $add: ['$bookingDate', { $multiply: [2, 60, 60, 1000] }] },
-                  startDateTime
-                ]
-              }
-            }
-          ]
-        }).session(session);
-
-        const conflictingMeetUps = await MeetUpRequest.find({
-          'meetingRoomBooking.roomId': { $in: roomIds },
-          status: { $in: ['accepted', 'confirmed'] },
-          proposedDate: {
-            $gte: new Date(startDateTime.getFullYear(), startDateTime.getMonth(), startDateTime.getDate()),
-            $lt: new Date(endDateTime.getFullYear(), endDateTime.getMonth(), endDateTime.getDate() + 1)
+        try {
+          // Get meet-up details
+          const meetUp = await MeetUpRequest.findById(meetUpId).session(session);
+          if (!meetUp) {
+            throw new ApplicationError('Meet-up request not found', 404);
           }
-        }).session(session);
 
-        if (conflictingBookings.length > 0 || conflictingMeetUps.length > 0) {
-          throw new ApplicationError('Room is no longer available for the requested time slot', 409);
+          // Verify room exists and is available
+          const room = await Room.findById(roomId).session(session);
+          if (!room) {
+            throw new ApplicationError('Room not found', 404);
+          }
+
+          if (room.hotelId.toString() !== meetUp.hotelId.toString()) {
+            throw new ApplicationError('Room does not belong to the meet-up hotel', 400);
+          }
+
+          // Check availability one more time (within transaction for consistency)
+          const startDateTime = this._createDateTime(meetUp.proposedDate, meetUp.proposedTime.start);
+          const endDateTime = this._createDateTime(meetUp.proposedDate, meetUp.proposedTime.end);
+
+          // Find conflicting bookings within the transaction
+          const roomIds = [room._id];
+          const conflictingBookings = await ServiceBooking.find({
+            'rooms.roomId': { $in: roomIds },
+            status: { $in: ['confirmed', 'checked_in'] },
+            $or: [
+              {
+                bookingDate: { $lt: endDateTime },
+                $expr: {
+                  $gt: [
+                    { $add: ['$bookingDate', { $multiply: [2, 60, 60, 1000] }] },
+                    startDateTime
+                  ]
+                }
+              }
+            ]
+          }).session(session).limit(1000);
+
+          const conflictingMeetUps = await MeetUpRequest.find({
+            'meetingRoomBooking.roomId': { $in: roomIds },
+            status: { $in: ['accepted', 'confirmed'] },
+            proposedDate: {
+              $gte: new Date(startDateTime.getFullYear(), startDateTime.getMonth(), startDateTime.getDate()),
+              $lt: new Date(endDateTime.getFullYear(), endDateTime.getMonth(), endDateTime.getDate() + 1)
+            }
+          }).session(session).limit(1000);
+
+          if (conflictingBookings.length > 0 || conflictingMeetUps.length > 0) {
+            throw new ApplicationError('Room is no longer available for the requested time slot', 409);
+          }
+
+          // Calculate total cost
+          const bookingCost = await this._calculateBookingCost(room, equipment, services, startDateTime, endDateTime);
+
+          // Create service booking for the room
+          const [serviceBooking] = await ServiceBooking.create([{
+            userId,
+            serviceId: null,
+            hotelId: meetUp.hotelId,
+            bookingDate: startDateTime,
+            numberOfPeople: meetUp.participants.maxParticipants,
+            totalAmount: bookingCost.total,
+            status: 'confirmed',
+            specialRequests: `Meet-up room booking: ${meetUp.title}`,
+            paymentStatus: 'pending',
+            notes: `Automated room booking for meet-up: ${meetUp.title}. Equipment: ${equipment.join(', ')}. Services: ${services.join(', ')}`
+          }], { session });
+
+          // Update meet-up with room booking details
+          meetUp.meetingRoomBooking = {
+            roomId: roomId,
+            bookingId: serviceBooking._id,
+            isRequired: true,
+            equipment: equipment,
+            services: services,
+            cost: bookingCost,
+            confirmedAt: new Date()
+          };
+
+          await meetUp.save({ session });
+
+          return {
+            success: true,
+            booking: serviceBooking,
+            room: room,
+            meetUp: meetUp,
+            cost: bookingCost,
+            bookingReference: serviceBooking._id
+          };
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
         }
-
-        // Calculate total cost
-        const bookingCost = await this._calculateBookingCost(room, equipment, services, startDateTime, endDateTime);
-
-        // Create service booking for the room
-        const [serviceBooking] = await ServiceBooking.create([{
-          userId,
-          serviceId: null,
-          hotelId: meetUp.hotelId,
-          bookingDate: startDateTime,
-          numberOfPeople: meetUp.participants.maxParticipants,
-          totalAmount: bookingCost.total,
-          status: 'confirmed',
-          specialRequests: `Meet-up room booking: ${meetUp.title}`,
-          paymentStatus: 'pending',
-          notes: `Automated room booking for meet-up: ${meetUp.title}. Equipment: ${equipment.join(', ')}. Services: ${services.join(', ')}`
-        }], { session });
-
-        // Update meet-up with room booking details
-        meetUp.meetingRoomBooking = {
-          roomId: roomId,
-          bookingId: serviceBooking._id,
-          isRequired: true,
-          equipment: equipment,
-          services: services,
-          cost: bookingCost,
-          confirmedAt: new Date()
-        };
-
-        await meetUp.save({ session });
-
-        return {
-          success: true,
-          booking: serviceBooking,
-          room: room,
-          meetUp: meetUp,
-          cost: bookingCost,
-          bookingReference: serviceBooking._id
-        };
       });
 
     } catch (error) {
@@ -221,7 +227,7 @@ class RoomBookingService {
    */
   async getAvailableEquipment(hotelId) {
     try {
-      const hotel = await Hotel.findById(hotelId);
+      const hotel = await Hotel.findById(hotelId).lean();
       if (!hotel) {
         throw new ApplicationError('Hotel not found', 404);
       }
@@ -286,7 +292,7 @@ class RoomBookingService {
    */
   async getAvailableServices(hotelId) {
     try {
-      const hotel = await Hotel.findById(hotelId);
+      const hotel = await Hotel.findById(hotelId).lean();
       if (!hotel) {
         throw new ApplicationError('Hotel not found', 404);
       }
@@ -368,7 +374,7 @@ class RoomBookingService {
       }
 
       // Cancel the service booking
-      const serviceBooking = await ServiceBooking.findById(meetUp.meetingRoomBooking.bookingId);
+      const serviceBooking = await ServiceBooking.findById(meetUp.meetingRoomBooking.bookingId).lean();
       if (serviceBooking) {
         await serviceBooking.cancelBooking(reason, meetUp.requesterId);
       }
@@ -409,22 +415,26 @@ class RoomBookingService {
    * @private
    */
   async _findConflictingBookings(roomIds, startTime, endTime) {
-    return await ServiceBooking.find({
-      'rooms.roomId': { $in: roomIds },
-      status: { $in: ['confirmed', 'checked_in'] },
-      $or: [
-        {
-          bookingDate: { $lt: endTime },
-          // Assume booking duration is same as room booking
-          $expr: {
-            $gt: [
-              { $add: ['$bookingDate', { $multiply: [2, 60, 60, 1000] }] }, // 2 hours default
-              startTime
-            ]
+    try {
+      return await ServiceBooking.find({
+        'rooms.roomId': { $in: roomIds },
+        status: { $in: ['confirmed', 'checked_in'] },
+        $or: [
+          {
+            bookingDate: { $lt: endTime },
+            // Assume booking duration is same as room booking
+            $expr: {
+              $gt: [
+                { $add: ['$bookingDate', { $multiply: [2, 60, 60, 1000] }] }, // 2 hours default
+                startTime
+              ]
+            }
           }
-        }
-      ]
-    });
+        ]
+      }).lean().limit(1000);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -432,14 +442,18 @@ class RoomBookingService {
    * @private
    */
   async _findConflictingMeetUps(roomIds, startTime, endTime) {
-    return await MeetUpRequest.find({
-      'meetingRoomBooking.roomId': { $in: roomIds },
-      status: { $in: ['accepted', 'confirmed'] },
-      proposedDate: {
-        $gte: new Date(startTime.getFullYear(), startTime.getMonth(), startTime.getDate()),
-        $lt: new Date(endTime.getFullYear(), endTime.getMonth(), endTime.getDate() + 1)
-      }
-    });
+    try {
+      return await MeetUpRequest.find({
+        'meetingRoomBooking.roomId': { $in: roomIds },
+        status: { $in: ['accepted', 'confirmed'] },
+        proposedDate: {
+          $gte: new Date(startTime.getFullYear(), startTime.getMonth(), startTime.getDate()),
+          $lt: new Date(endTime.getFullYear(), endTime.getMonth(), endTime.getDate() + 1)
+        }
+      }).lean().limit(1000);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -469,54 +483,58 @@ class RoomBookingService {
    * @private
    */
   async _calculateBookingCost(room, equipment, services, startTime, endTime) {
-    const durationHours = (endTime - startTime) / (1000 * 60 * 60);
+    try {
+      const durationHours = (endTime - startTime) / (1000 * 60 * 60);
 
-    // Base room cost (example: 1000 INR per hour)
-    const baseRoomCost = 1000 * durationHours;
+      // Base room cost (example: 1000 INR per hour)
+      const baseRoomCost = 1000 * durationHours;
 
-    // Equipment costs
-    const equipmentList = await this.getAvailableEquipment(room.hotelId);
-    const equipmentCost = equipment.reduce((total, equipId) => {
-      const equip = equipmentList.find(e => e.id === equipId);
-      return total + (equip?.costPerHour || 0) * durationHours;
-    }, 0);
+      // Equipment costs
+      const equipmentList = await this.getAvailableEquipment(room.hotelId);
+      const equipmentCost = equipment.reduce((total, equipId) => {
+        const equip = equipmentList.find(e => e.id === equipId);
+        return total + (equip?.costPerHour || 0) * durationHours;
+      }, 0);
 
-    // Service costs
-    const servicesList = await this.getAvailableServices(room.hotelId);
-    const serviceCost = services.reduce((total, serviceId) => {
-      const service = servicesList.find(s => s.id === serviceId);
-      if (service?.costPerHour) {
-        return total + service.costPerHour * durationHours;
-      } else if (service?.costPerPerson) {
-        return total + service.costPerPerson * 2; // Default 2 people for estimation
-      }
-      return total;
-    }, 0);
+      // Service costs
+      const servicesList = await this.getAvailableServices(room.hotelId);
+      const serviceCost = services.reduce((total, serviceId) => {
+        const service = servicesList.find(s => s.id === serviceId);
+        if (service?.costPerHour) {
+          return total + service.costPerHour * durationHours;
+        } else if (service?.costPerPerson) {
+          return total + service.costPerPerson * 2; // Default 2 people for estimation
+        }
+        return total;
+      }, 0);
 
-    const subtotal = baseRoomCost + equipmentCost + serviceCost;
-    const tax = subtotal * 0.18; // 18% GST
-    const total = subtotal + tax;
+      const subtotal = baseRoomCost + equipmentCost + serviceCost;
+      const tax = subtotal * 0.18; // 18% GST
+      const total = subtotal + tax;
 
-    return {
-      baseRoom: baseRoomCost,
-      equipment: equipmentCost,
-      services: serviceCost,
-      subtotal,
-      tax,
-      total,
-      currency: 'INR',
-      breakdown: {
-        room: { cost: baseRoomCost, duration: durationHours },
-        equipment: equipment.map(eq => {
-          const equip = equipmentList.find(e => e.id === eq);
-          return { id: eq, name: equip?.name, cost: (equip?.costPerHour || 0) * durationHours };
-        }),
-        services: services.map(sv => {
-          const service = servicesList.find(s => s.id === sv);
-          return { id: sv, name: service?.name, cost: service?.costPerHour ? service.costPerHour * durationHours : service?.costPerPerson * 2 };
-        })
-      }
-    };
+      return {
+        baseRoom: baseRoomCost,
+        equipment: equipmentCost,
+        services: serviceCost,
+        subtotal,
+        tax,
+        total,
+        currency: 'INR',
+        breakdown: {
+          room: { cost: baseRoomCost, duration: durationHours },
+          equipment: equipment.map(eq => {
+            const equip = equipmentList.find(e => e.id === eq);
+            return { id: eq, name: equip?.name, cost: (equip?.costPerHour || 0) * durationHours };
+          }),
+          services: services.map(sv => {
+            const service = servicesList.find(s => s.id === sv);
+            return { id: sv, name: service?.name, cost: service?.costPerHour ? service.costPerHour * durationHours : service?.costPerPerson * 2 };
+          })
+        }
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -524,19 +542,23 @@ class RoomBookingService {
    * @private
    */
   async _suggestAlternatives(hotelId, capacity) {
-    const alternatives = await Room.find({
-      hotelId,
-      isActive: true,
-      capacity: { $gte: Math.max(2, capacity - 2) } // Slightly smaller capacity
-    }).limit(3);
+    try {
+      const alternatives = await Room.find({
+        hotelId,
+        isActive: true,
+        capacity: { $gte: Math.max(2, capacity - 2) } // Slightly smaller capacity
+      }).limit(3).lean();
 
-    return alternatives.map(room => ({
-      roomId: room._id,
-      roomNumber: room.roomNumber,
-      capacity: room.capacity,
-      type: room.type,
-      amenities: room.amenities
-    }));
+      return alternatives.map(room => ({
+        roomId: room._id,
+        roomNumber: room.roomNumber,
+        capacity: room.capacity,
+        type: room.type,
+        amenities: room.amenities
+      }));
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -544,33 +566,37 @@ class RoomBookingService {
    * @private
    */
   async _suggestAlternativeTimeSlots(hotelId, date, capacity, roomType, isAvailable = false) {
-    const timeSlots = [
-      '09:00-11:00', '11:00-13:00', '13:00-15:00',
-      '15:00-17:00', '17:00-19:00', '19:00-21:00'
-    ];
+    try {
+      const timeSlots = [
+        '09:00-11:00', '11:00-13:00', '13:00-15:00',
+        '15:00-17:00', '17:00-19:00', '19:00-21:00'
+      ];
 
-    const suggestions = [];
+      const suggestions = [];
 
-    for (const slot of timeSlots) {
-      const [start, end] = slot.split('-');
-      const availability = await this.checkRoomAvailability({
-        hotelId,
-        date,
-        timeSlot: { start, end },
-        capacity,
-        roomType
-      });
-
-      if (availability.available) {
-        suggestions.push({
+      for (const slot of timeSlots) {
+        const [start, end] = slot.split('-');
+        const availability = await this.checkRoomAvailability({
+          hotelId,
+          date,
           timeSlot: { start, end },
-          displayTime: slot,
-          availableRooms: availability.allAvailableRooms?.length || 0
+          capacity,
+          roomType
         });
-      }
-    }
 
-    return suggestions.slice(0, 3); // Return top 3 suggestions
+        if (availability.available) {
+          suggestions.push({
+            timeSlot: { start, end },
+            displayTime: slot,
+            availableRooms: availability.allAvailableRooms?.length || 0
+          });
+        }
+      }
+
+      return suggestions.slice(0, 3); // Return top 3 suggestions
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -578,13 +604,17 @@ class RoomBookingService {
    * @private
    */
   async _getConflictingSlotsInfo(roomIds, startTime, endTime) {
-    const conflicts = await this._findConflictingMeetUps(roomIds, startTime, endTime);
+    try {
+      const conflicts = await this._findConflictingMeetUps(roomIds, startTime, endTime);
 
-    return conflicts.map(meetup => ({
-      meetUpTitle: meetup.title,
-      timeSlot: `${meetup.proposedTime.start}-${meetup.proposedTime.end}`,
-      roomNumber: meetup.meetingRoomBooking?.roomId ? 'Room booked' : 'Pending room assignment'
-    }));
+      return conflicts.map(meetup => ({
+        meetUpTitle: meetup.title,
+        timeSlot: `${meetup.proposedTime.start}-${meetup.proposedTime.end}`,
+        roomNumber: meetup.meetingRoomBooking?.roomId ? 'Room booked' : 'Pending room assignment'
+      }));
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

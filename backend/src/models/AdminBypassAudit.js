@@ -470,31 +470,35 @@ adminBypassAuditSchema.index({
 
 // Pre-save middleware
 adminBypassAuditSchema.pre('save', async function(next) {
-  // Generate unique bypass ID if not provided
-  if (!this.bypassId) {
-    const timestamp = Date.now().toString();
-    const random = crypto.randomBytes(4).toString('hex');
-    this.bypassId = `BYPASS_${timestamp}_${random.toUpperCase()}`;
+  try {
+    // Generate unique bypass ID if not provided
+    if (!this.bypassId) {
+      const timestamp = Date.now().toString();
+      const random = crypto.randomBytes(4).toString('hex');
+      this.bypassId = `BYPASS_${timestamp}_${random.toUpperCase()}`;
+    }
+
+    // Set analytics data
+    const now = new Date();
+    this.analytics.weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][now.getDay()];
+
+    const hours = now.getHours();
+    if (hours >= 6 && hours < 12) this.analytics.shift = 'morning';
+    else if (hours >= 12 && hours < 18) this.analytics.shift = 'afternoon';
+    else if (hours >= 18 && hours < 22) this.analytics.shift = 'evening';
+    else this.analytics.shift = 'night';
+
+    this.analytics.businessHours = hours >= 8 && hours < 18 && this.analytics.weekday !== 'Sunday' && this.analytics.weekday !== 'Saturday';
+
+    // Calculate operation duration if completed
+    if (this.operationStatus.status === 'completed' && this.operationStatus.completedAt) {
+      this.operationStatus.duration = this.operationStatus.completedAt - this.operationStatus.initiatedAt;
+    }
+
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  // Set analytics data
-  const now = new Date();
-  this.analytics.weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][now.getDay()];
-
-  const hours = now.getHours();
-  if (hours >= 6 && hours < 12) this.analytics.shift = 'morning';
-  else if (hours >= 12 && hours < 18) this.analytics.shift = 'afternoon';
-  else if (hours >= 18 && hours < 22) this.analytics.shift = 'evening';
-  else this.analytics.shift = 'night';
-
-  this.analytics.businessHours = hours >= 8 && hours < 18 && this.analytics.weekday !== 'Sunday' && this.analytics.weekday !== 'Saturday';
-
-  // Calculate operation duration if completed
-  if (this.operationStatus.status === 'completed' && this.operationStatus.completedAt) {
-    this.operationStatus.duration = this.operationStatus.completedAt - this.operationStatus.initiatedAt;
-  }
-
-  next();
 });
 
 // Instance methods
@@ -628,88 +632,96 @@ adminBypassAuditSchema.methods.processApproval = function(level, approverId, sta
 
 // Static methods
 adminBypassAuditSchema.statics.createBypassAudit = async function(bypassData) {
-  const audit = new this({
-    bypassId: bypassData.bypassId || `BYPASS_${Date.now()}_${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
-    hotelId: bypassData.hotelId,
-    bookingId: bypassData.bookingId,
-    checkoutInventoryId: bypassData.checkoutInventoryId,
-    adminId: bypassData.adminId,
-    reason: {
-      category: bypassData.reason.category,
-      subcategory: bypassData.reason.subcategory,
-      description: bypassData.reason.description,
-      urgencyLevel: bypassData.reason.urgencyLevel || 'medium',
-      estimatedDuration: bypassData.reason.estimatedDuration,
-      followUpRequired: bypassData.reason.followUpRequired || false
-    },
-    financialImpact: bypassData.financialImpact || {},
-    securityMetadata: {
-      ipAddress: bypassData.securityMetadata.ipAddress,
-      userAgent: bypassData.securityMetadata.userAgent,
-      deviceFingerprint: bypassData.securityMetadata.deviceFingerprint,
-      sessionId: bypassData.securityMetadata.sessionId,
-      geolocation: bypassData.securityMetadata.geolocation,
-      loginTimestamp: bypassData.securityMetadata.loginTimestamp,
-      lastActivity: new Date(),
-      securityFlags: []
-    },
-    guestContext: bypassData.guestContext || {},
-    propertyContext: bypassData.propertyContext || {},
-    analytics: bypassData.analytics || {}
-  });
+  try {
+    const audit = new this({
+      bypassId: bypassData.bypassId || `BYPASS_${Date.now()}_${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+      hotelId: bypassData.hotelId,
+      bookingId: bypassData.bookingId,
+      checkoutInventoryId: bypassData.checkoutInventoryId,
+      adminId: bypassData.adminId,
+      reason: {
+        category: bypassData.reason.category,
+        subcategory: bypassData.reason.subcategory,
+        description: bypassData.reason.description,
+        urgencyLevel: bypassData.reason.urgencyLevel || 'medium',
+        estimatedDuration: bypassData.reason.estimatedDuration,
+        followUpRequired: bypassData.reason.followUpRequired || false
+      },
+      financialImpact: bypassData.financialImpact || {},
+      securityMetadata: {
+        ipAddress: bypassData.securityMetadata.ipAddress,
+        userAgent: bypassData.securityMetadata.userAgent,
+        deviceFingerprint: bypassData.securityMetadata.deviceFingerprint,
+        sessionId: bypassData.securityMetadata.sessionId,
+        geolocation: bypassData.securityMetadata.geolocation,
+        loginTimestamp: bypassData.securityMetadata.loginTimestamp,
+        lastActivity: new Date(),
+        securityFlags: []
+      },
+      guestContext: bypassData.guestContext || {},
+      propertyContext: bypassData.propertyContext || {},
+      analytics: bypassData.analytics || {}
+    });
 
-  // Calculate initial risk score
-  audit.calculateRiskScore();
+    // Calculate initial risk score
+    audit.calculateRiskScore();
 
-  // Encrypt sensitive notes if provided
-  if (bypassData.reason.sensitiveNotes && bypassData.encryptionKey) {
-    audit.encryptSensitiveNotes(bypassData.reason.sensitiveNotes, bypassData.encryptionKey);
+    // Encrypt sensitive notes if provided
+    if (bypassData.reason.sensitiveNotes && bypassData.encryptionKey) {
+      audit.encryptSensitiveNotes(bypassData.reason.sensitiveNotes, bypassData.encryptionKey);
+    }
+
+    return await audit.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  return await audit.save();
 };
 
 adminBypassAuditSchema.statics.getBypassStatistics = async function(hotelId, timeRange = 30) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - timeRange);
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - timeRange);
 
-  const stats = await this.aggregate([
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        createdAt: { $gte: startDate }
-      }
-    },
-    {
-      $group: {
-        _id: null,
-        totalBypasses: { $sum: 1 },
-        averageRiskScore: { $avg: '$securityMetadata.riskScore' },
-        totalFinancialImpact: { $sum: '$financialImpact.estimatedLoss' },
-        byCategory: {
-          $push: {
-            category: '$reason.category',
-            urgency: '$reason.urgencyLevel',
-            riskScore: '$securityMetadata.riskScore'
-          }
-        },
-        byShift: {
-          $push: {
-            shift: '$analytics.shift',
-            businessHours: '$analytics.businessHours'
+    const stats = await this.aggregate([
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          createdAt: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalBypasses: { $sum: 1 },
+          averageRiskScore: { $avg: '$securityMetadata.riskScore' },
+          totalFinancialImpact: { $sum: '$financialImpact.estimatedLoss' },
+          byCategory: {
+            $push: {
+              category: '$reason.category',
+              urgency: '$reason.urgencyLevel',
+              riskScore: '$securityMetadata.riskScore'
+            }
+          },
+          byShift: {
+            $push: {
+              shift: '$analytics.shift',
+              businessHours: '$analytics.businessHours'
+            }
           }
         }
       }
-    }
-  ]);
+    ]);
 
-  return stats[0] || {
-    totalBypasses: 0,
-    averageRiskScore: 0,
-    totalFinancialImpact: 0,
-    byCategory: [],
-    byShift: []
-  };
+    return stats[0] || {
+      totalBypasses: 0,
+      averageRiskScore: 0,
+      totalFinancialImpact: 0,
+      byCategory: [],
+      byShift: []
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 adminBypassAuditSchema.statics.getHighRiskBypasses = function(hotelId, threshold = 70) {

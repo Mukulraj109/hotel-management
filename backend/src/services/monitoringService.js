@@ -226,7 +226,7 @@ class MonitoringService {
       const todayBookings = await Booking.find({
         createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
         status: 'confirmed'
-      });
+      }).lean().limit(1000);
 
       const revenue = todayBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
 
@@ -406,8 +406,12 @@ class MonitoringService {
 
   // Send email alert
   async sendEmailAlert(alert) {
-    // Implement email sending logic here
-    logger.info('Email alert would be sent:', alert);
+    try {
+      // Implement email sending logic here
+      logger.info('Email alert would be sent:', alert);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Send Slack alert

@@ -276,63 +276,74 @@ staffAlertSchema.pre('save', function(next) {
 
 // Static method to get alerts summary for a hotel
 staffAlertSchema.statics.getAlertsSummary = async function(hotelId) {
-  const summary = await this.aggregate([
-    { $match: { hotelId } },
-    {
-      $group: {
-        _id: null,
-        totalAlerts: { $sum: 1 },
-        activeAlerts: {
-          $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] }
-        },
-        criticalAlerts: {
-          $sum: { $cond: [{ $eq: ['$priority', 'critical'] }, 1, 0] }
-        },
-        urgentAlerts: {
-          $sum: { $cond: [{ $eq: ['$priority', 'urgent'] }, 1, 0] }
-        },
-        avgResponseTime: { $avg: '$responseTime' },
-        avgResolutionTime: { $avg: '$resolutionTime' }
+  try {
+    const summary = await this.aggregate([
+      { $match: { hotelId } },
+      {
+        $group: {
+          _id: null,
+          totalAlerts: { $sum: 1 },
+          activeAlerts: {
+            $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] }
+          },
+          criticalAlerts: {
+            $sum: { $cond: [{ $eq: ['$priority', 'critical'] }, 1, 0] }
+          },
+          urgentAlerts: {
+            $sum: { $cond: [{ $eq: ['$priority', 'urgent'] }, 1, 0] }
+          },
+          avgResponseTime: { $avg: '$responseTime' },
+          avgResolutionTime: { $avg: '$resolutionTime' }
+        }
       }
-    }
-  ]);
+    ]);
 
-  return summary[0] || {
-    totalAlerts: 0,
-    activeAlerts: 0,
-    criticalAlerts: 0,
-    urgentAlerts: 0,
-    avgResponseTime: 0,
-    avgResolutionTime: 0
-  };
+    return summary[0] || {
+      totalAlerts: 0,
+      activeAlerts: 0,
+      criticalAlerts: 0,
+      urgentAlerts: 0,
+      avgResponseTime: 0,
+      avgResolutionTime: 0
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get priority counts
 staffAlertSchema.statics.getPriorityCounts = async function(hotelId) {
-  const counts = await this.aggregate([
-    { $match: { hotelId, status: { $in: ['active', 'acknowledged', 'in_progress'] } } },
-    {
-      $group: {
-        _id: '$priority',
-        count: { $sum: 1 }
+  try {
+    const counts = await this.aggregate([
+      { $match: { hotelId, status: { $in: ['active', 'acknowledged', 'in_progress'] } } },
+      {
+        $group: {
+          _id: '$priority',
+          count: { $sum: 1 }
+        }
       }
-    }
-  ]);
+    ]);
 
-  const result = {
-    low: 0,
-    medium: 0,
-    high: 0,
-    urgent: 0,
-    critical: 0
-  };
+    const result = {
+      low: 0,
+      medium: 0,
+      high: 0,
+      urgent: 0,
+      critical: 0
+    };
 
-  counts.forEach(item => {
-    result[item._id] = item.count;
-  });
+    counts.forEach(item => {
+      result[item._id] = item.count;
+    });
 
-  return result;
+    return result;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
+
+// Data retention TTL: auto-delete staff alerts after 90 days
+staffAlertSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
 
 const StaffAlert = mongoose.model('StaffAlert', staffAlertSchema);
 

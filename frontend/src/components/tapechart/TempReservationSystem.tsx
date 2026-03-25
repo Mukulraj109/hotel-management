@@ -89,6 +89,7 @@ export const TempReservationSystem: React.FC = () => {
   const [blockedRowData, setBlockedRowData] = useState<BlockedRowData[]>([]);
   const [selectedTempReservation, setSelectedTempReservation] = useState<TempReservation | null>(null);
   const [isCreatingTemp, setIsCreatingTemp] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [newTempReservation, setNewTempReservation] = useState<Partial<TempReservation>>({
     holdTillType: 'hours',
     holdTillValue: 2,
@@ -166,6 +167,8 @@ export const TempReservationSystem: React.FC = () => {
       setStats(tempStats);
     } catch (error) {
       toast.error('Failed to load temporary reservations');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -361,6 +364,15 @@ export const TempReservationSystem: React.FC = () => {
       return `${minutes}m`;
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
+        <span className="ml-2 text-gray-600">Loading reservations...</span>
+      </div>
+    );
+  }
 
   return (
     <Dialog>

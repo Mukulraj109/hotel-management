@@ -51,6 +51,7 @@ import {
 import { cn } from '@/utils/cn';
 import { format, formatDistanceToNow } from 'date-fns';
 import { workflowEngine } from '@/utils/ReservationWorkflowEngine';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface VIPProfile {
   id: string;
@@ -981,4 +982,4 @@ const VIPGuestManager: React.FC<VIPGuestManagerProps> = ({
   );
 };
 
-export default VIPGuestManager;
+export default withErrorBoundary(VIPGuestManager, { level: 'component' });

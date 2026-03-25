@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from '@/utils/toast';
+import { withErrorBoundary } from '../ErrorBoundary';
 import {
   Sun, Moon, Clock, Calendar, Globe,
   Settings, Users, Building, MapPin,
@@ -910,3 +911,5 @@ export const DayNightMode: React.FC = () => {
     </Dialog>
   );
 };
+
+export default withErrorBoundary(DayNightMode, { level: 'component' });

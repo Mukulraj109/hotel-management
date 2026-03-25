@@ -123,7 +123,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               {EXPORT_FORMATS.map((format) => {
                 const Icon = format.icon;
                 return (
-                  <button
+                  <button aria-label="Close"
                     key={format.value}
                     type="button"
                     onClick={() => handleFormatChange(format.value as unknown)}

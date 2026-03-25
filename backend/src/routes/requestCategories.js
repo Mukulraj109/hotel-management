@@ -39,23 +39,20 @@ router.get('/', catchAsync(async (req, res) => {
     .populate('createdBy', 'username email')
     .sort({ sortOrder: 1, name: 1 })
     .limit(limit * 1)
-    .skip((page - 1) * limit);
+    .skip((page - 1) * limit).lean();
 
-  // Get template counts for each category
-  const categoriesWithTemplates = await Promise.all(
-    categories.map(async (category) => {
-      const templateCount = await RequestTemplate.countDocuments({
-        hotelId,
-        category: category.name.toLowerCase(),
-        isActive: true
-      });
+  // Batch: get template counts for all categories in a single aggregation
+  const categoryNames = categories.map(c => c.name.toLowerCase());
+  const templateCounts = await RequestTemplate.aggregate([
+    { $match: { hotelId, category: { $in: categoryNames }, isActive: true } },
+    { $group: { _id: '$category', count: { $sum: 1 } } }
+  ]);
+  const countMap = new Map(templateCounts.map(tc => [tc._id, tc.count]));
 
-      return {
-        ...category.toObject(),
-        templateCount
-      };
-    })
-  );
+  const categoriesWithTemplates = categories.map(category => ({
+    ...category.toObject(),
+    templateCount: countMap.get(category.name.toLowerCase()) || 0
+  }));
 
   const total = await RequestCategory.countDocuments(filter);
 
@@ -87,7 +84,7 @@ router.get('/:id', catchAsync(async (req, res) => {
     _id: req.params.id,
     hotelId,
     isActive: true
-  }).populate('createdBy', 'username email');
+  }).populate('createdBy', 'username email').lean();
 
   if (!category) {
     throw new ApplicationError('Category not found', 404);
@@ -98,7 +95,7 @@ router.get('/:id', catchAsync(async (req, res) => {
     hotelId,
     category: category.name.toLowerCase(),
     isActive: true
-  }).select('name description estimatedBudget useCount');
+  }).select('name description estimatedBudget useCount').lean().limit(1000);
 
   res.status(200).json({
     status: 'success',

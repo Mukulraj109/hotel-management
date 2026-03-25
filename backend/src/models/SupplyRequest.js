@@ -519,110 +519,126 @@ supplyRequestSchema.methods.removeItem = function(itemIndex) {
 
 // Static method to get department statistics
 supplyRequestSchema.statics.getDepartmentStats = async function(hotelId, startDate, endDate) {
-  const matchQuery = { hotelId };
+  try {
+    const matchQuery = { hotelId };
   
-  if (startDate && endDate) {
-    matchQuery.createdAt = {
-      $gte: new Date(startDate),
-      $lte: new Date(endDate)
-    };
-  }
-
-  const pipeline = [
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: {
-          department: '$department',
-          status: '$status'
-        },
-        count: { $sum: 1 },
-        totalCost: { $sum: '$totalActualCost' },
-        avgCost: { $avg: '$totalActualCost' }
-      }
-    },
-    {
-      $group: {
-        _id: '$_id.department',
-        stats: {
-          $push: {
-            status: '$_id.status',
-            count: '$count',
-            totalCost: '$totalCost',
-            avgCost: '$avgCost'
-          }
-        },
-        totalRequests: { $sum: '$count' }
-      }
+    if (startDate && endDate) {
+      matchQuery.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
     }
-  ];
 
-  return await this.aggregate(pipeline);
+    const pipeline = [
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: {
+            department: '$department',
+            status: '$status'
+          },
+          count: { $sum: 1 },
+          totalCost: { $sum: '$totalActualCost' },
+          avgCost: { $avg: '$totalActualCost' }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.department',
+          stats: {
+            $push: {
+              status: '$_id.status',
+              count: '$count',
+              totalCost: '$totalCost',
+              avgCost: '$avgCost'
+            }
+          },
+          totalRequests: { $sum: '$count' }
+        }
+      }
+    ];
+
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get overdue requests
 supplyRequestSchema.statics.getOverdueRequests = async function(hotelId) {
-  return await this.find({
-    hotelId,
-    neededBy: { $lt: new Date() },
-    status: { $in: ['pending', 'approved', 'ordered', 'partial_received'] }
-  })
-  .populate('requestedBy', 'name')
-  .populate('approvedBy', 'name')
-  .sort('neededBy');
+  try {
+    return await this.find({
+      hotelId,
+      neededBy: { $lt: new Date() },
+      status: { $in: ['pending', 'approved', 'ordered', 'partial_received'] }
+    })
+    .populate('requestedBy', 'name')
+    .populate('approvedBy', 'name')
+    .sort('neededBy').lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get pending approvals
 supplyRequestSchema.statics.getPendingApprovals = async function(hotelId) {
-  return await this.find({
-    hotelId,
-    status: 'pending'
-  })
-  .populate('requestedBy', 'name department')
-  .sort('-priority createdAt');
+  try {
+    return await this.find({
+      hotelId,
+      status: 'pending'
+    })
+    .populate('requestedBy', 'name department')
+    .sort('-priority createdAt').lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get budget utilization
 supplyRequestSchema.statics.getBudgetUtilization = async function(hotelId, department, period) {
-  const startDate = new Date();
+  try {
+    const startDate = new Date();
   
-  switch (period) {
-    case 'month':
-      startDate.setMonth(startDate.getMonth() - 1);
-      break;
-    case 'quarter':
-      startDate.setMonth(startDate.getMonth() - 3);
-      break;
-    case 'year':
-      startDate.setFullYear(startDate.getFullYear() - 1);
-      break;
-    default:
-      startDate.setMonth(startDate.getMonth() - 1);
+    switch (period) {
+      case 'month':
+        startDate.setMonth(startDate.getMonth() - 1);
+        break;
+      case 'quarter':
+        startDate.setMonth(startDate.getMonth() - 3);
+        break;
+      case 'year':
+        startDate.setFullYear(startDate.getFullYear() - 1);
+        break;
+      default:
+        startDate.setMonth(startDate.getMonth() - 1);
+    }
+
+    const matchQuery = {
+      hotelId,
+      createdAt: { $gte: startDate },
+      status: { $ne: 'cancelled' }
+    };
+
+    if (department) {
+      matchQuery.department = department;
+    }
+
+    return await this.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: '$department',
+          totalRequested: { $sum: '$totalEstimatedCost' },
+          totalSpent: { $sum: '$totalActualCost' },
+          requestCount: { $sum: 1 },
+          avgRequestValue: { $avg: '$totalEstimatedCost' }
+        }
+      },
+      { $sort: { totalSpent: -1 } }
+    ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  const matchQuery = {
-    hotelId,
-    createdAt: { $gte: startDate },
-    status: { $ne: 'cancelled' }
-  };
-
-  if (department) {
-    matchQuery.department = department;
-  }
-
-  return await this.aggregate([
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: '$department',
-        totalRequested: { $sum: '$totalEstimatedCost' },
-        totalSpent: { $sum: '$totalActualCost' },
-        requestCount: { $sum: 1 },
-        avgRequestValue: { $avg: '$totalEstimatedCost' }
-      }
-    },
-    { $sort: { totalSpent: -1 } }
-  ]);
 };
 
 export default mongoose.model('SupplyRequest', supplyRequestSchema);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import toast from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { adminService } from '../../services/adminService';
 import { formatCurrency } from '../../utils/dashboardUtils';
 import { useAuth } from '../../context/AuthContext';
 import PaymentCollectionModal from '../../components/admin/PaymentCollectionModal';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import {
   User,
   Home,
@@ -67,7 +68,7 @@ interface BookingForm {
   status: 'checked_in';
 }
 
-export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledData }: WalkInBookingProps) {
+function WalkInBooking({ isOpen, onClose, onSuccess, prefilledData }: WalkInBookingProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [step, setStep] = useState(1);
@@ -119,6 +120,14 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Fetch hotels on component mount
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (isOpen) {
       fetchHotels();
@@ -489,13 +498,15 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
 
         // Refresh available rooms
         if (bookingForm.hotelId && bookingForm.checkIn && bookingForm.checkOut) {
-          setTimeout(() => {
+          if (timerRef.current) clearTimeout(timerRef.current);
+          timerRef.current = setTimeout(() => {
             fetchAvailableRooms();
           }, 500);
         }
 
         // Close modal
-        setTimeout(() => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
           handleClose();
         }, 1500);
       } catch (bookingError: unknown) {
@@ -659,6 +670,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                       <Search className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
                       <Input
                         type="text"
+                        required
                         value={userSearch}
                         onChange={(e) => setUserSearch(e.target.value)}
                         placeholder="Search by name, email, or phone..."
@@ -677,7 +689,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                         </div>
                       ) : searchResults.length > 0 ? (
                         searchResults.map((guest) => (
-                          <div
+                          <div role="button" tabIndex={0}
                             key={guest._id}
                             onClick={() => {
                               setSelectedExistingUser(guest);
@@ -686,7 +698,11 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                             }}
                             className={`p-3 cursor-pointer hover:bg-gray-50 border-b last:border-b-0 ${selectedExistingUser?._id === guest._id ? 'bg-blue-50' : ''
                               }`}
-                          >
+                           onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => {
+                              setSelectedExistingUser(guest);
+                              setUserSearch(guest.name);
+                              setSearchResults([]);
+                            }; if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                             <div className="font-medium">{guest.name}</div>
                             <div className="text-sm text-gray-600">{guest.email}</div>
                             {guest.phone && (
@@ -745,6 +761,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                       <User className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
                       <Input
                         type="text"
+                        required
                         value={guestForm.name}
                         onChange={(e) => setGuestForm(prev => ({ ...prev, name: e.target.value }))}
                         placeholder="Enter full name"
@@ -762,6 +779,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                       <Mail className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
                       <Input
                         type="email"
+                        required
                         value={guestForm.email}
                         onChange={(e) => setGuestForm(prev => ({ ...prev, email: e.target.value }))}
                         placeholder="Enter email address"
@@ -779,6 +797,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                       <Phone className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
                       <Input
                         type="tel"
+                        required
                         value={guestForm.phone}
                         onChange={(e) => setGuestForm(prev => ({ ...prev, phone: e.target.value }))}
                         placeholder="Enter phone number"
@@ -813,6 +832,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                     </label>
                     <Input
                       type="text"
+                      required
                       value={guestForm.idNumber}
                       onChange={(e) => setGuestForm(prev => ({ ...prev, idNumber: e.target.value }))}
                       placeholder="Enter ID number"
@@ -840,6 +860,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                       <MapPin className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
                       <Input
                         type="text"
+                        required
                         value={guestForm.address}
                         onChange={(e) => setGuestForm(prev => ({ ...prev, address: e.target.value }))}
                         placeholder="Enter street address"
@@ -855,6 +876,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                     </label>
                     <Input
                       type="text"
+                      required
                       value={guestForm.city}
                       onChange={(e) => setGuestForm(prev => ({ ...prev, city: e.target.value }))}
                       placeholder="Enter city"
@@ -868,6 +890,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                     </label>
                     <Input
                       type="text"
+                      required
                       value={guestForm.state}
                       onChange={(e) => setGuestForm(prev => ({ ...prev, state: e.target.value }))}
                       placeholder="Enter state"
@@ -913,6 +936,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                     <Calendar className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
                     <Input
                       type="date"
+                      required
                       value={bookingForm.checkIn}
                       onChange={(e) => setBookingForm(prev => ({ ...prev, checkIn: e.target.value }))}
                       min={new Date().toISOString().split('T')[0]}
@@ -930,6 +954,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                     <Calendar className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
                     <Input
                       type="date"
+                      required
                       value={bookingForm.checkOut}
                       onChange={(e) => setBookingForm(prev => ({ ...prev, checkOut: e.target.value }))}
                       min={bookingForm.checkIn ? new Date(new Date(bookingForm.checkIn).getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}
@@ -947,6 +972,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                     <Users className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
                     <Input
                       type="number"
+                      required
                       min="1"
                       value={bookingForm.guestDetails.adults}
                       onChange={(e) => setBookingForm(prev => ({
@@ -988,7 +1014,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                 {availableRooms.filter(room => room.isAvailable).length > 0 ? (
                   <div className="space-y-2 max-h-80 overflow-y-auto border border-gray-200 rounded-lg p-2">
                     {availableRooms.filter(room => room.isAvailable).map((room) => (
-                      <div
+                      <div role="button" tabIndex={0}
                         key={room._id}
                         className={`p-3 border rounded-lg cursor-pointer transition-colors ${bookingForm.roomIds.includes(room._id)
                             ? 'border-blue-500 bg-blue-50'
@@ -1002,7 +1028,14 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                               : [...prev.roomIds, room._id]
                           }));
                         }}
-                      >
+                       onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => {
+                          setBookingForm(prev => ({
+                            ...prev,
+                            roomIds: prev.roomIds.includes(room._id)
+                              ? prev.roomIds.filter(id => id !== room._id)
+                              : [...prev.roomIds, room._id]
+                          }));
+                        }; if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                         <div className="flex justify-between items-center">
                           <div>
                             <div className="flex items-center">
@@ -1213,3 +1246,6 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
     </>
   );
 }
+
+
+export default withErrorBoundary(WalkInBooking, { level: 'page' });

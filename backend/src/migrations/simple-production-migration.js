@@ -63,7 +63,7 @@ async function runSimpleMigration() {
       }
       
       // Check if exists
-      const exists = await RoomType.findOne({ hotelId, legacyType: type });
+      const exists = await RoomType.findOne({ hotelId, legacyType: type }).lean();
       if (exists) {
         console.log(`✅ Already exists: ${config.name}`);
         createdTypes.push(exists);
@@ -116,7 +116,7 @@ async function runSimpleMigration() {
           hotelId: roomType.hotelId,
           roomTypeId: roomType._id,
           date
-        });
+        }).lean();
         
         if (exists) continue;
         

@@ -112,8 +112,12 @@ class GuestServiceRequestService {
    * Create a new guest service request
    */
   async createServiceRequest(data: CreateGuestServiceRequest): Promise<GuestServiceRequest> {
-    const response = await api.post('/guest-services', data);
-    return response.data.data.serviceRequest;
+    try {
+      const response = await api.post('/guest-services', data);
+      return response.data.data.serviceRequest;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -128,8 +132,12 @@ class GuestServiceRequestService {
     assignedTo?: string;
     hotelId?: string;
   }): Promise<GuestServiceRequestsResponse> {
-    const response = await api.get('/guest-services', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/guest-services', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -140,41 +148,61 @@ class GuestServiceRequestService {
     endDate?: string;
     hotelId?: string;
   }): Promise<ServiceStatsResponse> {
-    const response = await api.get('/guest-services/stats', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/guest-services/stats', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get available staff members for assignment
    */
   async getAvailableStaff(hotelId?: string): Promise<StaffMember[]> {
-    const params = hotelId ? { hotelId } : {};
-    const response = await api.get('/guest-services/available-staff', { params });
-    return response.data.data;
+    try {
+      const params = hotelId ? { hotelId } : {};
+      const response = await api.get('/guest-services/available-staff', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get specific service request by ID
    */
   async getServiceRequest(requestId: string): Promise<GuestServiceRequest> {
-    const response = await api.get(`/guest-services/${requestId}`);
-    return response.data.data.serviceRequest;
+    try {
+      const response = await api.get(`/guest-services/${requestId}`);
+      return response.data.data.serviceRequest;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Update a service request
    */
   async updateServiceRequest(requestId: string, data: UpdateGuestServiceRequest): Promise<GuestServiceRequest> {
-    const response = await api.patch(`/guest-services/${requestId}`, data);
-    return response.data.data.serviceRequest;
+    try {
+      const response = await api.patch(`/guest-services/${requestId}`, data);
+      return response.data.data.serviceRequest;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Add feedback to a completed service
    */
   async addFeedback(requestId: string, rating: number, feedback?: string): Promise<GuestServiceRequest> {
-    const response = await api.post(`/guest-services/${requestId}/feedback`, { rating, feedback });
-    return response.data.data.serviceRequest;
+    try {
+      const response = await api.post(`/guest-services/${requestId}/feedback`, { rating, feedback });
+      return response.data.data.serviceRequest;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**

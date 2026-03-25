@@ -44,7 +44,7 @@ class AssignmentRulesController {
       // Populate the created rule
       const populatedRule = await RoomAssignmentRules.findById(assignmentRule._id)
         .populate('createdBy', 'name email')
-        .populate('lastModifiedBy', 'name email');
+        .populate('lastModifiedBy', 'name email').lean();
 
       res.status(201).json({
         success: true,
@@ -121,7 +121,7 @@ class AssignmentRulesController {
 
       const assignmentRule = await RoomAssignmentRules.findById(id)
         .populate('createdBy', 'name email')
-        .populate('lastModifiedBy', 'name email');
+        .populate('lastModifiedBy', 'name email').lean();
 
       if (!assignmentRule) {
         return res.status(404).json({
@@ -226,7 +226,11 @@ class AssignmentRulesController {
   // Get assignment rules statistics
   async getAssignmentRulesStats(req, res) {
     try {
+      const hotelId = req.user.hotelId;
+      const matchStage = hotelId ? { $match: { hotelId } } : { $match: {} };
+
       const stats = await RoomAssignmentRules.aggregate([
+        matchStage,
         {
           $group: {
             _id: '$isActive',
@@ -237,6 +241,7 @@ class AssignmentRulesController {
       ]);
 
       const priorityStats = await RoomAssignmentRules.aggregate([
+        matchStage,
         {
           $group: {
             _id: '$priority',
@@ -246,10 +251,11 @@ class AssignmentRulesController {
         { $sort: { _id: 1 } }
       ]);
 
-      const recentRules = await RoomAssignmentRules.find()
+      const filterQuery = hotelId ? { hotelId } : {};
+      const recentRules = await RoomAssignmentRules.find(filterQuery)
         .populate('createdBy', 'name')
         .sort({ createdAt: -1 })
-        .limit(5);
+        .limit(5).lean();
 
       res.json({
         success: true,
@@ -276,7 +282,7 @@ class AssignmentRulesController {
       const { id } = req.params;
       const { testCriteria } = req.body;
 
-      const assignmentRule = await RoomAssignmentRules.findById(id);
+      const assignmentRule = await RoomAssignmentRules.findById(id).lean();
       if (!assignmentRule) {
         return res.status(404).json({
           success: false,
@@ -318,7 +324,7 @@ class AssignmentRulesController {
       // Get active assignment rules ordered by priority
       const assignmentRules = await RoomAssignmentRules.find({
         isActive: true
-      }).sort({ priority: 1 }).limit(20);
+      }).sort({ priority: 1 }).limit(20).lean();
 
       if (assignmentRules.length === 0) {
         return res.json({
@@ -352,7 +358,7 @@ class AssignmentRulesController {
       const unassignedBookings = await Booking.find(bookingQuery)
         .populate('userId', 'name email loyaltyStatus')
         .limit(maxBookings)
-        .sort({ createdAt: 1 });
+        .sort({ createdAt: 1 }).lean();
 
       const results = {
         assigned: 0,
@@ -405,7 +411,9 @@ class AssignmentRulesController {
               assignedRoom: assignedRoom._id,
               assignmentRuleUsed: selectedRule._id,
               lastModified: new Date()
-            });
+            },
+              { new: true }
+            );
 
             results.assigned++;
             results.details.push({
@@ -483,75 +491,81 @@ class AssignmentRulesController {
 
   // Helper method to find and assign a room based on rule actions
   async findAndAssignRoom(booking, rule, hotelId) {
-    const roomQuery = {
-      hotelId,
-      isActive: true,
-      status: 'available'
-    };
+    try {
+      const roomQuery = {
+        hotelId,
+        isActive: true,
+        status: 'available'
+      };
 
-    // Apply room type preference
-    if (booking.roomType) {
-      roomQuery.roomType = booking.roomType;
-    } else if (rule.conditions.roomTypes && rule.conditions.roomTypes.length > 0) {
-      roomQuery.roomType = { $in: rule.conditions.roomTypes };
-    }
+      // Apply room type preference
+      if (booking.roomType) {
+        roomQuery.roomType = booking.roomType;
+      } else if (rule.conditions.roomTypes && rule.conditions.roomTypes.length > 0) {
+        roomQuery.roomType = { $in: rule.conditions.roomTypes };
+      }
 
-    // Apply rule-based room preferences
-    if (rule.actions.preferredRoomNumbers && rule.actions.preferredRoomNumbers.length > 0) {
-      roomQuery.roomNumber = { $in: rule.actions.preferredRoomNumbers };
-    }
+      // Apply rule-based room preferences
+      if (rule.actions.preferredRoomNumbers && rule.actions.preferredRoomNumbers.length > 0) {
+        roomQuery.roomNumber = { $in: rule.actions.preferredRoomNumbers };
+      }
 
-    if (rule.actions.avoidRoomNumbers && rule.actions.avoidRoomNumbers.length > 0) {
-      roomQuery.roomNumber = { $nin: rule.actions.avoidRoomNumbers };
-    }
+      if (rule.actions.avoidRoomNumbers && rule.actions.avoidRoomNumbers.length > 0) {
+        roomQuery.roomNumber = { $nin: rule.actions.avoidRoomNumbers };
+      }
 
-    if (rule.actions.preferredFloors && rule.actions.preferredFloors.length > 0) {
-      roomQuery.floor = { $in: rule.actions.preferredFloors };
-    }
+      if (rule.actions.preferredFloors && rule.actions.preferredFloors.length > 0) {
+        roomQuery.floor = { $in: rule.actions.preferredFloors };
+      }
 
-    // Check for existing bookings in the date range
-    const conflictingBookings = await Booking.find({
-      hotelId,
-      status: { $in: ['confirmed', 'checked_in'] },
-      $or: [
-        {
-          checkIn: { $lt: booking.checkOut },
-          checkOut: { $gt: booking.checkIn }
-        }
-      ]
-    }).select('rooms.roomId');
+      // Check for existing bookings in the date range
+      const conflictingBookings = await Booking.find({
+        hotelId,
+        status: { $in: ['confirmed', 'checked_in'] },
+        $or: [
+          {
+            checkIn: { $lt: booking.checkOut },
+            checkOut: { $gt: booking.checkIn }
+          }
+        ]
+      }).select('rooms.roomId').lean().limit(1000);
 
-    const occupiedRoomIds = conflictingBookings.flatMap(b =>
-      b.rooms.map(r => r.roomId?.toString()).filter(Boolean)
-    );
-
-    if (occupiedRoomIds.length > 0) {
-      roomQuery._id = { $nin: occupiedRoomIds };
-    }
-
-    // Find available rooms
-    let availableRooms = await Room.find(roomQuery).sort({
-      floor: 1,
-      roomNumber: 1
-    });
-
-    if (availableRooms.length === 0) {
-      return null;
-    }
-
-    // Apply upgrade logic if eligible
-    if (rule.actions.upgradeEligible && rule.actions.upgradeToTypes && rule.actions.upgradeToTypes.length > 0) {
-      const upgradeRooms = availableRooms.filter(room =>
-        rule.actions.upgradeToTypes.includes(room.roomType)
+      const occupiedRoomIds = conflictingBookings.flatMap(b =>
+        b.rooms.map(r => r.roomId?.toString()).filter(Boolean)
       );
 
-      if (upgradeRooms.length > 0) {
-        availableRooms = upgradeRooms;
+      if (occupiedRoomIds.length > 0) {
+        roomQuery._id = { $nin: occupiedRoomIds };
       }
-    }
 
-    // Return the first available room
-    return availableRooms[0];
+      // Find available rooms
+      let availableRooms = await Room.find(roomQuery).sort({
+        floor: 1,
+        roomNumber: 1
+      }).lean().limit(1000);
+
+      if (availableRooms.length === 0) {
+        return null;
+      }
+
+      // Apply upgrade logic if eligible
+      if (rule.actions.upgradeEligible && rule.actions.upgradeToTypes && rule.actions.upgradeToTypes.length > 0) {
+        const upgradeRooms = availableRooms.filter(room =>
+          rule.actions.upgradeToTypes.includes(room.roomType)
+        );
+
+        if (upgradeRooms.length > 0) {
+          availableRooms = upgradeRooms;
+        }
+      }
+
+      // Return the first available room
+      return availableRooms[0];
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
+    }
   }
 
   // Helper method to evaluate rule conditions

@@ -271,7 +271,7 @@ export const generateGSTInvoiceData = catchAsync(async (req, res, next) => {
     hotelId: req.user.hotelId
   })
   .populate('corporateBooking.corporateCompanyId')
-  .populate('hotelId');
+  .populate('hotelId').lean();
   
   if (!booking) {
     return next(new ApplicationError('Booking not found', 404));
@@ -416,7 +416,7 @@ export const updateBookingGSTDetails = catchAsync(async (req, res, next) => {
   const booking = await Booking.findOne({
     _id: req.params.bookingId,
     hotelId: req.user.hotelId
-  });
+  }).lean();
   
   if (!booking) {
     return next(new ApplicationError('Booking not found', 404));

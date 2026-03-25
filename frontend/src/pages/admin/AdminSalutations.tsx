@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import {
   PlusIcon,
   PencilIcon,
@@ -97,6 +97,15 @@ const AdminSalutations: React.FC = () => {
     { value: 'false', label: 'Inactive' }
   ];
 
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     fetchSalutations();
   }, [filters]);
@@ -156,7 +165,8 @@ const AdminSalutations: React.FC = () => {
         if (!result) return;
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         setApplyToScope('single');
         fetchSalutations();
       } else {
@@ -183,7 +193,8 @@ const AdminSalutations: React.FC = () => {
         if (!result) return;
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         setApplyToScope('single');
         fetchSalutations();
       } else {
@@ -202,7 +213,8 @@ const AdminSalutations: React.FC = () => {
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         setApplyToScope('single');
         fetchSalutations();
       }
@@ -491,7 +503,7 @@ const AdminSalutations: React.FC = () => {
                       {salutation.region && ` (${salutation.region})`}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <button
+                      <button aria-label="Toggle"
                         onClick={() => handleToggleStatus(salutation._id, salutation.isActive)}
                         className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                           salutation.isActive 
@@ -504,13 +516,13 @@ const AdminSalutations: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex space-x-2">
-                        <button
+                        <button aria-label="Edit"
                           onClick={() => handleEdit(salutation)}
                           className="text-blue-600 hover:text-blue-900"
                         >
                           <PencilIcon className="w-4 h-4" />
                         </button>
-                        <button
+                        <button aria-label="Delete"
                           onClick={() => handleDelete(salutation._id)}
                           className="text-red-600 hover:text-red-900"
                         >

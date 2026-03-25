@@ -11,8 +11,8 @@
  * Use this as a template for updating the 30 settings pages.
  */
 
-import React, { useState, useEffect } from 'react';
-import { Clock, Save, RefreshCw, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef} from 'react';
+import { Clock, Save, RefreshCw, AlertCircle, Loader2 } from 'lucide-react';
 import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from './ApplyToSelector';
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
@@ -55,6 +55,15 @@ export function CheckInOutSettings() {
   const [showSuccess, setShowSuccess] = useState(false);
 
   // Load current property settings
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (selectedProperty) {
       setCheckInTime(selectedProperty.policies?.checkInTime || '14:00');
@@ -95,7 +104,8 @@ export function CheckInOutSettings() {
         setHasChanges(false);
 
         // Hide success message after 3 seconds
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
       }
     } catch {
       // Error handled silently
@@ -111,7 +121,8 @@ export function CheckInOutSettings() {
       setHasChanges(false);
 
       // Hide success message after 3 seconds
-      setTimeout(() => setShowSuccess(false), 3000);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
     } catch {
       // Error handled silently
     }
@@ -161,6 +172,7 @@ export function CheckInOutSettings() {
                 value={checkInTime}
                 onChange={(e) => handleCheckInTimeChange(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                required
               />
               <p className="text-xs text-gray-500 mt-1">
                 Standard time when guests can check in to their rooms
@@ -178,6 +190,7 @@ export function CheckInOutSettings() {
                 value={checkOutTime}
                 onChange={(e) => handleCheckOutTimeChange(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                required
               />
               <p className="text-xs text-gray-500 mt-1">
                 Standard time when guests must check out of their rooms
@@ -245,7 +258,7 @@ export function CheckInOutSettings() {
                 type="submit"
                 disabled={!hasChanges || isUpdating}
               >
-                <Save className="h-4 w-4 mr-2" />
+                {isUpdating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
                 {isUpdating ? 'Saving...' : 'Save Changes'}
               </Button>
             </div>

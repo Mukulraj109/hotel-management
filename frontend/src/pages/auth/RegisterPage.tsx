@@ -201,7 +201,7 @@ export default function RegisterPage() {
             </div>
 
             {/* Submit Button */}
-            <button
+            <button aria-label="View"
               type="submit"
               disabled={loading}
               className={`w-full py-3 px-4 rounded-lg text-white font-medium transition-all duration-200 ${

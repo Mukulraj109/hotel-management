@@ -240,24 +240,32 @@ hotelSettingsSchema.index({ hotelId: 1 });
 
 // Static methods
 hotelSettingsSchema.statics.getOrCreateForHotel = async function(hotelId, defaultSettings = {}) {
-  let settings = await this.findOne({ hotelId });
+  try {
+    let settings = await this.findOne({ hotelId }).lean();
 
-  if (!settings) {
-    settings = await this.create({
-      hotelId,
-      ...defaultSettings
-    });
+    if (!settings) {
+      settings = await this.create({
+        hotelId,
+        ...defaultSettings
+      });
+    }
+
+    return settings;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  return settings;
 };
 
 hotelSettingsSchema.statics.updateHotelSettings = async function(hotelId, updates) {
-  return await this.findOneAndUpdate(
-    { hotelId },
-    { $set: updates },
-    { new: true, upsert: true }
-  );
+  try {
+    return await this.findOneAndUpdate(
+      { hotelId },
+      { $set: updates },
+      { new: true, upsert: true }
+    );
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance methods

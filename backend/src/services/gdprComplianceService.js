@@ -377,92 +377,128 @@ class GDPRComplianceService {
   // Helper methods
 
   async hasValidConsent(userId, purpose) {
-    // Check if user has given valid consent for this purpose
-    // This would query the ConsentRecord collection
-    return true; // Simplified for demo
+    try {
+      // Check if user has given valid consent for this purpose
+      // This would query the ConsentRecord collection
+      return true; // Simplified for demo
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async isContractualNecessity(userId, purpose) {
-    // Check if processing is necessary for contract performance
-    const contractualPurposes = ['booking_processing', 'payment_processing', 'service_delivery'];
-    return contractualPurposes.includes(purpose);
+    try {
+      // Check if processing is necessary for contract performance
+      const contractualPurposes = ['booking_processing', 'payment_processing', 'service_delivery'];
+      return contractualPurposes.includes(purpose);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async assessLegitimateInterest(userId, purpose) {
-    // Assess if legitimate interest applies
-    const legitimateInterests = ['fraud_prevention', 'analytics', 'marketing'];
-    return legitimateInterests.includes(purpose);
+    try {
+      // Assess if legitimate interest applies
+      const legitimateInterests = ['fraud_prevention', 'analytics', 'marketing'];
+      return legitimateInterests.includes(purpose);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async isVitalInterest(purpose) {
-    // Check if processing is necessary for vital interests
-    return purpose === 'emergency_contact';
+    try {
+      // Check if processing is necessary for vital interests
+      return purpose === 'emergency_contact';
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async collectUserData(userId) {
-    // Collect all user data from various collections
-    // This would query User, Booking, Payment, etc. collections
-    return {
-      profile: {},
-      bookings: [],
-      payments: [],
-      preferences: {},
-      communications: []
-    };
+    try {
+      // Collect all user data from various collections
+      // This would query User, Booking, Payment, etc. collections
+      return {
+        profile: {},
+        bookings: [],
+        payments: [],
+        preferences: {},
+        communications: []
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async generateDataExport(userId, userData) {
-    return {
-      userId,
-      exportDate: new Date().toISOString(),
-      format: 'JSON',
-      data: userData,
-      encryption: 'AES-256-GCM',
-      dataCategories: Object.keys(this.dataCategories)
-    };
+    try {
+      return {
+        userId,
+        exportDate: new Date().toISOString(),
+        format: 'JSON',
+        data: userData,
+        encryption: 'AES-256-GCM',
+        dataCategories: Object.keys(this.dataCategories)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async applyDataCorrections(userId, corrections) {
-    const results = {};
+    try {
+      const results = {};
     
-    for (const [field, newValue] of Object.entries(corrections)) {
-      // Apply correction with audit trail
-      results[field] = {
-        oldValue: '[ENCRYPTED]', // Don't log actual values
-        newValue: '[ENCRYPTED]',
-        correctedAt: new Date().toISOString(),
-        status: 'completed'
-      };
-    }
+      for (const [field, newValue] of Object.entries(corrections)) {
+        // Apply correction with audit trail
+        results[field] = {
+          oldValue: '[ENCRYPTED]', // Don't log actual values
+          newValue: '[ENCRYPTED]',
+          correctedAt: new Date().toISOString(),
+          status: 'completed'
+        };
+      }
 
-    return results;
+      return results;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async assessErasureRequest(userId, reason) {
-    // Check legal obligations, legitimate interests, etc.
-    const assessment = {
-      canErase: true,
-      reason: null,
-      dataToErase: ['profile', 'preferences', 'marketing_data'],
-      dataToRetain: ['booking_history', 'payment_records'], // Legal obligations
-      retentionReason: 'Financial record keeping requirements'
-    };
+    try {
+      // Check legal obligations, legitimate interests, etc.
+      const assessment = {
+        canErase: true,
+        reason: null,
+        dataToErase: ['profile', 'preferences', 'marketing_data'],
+        dataToRetain: ['booking_history', 'payment_records'], // Legal obligations
+        retentionReason: 'Financial record keeping requirements'
+      };
 
-    return assessment;
+      return assessment;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async performDataErasure(userId, dataToErase) {
-    const results = {};
+    try {
+      const results = {};
     
-    for (const dataType of dataToErase) {
-      results[dataType] = {
-        status: 'erased',
-        erasedAt: new Date().toISOString(),
-        method: 'cryptographic_erasure'
-      };
-    }
+      for (const dataType of dataToErase) {
+        results[dataType] = {
+          status: 'erased',
+          erasedAt: new Date().toISOString(),
+          method: 'cryptographic_erasure'
+        };
+      }
 
-    return results;
+      return results;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   filterPortableData(userData) {
@@ -476,15 +512,19 @@ class GDPRComplianceService {
   }
 
   async generatePortableExport(data, format) {
-    switch (format) {
-      case 'json':
-        return JSON.stringify(data, null, 2);
-      case 'csv':
-        return this.convertToCSV(data);
-      case 'xml':
-        return this.convertToXML(data);
-      default:
-        return JSON.stringify(data, null, 2);
+    try {
+      switch (format) {
+        case 'json':
+          return JSON.stringify(data, null, 2);
+        case 'csv':
+          return this.convertToCSV(data);
+        case 'xml':
+          return this.convertToXML(data);
+        default:
+          return JSON.stringify(data, null, 2);
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 

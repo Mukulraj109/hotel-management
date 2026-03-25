@@ -15,128 +15,164 @@ interface ApiResponse<T> {
 
 class BookingService {
   async getRooms(filters: BookingFilters & { page?: number; limit?: number } = {}): Promise<ApiResponse<{ rooms: Room[] }>> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/rooms?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/rooms?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getRoomById(id: string): Promise<ApiResponse<{ room: Room }>> {
-    const response = await api.get(`/rooms/${id}`);
-    return response.data;
+    try {
+      const response = await api.get(`/rooms/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async createBooking(bookingData: CreateBookingRequest): Promise<ApiResponse<{ booking: Booking }>> {
-    // Generate a strong idempotency key with booking details
-    const generateIdempotencyKey = (): string => {
-      const timestamp = Date.now();
-      const randomUUID = crypto.randomUUID();
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const userId = user._id || user.id || 'anonymous';
+    try {
+      // Generate a strong idempotency key with booking details
+      const generateIdempotencyKey = (): string => {
+        const timestamp = Date.now();
+        const randomUUID = crypto.randomUUID();
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const userId = user._id || user.id || 'anonymous';
       
-      // Create a hash from key booking details to make each booking attempt unique
-      const bookingDetails = `${bookingData.checkIn}-${bookingData.checkOut}-${bookingData.roomType || 'default'}-${bookingData.roomIds?.join(',') || 'none'}`;
-      const detailsHash = btoa(bookingDetails).substring(0, 8); // Simple base64 hash, first 8 chars
+        // Create a hash from key booking details to make each booking attempt unique
+        const bookingDetails = `${bookingData.checkIn}-${bookingData.checkOut}-${bookingData.roomType || 'default'}-${bookingData.roomIds?.join(',') || 'none'}`;
+        const detailsHash = btoa(bookingDetails).substring(0, 8); // Simple base64 hash, first 8 chars
       
-      return `booking-${userId}-${timestamp}-${detailsHash}-${randomUUID}`;
-    };
+        return `booking-${userId}-${timestamp}-${detailsHash}-${randomUUID}`;
+      };
 
-    // Get the current hotel ID from the bookings route (accessible to all authenticated users)
-    let hotelId = bookingData.hotelId;
-    if (!hotelId) {
-      try {
-        const hotelResponse = await api.get('/bookings/current-hotel');
-        hotelId = hotelResponse.data.data.hotelId;
-      } catch (error) {
-        hotelId = null;
+      // Get the current hotel ID from the bookings route (accessible to all authenticated users)
+      let hotelId = bookingData.hotelId;
+      if (!hotelId) {
+        try {
+          const hotelResponse = await api.get('/bookings/current-hotel');
+          hotelId = hotelResponse.data.data.hotelId;
+        } catch (error) {
+          hotelId = null;
+        }
       }
-    }
     
-    // Always use default hotel ID if no hotelId is set (for guest users)
-    if (!hotelId) {
-      hotelId = '68cd01414419c17b5f6b4c12'; // Default hotel ID
-    }
-    
-
-    // Ensure we have the required fields for the backend API
-    const enhancedBookingData = {
-      ...bookingData,
-      // Add required fields if missing
-      hotelId: hotelId,
-      idempotencyKey: bookingData.idempotencyKey || generateIdempotencyKey(),
-      // Ensure roomIds is an array if roomId is provided as a string
-      roomIds: bookingData.roomIds || (bookingData.roomId ? [bookingData.roomId] : undefined),
-      // Set default currency if not provided
-      currency: bookingData.currency || 'INR',
-      // Ensure guestDetails has required fields
-      guestDetails: {
-        adults: 1,
-        children: 0,
-        ...bookingData.guestDetails
+      // Always use default hotel ID if no hotelId is set (for guest users)
+      if (!hotelId) {
+        hotelId = '68cd01414419c17b5f6b4c12'; // Default hotel ID
       }
-    };
+    
+
+      // Ensure we have the required fields for the backend API
+      const enhancedBookingData = {
+        ...bookingData,
+        // Add required fields if missing
+        hotelId: hotelId,
+        idempotencyKey: bookingData.idempotencyKey || generateIdempotencyKey(),
+        // Ensure roomIds is an array if roomId is provided as a string
+        roomIds: bookingData.roomIds || (bookingData.roomId ? [bookingData.roomId] : undefined),
+        // Set default currency if not provided
+        currency: bookingData.currency || 'INR',
+        // Ensure guestDetails has required fields
+        guestDetails: {
+          adults: 1,
+          children: 0,
+          ...bookingData.guestDetails
+        }
+      };
 
     
-    const response = await api.post('/bookings', enhancedBookingData);
-    return response.data;
+      const response = await api.post('/bookings', enhancedBookingData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getBookings(filters: { status?: string; page?: number; limit?: number } = {}): Promise<ApiResponse<{ bookings: Booking[] }>> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/bookings?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/bookings?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getBookingById(id: string): Promise<ApiResponse<{ booking: Booking }>> {
-    const response = await api.get(`/bookings/${id}`);
-    return response.data;
+    try {
+      const response = await api.get(`/bookings/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateBooking(id: string, updates: Partial<Booking>): Promise<ApiResponse<{ booking: Booking }>> {
-    const response = await api.patch(`/bookings/${id}`, updates);
-    return response.data;
+    try {
+      const response = await api.patch(`/bookings/${id}`, updates);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async cancelBooking(id: string, reason?: string): Promise<ApiResponse<{ booking: Booking }>> {
-    const response = await api.patch(`/bookings/${id}/cancel`, { reason });
-    return response.data;
+    try {
+      const response = await api.patch(`/bookings/${id}/cancel`, { reason });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get user's bookings (for guests)
   async getUserBookings(filters: { status?: string; page?: number; limit?: number } = {}): Promise<ApiResponse<Booking[]>> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/bookings?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/bookings?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Check room availability
   async checkAvailability(roomIds: string[], checkIn: string, checkOut: string): Promise<ApiResponse<{ available: boolean; conflicting?: Booking[] }>> {
-    const response = await api.post('/bookings/check-availability', {
-      roomIds,
-      checkIn,
-      checkOut
-    });
-    return response.data;
+    try {
+      const response = await api.post('/bookings/check-availability', {
+        roomIds,
+        checkIn,
+        checkOut
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get booking analytics (for dashboard)
@@ -147,8 +183,12 @@ class BookingService {
     averageStay: number;
     statusBreakdown: Record<string, number>;
   }>> {
-    const response = await api.get(`/bookings/stats?period=${period}`);
-    return response.data;
+    try {
+      const response = await api.get(`/bookings/stats?period=${period}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get bookings for a specific room
@@ -166,16 +206,20 @@ class BookingService {
       pages: number;
     };
   }>> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/bookings/room/${roomId}?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/bookings/room/${roomId}?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Booking modification requests
@@ -186,18 +230,26 @@ class BookingService {
     reason: string,
     priority: 'low' | 'medium' | 'high' | 'urgent' = 'medium'
   ): Promise<ApiResponse<unknown>> {
-    const response = await api.post(`/bookings/${bookingId}/modification-request`, {
-      modificationType,
-      requestedChanges,
-      reason,
-      priority
-    });
-    return response.data;
+    try {
+      const response = await api.post(`/bookings/${bookingId}/modification-request`, {
+        modificationType,
+        requestedChanges,
+        reason,
+        priority
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getModificationRequests(bookingId: string): Promise<ApiResponse<{ modifications: unknown[] }>> {
-    const response = await api.get(`/bookings/${bookingId}/modification-requests`);
-    return response.data;
+    try {
+      const response = await api.get(`/bookings/${bookingId}/modification-requests`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Admin only - review modification requests
@@ -208,12 +260,16 @@ class BookingService {
     reviewNotes?: string,
     approvedChanges?: Record<string, unknown>
   ): Promise<ApiResponse<unknown>> {
-    const response = await api.patch(`/bookings/${bookingId}/modification-requests/${requestId}/review`, {
-      action,
-      reviewNotes,
-      approvedChanges
-    });
-    return response.data;
+    try {
+      const response = await api.patch(`/bookings/${bookingId}/modification-requests/${requestId}/review`, {
+        action,
+        reviewNotes,
+        approvedChanges
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Booking Conversation methods
@@ -225,15 +281,19 @@ class BookingService {
     priority: string = 'normal',
     attachments: unknown[] = []
   ): Promise<ApiResponse<unknown>> {
-    const response = await api.post('/booking-conversations', {
-      bookingId,
-      subject,
-      initialMessage,
-      category,
-      priority,
-      attachments
-    });
-    return response.data;
+    try {
+      const response = await api.post('/booking-conversations', {
+        bookingId,
+        subject,
+        initialMessage,
+        category,
+        priority,
+        attachments
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getConversations(filters: {
@@ -244,21 +304,29 @@ class BookingService {
     priority?: string;
     bookingId?: string;
   } = {}): Promise<ApiResponse<unknown>> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
 
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/booking-conversations?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/booking-conversations?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getConversation(conversationId: string): Promise<ApiResponse<unknown>> {
-    const response = await api.get(`/booking-conversations/${conversationId}`);
-    return response.data;
+    try {
+      const response = await api.get(`/booking-conversations/${conversationId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async addMessageToConversation(
@@ -268,33 +336,45 @@ class BookingService {
     attachments: unknown[] = [],
     relatedData: Record<string, unknown> = {}
   ): Promise<ApiResponse<unknown>> {
-    const response = await api.post(`/booking-conversations/${conversationId}/messages`, {
-      content,
-      messageType,
-      attachments,
-      relatedData
-    });
-    return response.data;
+    try {
+      const response = await api.post(`/booking-conversations/${conversationId}/messages`, {
+        content,
+        messageType,
+        attachments,
+        relatedData
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async markConversationAsRead(
     conversationId: string,
     messageIds?: string[]
   ): Promise<ApiResponse<unknown>> {
-    const response = await api.patch(`/booking-conversations/${conversationId}/read`, {
-      messageIds
-    });
-    return response.data;
+    try {
+      const response = await api.patch(`/booking-conversations/${conversationId}/read`, {
+        messageIds
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async assignConversation(
     conversationId: string,
     staffUserId: string
   ): Promise<ApiResponse<unknown>> {
-    const response = await api.patch(`/booking-conversations/${conversationId}/assign`, {
-      staffUserId
-    });
-    return response.data;
+    try {
+      const response = await api.patch(`/booking-conversations/${conversationId}/assign`, {
+        staffUserId
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateConversationStatus(
@@ -302,21 +382,29 @@ class BookingService {
     status: 'active' | 'resolved' | 'closed' | 'escalated',
     reason?: string
   ): Promise<ApiResponse<unknown>> {
-    const response = await api.patch(`/booking-conversations/${conversationId}/status`, {
-      status,
-      reason
-    });
-    return response.data;
+    try {
+      const response = await api.patch(`/booking-conversations/${conversationId}/status`, {
+        status,
+        reason
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getConversationStats(hotelId?: string, startDate?: string, endDate?: string): Promise<ApiResponse<unknown>> {
-    const params = new URLSearchParams();
-    if (hotelId) params.append('hotelId', hotelId);
-    if (startDate) params.append('startDate', startDate);
-    if (endDate) params.append('endDate', endDate);
+    try {
+      const params = new URLSearchParams();
+      if (hotelId) params.append('hotelId', hotelId);
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
 
-    const response = await api.get(`/booking-conversations/stats?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/booking-conversations/stats?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

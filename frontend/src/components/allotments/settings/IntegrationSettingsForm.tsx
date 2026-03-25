@@ -25,6 +25,7 @@ import {
 import { toast } from 'react-hot-toast';
 import { IntegrationSettings, HotelAllotmentSettings, TestResult } from '@/services/allotmentSettingsService';
 import allotmentSettingsService from '@/services/allotmentSettingsService';
+import { withErrorBoundary } from '../../ErrorBoundary';
 
 interface IntegrationSettingsFormProps {
   settings: HotelAllotmentSettings | null;
@@ -33,7 +34,7 @@ interface IntegrationSettingsFormProps {
   loading?: boolean;
 }
 
-export default function IntegrationSettingsForm({
+function IntegrationSettingsForm({
   settings,
   onSave,
   onChange,
@@ -796,3 +797,5 @@ export default function IntegrationSettingsForm({
     </div>
   );
 }
+
+export default withErrorBoundary(IntegrationSettingsForm, { level: 'component' });

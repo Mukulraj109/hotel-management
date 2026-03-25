@@ -60,6 +60,14 @@ export function useNotificationStream(options: UseNotificationStreamOptions = {}
   }>({});
 
   // Update handlers ref when they change
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     handlersRef.current.onNotificationReceived = onNotificationReceived;
     handlersRef.current.onConnectionStateChange = onConnectionStateChange;
@@ -222,7 +230,8 @@ export function useNotificationStream(options: UseNotificationStreamOptions = {}
   const reconnect = useCallback(async () => {
     if (debug)
     disconnect();
-    setTimeout(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
       connect();
     }, 1000);
   }, [debug, disconnect, connect]);

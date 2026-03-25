@@ -97,89 +97,93 @@ class TaxCalculationService {
    * @returns {Object} Tax calculation result
    */
   async calculateTaxes(baseAmount, taxes, criteria = {}) {
-    let runningAmount = baseAmount;
-    let totalTaxAmount = 0;
-    const taxBreakdown = [];
-    const nonCompoundTaxes = [];
-    const compoundTaxes = [];
+    try {
+      let runningAmount = baseAmount;
+      let totalTaxAmount = 0;
+      const taxBreakdown = [];
+      const nonCompoundTaxes = [];
+      const compoundTaxes = [];
 
-    // Separate compound and non-compound taxes
-    taxes.forEach(tax => {
-      if (tax.isCompoundTax) {
-        compoundTaxes.push(tax);
-      } else {
-        nonCompoundTaxes.push(tax);
-      }
-    });
+      // Separate compound and non-compound taxes
+      taxes.forEach(tax => {
+        if (tax.isCompoundTax) {
+          compoundTaxes.push(tax);
+        } else {
+          nonCompoundTaxes.push(tax);
+        }
+      });
 
-    // Calculate non-compound taxes first
-    for (const tax of nonCompoundTaxes) {
-      const taxAmount = tax.calculateTax(baseAmount, criteria);
+      // Calculate non-compound taxes first
+      for (const tax of nonCompoundTaxes) {
+        const taxAmount = tax.calculateTax(baseAmount, criteria);
       
-      if (taxAmount > 0) {
-        totalTaxAmount += taxAmount;
+        if (taxAmount > 0) {
+          totalTaxAmount += taxAmount;
         
-        taxBreakdown.push({
-          taxId: tax._id,
-          taxName: tax.taxName,
-          taxType: tax.taxType,
-          taxCategory: tax.taxCategory,
-          taxRate: tax.taxRate,
-          isPercentage: tax.isPercentage,
-          fixedAmount: tax.fixedAmount,
-          calculationMethod: tax.calculationMethod,
-          baseAmount: baseAmount,
-          taxAmount: taxAmount,
-          isCompound: false
-        });
+          taxBreakdown.push({
+            taxId: tax._id,
+            taxName: tax.taxName,
+            taxType: tax.taxType,
+            taxCategory: tax.taxCategory,
+            taxRate: tax.taxRate,
+            isPercentage: tax.isPercentage,
+            fixedAmount: tax.fixedAmount,
+            calculationMethod: tax.calculationMethod,
+            baseAmount: baseAmount,
+            taxAmount: taxAmount,
+            isCompound: false
+          });
+        }
       }
-    }
 
-    // Update running amount for compound taxes
-    runningAmount = baseAmount + totalTaxAmount;
+      // Update running amount for compound taxes
+      runningAmount = baseAmount + totalTaxAmount;
 
-    // Calculate compound taxes in order
-    compoundTaxes.sort((a, b) => a.compoundOrder - b.compoundOrder);
+      // Calculate compound taxes in order
+      compoundTaxes.sort((a, b) => a.compoundOrder - b.compoundOrder);
 
-    for (const tax of compoundTaxes) {
-      const taxAmount = tax.calculateTax(runningAmount, criteria);
+      for (const tax of compoundTaxes) {
+        const taxAmount = tax.calculateTax(runningAmount, criteria);
       
-      if (taxAmount > 0) {
-        totalTaxAmount += taxAmount;
-        runningAmount += taxAmount;
+        if (taxAmount > 0) {
+          totalTaxAmount += taxAmount;
+          runningAmount += taxAmount;
         
-        taxBreakdown.push({
-          taxId: tax._id,
-          taxName: tax.taxName,
-          taxType: tax.taxType,
-          taxCategory: tax.taxCategory,
-          taxRate: tax.taxRate,
-          isPercentage: tax.isPercentage,
-          fixedAmount: tax.fixedAmount,
-          calculationMethod: tax.calculationMethod,
-          baseAmount: runningAmount - taxAmount,
-          taxAmount: taxAmount,
-          isCompound: true,
-          compoundOrder: tax.compoundOrder
-        });
+          taxBreakdown.push({
+            taxId: tax._id,
+            taxName: tax.taxName,
+            taxType: tax.taxType,
+            taxCategory: tax.taxCategory,
+            taxRate: tax.taxRate,
+            isPercentage: tax.isPercentage,
+            fixedAmount: tax.fixedAmount,
+            calculationMethod: tax.calculationMethod,
+            baseAmount: runningAmount - taxAmount,
+            taxAmount: taxAmount,
+            isCompound: true,
+            compoundOrder: tax.compoundOrder
+          });
+        }
       }
-    }
 
-    return {
-      totalTaxAmount: Math.round(totalTaxAmount * 100) / 100,
-      taxBreakdown,
-      applicableTaxes: taxes.map(tax => ({
-        id: tax._id,
-        name: tax.taxName,
-        type: tax.taxType,
-        category: tax.taxCategory
-      })),
-      calculation: {
-        baseAmount,
-        totalTaxAmount,
-        totalAmount: Math.round((baseAmount + totalTaxAmount) * 100) / 100
-      }
-    };
+      return {
+        totalTaxAmount: Math.round(totalTaxAmount * 100) / 100,
+        taxBreakdown,
+        applicableTaxes: taxes.map(tax => ({
+          id: tax._id,
+          name: tax.taxName,
+          type: tax.taxType,
+          category: tax.taxCategory
+        })),
+        calculation: {
+          baseAmount,
+          totalTaxAmount,
+          totalAmount: Math.round((baseAmount + totalTaxAmount) * 100) / 100
+        }
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -327,7 +331,7 @@ class TaxCalculationService {
       const activeTaxes = await RoomTax.find({
         hotelId,
         isActive: true
-      }).lean();
+      }).lean().limit(1000);
 
       const summary = {
         totalActiveTaxes: activeTaxes.length,
@@ -659,7 +663,7 @@ class TaxCalculationService {
         hotelId,
         isActive: true,
         taxCategory: { $in: ['service_charge', 'additional_service', charge.chargeType] }
-      });
+      }).lean().limit(1000);
 
       if (applicableTaxes.length === 0) {
         return {

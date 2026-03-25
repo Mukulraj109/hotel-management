@@ -144,7 +144,7 @@ const TravelAgentSettings: React.FC = () => {
       {/* Tab Navigation */}
       <div className="flex space-x-1 mb-6">
         {tabs.map((tab) => (
-          <button
+          <button aria-label="Close"
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`px-4 py-2 rounded-md font-medium transition-colors flex items-center space-x-2 ${
@@ -572,7 +572,7 @@ const TravelAgentSettings: React.FC = () => {
           >
             Reset to Defaults
           </button>
-          <button
+          <button aria-label="Settings"
             type="submit"
             disabled={isLoading}
             className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"

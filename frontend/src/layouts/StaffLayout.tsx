@@ -86,10 +86,10 @@ export default function StaffLayout() {
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 flex z-40 md:hidden">
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setSidebarOpen(false)} />
+          <div aria-hidden="true" className="fixed inset-0 bg-gray-600 bg-opacity-75" onClick={() => setSidebarOpen(false)} />
           <div className="relative flex-1 flex flex-col max-w-xs w-full bg-white">
             <div className="absolute top-0 right-0 -mr-12 pt-2">
-              <button
+              <button aria-label="Close"
                 className="ml-1 flex items-center justify-center h-10 w-10 rounded-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
                 onClick={() => setSidebarOpen(false)}
               >
@@ -102,7 +102,7 @@ export default function StaffLayout() {
               </div>
               <nav className="mt-5 px-2 space-y-1">
                 {navigation.map((item) => (
-                  <button
+                  <button aria-label="Close"
                     key={item.name}
                     onClick={() => {
                       navigate(item.href);
@@ -136,7 +136,7 @@ export default function StaffLayout() {
               </div>
               <nav className="mt-5 flex-1 px-2 space-y-1">
                 {navigation.map((item) => (
-                  <button
+                  <button aria-label="Close"
                     key={item.name}
                     onClick={() => navigate(item.href)}
                     className={`
@@ -161,7 +161,7 @@ export default function StaffLayout() {
       <div className="flex flex-col w-0 flex-1 overflow-hidden">
         {/* Top navigation */}
         <div className="relative z-10 flex-shrink-0 flex h-16 bg-white shadow">
-          <button
+          <button aria-label="More options"
             className="px-4 border-r border-gray-200 text-gray-500 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 md:hidden"
             onClick={() => setSidebarOpen(true)}
           >
@@ -203,7 +203,7 @@ export default function StaffLayout() {
                   <span className="text-xs text-gray-500 capitalize">{user?.role}</span>
                 </div>
                 <div className="relative">
-                  <button
+                  <button aria-label="Close"
                     onClick={handleLogout}
                     className="flex items-center space-x-2 text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                     title="Logout"

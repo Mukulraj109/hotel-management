@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import {
   PlusIcon,
   PencilIcon,
@@ -22,6 +22,7 @@ import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../compon
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface CustomField {
   _id: string;
@@ -127,6 +128,15 @@ const AdminCustomFields: React.FC = () => {
     { value: 'true', label: 'Active' },
     { value: 'false', label: 'Inactive' }
   ];
+
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     fetchCustomFields();
@@ -291,7 +301,8 @@ const AdminCustomFields: React.FC = () => {
         if (!result) return; // Confirmation dialog shown
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Custom fields updated successfully${
           applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
         }`);
@@ -312,7 +323,8 @@ const AdminCustomFields: React.FC = () => {
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Custom fields updated for ${result.propertiesUpdated} properties`);
         setApplyToScope('single');
         fetchCustomFields();
@@ -592,7 +604,7 @@ const AdminCustomFields: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-1">
-                        <button
+                        <button aria-label="Collapse"
                           onClick={() => handleReorder(field._id, 'up')}
                           disabled={index === 0}
                           className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50"
@@ -602,7 +614,7 @@ const AdminCustomFields: React.FC = () => {
                         <span className="text-sm font-medium text-gray-900">
                           {field.displayOrder}
                         </span>
-                        <button
+                        <button aria-label="Expand"
                           onClick={() => handleReorder(field._id, 'down')}
                           disabled={index === customFields.length - 1}
                           className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-50"
@@ -665,13 +677,13 @@ const AdminCustomFields: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex space-x-2">
-                        <button
+                        <button aria-label="Edit"
                           onClick={() => handleEdit(field)}
                           className="text-blue-600 hover:text-blue-900"
                         >
                           <PencilIcon className="w-4 h-4" />
                         </button>
-                        <button
+                        <button aria-label="Delete"
                           onClick={() => handleDelete(field._id)}
                           className="text-red-600 hover:text-red-900"
                         >
@@ -777,4 +789,4 @@ const AdminCustomFields: React.FC = () => {
   );
 };
 
-export default AdminCustomFields;
+export default withErrorBoundary(AdminCustomFields, { level: 'page' });

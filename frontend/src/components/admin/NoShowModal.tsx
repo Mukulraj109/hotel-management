@@ -381,7 +381,7 @@ const NoShowModal: React.FC<NoShowModalProps> = ({
                     <p className="text-xs font-semibold text-gray-600 mb-2.5 uppercase tracking-wide">Quick Select:</p>
                     <div className="flex flex-wrap gap-2.5">
                       {recentReasons.map((reason, index) => (
-                        <button
+                        <button aria-label="Close"
                           key={`recentReasons-${index}-${reason}`}
                           type="button"
                           onClick={() => handleRecentReason(reason)}

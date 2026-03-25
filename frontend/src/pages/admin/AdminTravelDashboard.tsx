@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import {
   Users,
   Banknote,
@@ -41,6 +41,7 @@ import DateRangeSelector, { DateRange } from '../../components/filters/DateRange
 import MultiCriteriaFilter, { FilterCriteria, FilterField } from '../../components/filters/MultiCriteriaFilter';
 import SavedFiltersManager, { SavedFilter } from '../../components/filters/SavedFiltersManager';
 import ExportOptionsModal, { ExportOptions } from '../../components/filters/ExportOptionsModal';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 // import RealTimeUpdater from '../../components/realtime/RealTimeUpdater';
 // import NotificationCenter, { Notification } from '../../components/realtime/NotificationCenter';
 
@@ -73,6 +74,14 @@ const AdminTravelDashboard: React.FC = () => {
   const [realTimeEnabled, setRealTimeEnabled] = useState(false);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [bulkOperationMode, setBulkOperationMode] = useState(false);
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     fetchDashboardData();
@@ -203,7 +212,8 @@ const AdminTravelDashboard: React.FC = () => {
       setShowExportModal(false);
 
       // Simulate export delay
-      setTimeout(() => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
         toast.success('Export completed successfully!');
       }, 2000);
     } catch (error) {
@@ -544,7 +554,7 @@ const AdminTravelDashboard: React.FC = () => {
           <div className="border-b border-gray-200">
             <nav className="flex -mb-px">
               {['overview', 'agents', 'commissions', 'analytics', 'comparative'].map((tab) => (
-                <button
+                <button aria-label="Close"
                   key={tab}
                   onClick={() => setSelectedTab(tab as unknown)}
                   className={`px-6 py-3 text-sm font-medium capitalize flex items-center gap-2 ${
@@ -808,7 +818,7 @@ const AdminTravelDashboard: React.FC = () => {
                   currentCriteria={filterCriteria}
                   currentDateRange={dateRange}
                 />
-                <button
+                <button aria-label="Close"
                   onClick={() => setRealTimeEnabled(!realTimeEnabled)}
                   className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
                     realTimeEnabled
@@ -934,27 +944,27 @@ const AdminTravelDashboard: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex items-center gap-2">
-                          <button
+                          <button aria-label="View"
                             onClick={() => navigate(`/admin/travel-agents/${agent._id}`)}
                             className="text-indigo-600 hover:text-indigo-900"
                           >
                             <Eye className="h-4 w-4" />
                           </button>
-                          <button
+                          <button aria-label="Edit"
                             onClick={() => navigate(`/admin/travel-agents/${agent._id}/edit`)}
                             className="text-gray-600 hover:text-gray-900"
                           >
                             <Edit className="h-4 w-4" />
                           </button>
                           {agent.status === 'active' ? (
-                            <button
+                            <button aria-label="Close"
                               onClick={() => handleStatusUpdate(agent._id, 'suspended')}
                               className="text-red-600 hover:text-red-900"
                             >
                               <Ban className="h-4 w-4" />
                             </button>
                           ) : (
-                            <button
+                            <button aria-label="Close"
                               onClick={() => handleStatusUpdate(agent._id, 'active')}
                               className="text-green-600 hover:text-green-900"
                             >
@@ -1060,7 +1070,7 @@ const AdminTravelDashboard: React.FC = () => {
                     value={dateRange}
                     onChange={setDateRange}
                   />
-                  <button
+                  <button aria-label="Close"
                     onClick={() => setRealTimeEnabled(!realTimeEnabled)}
                     className={`px-3 py-2 text-sm rounded-lg transition-colors ${
                       realTimeEnabled
@@ -1384,4 +1394,4 @@ const AdminTravelDashboard: React.FC = () => {
   );
 };
 
-export default AdminTravelDashboard;
+export default withErrorBoundary(AdminTravelDashboard, { level: 'page' });

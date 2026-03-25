@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef} from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
@@ -12,6 +12,7 @@ import { formatPercentage, formatCurrency } from '../../utils/dashboardUtils';
 import { Room } from '../../services/roomsService';
 import analyticsService, { ProfitabilityData } from '../../services/analyticsService';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const RoomCard = React.memo(({ room, status, isSelected, isChanged, onSelect, onMultiSelect }: {
   room: Room;
@@ -21,7 +22,7 @@ const RoomCard = React.memo(({ room, status, isSelected, isChanged, onSelect, on
   onSelect: (id: string) => void;
   onMultiSelect: (id: string) => void;
 }) => (
-  <div
+  <div role="button" tabIndex={0}
     className={[
       'relative aspect-square rounded-xl border-2 cursor-pointer transition-all duration-300',
       status === 'vacant' ? 'bg-green-500 border-green-600 hover:bg-green-600' :
@@ -43,7 +44,13 @@ const RoomCard = React.memo(({ room, status, isSelected, isChanged, onSelect, on
       }
     }}
     title={`Click to change status \u2022 Ctrl+Click for bulk selection \u2022 Room ${room.roomNumber} - ${status} - ${room.type} - \u20B9${room.currentRate}`}
-  >
+   onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        onMultiSelect(room._id);
+      } else {
+        onSelect(room._id);
+      }
+    }; if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
     <div className="absolute inset-0 flex flex-col items-center justify-center text-white font-medium">
       <div className="text-lg mb-1 drop-shadow-lg">
         {room.type === 'suite' ? '\uD83D\uDC51' : room.type === 'deluxe' ? '\u2B50' : room.type === 'double' ? '\uD83D\uDC65' : '\uD83D\uDC64'}
@@ -64,7 +71,7 @@ const RoomCard = React.memo(({ room, status, isSelected, isChanged, onSelect, on
 ));
 RoomCard.displayName = 'RoomCard';
 
-export default function AdminRooms() {
+export function AdminRooms() {
   const { user } = useAuth();
   const { selectedPropertyId } = useProperty();
   const [refreshKey, setRefreshKey] = useState(0);
@@ -153,6 +160,14 @@ export default function AdminRooms() {
   }, [hotelId]);
 
   // Fetch analytics data on mount and when rooms data changes
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     fetchAnalyticsData();
   }, [fetchAnalyticsData, roomsQuery.dataUpdatedAt]);
@@ -290,7 +305,8 @@ export default function AdminRooms() {
         setLastUpdateTime(new Date());
         
         // Clear change indicators after 5 seconds
-        setTimeout(() => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
           setChangedRooms(new Set());
         }, 5000);
       }
@@ -606,7 +622,7 @@ export default function AdminRooms() {
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
           {/* Analytics Toggle */}
-          <button
+          <button aria-label="Close"
             onClick={() => setShowAnalytics(!showAnalytics)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               showAnalytics 
@@ -800,7 +816,7 @@ export default function AdminRooms() {
             <div className="space-y-4">
               {/* Selection Controls */}
               <div className="flex space-x-2">
-                <button
+                <button aria-label="Filter"
                   onClick={handleSelectAll}
                   className="flex-1 px-4 py-2 text-sm bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition-colors"
                 >
@@ -995,13 +1011,14 @@ export default function AdminRooms() {
                       </div>
                       
                       {/* Bar */}
-                      <div 
+                      <div role="button" tabIndex={0} 
                         className="w-8 bg-blue-500 hover:bg-blue-600 transition-colors cursor-pointer rounded-t"
                         style={{ height: `${barHeight}px` }}
                         onClick={() => setSelectedFloor(floor.floor)}
                         title={`Floor ${floor.floor}: ${floor.totalRooms} rooms`}
+                        onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => setSelectedFloor(floor.floor); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}
                       />
-                      
+
                       {/* Floor Label */}
                       <span className="text-xs text-gray-600 mt-2 transform -rotate-45 origin-center">
                         F{floor.floor}
@@ -1477,7 +1494,7 @@ export default function AdminRooms() {
                 </select>
               </div>
               
-              <button
+              <button aria-label="Refresh"
                 onClick={handleRefresh}
                 disabled={isLoading}
                 className="flex items-center space-x-2 px-4 py-2 bg-white/20 backdrop-blur-sm text-white text-sm rounded-lg hover:bg-white/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 border border-white/30"
@@ -1806,11 +1823,13 @@ export default function AdminRooms() {
 
       {/* Room Status Change Modal */}
       {showStatusModal && selectedRoomForStatus && (
-        <div 
+        <div aria-hidden="true" 
           className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
           onClick={handleCloseStatusModal}
         >
-          <div 
+          <div
+            role="dialog"
+            aria-modal="true"
             className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1820,7 +1839,7 @@ export default function AdminRooms() {
                 <h3 className="text-lg font-medium text-gray-900">
                   Change Room Status
                 </h3>
-                <button
+                <button aria-label="Close"
                   onClick={handleCloseStatusModal}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
@@ -2004,3 +2023,5 @@ export default function AdminRooms() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminRooms, { level: 'page' });

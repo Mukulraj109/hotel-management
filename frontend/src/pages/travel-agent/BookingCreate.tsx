@@ -25,6 +25,7 @@ import { useNavigate } from 'react-router-dom';
 import { format, addDays, differenceInDays } from 'date-fns';
 import { toast } from 'sonner';
 import { travelAgentService, TravelAgentBooking } from '../../services/travelAgentService';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface GuestInfo {
   name: string;
@@ -357,7 +358,7 @@ const BookingCreate: React.FC = () => {
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <button
+              <button aria-label="Previous"
                 onClick={() => navigate('/travel-agent')}
                 className="p-2 text-gray-600 hover:text-indigo-600 transition-colors"
               >
@@ -522,7 +523,7 @@ const BookingCreate: React.FC = () => {
 
                             {selectedRoom ? (
                               <div className="flex items-center gap-2 mt-3">
-                                <button
+                                <button aria-label="Close"
                                   onClick={() => handleRoomQuantityChange(room.roomTypeId, -1)}
                                   className="p-1 border border-gray-300 rounded hover:bg-gray-50"
                                 >
@@ -531,7 +532,7 @@ const BookingCreate: React.FC = () => {
                                 <span className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded">
                                   {selectedRoom.quantity}
                                 </span>
-                                <button
+                                <button aria-label="Add"
                                   onClick={() => handleRoomQuantityChange(room.roomTypeId, 1)}
                                   className="p-1 border border-gray-300 rounded hover:bg-gray-50"
                                 >
@@ -750,7 +751,7 @@ const BookingCreate: React.FC = () => {
                   >
                     Back
                   </button>
-                  <button
+                  <button aria-label="Close"
                     onClick={handleSubmit}
                     disabled={!formData.guestInfo.name || !formData.guestInfo.email || !formData.guestInfo.phone || loading}
                     className="flex-1 bg-indigo-600 text-white py-3 rounded-lg hover:bg-indigo-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -877,4 +878,4 @@ const BookingCreate: React.FC = () => {
   );
 };
 
-export default BookingCreate;
+export default withErrorBoundary(BookingCreate, { level: 'page' });

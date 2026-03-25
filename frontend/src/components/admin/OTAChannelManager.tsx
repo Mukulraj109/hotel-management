@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { useAutoTranslation } from '../../hooks/useAutoTranslation';
 import { useLocalization } from '../../context/LocalizationContext';
 import { cn } from '../../utils/cn';
@@ -153,6 +153,15 @@ export const OTAChannelManager: React.FC<OTAChannelManagerProps> = ({
   );
 
   // Load dashboard data
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     loadDashboardData();
   }, [hotelId]);
@@ -205,7 +214,8 @@ export const OTAChannelManager: React.FC<OTAChannelManagerProps> = ({
         if (!result) return; // Confirmation dialog shown
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         setApplyToScope('single');
       } else {
         // Single property update - existing logic
@@ -224,7 +234,8 @@ export const OTAChannelManager: React.FC<OTAChannelManagerProps> = ({
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         setApplyToScope('single');
         await loadDashboardData();
       }
@@ -414,21 +425,21 @@ export const OTAChannelManager: React.FC<OTAChannelManagerProps> = ({
                 </div>
                 
                 <div className="flex items-center gap-2">
-                  <button
+                  <button aria-label="Close"
                     onClick={() => handleChannelTest(channel.channelId)}
                     className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
                     title="Test Connection"
                   >
                     <Activity className="w-4 h-4" />
                   </button>
-                  <button
+                  <button aria-label="View"
                     onClick={() => setSelectedChannel(channel)}
                     className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
                     title="View Details"
                   >
                     <Eye className="w-4 h-4" />
                   </button>
-                  <button
+                  <button aria-label="Edit"
                     className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
                     title="Edit Configuration"
                   >
@@ -600,7 +611,7 @@ export const OTAChannelManager: React.FC<OTAChannelManagerProps> = ({
           ].map((tab) => {
             const Icon = tab.icon;
             return (
-              <button
+              <button aria-label="Close"
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as unknown)}
                 className={cn(

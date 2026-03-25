@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from '@/utils/toast';
+import { withErrorBoundary } from '../ErrorBoundary';
 import {
   Palette, Eye, Settings, Star, AlertTriangle,
   Users, Building, CreditCard, Calendar,
@@ -1043,3 +1044,5 @@ export const ColorCodedManagement: React.FC = () => {
     </Dialog>
   );
 };
+
+export default withErrorBoundary(ColorCodedManagement, { level: 'component' });

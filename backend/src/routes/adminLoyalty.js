@@ -119,7 +119,7 @@ router.get('/offers', authenticate, authorize(['admin', 'manager']), ensurePrope
     .populate('hotelId', 'name')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   // Get total count
   const total = await Offer.countDocuments(query);
@@ -203,7 +203,7 @@ router.post('/offers',
  */
 router.get('/offers/:id', authenticate, authorize(['admin', 'manager']), ensurePropertyAccess, catchAsync(async (req, res) => {
   const offer = await Offer.findById(req.params.id)
-    .populate('hotelId', 'name');
+    .populate('hotelId', 'name').lean();
     
   if (!offer) {
     throw new ApplicationError('Offer not found', 404);
@@ -543,7 +543,7 @@ router.get('/offers/:id/stats', authenticate, authorize(['admin', 'manager']), e
   const offerId = req.params.id;
   
   // Verify offer exists
-  const offer = await Offer.findById(offerId);
+  const offer = await Offer.findById(offerId).lean();
   if (!offer) {
     throw new ApplicationError('Offer not found', 404);
   }
@@ -594,7 +594,7 @@ router.get('/offers/:id/stats', authenticate, authorize(['admin', 'manager']), e
   })
     .populate('userId', 'name email')
     .sort({ createdAt: -1 })
-    .limit(10);
+    .limit(10).lean();
   
   res.json({
     status: 'success',

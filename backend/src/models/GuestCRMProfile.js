@@ -333,89 +333,93 @@ guestCRMProfileSchema.virtual('engagementLevel').get(function() {
 
 // Methods
 guestCRMProfileSchema.methods.calculateRFM = async function() {
-  const GuestBehavior = mongoose.model('GuestBehavior');
-  const Booking = mongoose.model('Booking');
+  try {
+    const GuestBehavior = mongoose.model('GuestBehavior');
+    const Booking = mongoose.model('Booking');
 
-  // Get booking history
-  const bookings = await Booking.find({
-    userId: this.userId,
-    hotelId: this.hotelId,
-    status: { $in: ['confirmed', 'completed'] }
-  }).sort({ createdAt: -1 });
+    // Get booking history
+    const bookings = await Booking.find({
+      userId: this.userId,
+      hotelId: this.hotelId,
+      status: { $in: ['confirmed', 'completed'] }
+    }).sort({ createdAt: -1 }).lean().limit(1000);
 
-  if (bookings.length === 0) {
+    if (bookings.length === 0) {
+      this.rfmAnalysis = {
+        recency: { value: 0, score: 1 },
+        frequency: { value: 0, score: 1 },
+        monetary: { value: 0, score: 1 },
+        combinedScore: '111',
+        segment: 'New Customers',
+        lastUpdated: new Date()
+      };
+      return this.rfmAnalysis;
+    }
+
+    // Calculate Recency (days since last booking)
+    const lastBooking = bookings[0];
+    const daysSinceLastBooking = Math.floor(
+      (new Date() - new Date(lastBooking.createdAt)) / (1000 * 60 * 60 * 24)
+    );
+
+    // Calculate Frequency (number of bookings)
+    const frequency = bookings.length;
+
+    // Calculate Monetary (total revenue)
+    const monetary = bookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
+
+    // Scoring logic (1-5 scale)
+    let recencyScore = 5;
+    if (daysSinceLastBooking > 365) recencyScore = 1;
+    else if (daysSinceLastBooking > 180) recencyScore = 2;
+    else if (daysSinceLastBooking > 90) recencyScore = 3;
+    else if (daysSinceLastBooking > 30) recencyScore = 4;
+
+    let frequencyScore = 1;
+    if (frequency >= 10) frequencyScore = 5;
+    else if (frequency >= 5) frequencyScore = 4;
+    else if (frequency >= 3) frequencyScore = 3;
+    else if (frequency >= 2) frequencyScore = 2;
+
+    let monetaryScore = 1;
+    if (monetary >= 50000) monetaryScore = 5;
+    else if (monetary >= 20000) monetaryScore = 4;
+    else if (monetary >= 10000) monetaryScore = 3;
+    else if (monetary >= 5000) monetaryScore = 2;
+
+    // Determine segment
+    const combinedScore = `${recencyScore}${frequencyScore}${monetaryScore}`;
+    let segment = 'Need Attention';
+
+    if (recencyScore >= 4 && frequencyScore >= 4 && monetaryScore >= 4) {
+      segment = 'Champions';
+    } else if (recencyScore >= 3 && frequencyScore >= 3 && monetaryScore >= 3) {
+      segment = 'Loyal Customers';
+    } else if (recencyScore >= 4 && frequencyScore <= 2) {
+      segment = 'New Customers';
+    } else if (recencyScore <= 2 && frequencyScore >= 3) {
+      segment = 'At Risk';
+    } else if (recencyScore <= 2 && frequencyScore <= 2 && monetaryScore >= 3) {
+      segment = 'Cannot Lose Them';
+    } else if (recencyScore <= 2 && frequencyScore <= 2) {
+      segment = 'Lost';
+    } else if (recencyScore >= 3 && frequencyScore <= 2) {
+      segment = 'Promising';
+    }
+
     this.rfmAnalysis = {
-      recency: { value: 0, score: 1 },
-      frequency: { value: 0, score: 1 },
-      monetary: { value: 0, score: 1 },
-      combinedScore: '111',
-      segment: 'New Customers',
+      recency: { value: daysSinceLastBooking, score: recencyScore, lastCalculated: new Date() },
+      frequency: { value: frequency, score: frequencyScore, lastCalculated: new Date() },
+      monetary: { value: monetary, score: monetaryScore, lastCalculated: new Date() },
+      combinedScore,
+      segment,
       lastUpdated: new Date()
     };
+
     return this.rfmAnalysis;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  // Calculate Recency (days since last booking)
-  const lastBooking = bookings[0];
-  const daysSinceLastBooking = Math.floor(
-    (new Date() - new Date(lastBooking.createdAt)) / (1000 * 60 * 60 * 24)
-  );
-
-  // Calculate Frequency (number of bookings)
-  const frequency = bookings.length;
-
-  // Calculate Monetary (total revenue)
-  const monetary = bookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
-
-  // Scoring logic (1-5 scale)
-  let recencyScore = 5;
-  if (daysSinceLastBooking > 365) recencyScore = 1;
-  else if (daysSinceLastBooking > 180) recencyScore = 2;
-  else if (daysSinceLastBooking > 90) recencyScore = 3;
-  else if (daysSinceLastBooking > 30) recencyScore = 4;
-
-  let frequencyScore = 1;
-  if (frequency >= 10) frequencyScore = 5;
-  else if (frequency >= 5) frequencyScore = 4;
-  else if (frequency >= 3) frequencyScore = 3;
-  else if (frequency >= 2) frequencyScore = 2;
-
-  let monetaryScore = 1;
-  if (monetary >= 50000) monetaryScore = 5;
-  else if (monetary >= 20000) monetaryScore = 4;
-  else if (monetary >= 10000) monetaryScore = 3;
-  else if (monetary >= 5000) monetaryScore = 2;
-
-  // Determine segment
-  const combinedScore = `${recencyScore}${frequencyScore}${monetaryScore}`;
-  let segment = 'Need Attention';
-
-  if (recencyScore >= 4 && frequencyScore >= 4 && monetaryScore >= 4) {
-    segment = 'Champions';
-  } else if (recencyScore >= 3 && frequencyScore >= 3 && monetaryScore >= 3) {
-    segment = 'Loyal Customers';
-  } else if (recencyScore >= 4 && frequencyScore <= 2) {
-    segment = 'New Customers';
-  } else if (recencyScore <= 2 && frequencyScore >= 3) {
-    segment = 'At Risk';
-  } else if (recencyScore <= 2 && frequencyScore <= 2 && monetaryScore >= 3) {
-    segment = 'Cannot Lose Them';
-  } else if (recencyScore <= 2 && frequencyScore <= 2) {
-    segment = 'Lost';
-  } else if (recencyScore >= 3 && frequencyScore <= 2) {
-    segment = 'Promising';
-  }
-
-  this.rfmAnalysis = {
-    recency: { value: daysSinceLastBooking, score: recencyScore, lastCalculated: new Date() },
-    frequency: { value: frequency, score: frequencyScore, lastCalculated: new Date() },
-    monetary: { value: monetary, score: monetaryScore, lastCalculated: new Date() },
-    combinedScore,
-    segment,
-    lastUpdated: new Date()
-  };
-
-  return this.rfmAnalysis;
 };
 
 guestCRMProfileSchema.methods.updateLifecycleStage = function() {
@@ -480,34 +484,42 @@ guestCRMProfileSchema.methods.addSegment = function(name, category, value, confi
 
 // Static methods
 guestCRMProfileSchema.statics.getSegmentAnalytics = async function(hotelId) {
-  return await this.aggregate([
-    { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
-    {
-      $group: {
-        _id: '$rfmAnalysis.segment',
-        count: { $sum: 1 },
-        totalRevenue: { $sum: '$bookingHistory.totalRevenue' },
-        avgRevenue: { $avg: '$bookingHistory.totalRevenue' },
-        avgBookings: { $avg: '$bookingHistory.totalBookings' }
-      }
-    },
-    { $sort: { totalRevenue: -1 } }
-  ]);
+  try {
+    return await this.aggregate([
+      { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
+      {
+        $group: {
+          _id: '$rfmAnalysis.segment',
+          count: { $sum: 1 },
+          totalRevenue: { $sum: '$bookingHistory.totalRevenue' },
+          avgRevenue: { $avg: '$bookingHistory.totalRevenue' },
+          avgBookings: { $avg: '$bookingHistory.totalBookings' }
+        }
+      },
+      { $sort: { totalRevenue: -1 } }
+    ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 guestCRMProfileSchema.statics.getLifecycleAnalytics = async function(hotelId) {
-  return await this.aggregate([
-    { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
-    {
-      $group: {
-        _id: '$lifecycleStage.stage',
-        count: { $sum: 1 },
-        totalRevenue: { $sum: '$bookingHistory.totalRevenue' },
-        avgEngagement: { $avg: '$engagementMetrics.averageEngagementScore' }
-      }
-    },
-    { $sort: { count: -1 } }
-  ]);
+  try {
+    return await this.aggregate([
+      { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
+      {
+        $group: {
+          _id: '$lifecycleStage.stage',
+          count: { $sum: 1 },
+          totalRevenue: { $sum: '$bookingHistory.totalRevenue' },
+          avgEngagement: { $avg: '$engagementMetrics.averageEngagementScore' }
+        }
+      },
+      { $sort: { count: -1 } }
+    ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Pre-save PII encryption hook

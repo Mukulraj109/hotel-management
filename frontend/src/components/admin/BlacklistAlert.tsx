@@ -112,7 +112,7 @@ const BlacklistAlert: React.FC<BlacklistAlertProps> = ({ onClose }) => {
             <ExclamationTriangleIcon className="w-6 h-6 text-red-600 mr-2" />
             <h3 className="text-lg font-medium text-gray-900">Blacklist Alert Center</h3>
           </div>
-          <button
+          <button aria-label="Close"
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
           >

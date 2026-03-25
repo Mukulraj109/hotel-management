@@ -1,14 +1,36 @@
 import express from 'express';
 import mongoose from 'mongoose';
+import Joi from 'joi';
 import DepartmentBudget from '../models/DepartmentBudget.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import financialRateLimiter from '../middleware/financialRateLimiter.js';
+import { validateFinancial } from '../middleware/financialValidation.js';
+
+// Budget-specific validation schemas
+const budgetCreationSchema = Joi.object({
+  allocatedAmount: Joi.number().positive().max(999999999.99).required(),
+  year: Joi.number().integer().min(2020).max(2100),
+  month: Joi.number().integer().min(1).max(12),
+  notes: Joi.string().max(1000).allow(''),
+  hotelId: Joi.string().pattern(/^[0-9a-fA-F]{24}$/)
+}).options({ stripUnknown: true });
+
+const spendingSchema = Joi.object({
+  amount: Joi.number().positive().max(999999999.99).required(),
+  category: Joi.string().max(100).required(),
+  description: Joi.string().max(500).required(),
+  vendor: Joi.string().max(200),
+  reference: Joi.string().max(200),
+  hotelId: Joi.string().pattern(/^[0-9a-fA-F]{24}$/)
+}).options({ stripUnknown: true });
 
 const router = express.Router();
 
-// All routes require authentication
+// All routes require rate limiting and authentication
+router.use(financialRateLimiter);
 router.use(authenticate);
 router.use(ensurePropertyAccess);
 
@@ -108,7 +130,7 @@ router.get('/:department/alerts', catchAsync(async (req, res) => {
     'budgetPeriod.year': new Date().getFullYear(),
     'budgetPeriod.month': new Date().getMonth() + 1,
     status: 'active'
-  });
+  }).lean();
 
   const alerts = budget ? budget.getAlerts() : [];
 
@@ -251,7 +273,7 @@ router.get('/:department/trends', authorize('staff', 'admin'), catchAsync(async 
  *       201:
  *         description: Budget created successfully
  */
-router.post('/:department', authorize('admin', 'manager'), catchAsync(async (req, res) => {
+router.post('/:department', authorize('admin', 'manager'), validateFinancial(budgetCreationSchema), catchAsync(async (req, res) => {
   const { department } = req.params;
   const { year, month, allocations } = req.body;
   const hotelId = req.user.role === 'manager' ? req.user.hotelId : req.body.hotelId;
@@ -269,18 +291,23 @@ router.post('/:department', authorize('admin', 'manager'), catchAsync(async (req
   });
 
   if (existingBudget) {
-    // Update existing budget
-    existingBudget.allocations = {
-      ...existingBudget.allocations,
-      ...allocations
-    };
-    existingBudget.updatedBy = req.user._id;
-    await existingBudget.save();
+    // Update existing budget atomically
+    const allocationUpdates = {};
+    Object.keys(allocations).forEach(key => {
+      allocationUpdates[`allocations.${key}`] = allocations[key];
+    });
+    allocationUpdates.updatedBy = req.user._id;
+
+    const updatedBudget = await DepartmentBudget.findByIdAndUpdate(
+      existingBudget._id,
+      { $set: allocationUpdates },
+      { new: true, runValidators: true }
+    );
 
     res.json({
       status: 'success',
       message: 'Budget updated successfully',
-      data: existingBudget
+      data: updatedBudget
     });
   } else {
     // Create new budget

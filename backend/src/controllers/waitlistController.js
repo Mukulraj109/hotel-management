@@ -62,41 +62,47 @@ export const createWaitlistEntry = asyncHandler(async (req, res) => {
   const hotelId = req.user.hotelId || req.body.hotelId;
 
   const waitlistEntry = await withTransaction(async (session) => {
-    // Check if guest already has active waitlist entry for same dates
-    const existingEntry = await Waitlist.findOne({
-      hotelId,
-      guestId,
-      checkInDate: new Date(checkInDate),
-      checkOutDate: new Date(checkOutDate),
-      status: { $in: ['waiting', 'matched', 'contacted'] },
-      isActive: true
-    }).session(session);
+    try {
+      // Check if guest already has active waitlist entry for same dates
+      const existingEntry = await Waitlist.findOne({
+        hotelId,
+        guestId,
+        checkInDate: new Date(checkInDate),
+        checkOutDate: new Date(checkOutDate),
+        status: { $in: ['waiting', 'matched', 'contacted'] },
+        isActive: true
+      }).session(session);
 
-    if (existingEntry) {
-      const error = new Error('Guest already has an active waitlist entry for these dates');
-      error.statusCode = 400;
+      if (existingEntry) {
+        const error = new Error('Guest already has an active waitlist entry for these dates');
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const [entry] = await Waitlist.create([{
+        hotelId,
+        guestId,
+        guestInfo,
+        requestedRoomType,
+        checkInDate: new Date(checkInDate),
+        checkOutDate: new Date(checkOutDate),
+        partySize,
+        maxPrice,
+        urgency: urgency || 'medium',
+        preferences: preferences || [],
+        specialRequests: specialRequests || [],
+        autoNotify: autoNotify !== false,
+        metadata: {
+          source: req.body.source || 'web'
+        }
+      }], { session });
+
+      return entry;
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
       throw error;
     }
-
-    const [entry] = await Waitlist.create([{
-      hotelId,
-      guestId,
-      guestInfo,
-      requestedRoomType,
-      checkInDate: new Date(checkInDate),
-      checkOutDate: new Date(checkOutDate),
-      partySize,
-      maxPrice,
-      urgency: urgency || 'medium',
-      preferences: preferences || [],
-      specialRequests: specialRequests || [],
-      autoNotify: autoNotify !== false,
-      metadata: {
-        source: req.body.source || 'web'
-      }
-    }], { session });
-
-    return entry;
   });
 
   await waitlistEntry.populate('guestId', 'name email phone');
@@ -122,7 +128,7 @@ export const processWaitlistMatches = asyncHandler(async (req, res) => {
     status: 'waiting',
     isActive: true,
     expiryDate: { $gt: new Date() }
-  }).sort({ priority: -1, createdAt: 1 });
+  }).sort({ priority: -1, createdAt: 1 }).lean().limit(1000);
 
   const processedMatches = [];
 
@@ -134,7 +140,7 @@ export const processWaitlistMatches = asyncHandler(async (req, res) => {
       status: 'available',
       type: new RegExp(entry.requestedRoomType, 'i'),
       capacity: { $gte: entry.partySize }
-    });
+    }).lean().limit(1000);
 
     for (const room of availableRooms) {
       // Check if room is actually available for the dates
@@ -147,7 +153,7 @@ export const processWaitlistMatches = asyncHandler(async (req, res) => {
             checkOut: { $gt: entry.checkInDate }
           }
         ]
-      });
+      }).lean().limit(1000);
 
       if (conflictingBookings.length === 0) {
         // Calculate match score
@@ -280,7 +286,7 @@ export const handleMatchAction = asyncHandler(async (req, res) => {
   const { action, notes } = req.body;
   const staffId = req.user._id;
 
-  const waitlistEntry = await Waitlist.findById(id);
+  const waitlistEntry = await Waitlist.findById(id).lean();
   if (!waitlistEntry) {
     return res.status(404).json({
       status: 'error',
@@ -429,7 +435,7 @@ export const getWaitlistEntry = asyncHandler(async (req, res) => {
     .populate('matchResults.roomId', 'roomNumber type baseRate capacity')
     .populate('contactHistory.contactedBy', 'name')
     .populate('notes.addedBy', 'name')
-    .populate('assignedTo', 'name');
+    .populate('assignedTo', 'name').lean();
 
   if (!waitlistEntry) {
     return res.status(404).json({

@@ -19,7 +19,7 @@ const connectDB = async () => {
 const generateKPIs = async () => {
   try {
     // Get all hotels
-    const hotels = await Hotel.find({ isActive: true });
+    const hotels = await Hotel.find({ isActive: true }).lean().limit(1000);
     
     if (hotels.length === 0) {
       logger.info('No hotels found. Run the seed script first.');

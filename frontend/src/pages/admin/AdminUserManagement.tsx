@@ -32,6 +32,7 @@ import UserActivityTimeline from '../../components/user/UserActivityTimeline';
 import { CreateUserModal } from '../../components/user/CreateUserModal';
 import { EditUserModal } from '../../components/user/EditUserModal';
 import { DeleteUserConfirmation } from '../../components/user/DeleteUserConfirmation';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface User {
   _id: string;
@@ -639,7 +640,7 @@ const AdminUserManagement: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                         <div className="flex space-x-2">
-                          <button
+                          <button aria-label="View"
                             onClick={() => {
                               setSelectedUser(user);
                               setShowActivityTimeline(true);
@@ -649,14 +650,14 @@ const AdminUserManagement: React.FC = () => {
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          <button
+                          <button aria-label="Edit"
                             onClick={() => handleEditUser(user)}
                             className="text-green-600 hover:text-green-900"
                             title="Edit User"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
-                          <button
+                          <button aria-label="Delete"
                             onClick={() => handleDeleteUserClick(user)}
                             className="text-red-600 hover:text-red-900"
                             title="Delete User"
@@ -774,4 +775,4 @@ const AdminUserManagement: React.FC = () => {
   );
 };
 
-export default AdminUserManagement;
+export default withErrorBoundary(AdminUserManagement, { level: 'page' });

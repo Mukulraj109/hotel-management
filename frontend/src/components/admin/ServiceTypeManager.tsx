@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Modal } from '@/components/ui/Modal';
 import { serviceTypeService, ServiceType, ServiceVariation, ServiceTemplate } from '../../services/serviceTypeService';
 import { useAuth } from '../../context/AuthContext';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 // Using imported types from serviceTypeService
 
@@ -604,6 +605,7 @@ const ServiceTypeEditModal: React.FC<{
               <div className="grid grid-cols-2 gap-3">
                 <input
                   type="text"
+                  required
                   placeholder="Variation name"
                   value={variation.name}
                   onChange={(e) => updateVariation(index, 'name', e.target.value)}
@@ -798,6 +800,7 @@ const ServiceTemplateEditModal: React.FC<{
               <div key={`formData-services-${index}-${service}`} className="flex gap-2">
                 <input
                   type="text"
+                  required
                   value={service}
                   onChange={(e) => updateService(index, e.target.value)}
                   placeholder="Service name (e.g., Welcome drink, Room setup)"
@@ -839,4 +842,4 @@ const ServiceTemplateEditModal: React.FC<{
   );
 };
 
-export default ServiceTypeManager;
+export default withErrorBoundary(ServiceTypeManager, { level: 'component' });

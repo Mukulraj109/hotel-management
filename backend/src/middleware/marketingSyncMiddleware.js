@@ -21,7 +21,7 @@ const updateWidgetPerformance = async (bookingData) => {
           'performance.conversionRate': 0.31 // Will be recalculated
         }
       },
-      { upsert: true }
+      { new: true, upsert: true }
     );
 
     console.log(`✅ Updated widget performance for ${widgetId}`);
@@ -38,7 +38,7 @@ const createOrUpdateGuestCRM = async (userId, bookingData) => {
     if (!guestProfile) {
       // Create new CRM profile
       const User = (await import('../models/User.js')).default;
-      const user = await User.findById(userId);
+      const user = await User.findById(userId).lean();
 
       if (user) {
         guestProfile = new GuestCRM({
@@ -87,7 +87,9 @@ const createOrUpdateGuestCRM = async (userId, bookingData) => {
           'segmentation.lifetimeValue': newTotalSpent,
           'segmentation.loyaltyTier': newTotalSpent > 20000 ? 'gold' : newTotalSpent > 10000 ? 'silver' : 'bronze'
         }
-      });
+      },
+        { new: true }
+      );
 
       console.log(`✅ Updated CRM profile for user ${userId} - Segment: ${newSegment}`);
     }
@@ -162,7 +164,7 @@ const syncExistingBookings = async () => {
     console.log('🔄 Syncing existing bookings with marketing system...');
 
     const Booking = (await import('../models/Booking.js')).default;
-    const bookings = await Booking.find({}).populate('userId');
+    const bookings = await Booking.find({}).populate('userId').lean().limit(1000);
 
     for (const booking of bookings) {
       if (booking.userId) {

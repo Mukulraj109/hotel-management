@@ -809,56 +809,68 @@ vendorPerformanceSchema.statics.getPoorPerformers = function(hotelId, period = '
 };
 
 vendorPerformanceSchema.statics.getPerformanceTrends = async function(hotelId, vendorId, periods = 6) {
-  return this.find({
-    hotelId,
-    vendorId,
-    'period.type': 'monthly'
-  })
-  .sort({ 'period.year': -1, 'period.month': -1 })
-  .limit(periods)
-  .select('period overallScore deliveryMetrics.onTimeDeliveryPercentage qualityMetrics.qualityScore costMetrics.competitivenessScore serviceMetrics.communicationScore');
+  try {
+    return this.find({
+      hotelId,
+      vendorId,
+      'period.type': 'monthly'
+    })
+    .sort({ 'period.year': -1, 'period.month': -1 })
+    .limit(periods)
+    .select('period overallScore deliveryMetrics.onTimeDeliveryPercentage qualityMetrics.qualityScore costMetrics.competitivenessScore serviceMetrics.communicationScore');
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 vendorPerformanceSchema.statics.getPerformanceComparison = async function(hotelId, vendorIds, period = 'monthly') {
-  return this.find({
-    hotelId,
-    vendorId: { $in: vendorIds },
-    'period.type': period
-  })
-  .populate('vendorId', 'name')
-  .sort({ overallScore: -1 });
+  try {
+    return this.find({
+      hotelId,
+      vendorId: { $in: vendorIds },
+      'period.type': period
+    })
+    .populate('vendorId', 'name')
+    .sort({ overallScore: -1 });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 vendorPerformanceSchema.statics.getHotelPerformanceStats = async function(hotelId, period = 'monthly') {
-  const stats = await this.aggregate([
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        'period.type': period
-      }
-    },
-    {
-      $group: {
-        _id: null,
-        avgDeliveryPerformance: { $avg: '$deliveryMetrics.onTimeDeliveryPercentage' },
-        avgQualityScore: { $avg: '$qualityMetrics.qualityScore' },
-        avgServiceScore: { $avg: '$serviceMetrics.communicationScore' },
-        avgOverallScore: { $avg: '$overallScore' },
-        totalVendors: { $sum: 1 },
-        excellentPerformers: {
-          $sum: { $cond: [{ $gte: ['$overallScore', 4.5] }, 1, 0] }
-        },
-        goodPerformers: {
-          $sum: { $cond: [{ $and: [{ $gte: ['$overallScore', 3.5] }, { $lt: ['$overallScore', 4.5] }] }, 1, 0] }
-        },
-        poorPerformers: {
-          $sum: { $cond: [{ $lt: ['$overallScore', 2.5] }, 1, 0] }
+  try {
+    const stats = await this.aggregate([
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          'period.type': period
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          avgDeliveryPerformance: { $avg: '$deliveryMetrics.onTimeDeliveryPercentage' },
+          avgQualityScore: { $avg: '$qualityMetrics.qualityScore' },
+          avgServiceScore: { $avg: '$serviceMetrics.communicationScore' },
+          avgOverallScore: { $avg: '$overallScore' },
+          totalVendors: { $sum: 1 },
+          excellentPerformers: {
+            $sum: { $cond: [{ $gte: ['$overallScore', 4.5] }, 1, 0] }
+          },
+          goodPerformers: {
+            $sum: { $cond: [{ $and: [{ $gte: ['$overallScore', 3.5] }, { $lt: ['$overallScore', 4.5] }] }, 1, 0] }
+          },
+          poorPerformers: {
+            $sum: { $cond: [{ $lt: ['$overallScore', 2.5] }, 1, 0] }
+          }
         }
       }
-    }
-  ]);
+    ]);
 
-  return stats[0] || {};
+    return stats[0] || {};
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 const VendorPerformance = mongoose.model('VendorPerformance', vendorPerformanceSchema);

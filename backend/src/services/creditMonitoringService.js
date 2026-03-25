@@ -22,7 +22,7 @@ class CreditMonitoringService {
       const companies = await CorporateCompany.find({
         hotelId,
         isActive: true
-      });
+      }).lean().limit(1000);
 
       const results = {
         totalCompanies: companies.length,
@@ -55,44 +55,48 @@ class CreditMonitoringService {
    * @param {Object} results - Results object to populate
    */
   async assessCompanyCreditRisk(company, results) {
-    const utilizationRate = company.creditLimit > 0
-      ? ((company.creditLimit - company.availableCredit) / company.creditLimit) * 100
-      : 0;
+    try {
+      const utilizationRate = company.creditLimit > 0
+        ? ((company.creditLimit - company.availableCredit) / company.creditLimit) * 100
+        : 0;
 
-    // Check for low available credit (less than 20% of limit)
-    if (company.creditLimit > 0 && (company.availableCredit / company.creditLimit) < 0.2) {
-      results.lowCreditAlerts.push({
-        companyId: company._id,
-        companyName: company.name,
-        availableCredit: company.availableCredit,
-        creditLimit: company.creditLimit,
-        utilizationRate: utilizationRate.toFixed(2),
-        severity: 'medium'
-      });
-    }
+      // Check for low available credit (less than 20% of limit)
+      if (company.creditLimit > 0 && (company.availableCredit / company.creditLimit) < 0.2) {
+        results.lowCreditAlerts.push({
+          companyId: company._id,
+          companyName: company.name,
+          availableCredit: company.availableCredit,
+          creditLimit: company.creditLimit,
+          utilizationRate: utilizationRate.toFixed(2),
+          severity: 'medium'
+        });
+      }
 
-    // Check for over-limit situations (negative available credit)
-    if (company.availableCredit < 0) {
-      results.overLimitCompanies.push({
-        companyId: company._id,
-        companyName: company.name,
-        availableCredit: company.availableCredit,
-        creditLimit: company.creditLimit,
-        overLimitAmount: Math.abs(company.availableCredit),
-        severity: 'high'
-      });
-    }
+      // Check for over-limit situations (negative available credit)
+      if (company.availableCredit < 0) {
+        results.overLimitCompanies.push({
+          companyId: company._id,
+          companyName: company.name,
+          availableCredit: company.availableCredit,
+          creditLimit: company.creditLimit,
+          overLimitAmount: Math.abs(company.availableCredit),
+          severity: 'high'
+        });
+      }
 
-    // Check for high utilization (over 75%)
-    if (utilizationRate > 75) {
-      results.highUtilizationCompanies.push({
-        companyId: company._id,
-        companyName: company.name,
-        utilizationRate: utilizationRate.toFixed(2),
-        availableCredit: company.availableCredit,
-        creditLimit: company.creditLimit,
-        severity: utilizationRate > 90 ? 'high' : 'medium'
-      });
+      // Check for high utilization (over 75%)
+      if (utilizationRate > 75) {
+        results.highUtilizationCompanies.push({
+          companyId: company._id,
+          companyName: company.name,
+          utilizationRate: utilizationRate.toFixed(2),
+          availableCredit: company.availableCredit,
+          creditLimit: company.creditLimit,
+          severity: utilizationRate > 90 ? 'high' : 'medium'
+        });
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -107,7 +111,7 @@ class CreditMonitoringService {
         hotelId,
         role: { $in: ['admin', 'manager'] },
         isActive: true
-      });
+      }).lean().limit(1000);
 
       const alerts = [];
 
@@ -169,7 +173,7 @@ class CreditMonitoringService {
           type: { $in: ['credit_warning', 'credit_critical'] },
           status: { $in: ['pending', 'acknowledged'] },
           createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Last 24 hours
-        });
+        }).lean().limit(1000);
 
         const existingCompanyIds = new Set(
           existingAlerts.map(alert => alert.data?.companyId?.toString()).filter(Boolean)
@@ -198,7 +202,7 @@ class CreditMonitoringService {
    */
   async validateBookingCredit(companyId, bookingAmount) {
     try {
-      const company = await CorporateCompany.findById(companyId);
+      const company = await CorporateCompany.findById(companyId).lean();
 
       if (!company) {
         return {
@@ -426,7 +430,7 @@ class CreditMonitoringService {
       }
 
       const sanitizedData = inputValidation.sanitizedData;
-      const company = await CorporateCompany.findById(sanitizedData.companyId);
+      const company = await CorporateCompany.findById(sanitizedData.companyId).lean();
       if (!company) {
         await creditSecurityService.logCreditOperation({
           operation: 'CREDIT_LIMIT_REQUEST_FAILED',
@@ -480,7 +484,7 @@ class CreditMonitoringService {
         'data.companyId': sanitizedData.companyId,
         type: 'credit_limit_request',
         status: { $in: ['pending', 'acknowledged'] }
-      });
+      }).lean();
 
       if (existingRequest) {
         return { success: false, reason: 'Credit limit request already pending' };
@@ -491,7 +495,7 @@ class CreditMonitoringService {
         hotelId: company.hotelId,
         role: { $in: ['admin', 'manager'] },
         isActive: true
-      });
+      }).lean().limit(1000);
 
       // Create approval request alert
       const requestAlert = await StaffAlert.create({
@@ -565,7 +569,7 @@ class CreditMonitoringService {
    */
   async processCreditLimitRequest(requestId, action, approvedBy, comments) {
     try {
-      const request = await StaffAlert.findById(requestId);
+      const request = await StaffAlert.findById(requestId).lean();
       if (!request || request.type !== 'credit_limit_request') {
         return { success: false, reason: 'Request not found' };
       }
@@ -629,7 +633,7 @@ class CreditMonitoringService {
       await request.save();
 
       // Send notification to requestor
-      const requestor = await User.findById(request.data.requestedBy);
+      const requestor = await User.findById(request.data.requestedBy).lean();
       if (requestor) {
         await StaffAlert.create({
           hotelId: company.hotelId,
@@ -757,7 +761,7 @@ class CreditMonitoringService {
           hotelId: company.hotelId,
           role: { $in: ['admin', 'manager'] },
           isActive: true
-        });
+        }).lean().limit(1000);
 
         await StaffAlert.create({
           hotelId: company.hotelId,
@@ -833,7 +837,7 @@ class CreditMonitoringService {
         hotelId,
         type: { $in: ['credit_limit_request', 'credit_adjustment_request'] },
         status: { $in: ['pending', 'acknowledged'] }
-      }).populate('data.requestedBy', 'name email').sort({ createdAt: -1 });
+      }).populate('data.requestedBy', 'name email').sort({ createdAt: -1 }).lean().limit(1000);
 
       return {
         success: true,
@@ -871,7 +875,7 @@ class CreditMonitoringService {
         hotelId,
         isActive: true,
         creditLimit: { $gt: 0 }
-      });
+      }).lean().limit(1000);
 
       const notifications = {
         emailsSent: 0,
@@ -919,7 +923,7 @@ class CreditMonitoringService {
             role: { $in: ['admin', 'manager', 'staff'] },
             isActive: true,
             'notificationPreferences.creditAlerts': { $ne: false }
-          });
+          }).lean().limit(1000);
 
           // Create staff alert
           await StaffAlert.create({
@@ -1412,7 +1416,7 @@ class CreditMonitoringService {
         includePatterns = true
       } = analyticsConfig;
 
-      const company = await CorporateCompany.findById(companyId);
+      const company = await CorporateCompany.findById(companyId).lean();
       if (!company) {
         return { success: false, reason: 'Company not found' };
       }
@@ -1426,7 +1430,7 @@ class CreditMonitoringService {
         corporateCompanyId: companyId,
         transactionDate: { $gte: startDate, $lte: endDate },
         status: 'processed'
-      }).sort({ transactionDate: -1 });
+      }).sort({ transactionDate: -1 }).lean().limit(1000);
 
       // Calculate analytics
       const analytics = {
@@ -1510,7 +1514,7 @@ class CreditMonitoringService {
           corporateCompanyId: companyId,
           transactionDate: { $gte: previousStartDate, $lt: previousEndDate },
           status: 'processed'
-        });
+        }).lean().limit(1000);
 
         const previousTotal = previousPeriodTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
         const currentTotal = analytics.summary.totalDebits + analytics.summary.totalCredits;
@@ -1558,7 +1562,7 @@ class CreditMonitoringService {
       const companies = await CorporateCompany.find({
         hotelId,
         isActive: true
-      });
+      }).lean().limit(1000);
 
       const summary = {
         totalCompanies: companies.length,
@@ -1593,7 +1597,7 @@ class CreditMonitoringService {
         hotelId,
         type: { $in: ['credit_warning', 'credit_critical'] },
         status: { $in: ['pending', 'acknowledged'] }
-      });
+      }).lean().limit(1000);
 
       summary.alerts.total = activeAlerts.length;
       summary.alerts.pending = activeAlerts.filter(alert => alert.status === 'pending').length;
@@ -1731,7 +1735,7 @@ class CreditMonitoringService {
         hotelId,
         createdAt: { $gte: yesterday },
         status: 'processed'
-      }).select('_id');
+      }).select('_id').lean().limit(1000);
 
       const transactionIds = recentTransactions.map(t => t._id.toString());
 
@@ -1752,7 +1756,7 @@ class CreditMonitoringService {
           hotelId,
           role: { $in: ['admin', 'manager'] },
           isActive: true
-        });
+        }).lean().limit(1000);
 
         await StaffAlert.create({
           hotelId,

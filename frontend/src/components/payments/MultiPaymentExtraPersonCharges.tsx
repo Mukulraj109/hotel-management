@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { api } from '../../services/api';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import {
@@ -148,7 +148,8 @@ function MultiPaymentForm({ bookingId, extraPersonCharges, onSuccess, onCancel }
       });
 
       setPaymentSuccessful(true);
-      setTimeout(() => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
         onSuccess({ paymentMethods: processedPayments });
       }, 2000);
     } catch (err: unknown) {
@@ -223,7 +224,7 @@ function MultiPaymentForm({ bookingId, extraPersonCharges, onSuccess, onCancel }
                   <span className="font-medium">{paymentMethodLabels[payment.method]}</span>
                 </div>
                 {paymentMethods.length > 1 && (
-                  <button
+                  <button aria-label="Delete"
                     type="button"
                     onClick={() => removePaymentMethod(index)}
                     className="text-red-500 hover:text-red-700 p-1"
@@ -242,6 +243,7 @@ function MultiPaymentForm({ bookingId, extraPersonCharges, onSuccess, onCancel }
                     value={payment.method}
                     onChange={(e) => updatePaymentMethod(index, 'method', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
                   >
                     <option value="cash">Cash</option>
                     <option value="upi">UPI</option>
@@ -261,6 +263,7 @@ function MultiPaymentForm({ bookingId, extraPersonCharges, onSuccess, onCancel }
                     onChange={(e) => updatePaymentMethod(index, 'amount', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="0.00"
+                    required
                   />
                 </div>
 
@@ -377,7 +380,7 @@ export function MultiPaymentExtraPersonCharges({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-        <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose} />
+        <div aria-hidden="true" className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose} />
 
         <div className="relative inline-block w-full max-w-4xl p-6 overflow-hidden text-left align-bottom transition-all transform bg-white shadow-xl rounded-lg sm:my-8 sm:align-middle">
           <div className="mb-6">

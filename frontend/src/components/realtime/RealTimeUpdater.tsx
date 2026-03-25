@@ -103,7 +103,7 @@ const RealTimeUpdater: React.FC<RealTimeUpdaterProps> = ({
         Last update: {formatLastUpdate()}
       </span>
 
-      <button
+      <button aria-label="Refresh"
         onClick={handleManualRefresh}
         disabled={isUpdating}
         className="p-1 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"

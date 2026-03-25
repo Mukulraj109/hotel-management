@@ -234,7 +234,7 @@ const CustomFieldForm: React.FC<CustomFieldFormProps> = ({
               {field ? 'Edit Custom Field' : 'Create Custom Field'}
             </h3>
           </div>
-          <button
+          <button aria-label="Close"
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
           >
@@ -251,6 +251,7 @@ const CustomFieldForm: React.FC<CustomFieldFormProps> = ({
               </label>
               <input
                 type="text"
+                required
                 name="name"
                 value={formData.name}
                 onChange={handleInputChange}
@@ -267,6 +268,7 @@ const CustomFieldForm: React.FC<CustomFieldFormProps> = ({
               </label>
               <input
                 type="text"
+                required
                 name="label"
                 value={formData.label}
                 onChange={handleInputChange}
@@ -581,7 +583,7 @@ const CustomFieldForm: React.FC<CustomFieldFormProps> = ({
                       className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
                     >
                       {tag}
-                      <button
+                      <button aria-label="Delete"
                         type="button"
                         onClick={() => handleRemoveTag(index)}
                         className="ml-1 text-blue-600 hover:text-blue-800"
@@ -619,7 +621,7 @@ const CustomFieldForm: React.FC<CustomFieldFormProps> = ({
             >
               Cancel
             </button>
-            <button
+            <button aria-label="Close"
               type="submit"
               disabled={loading}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"

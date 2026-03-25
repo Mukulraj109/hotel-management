@@ -59,19 +59,37 @@ class InventoryWorkflowService {
   initializeScheduledTasks() {
     // Daily reorder check
     cron.schedule(this.config.reorderCheckInterval, async () => {
-      this.logger.info('Running scheduled reorder check...');
-      await this.processAutomaticReorders();
+      try {
+        this.logger.info('Running scheduled reorder check...');
+        await this.processAutomaticReorders();
+    
+      } catch (error) {
+        console.error('Operation failed:', error.message);
+        throw error;
+      }
     });
 
     // Weekly budget analysis
     cron.schedule(this.config.budgetCheckInterval, async () => {
-      this.logger.info('Running weekly budget analysis...');
-      await this.performBudgetAnalysis();
+      try {
+        this.logger.info('Running weekly budget analysis...');
+        await this.performBudgetAnalysis();
+    
+      } catch (error) {
+        console.error('Operation failed:', error.message);
+        throw error;
+      }
     });
 
     // Hourly consumption tracking update
     cron.schedule('0 * * * *', async () => {
-      await this.updateConsumptionPatterns();
+      try {
+        await this.updateConsumptionPatterns();
+    
+      } catch (error) {
+        console.error('Operation failed:', error.message);
+        throw error;
+      }
     });
   }
 
@@ -206,22 +224,31 @@ class InventoryWorkflowService {
       session.startTransaction();
 
       try {
+        // Batch: fetch all inventory items in a single query
+        const itemIds = consumedItems.map(c => c.itemId);
+        const items = await InventoryItem.find({ _id: { $in: itemIds } }).session(session);
+        const itemMap = new Map(items.map(it => [it._id.toString(), it]));
+        const systemUserId = await this.getSystemUserId(hotelId);
+
+        const transactionsToInsert = [];
+        const bulkOps = [];
+        const reorderChecks = [];
+
         for (const consumed of consumedItems) {
-          const item = await InventoryItem.findById(consumed.itemId).session(session);
+          const item = itemMap.get(consumed.itemId.toString());
           if (!item) continue;
 
           const previousStock = item.currentStock;
           const newStock = Math.max(0, previousStock - consumed.quantity);
 
-          // Update stock
-          await InventoryItem.findByIdAndUpdate(
-            consumed.itemId,
-            { currentStock: newStock },
-            { session }
-          );
+          bulkOps.push({
+            updateOne: {
+              filter: { _id: consumed.itemId },
+              update: { $set: { currentStock: newStock } }
+            }
+          });
 
-          // Create transaction record
-          const transaction = new InventoryTransaction({
+          transactionsToInsert.push({
             hotelId: new mongoose.Types.ObjectId(hotelId),
             inventoryItemId: consumed.itemId,
             itemName: item.name,
@@ -234,7 +261,7 @@ class InventoryWorkflowService {
             reason: `Housekeeping consumption - Room ${roomId}`,
             referenceType: 'housekeeping',
             referenceId: roomId,
-            performedBy: await this.getSystemUserId(hotelId),
+            performedBy: systemUserId,
             location: `Room ${roomId}`,
             notes: `Auto-tracked: ${consumed.taskType}`,
             metadata: {
@@ -245,16 +272,23 @@ class InventoryWorkflowService {
             }
           });
 
-          await transaction.save({ session });
-          movementsCreated++;
-
-          // Check if this triggers a reorder
           if (newStock <= item.stockThreshold) {
-            await this.checkAndTriggerReorder(item, hotelId);
+            reorderChecks.push(item);
           }
         }
 
+        if (bulkOps.length > 0) {
+          await InventoryItem.bulkWrite(bulkOps, { session });
+        }
+        if (transactionsToInsert.length > 0) {
+          await InventoryTransaction.insertMany(transactionsToInsert, { session });
+          movementsCreated = transactionsToInsert.length;
+        }
+
         await session.commitTransaction();
+
+        // Trigger reorder checks after commit
+        await Promise.all(reorderChecks.map(item => this.checkAndTriggerReorder(item, hotelId)));
 
         this.logger.info(`Created ${movementsCreated} inventory movements for housekeeping sync`);
 
@@ -292,22 +326,31 @@ class InventoryWorkflowService {
       session.startTransaction();
 
       try {
+        // Batch: fetch all inventory items in a single query
+        const supplyIds = usedSupplies.map(s => s.itemId);
+        const items = await InventoryItem.find({ _id: { $in: supplyIds } }).session(session);
+        const itemMap = new Map(items.map(it => [it._id.toString(), it]));
+        const performedBy = completedTask.completedBy || await this.getSystemUserId(hotelId);
+
+        const transactionsToInsert = [];
+        const bulkOps = [];
+        const reorderChecks = [];
+
         for (const supply of usedSupplies) {
-          const item = await InventoryItem.findById(supply.itemId).session(session);
+          const item = itemMap.get(supply.itemId.toString());
           if (!item) continue;
 
           const previousStock = item.currentStock;
           const newStock = Math.max(0, previousStock - supply.quantity);
 
-          // Update stock
-          await InventoryItem.findByIdAndUpdate(
-            supply.itemId,
-            { currentStock: newStock },
-            { session }
-          );
+          bulkOps.push({
+            updateOne: {
+              filter: { _id: supply.itemId },
+              update: { $set: { currentStock: newStock } }
+            }
+          });
 
-          // Create transaction record
-          const transaction = new InventoryTransaction({
+          transactionsToInsert.push({
             hotelId: new mongoose.Types.ObjectId(hotelId),
             inventoryItemId: supply.itemId,
             itemName: item.name,
@@ -320,7 +363,7 @@ class InventoryWorkflowService {
             reason: `Maintenance usage - ${completedTask.type}`,
             referenceType: 'maintenance',
             referenceId: taskId,
-            performedBy: completedTask.completedBy || await this.getSystemUserId(hotelId),
+            performedBy,
             location: completedTask.location || 'Hotel',
             notes: `Auto-tracked: ${completedTask.description}`,
             metadata: {
@@ -331,16 +374,23 @@ class InventoryWorkflowService {
             }
           });
 
-          await transaction.save({ session });
-          movementsCreated++;
-
-          // Check if this triggers a reorder
           if (newStock <= item.stockThreshold) {
-            await this.checkAndTriggerReorder(item, hotelId);
+            reorderChecks.push(item);
           }
         }
 
+        if (bulkOps.length > 0) {
+          await InventoryItem.bulkWrite(bulkOps, { session });
+        }
+        if (transactionsToInsert.length > 0) {
+          await InventoryTransaction.insertMany(transactionsToInsert, { session });
+          movementsCreated = transactionsToInsert.length;
+        }
+
         await session.commitTransaction();
+
+        // Trigger reorder checks after commit
+        await Promise.all(reorderChecks.map(item => this.checkAndTriggerReorder(item, hotelId)));
 
         this.logger.info(`Created ${movementsCreated} inventory movements for maintenance sync`);
 
@@ -371,22 +421,32 @@ class InventoryWorkflowService {
       session.startTransaction();
 
       try {
+        // Batch: fetch all inventory items in a single query
+        const itemIds = consumedItems.map(c => c.itemId);
+        const items = await InventoryItem.find({ _id: { $in: itemIds } }).session(session);
+        const itemMap = new Map(items.map(it => [it._id.toString(), it]));
+        const systemUserId = await this.getSystemUserId(hotelId);
+
+        const transactionsToInsert = [];
+        const bulkOps = [];
+        const reorderChecks = [];
+        const chargeableEntries = [];
+
         for (const consumed of consumedItems) {
-          const item = await InventoryItem.findById(consumed.itemId).session(session);
+          const item = itemMap.get(consumed.itemId.toString());
           if (!item) continue;
 
           const previousStock = item.currentStock;
           const newStock = Math.max(0, previousStock - consumed.quantity);
 
-          // Update stock
-          await InventoryItem.findByIdAndUpdate(
-            consumed.itemId,
-            { currentStock: newStock },
-            { session }
-          );
+          bulkOps.push({
+            updateOne: {
+              filter: { _id: consumed.itemId },
+              update: { $set: { currentStock: newStock } }
+            }
+          });
 
-          // Create transaction record
-          const transaction = new InventoryTransaction({
+          const txnData = {
             hotelId: new mongoose.Types.ObjectId(hotelId),
             inventoryItemId: consumed.itemId,
             itemName: item.name,
@@ -399,7 +459,7 @@ class InventoryWorkflowService {
             reason: `Guest service consumption - ${serviceType}`,
             referenceType: 'guest_service',
             referenceId: guestId,
-            performedBy: await this.getSystemUserId(hotelId),
+            performedBy: systemUserId,
             location: 'Guest Service',
             notes: `Auto-tracked guest service: ${serviceType}`,
             metadata: {
@@ -409,23 +469,38 @@ class InventoryWorkflowService {
               automated: true,
               chargeable: consumed.chargeable || false
             }
-          });
+          };
+          transactionsToInsert.push(txnData);
 
-          await transaction.save({ session });
-          movementsCreated++;
-
-          // For chargeable items, you might want to create billing entries
           if (consumed.chargeable) {
-            await this.createGuestBillingEntry(hotelId, guestId, consumed, transaction);
+            chargeableEntries.push({ consumed, txnData });
           }
-
-          // Check if this triggers a reorder
           if (newStock <= item.stockThreshold) {
-            await this.checkAndTriggerReorder(item, hotelId);
+            reorderChecks.push(item);
+          }
+        }
+
+        if (bulkOps.length > 0) {
+          await InventoryItem.bulkWrite(bulkOps, { session });
+        }
+        let insertedTransactions = [];
+        if (transactionsToInsert.length > 0) {
+          insertedTransactions = await InventoryTransaction.insertMany(transactionsToInsert, { session });
+          movementsCreated = transactionsToInsert.length;
+        }
+
+        // Handle chargeable billing entries
+        for (const { consumed, txnData } of chargeableEntries) {
+          const matchedTxn = insertedTransactions.find(t => t.inventoryItemId.toString() === consumed.itemId.toString());
+          if (matchedTxn) {
+            await this.createGuestBillingEntry(hotelId, guestId, consumed, matchedTxn);
           }
         }
 
         await session.commitTransaction();
+
+        // Trigger reorder checks after commit
+        await Promise.all(reorderChecks.map(item => this.checkAndTriggerReorder(item, hotelId)));
 
         return { success: true, movementsCreated };
 
@@ -498,33 +573,44 @@ class InventoryWorkflowService {
         }
       ]);
 
-      // Update consumption patterns for each item
+      // Batch: build all consumption pattern updates and apply with bulkWrite
+      const bulkOps = [];
+      const alertPromises = [];
+
       for (const data of consumptionData) {
         const velocityFactor = data.totalConsumed / this.config.consumptionTrackingPeriod;
         const variabilityFactor = data.maxDailyConsumption / (data.averageDaily || 1);
 
-        // Check for unusual consumption patterns
         if (velocityFactor > this.config.escalationRules.velocityThreshold) {
-          await this.createConsumptionAlert(hotelId, data.item, 'high_velocity', {
+          alertPromises.push(this.createConsumptionAlert(hotelId, data.item, 'high_velocity', {
             currentVelocity: velocityFactor,
             threshold: this.config.escalationRules.velocityThreshold
-          });
+          }));
         }
 
-        // Update item's consumption metadata
-        await InventoryItem.findByIdAndUpdate(data._id, {
-          $set: {
-            'metadata.consumptionPattern': {
-              averageDailyConsumption: data.averageDaily,
-              totalPeriodConsumption: data.totalConsumed,
-              velocityFactor,
-              variabilityFactor,
-              lastUpdated: new Date(),
-              period: this.config.consumptionTrackingPeriod
+        bulkOps.push({
+          updateOne: {
+            filter: { _id: data._id },
+            update: {
+              $set: {
+                'metadata.consumptionPattern': {
+                  averageDailyConsumption: data.averageDaily,
+                  totalPeriodConsumption: data.totalConsumed,
+                  velocityFactor,
+                  variabilityFactor,
+                  lastUpdated: new Date(),
+                  period: this.config.consumptionTrackingPeriod
+                }
+              }
             }
           }
         });
       }
+
+      if (bulkOps.length > 0) {
+        await InventoryItem.bulkWrite(bulkOps);
+      }
+      await Promise.all(alertPromises);
 
     } catch (error) {
       this.logger.error(`Error updating consumption patterns for hotel ${hotelId}:`, error);
@@ -621,163 +707,218 @@ class InventoryWorkflowService {
   // Helper methods
 
   async getActiveHotels() {
-    // Mock implementation - replace with actual hotel query
-    return [
-      { _id: new mongoose.Types.ObjectId() }
-    ];
+    try {
+      // Mock implementation - replace with actual hotel query
+      return [
+        { _id: new mongoose.Types.ObjectId() }
+      ];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getSystemUserId(hotelId) {
-    // Get or create system user for automated operations
-    let systemUser = await User.findOne({
-      email: 'system@hotel.com',
-      role: 'system'
-    });
-
-    if (!systemUser) {
-      // Create system user if it doesn't exist
-      systemUser = await User.create({
-        firstName: 'System',
-        lastName: 'Automation',
+    try {
+      // Get or create system user for automated operations
+      let systemUser = await User.findOne({
         email: 'system@hotel.com',
-        role: 'system',
-        isActive: true,
-        hotelId: hotelId
-      });
-    }
+        role: 'system'
+      }).lean();
 
-    return systemUser._id;
+      if (!systemUser) {
+        // Create system user if it doesn't exist
+        systemUser = await User.create({
+          firstName: 'System',
+          lastName: 'Automation',
+          email: 'system@hotel.com',
+          role: 'system',
+          isActive: true,
+          hotelId: hotelId
+        });
+      }
+
+      return systemUser._id;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async mapTaskToInventoryConsumption(task) {
-    // Map housekeeping tasks to inventory items
-    const consumptionMap = {
-      'room_cleaning': [
-        { category: 'cleaning', estimatedConsumption: { 'cleaning_spray': 0.1, 'toilet_paper': 1, 'towels': 0.2 } },
-        { category: 'toiletries', estimatedConsumption: { 'shampoo': 0.05, 'soap': 0.1 } }
-      ],
-      'bathroom_cleaning': [
-        { category: 'cleaning', estimatedConsumption: { 'bathroom_cleaner': 0.2, 'toilet_paper': 2 } },
-        { category: 'toiletries', estimatedConsumption: { 'toilet_paper': 2, 'towels': 0.5 } }
-      ],
-      'bed_making': [
-        { category: 'linens', estimatedConsumption: { 'bed_sheets': 0.1, 'pillowcases': 0.1 } }
-      ]
-    };
+    try {
+      // Map housekeeping tasks to inventory items
+      const consumptionMap = {
+        'room_cleaning': [
+          { category: 'cleaning', estimatedConsumption: { 'cleaning_spray': 0.1, 'toilet_paper': 1, 'towels': 0.2 } },
+          { category: 'toiletries', estimatedConsumption: { 'shampoo': 0.05, 'soap': 0.1 } }
+        ],
+        'bathroom_cleaning': [
+          { category: 'cleaning', estimatedConsumption: { 'bathroom_cleaner': 0.2, 'toilet_paper': 2 } },
+          { category: 'toiletries', estimatedConsumption: { 'toilet_paper': 2, 'towels': 0.5 } }
+        ],
+        'bed_making': [
+          { category: 'linens', estimatedConsumption: { 'bed_sheets': 0.1, 'pillowcases': 0.1 } }
+        ]
+      };
 
-    const mappings = consumptionMap[task.type] || [];
-    const consumedItems = [];
+      const mappings = consumptionMap[task.type] || [];
+      const consumedItems = [];
 
-    for (const mapping of mappings) {
-      // Find items in the category and calculate consumption
-      const items = await InventoryItem.find({
-        category: mapping.category,
-        isActive: true
-      });
+      for (const mapping of mappings) {
+        // Find items in the category and calculate consumption
+        const items = await InventoryItem.find({
+          category: mapping.category,
+          isActive: true
+        }).lean().limit(1000);
 
-      for (const item of items) {
-        const consumptionRate = mapping.estimatedConsumption[item.name.toLowerCase().replace(/\s+/g, '_')] || 0;
-        if (consumptionRate > 0) {
-          consumedItems.push({
-            itemId: item._id,
-            quantity: Math.ceil(consumptionRate * (task.roomCount || 1)),
-            taskType: task.type
-          });
+        for (const item of items) {
+          const consumptionRate = mapping.estimatedConsumption[item.name.toLowerCase().replace(/\s+/g, '_')] || 0;
+          if (consumptionRate > 0) {
+            consumedItems.push({
+              itemId: item._id,
+              quantity: Math.ceil(consumptionRate * (task.roomCount || 1)),
+              taskType: task.type
+            });
+          }
         }
       }
-    }
 
-    return consumedItems;
+      return consumedItems;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async mapMaintenanceToSupplyUsage(task) {
-    // Map maintenance tasks to supply usage
-    const supplyMap = {
-      'plumbing': ['pipe_fittings', 'plumbing_tools', 'sealants'],
-      'electrical': ['electrical_parts', 'cables', 'switches'],
-      'hvac': ['hvac_filters', 'refrigerant', 'hvac_parts'],
-      'general_maintenance': ['screws', 'bolts', 'general_tools']
-    };
+    try {
+      // Map maintenance tasks to supply usage
+      const supplyMap = {
+        'plumbing': ['pipe_fittings', 'plumbing_tools', 'sealants'],
+        'electrical': ['electrical_parts', 'cables', 'switches'],
+        'hvac': ['hvac_filters', 'refrigerant', 'hvac_parts'],
+        'general_maintenance': ['screws', 'bolts', 'general_tools']
+      };
 
-    const supplies = supplyMap[task.type] || supplyMap['general_maintenance'];
-    const usedSupplies = [];
+      const supplies = supplyMap[task.type] || supplyMap['general_maintenance'];
 
-    for (const supplyName of supplies) {
-      const item = await InventoryItem.findOne({
-        name: new RegExp(supplyName.replace('_', ' '), 'i'),
+      // Batch: find all matching supply items in a single query using $or
+      const regexConditions = supplies.map(name => ({
+        name: new RegExp(name.replace('_', ' '), 'i')
+      }));
+      const items = await InventoryItem.find({
+        $or: regexConditions,
         isActive: true
-      });
+      }).limit(1000).lean();
 
-      if (item) {
-        usedSupplies.push({
-          itemId: item._id,
-          quantity: 1, // Basic consumption - could be made more intelligent
-          supplyType: supplyName
-        });
+      // Map found items back to supply names
+      const usedSupplies = [];
+      for (const supplyName of supplies) {
+        const regex = new RegExp(supplyName.replace('_', ' '), 'i');
+        const item = items.find(it => regex.test(it.name));
+        if (item) {
+          usedSupplies.push({
+            itemId: item._id,
+            quantity: 1,
+            supplyType: supplyName
+          });
+        }
       }
-    }
 
-    return usedSupplies;
+      return usedSupplies;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async checkAndTriggerReorder(item, hotelId) {
-    // Check if automatic reorder is enabled for this item
-    if (!item.reorderSettings?.autoReorderEnabled) return;
+    try {
+      // Check if automatic reorder is enabled for this item
+      if (!item.reorderSettings?.autoReorderEnabled) return;
 
-    // Create reorder alert/recommendation
-    const recommendation = await this.smartReorderService.generateItemRecommendation(item);
+      // Create reorder alert/recommendation
+      const recommendation = await this.smartReorderService.generateItemRecommendation(item);
 
-    if (recommendation.success) {
-      if (this.canAutoApprove(recommendation)) {
-        // Auto-create purchase order
-        await this.smartReorderService.createPurchaseOrdersFromRecommendations(
-          hotelId,
-          [recommendation],
-          await this.getSystemUserId(hotelId)
-        );
-      } else {
-        // Create manual approval alert
-        await this.createReorderAlerts(hotelId, [recommendation]);
+      if (recommendation.success) {
+        if (this.canAutoApprove(recommendation)) {
+          // Auto-create purchase order
+          await this.smartReorderService.createPurchaseOrdersFromRecommendations(
+            hotelId,
+            [recommendation],
+            await this.getSystemUserId(hotelId)
+          );
+        } else {
+          // Create manual approval alert
+          await this.createReorderAlerts(hotelId, [recommendation]);
+        }
       }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
   async createReorderAlerts(hotelId, recommendations) {
-    // Create alerts for manual approval - implementation depends on your alert system
-    for (const rec of recommendations) {
-      logger.debug(`Creating reorder alert for ${rec.itemName} in hotel ${hotelId}`);
-      // Implementation would save to alerts collection or trigger notification
+    try {
+      // Create alerts for manual approval - implementation depends on your alert system
+      for (const rec of recommendations) {
+        logger.debug(`Creating reorder alert for ${rec.itemName} in hotel ${hotelId}`);
+        // Implementation would save to alerts collection or trigger notification
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
   async createConsumptionAlert(hotelId, item, type, data) {
-    logger.debug(`Creating consumption alert for ${item.name}: ${type}`, data);
-    // Implementation would create alert in your system
+    try {
+      logger.debug(`Creating consumption alert for ${item.name}: ${type}`, data);
+      // Implementation would create alert in your system
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async createBudgetAlert(hotelId, budgetData) {
-    logger.debug(`Creating budget alert for hotel ${hotelId}:`, budgetData);
-    // Implementation would create budget alert
+    try {
+      logger.debug(`Creating budget alert for hotel ${hotelId}:`, budgetData);
+      // Implementation would create budget alert
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async createBudgetProjectionAlert(hotelId, projectionData) {
-    logger.debug(`Creating budget projection alert for hotel ${hotelId}:`, projectionData);
-    // Implementation would create projection alert
+    try {
+      logger.debug(`Creating budget projection alert for hotel ${hotelId}:`, projectionData);
+      // Implementation would create projection alert
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getHotelMonthlyBudget(hotelId) {
-    // Mock implementation - replace with actual budget lookup
-    return 100000; // Default monthly budget
+    try {
+      // Mock implementation - replace with actual budget lookup
+      return 100000; // Default monthly budget
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async sendAutoApprovalNotification(hotelId, results) {
-    logger.debug(`Sending auto-approval notification for hotel ${hotelId}:`, results);
-    // Implementation would send notification to hotel managers
+    try {
+      logger.debug(`Sending auto-approval notification for hotel ${hotelId}:`, results);
+      // Implementation would send notification to hotel managers
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async createGuestBillingEntry(hotelId, guestId, consumed, transaction) {
-    logger.debug(`Creating guest billing entry for ${consumed.itemName}`);
-    // Implementation would create billing entry for chargeable items
+    try {
+      logger.debug(`Creating guest billing entry for ${consumed.itemName}`);
+      // Implementation would create billing entry for chargeable items
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 

@@ -39,7 +39,7 @@ export const getCounters = catchAsync(async (req, res, next) => {
 
 export const getCounter = catchAsync(async (req, res, next) => {
   const counter = await Counter.findById(req.params.id)
-    .populate('createdBy updatedBy', 'name email');
+    .populate('createdBy updatedBy', 'name email').lean();
 
   if (!counter) {
     return next(new ApplicationError('Counter not found', 404));
@@ -130,7 +130,7 @@ export const getArrivalDepartureModes = catchAsync(async (req, res, next) => {
 
 export const getArrivalDepartureMode = catchAsync(async (req, res, next) => {
   const mode = await ArrivalDepartureMode.findById(req.params.id)
-    .populate('createdBy updatedBy', 'name email');
+    .populate('createdBy updatedBy', 'name email').lean();
 
   if (!mode) {
     return next(new ApplicationError('Arrival/Departure mode not found', 404));
@@ -211,7 +211,7 @@ export const getLostFoundItems = catchAsync(async (req, res, next) => {
 export const getLostFoundItem = catchAsync(async (req, res, next) => {
   const item = await LostFound.findById(req.params.id)
     .populate('people.foundBy people.claimedBy people.reportedBy', 'name email')
-    .populate('guest.guestId', 'name email phone');
+    .populate('guest.guestId', 'name email phone').lean();
 
   if (!item) {
     return next(new ApplicationError('Lost & Found item not found', 404));

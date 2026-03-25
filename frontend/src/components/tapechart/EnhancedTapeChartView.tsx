@@ -25,6 +25,7 @@ import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval, is
 import tapeChartService, { TapeChartData, TapeChartView as TapeChartViewType } from '@/services/tapeChartService';
 import { formatCurrency } from '@/utils/currencyUtils';
 import { cn } from '@/lib/utils';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 // Enhanced interfaces with corporate and advanced features
 interface EnhancedRoomCell {
@@ -145,6 +146,14 @@ const EnhancedTapeChartView: React.FC = () => {
   const dragPreviewRef = useRef<HTMLDivElement>(null);
 
   // Load data
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     fetchChartData();
     const interval = setInterval(fetchChartData, 30000); // Auto-refresh every 30 seconds
@@ -186,7 +195,8 @@ const EnhancedTapeChartView: React.FC = () => {
     dragImage.append(nameDiv, nightsDiv);
     document.body.appendChild(dragImage);
     e.dataTransfer.setDragImage(dragImage, 50, 25);
-    setTimeout(() => document.body.removeChild(dragImage), 0);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => document.body.removeChild(dragImage), 0);
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent, roomId: string, date: string) => {
@@ -330,7 +340,7 @@ const EnhancedTapeChartView: React.FC = () => {
     const isCorporate = room.bookingType === 'corporate';
     
     return (
-      <div
+      <div role="button" tabIndex={0}
         key={`${room.roomId}-${format(date, 'yyyy-MM-dd')}`}
         className={cn(
           'relative min-h-[60px] border border-gray-200 p-1 transition-all cursor-pointer',
@@ -353,7 +363,7 @@ const EnhancedTapeChartView: React.FC = () => {
         onDragLeave={(e) => {
           e.currentTarget.classList.remove('bg-green-100', 'bg-red-100');
         }}
-      >
+       onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = (e) => handleRoomClick(e, room.roomId); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
         {room.bookingId && (
           <div
             className="h-full flex flex-col justify-between"
@@ -936,4 +946,4 @@ const EnhancedTapeChartView: React.FC = () => {
   );
 };
 
-export default EnhancedTapeChartView;
+export default withErrorBoundary(EnhancedTapeChartView, { level: 'component' });

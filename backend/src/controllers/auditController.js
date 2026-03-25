@@ -96,7 +96,7 @@ export const getOTAPayload = async (req, res) => {
     const { includeRawData = 'false' } = req.query;
 
     const payload = await OTAPayload.findOne({ payloadId })
-      .populate('auditLogId', 'logId changeType createdAt');
+      .populate('auditLogId', 'logId changeType createdAt').lean();
 
     if (!payload) {
       return res.status(404).json({
@@ -324,7 +324,7 @@ export const getAuditLogs = async (req, res) => {
       .populate('userId', 'name email')
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
-      .skip(offset);
+      .skip(offset).lean();
 
     const total = await AuditLog.countDocuments(query);
 
@@ -365,7 +365,7 @@ export const getAuditByCorrelation = async (req, res) => {
       'metadata.correlationId': correlationId
     })
     .populate('userId', 'name email')
-    .sort({ createdAt: 1 });
+    .sort({ createdAt: 1 }).lean().limit(1000);
 
     res.status(200).json({
       status: 'success',
@@ -394,7 +394,7 @@ export const getRetentionStats = async (req, res) => {
     const stats = payloadRetentionService.getStats();
 
     // Get additional database stats
-    const totalPayloads = await OTAPayload.countDocuments();
+    const totalPayloads = await OTAPayload.estimatedDocumentCount();
     const archivedPayloads = await OTAPayload.countDocuments({ 'retention.archived': true });
     const overduePayloads = await OTAPayload.countDocuments({
       'retention.deleteAfter': { $lt: new Date() }
@@ -492,7 +492,7 @@ export const exportAuditData = async (req, res) => {
     const auditLogs = await AuditLog.find(query)
       .populate('userId', 'name email')
       .sort({ createdAt: 1 })
-      .limit(10000); // Prevent excessive exports
+      .limit(10000).lean(); // Prevent excessive exports
 
     let exportData = auditLogs;
 
@@ -506,7 +506,7 @@ export const exportAuditData = async (req, res) => {
         const payloads = await OTAPayload.find({
           correlationId: { $in: correlationIds }
         })
-        .select('-rawPayload -response'); // Exclude large binary data
+        .select('-rawPayload -response').lean().limit(1000); // Exclude large binary data
 
         exportData = {
           auditLogs,
@@ -551,48 +551,54 @@ export const exportAuditData = async (req, res) => {
  * Helper function to get time series statistics
  */
 async function getTimeSeriesStats(filters, groupBy) {
-  const groupStage = {};
-  const matchStage = {};
+  try {
+    const groupStage = {};
+    const matchStage = {};
 
-  if (filters.channel) matchStage.channel = filters.channel;
-  if (filters.direction) matchStage.direction = filters.direction;
-  if (filters.startDate || filters.endDate) {
-    matchStage.createdAt = {};
-    if (filters.startDate) matchStage.createdAt.$gte = new Date(filters.startDate);
-    if (filters.endDate) matchStage.createdAt.$lte = new Date(filters.endDate);
+    if (filters.channel) matchStage.channel = filters.channel;
+    if (filters.direction) matchStage.direction = filters.direction;
+    if (filters.startDate || filters.endDate) {
+      matchStage.createdAt = {};
+      if (filters.startDate) matchStage.createdAt.$gte = new Date(filters.startDate);
+      if (filters.endDate) matchStage.createdAt.$lte = new Date(filters.endDate);
+    }
+
+    // Group by time period
+    switch (groupBy) {
+      case 'hour':
+        groupStage._id = {
+          year: { $year: '$createdAt' },
+          month: { $month: '$createdAt' },
+          day: { $dayOfMonth: '$createdAt' },
+          hour: { $hour: '$createdAt' }
+        };
+        break;
+      case 'day':
+      default:
+        groupStage._id = {
+          year: { $year: '$createdAt' },
+          month: { $month: '$createdAt' },
+          day: { $dayOfMonth: '$createdAt' }
+        };
+        break;
+    }
+
+    groupStage.count = { $sum: 1 };
+    groupStage.avgSize = { $avg: '$metrics.payloadSize' };
+    groupStage.channels = { $addToSet: '$channel' };
+
+    const timeSeries = await OTAPayload.aggregate([
+      { $match: matchStage },
+      { $group: groupStage },
+      { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1, '_id.hour': 1 } }
+    ]);
+
+    return timeSeries;
+
+  } catch (error) {
+    console.error('Operation failed:', error.message);
+    throw error;
   }
-
-  // Group by time period
-  switch (groupBy) {
-    case 'hour':
-      groupStage._id = {
-        year: { $year: '$createdAt' },
-        month: { $month: '$createdAt' },
-        day: { $dayOfMonth: '$createdAt' },
-        hour: { $hour: '$createdAt' }
-      };
-      break;
-    case 'day':
-    default:
-      groupStage._id = {
-        year: { $year: '$createdAt' },
-        month: { $month: '$createdAt' },
-        day: { $dayOfMonth: '$createdAt' }
-      };
-      break;
-  }
-
-  groupStage.count = { $sum: 1 };
-  groupStage.avgSize = { $avg: '$metrics.payloadSize' };
-  groupStage.channels = { $addToSet: '$channel' };
-
-  const timeSeries = await OTAPayload.aggregate([
-    { $match: matchStage },
-    { $group: groupStage },
-    { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1, '_id.hour': 1 } }
-  ]);
-
-  return timeSeries;
 }
 
 /**

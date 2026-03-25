@@ -232,7 +232,7 @@ router.get('/occupancy', authenticate, authorize('admin', 'staff'), ensureProper
   // Get bookings in the period
   const bookings = await Booking.find(matchQuery)
     .populate('rooms.roomId', 'type')
-    .populate('hotelId', 'name');
+    .populate('hotelId', 'name').lean().limit(1000);
 
   // Get total rooms by hotel
   const roomsQuery = req.user.role === 'staff' && req.user.hotelId 
@@ -1026,7 +1026,7 @@ router.get('/kpi', authenticate, authorize('admin', 'staff'), ensurePropertyAcce
     hotelId: new mongoose.Types.ObjectId(hotelId),
     date: { $gte: new Date(startDate), $lte: new Date(endDate) },
     period
-  }).sort({ date: 1 });
+  }).sort({ date: 1 }).lean().limit(1000);
 
   // Get aggregated data for the period
   const aggregated = await KPI.getAggregatedKPIs(hotelId, startDate, endDate, period);
@@ -1070,7 +1070,7 @@ router.get('/business-intelligence', authenticate, authorize('admin', 'staff'), 
     hotelId: new mongoose.Types.ObjectId(hotelId),
     date: startDate,
     period: 'monthly'
-  });
+  }).lean();
 
   // If monthly KPI doesn't exist, calculate it
   let kpiData = monthlyKPI;

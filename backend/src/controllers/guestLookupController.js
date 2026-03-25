@@ -25,7 +25,7 @@ export const getGuestByRoom = catchAsync(async (req, res) => {
     roomNumber,
     hotelId,
     isActive: true
-  });
+  }).lean();
 
   if (!room) {
     throw new ApplicationError('Room not found or not active', 404);
@@ -38,7 +38,7 @@ export const getGuestByRoom = catchAsync(async (req, res) => {
     status: { $in: ['confirmed', 'checked_in'] },
     checkIn: { $lte: currentDate },
     checkOut: { $gte: currentDate }
-  }).populate('userId', 'name email phone');
+  }).populate('userId', 'name email phone').lean();
 
   if (!activeBooking) {
     throw new ApplicationError('No active booking found for this room', 404);
@@ -80,7 +80,7 @@ export const getGuestByBooking = catchAsync(async (req, res) => {
   const booking = await Booking.findById(bookingId)
     .populate('userId', 'name email phone')
     .populate('rooms.roomId', 'roomNumber type')
-    .populate('hotelId', 'name');
+    .populate('hotelId', 'name').lean();
 
   if (!booking) {
     throw new ApplicationError('Booking not found', 404);
@@ -159,7 +159,7 @@ export const searchGuests = catchAsync(async (req, res) => {
     .select('name email phone createdAt')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   const total = await User.countDocuments(userQuery);
 
@@ -200,7 +200,7 @@ export const getGuestActiveBookings = catchAsync(async (req, res) => {
     hotelId,
     status: { $in: ['confirmed', 'checked_in'] },
     checkOut: { $gte: currentDate }
-  }).populate('rooms.roomId', 'roomNumber type');
+  }).populate('rooms.roomId', 'roomNumber type').lean().limit(1000);
 
   res.json({
     status: 'success',
@@ -242,7 +242,7 @@ export const getGuestBillingHistory = catchAsync(async (req, res) => {
   .populate('bookingId', 'bookingNumber')
   .sort({ createdAt: -1 })
   .skip(skip)
-  .limit(parseInt(limit));
+  .limit(parseInt(limit)).lean();
 
   const total = await BillingSession.countDocuments({
     hotelId,

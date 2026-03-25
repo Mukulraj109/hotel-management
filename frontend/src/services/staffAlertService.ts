@@ -102,89 +102,133 @@ class StaffAlertService {
     };
     summary: StaffAlertSummary;
   }> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/staff/alerts?${params.toString()}`);
-    return response.data.data;
+      const response = await api.get(`/staff/alerts?${params.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get alert summary/dashboard data
   async getAlertSummary(): Promise<StaffAlertSummary> {
-    const response = await api.get('/staff/alerts/summary');
-    const data = response.data.data;
+    try {
+      const response = await api.get('/staff/alerts/summary');
+      const data = response.data.data;
 
-    // Convert backend response format to expected format
-    return {
-      totalActive: data.totalAlerts || 0,
-      totalUnacknowledged: data.unacknowledgedAlerts || 0,
-      criticalCount: data.criticalAlerts || 0,
-      urgentCount: data.urgentAlerts || 0,
-      highCount: 0,
-      byCategory: data.alertsByCategory || {},
-      byType: {},
-      escalatedCount: 0,
-      expiringSoon: 0
-    };
+      // Convert backend response format to expected format
+      return {
+        totalActive: data.totalAlerts || 0,
+        totalUnacknowledged: data.unacknowledgedAlerts || 0,
+        criticalCount: data.criticalAlerts || 0,
+        urgentCount: data.urgentAlerts || 0,
+        highCount: 0,
+        byCategory: data.alertsByCategory || {},
+        byType: {},
+        escalatedCount: 0,
+        expiringSoon: 0
+      };
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get specific alert
   async getAlert(id: string): Promise<StaffAlert> {
-    const response = await api.get(`/staff/alerts/${id}`);
-    return response.data.data.alert;
+    try {
+      const response = await api.get(`/staff/alerts/${id}`);
+      return response.data.data.alert;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Acknowledge alert
   async acknowledgeAlert(id: string): Promise<StaffAlert> {
-    const response = await api.patch(`/staff/alerts/${id}/acknowledge`);
-    return response.data.data.alert;
+    try {
+      const response = await api.patch(`/staff/alerts/${id}/acknowledge`);
+      return response.data.data.alert;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Start working on alert
   async startWorkingOnAlert(id: string, notes?: string): Promise<StaffAlert> {
-    const response = await api.patch(`/staff/alerts/${id}/start`, { notes });
-    return response.data.data.alert;
+    try {
+      const response = await api.patch(`/staff/alerts/${id}/start`, { notes });
+      return response.data.data.alert;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Resolve alert
   async resolveAlert(id: string, resolution: string, notes?: string): Promise<StaffAlert> {
-    const response = await api.patch(`/staff/alerts/${id}/resolve`, { resolution, notes });
-    return response.data.data.alert;
+    try {
+      const response = await api.patch(`/staff/alerts/${id}/resolve`, { resolution, notes });
+      return response.data.data.alert;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Dismiss alert
   async dismissAlert(id: string, reason?: string): Promise<StaffAlert> {
-    const response = await api.patch(`/staff/alerts/${id}/dismiss`, { reason });
-    return response.data.data.alert;
+    try {
+      const response = await api.patch(`/staff/alerts/${id}/dismiss`, { reason });
+      return response.data.data.alert;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Escalate alert
   async escalateAlert(id: string, reason: string, escalateTo?: string): Promise<StaffAlert> {
-    const response = await api.patch(`/staff/alerts/${id}/escalate`, { reason, escalateTo });
-    return response.data.data.alert;
+    try {
+      const response = await api.patch(`/staff/alerts/${id}/escalate`, { reason, escalateTo });
+      return response.data.data.alert;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Assign alert to staff member
   async assignAlert(id: string, assignToId: string, notes?: string): Promise<StaffAlert> {
-    const response = await api.patch(`/staff/alerts/${id}/assign`, { assignToId, notes });
-    return response.data.data.alert;
+    try {
+      const response = await api.patch(`/staff/alerts/${id}/assign`, { assignToId, notes });
+      return response.data.data.alert;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get recent alerts for dropdown
   async getRecentAlerts(limit: number = 5): Promise<StaffAlert[]> {
-    const response = await api.get(`/staff/alerts/recent?limit=${limit}`);
-    return response.data.data.alerts;
+    try {
+      const response = await api.get(`/staff/alerts/recent?limit=${limit}`);
+      return response.data.data.alerts;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Mark multiple alerts as acknowledged
   async acknowledgeMultiple(alertIds: string[]): Promise<{ modifiedCount: number }> {
-    const response = await api.post('/staff/alerts/acknowledge-multiple', { alertIds });
-    return response.data.data;
+    try {
+      const response = await api.post('/staff/alerts/acknowledge-multiple', { alertIds });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Utility functions

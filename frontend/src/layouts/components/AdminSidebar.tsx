@@ -109,7 +109,7 @@ export default function AdminSidebar({ isOpen = true, isCollapsed = false, onClo
     <>
       {/* Mobile overlay */}
       {isOpen && (
-        <div 
+        <div aria-hidden="true" 
           className="lg:hidden fixed inset-0 z-40 bg-black bg-opacity-50 transition-opacity"
           onClick={onClose}
         />
@@ -128,7 +128,7 @@ export default function AdminSidebar({ isOpen = true, isCollapsed = false, onClo
         {/* Mobile close button */}
         <div className="lg:hidden flex items-center justify-between p-4 border-b">
           <h2 className="text-lg font-semibold text-gray-900">Menu</h2>
-          <button
+          <button aria-label="Close"
             onClick={onClose}
             className="p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
           >
@@ -138,7 +138,7 @@ export default function AdminSidebar({ isOpen = true, isCollapsed = false, onClo
 
         {/* Desktop toggle button */}
         <div className="hidden lg:block sticky top-0 bg-white border-b border-gray-200 z-10">
-          <button
+          <button aria-label="Toggle"
             onClick={onToggle}
             className={`w-full p-3 text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition-colors ${
               isCollapsed ? 'flex justify-center' : 'flex justify-end'

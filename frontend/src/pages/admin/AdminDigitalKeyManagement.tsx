@@ -36,10 +36,11 @@ import toast from 'react-hot-toast';
 import { QRCodeSVG as QRCode } from 'qrcode.react';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface AdminDigitalKeyManagementProps {}
 
-export default function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementProps) {
+function AdminDigitalKeyManagement({}: AdminDigitalKeyManagementProps) {
   const { selectedPropertyId, selectedProperty } = useProperty();
   const [activeTab, setActiveTab] = useState<'all-keys' | 'analytics' | 'logs'>('all-keys');
   const [searchTerm, setSearchTerm] = useState('');
@@ -1299,3 +1300,5 @@ function ActivityLogsTab({ timeRange, setTimeRange, hotelId }: ActivityLogsTabPr
     </Card>
   );
 }
+
+export default withErrorBoundary(AdminDigitalKeyManagement, { level: 'page' });

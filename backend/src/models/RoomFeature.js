@@ -554,108 +554,124 @@ roomFeatureSchema.virtual('isCurrentlyAvailable').get(function() {
 
 // Instance methods
 roomFeatureSchema.methods.assignToRoom = async function(roomId) {
-  const existingAssignment = this.assignedRooms.find(
-    assignment => assignment.roomId.toString() === roomId.toString() && assignment.isActive
-  );
+  try {
+    const existingAssignment = this.assignedRooms.find(
+      assignment => assignment.roomId.toString() === roomId.toString() && assignment.isActive
+    );
   
-  if (existingAssignment) {
-    throw new Error('Feature already assigned to this room');
+    if (existingAssignment) {
+      throw new Error('Feature already assigned to this room');
+    }
+  
+    this.assignedRooms.push({
+      roomId,
+      assignedDate: new Date(),
+      isActive: true
+    });
+  
+    this.statistics.totalRoomsAssigned = this.assignedRooms.filter(a => a.isActive).length;
+    await this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  this.assignedRooms.push({
-    roomId,
-    assignedDate: new Date(),
-    isActive: true
-  });
-  
-  this.statistics.totalRoomsAssigned = this.assignedRooms.filter(a => a.isActive).length;
-  await this.save();
 };
 
 roomFeatureSchema.methods.removeFromRoom = async function(roomId) {
-  const assignment = this.assignedRooms.find(
-    a => a.roomId.toString() === roomId.toString() && a.isActive
-  );
+  try {
+    const assignment = this.assignedRooms.find(
+      a => a.roomId.toString() === roomId.toString() && a.isActive
+    );
   
-  if (assignment) {
-    assignment.isActive = false;
-    this.statistics.totalRoomsAssigned = this.assignedRooms.filter(a => a.isActive).length;
-    await this.save();
+    if (assignment) {
+      assignment.isActive = false;
+      this.statistics.totalRoomsAssigned = this.assignedRooms.filter(a => a.isActive).length;
+      await this.save();
+    }
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
 };
 
 roomFeatureSchema.methods.assignToRoomType = async function(roomTypeId, isStandard = false, isOptional = false) {
-  const existingAssignment = this.assignedRoomTypes.find(
-    a => a.roomTypeId.toString() === roomTypeId.toString()
-  );
+  try {
+    const existingAssignment = this.assignedRoomTypes.find(
+      a => a.roomTypeId.toString() === roomTypeId.toString()
+    );
   
-  if (existingAssignment) {
-    existingAssignment.isStandard = isStandard;
-    existingAssignment.isOptional = isOptional;
-  } else {
-    this.assignedRoomTypes.push({
-      roomTypeId,
-      isStandard,
-      isOptional
-    });
+    if (existingAssignment) {
+      existingAssignment.isStandard = isStandard;
+      existingAssignment.isOptional = isOptional;
+    } else {
+      this.assignedRoomTypes.push({
+        roomTypeId,
+        isStandard,
+        isOptional
+      });
+    }
+  
+    await this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  await this.save();
 };
 
 roomFeatureSchema.methods.updateStatistics = async function() {
-  const Booking = mongoose.model('Booking');
-  const Room = mongoose.model('Room');
+  try {
+    const Booking = mongoose.model('Booking');
+    const Room = mongoose.model('Room');
   
-  // Get all active room IDs with this feature
-  const activeRoomIds = this.assignedRooms
-    .filter(a => a.isActive)
-    .map(a => a.roomId);
+    // Get all active room IDs with this feature
+    const activeRoomIds = this.assignedRooms
+      .filter(a => a.isActive)
+      .map(a => a.roomId);
   
-  if (activeRoomIds.length === 0) {
-    this.statistics.totalBookingsWithFeature = 0;
-    this.statistics.conversionRate = 0;
-    return;
-  }
-  
-  // Calculate booking statistics
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  
-  const bookingStats = await Booking.aggregate([
-    {
-      $match: {
-        roomId: { $in: activeRoomIds },
-        checkInDate: { $gte: thirtyDaysAgo },
-        status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-      }
-    },
-    {
-      $group: {
-        _id: null,
-        totalBookings: { $sum: 1 },
-        totalRevenue: { $sum: '$totalAmount' }
-      }
+    if (activeRoomIds.length === 0) {
+      this.statistics.totalBookingsWithFeature = 0;
+      this.statistics.conversionRate = 0;
+      return;
     }
-  ]);
   
-  if (bookingStats.length > 0) {
-    this.statistics.totalBookingsWithFeature = bookingStats[0].totalBookings;
-    this.statistics.revenueGenerated = bookingStats[0].totalRevenue;
+    // Calculate booking statistics
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  
+    const bookingStats = await Booking.aggregate([
+      {
+        $match: {
+          roomId: { $in: activeRoomIds },
+          checkInDate: { $gte: thirtyDaysAgo },
+          status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalBookings: { $sum: 1 },
+          totalRevenue: { $sum: '$totalAmount' }
+        }
+      }
+    ]);
+  
+    if (bookingStats.length > 0) {
+      this.statistics.totalBookingsWithFeature = bookingStats[0].totalBookings;
+      this.statistics.revenueGenerated = bookingStats[0].totalRevenue;
     
-    // Calculate conversion rate (bookings with feature / total bookings for these rooms)
-    const totalRoomBookings = await Booking.countDocuments({
-      roomId: { $in: activeRoomIds },
-      checkInDate: { $gte: thirtyDaysAgo }
-    });
+      // Calculate conversion rate (bookings with feature / total bookings for these rooms)
+      const totalRoomBookings = await Booking.countDocuments({
+        roomId: { $in: activeRoomIds },
+        checkInDate: { $gte: thirtyDaysAgo }
+      });
     
-    this.statistics.conversionRate = totalRoomBookings > 0 
-      ? (bookingStats[0].totalBookings / totalRoomBookings) * 100 
-      : 0;
+      this.statistics.conversionRate = totalRoomBookings > 0 
+        ? (bookingStats[0].totalBookings / totalRoomBookings) * 100 
+        : 0;
+    }
+  
+    this.statistics.lastUsedDate = new Date();
+    await this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  this.statistics.lastUsedDate = new Date();
-  await this.save();
 };
 
 roomFeatureSchema.methods.calculatePricing = function(nights = 1) {
@@ -685,33 +701,45 @@ roomFeatureSchema.methods.getTranslation = function(language) {
 
 // Static methods
 roomFeatureSchema.statics.getFeaturesByCategory = async function(hotelId, category) {
-  return await this.find({
-    hotelId,
-    category,
-    status: 'active'
-  }).sort({ 'displaySettings.displayOrder': 1, featureName: 1 });
+  try {
+    return await this.find({
+      hotelId,
+      category,
+      status: 'active'
+    }).sort({ 'displaySettings.displayOrder': 1, featureName: 1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 roomFeatureSchema.statics.getPremiumFeatures = async function(hotelId) {
-  return await this.find({
-    hotelId,
-    'pricing.isPremium': true,
-    status: 'active'
-  }).sort({ 'pricing.additionalCharge': -1 });
+  try {
+    return await this.find({
+      hotelId,
+      'pricing.isPremium': true,
+      status: 'active'
+    }).sort({ 'pricing.additionalCharge': -1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 roomFeatureSchema.statics.getFeatureHierarchy = async function(hotelId) {
-  const features = await this.find({
-    hotelId,
-    isParentFeature: true,
-    status: 'active'
-  }).populate('childFeatures');
+  try {
+    const features = await this.find({
+      hotelId,
+      isParentFeature: true,
+      status: 'active'
+    }).populate('childFeatures').lean().limit(1000);
   
-  return features;
+    return features;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 roomFeatureSchema.statics.bulkAssignToRooms = async function(featureIds, roomIds) {
-  const features = await this.find({ _id: { $in: featureIds } });
+  const features = await this.find({ _id: { $in: featureIds } }).lean().limit(1000);
   const results = [];
   
   for (const feature of features) {
@@ -729,36 +757,40 @@ roomFeatureSchema.statics.bulkAssignToRooms = async function(featureIds, roomIds
 };
 
 roomFeatureSchema.statics.generateFeatureReport = async function(hotelId, options = {}) {
-  const { startDate, endDate, category } = options;
+  try {
+    const { startDate, endDate, category } = options;
   
-  const matchStage = { hotelId: mongoose.Types.ObjectId(hotelId) };
-  if (category) matchStage.category = category;
-  if (startDate && endDate) {
-    matchStage['statistics.lastUsedDate'] = {
-      $gte: new Date(startDate),
-      $lte: new Date(endDate)
-    };
+    const matchStage = { hotelId: mongoose.Types.ObjectId(hotelId) };
+    if (category) matchStage.category = category;
+    if (startDate && endDate) {
+      matchStage['statistics.lastUsedDate'] = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    }
+  
+    return await this.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: '$category',
+          totalFeatures: { $sum: 1 },
+          activeFeatures: {
+            $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] }
+          },
+          premiumFeatures: {
+            $sum: { $cond: ['$pricing.isPremium', 1, 0] }
+          },
+          totalRevenue: { $sum: '$statistics.revenueGenerated' },
+          averageRating: { $avg: '$statistics.averageRating' },
+          totalBookings: { $sum: '$statistics.totalBookingsWithFeature' }
+        }
+      },
+      { $sort: { totalRevenue: -1 } }
+    ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  return await this.aggregate([
-    { $match: matchStage },
-    {
-      $group: {
-        _id: '$category',
-        totalFeatures: { $sum: 1 },
-        activeFeatures: {
-          $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] }
-        },
-        premiumFeatures: {
-          $sum: { $cond: ['$pricing.isPremium', 1, 0] }
-        },
-        totalRevenue: { $sum: '$statistics.revenueGenerated' },
-        averageRating: { $avg: '$statistics.averageRating' },
-        totalBookings: { $sum: '$statistics.totalBookingsWithFeature' }
-      }
-    },
-    { $sort: { totalRevenue: -1 } }
-  ]);
 };
 
 // Note: Pagination plugin removed - implement as needed

@@ -180,7 +180,7 @@ class UnitConversionService {
   async getAvailableConversions(unitId) {
     try {
       const unit = await MeasurementUnit.findById(unitId)
-        .populate('conversionFactors.targetUnit', 'name symbol unitType isActive');
+        .populate('conversionFactors.targetUnit', 'name symbol unitType isActive').lean();
 
       if (!unit) {
         throw new Error('Unit not found');
@@ -211,43 +211,47 @@ class UnitConversionService {
    * @returns {Object} Conversion path information
    */
   async findConversionPath(fromUnit, toUnit) {
-    // Check for direct conversion
-    const directFactor = fromUnit.conversionFactors.find(
-      cf => cf.targetUnit.toString() === toUnit._id.toString()
-    );
+    try {
+      // Check for direct conversion
+      const directFactor = fromUnit.conversionFactors.find(
+        cf => cf.targetUnit.toString() === toUnit._id.toString()
+      );
 
-    if (directFactor) {
-      return {
-        direct: true,
-        factor: directFactor.factor,
-        offset: directFactor.offset,
-        path: 'direct'
-      };
-    }
-
-    // Check for conversion through base unit
-    if (fromUnit.baseUnit && toUnit.baseUnit) {
-      const fromBaseRate = await this.getBaseConversionRate(fromUnit);
-      const toBaseRate = await this.getBaseConversionRate(toUnit);
-
-      if (fromBaseRate && toBaseRate) {
+      if (directFactor) {
         return {
-          direct: false,
-          throughBase: true,
-          factor: fromBaseRate / toBaseRate,
-          offset: 0,
-          path: 'through_base'
+          direct: true,
+          factor: directFactor.factor,
+          offset: directFactor.offset,
+          path: 'direct'
         };
       }
-    }
 
-    return {
-      direct: false,
-      throughBase: false,
-      factor: null,
-      offset: null,
-      path: 'none'
-    };
+      // Check for conversion through base unit
+      if (fromUnit.baseUnit && toUnit.baseUnit) {
+        const fromBaseRate = await this.getBaseConversionRate(fromUnit);
+        const toBaseRate = await this.getBaseConversionRate(toUnit);
+
+        if (fromBaseRate && toBaseRate) {
+          return {
+            direct: false,
+            throughBase: true,
+            factor: fromBaseRate / toBaseRate,
+            offset: 0,
+            path: 'through_base'
+          };
+        }
+      }
+
+      return {
+        direct: false,
+        throughBase: false,
+        factor: null,
+        offset: null,
+        path: 'none'
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -256,17 +260,21 @@ class UnitConversionService {
    * @returns {Number} Conversion rate to base unit
    */
   async getBaseConversionRate(unit) {
-    if (unit.isBaseUnit) return 1;
+    try {
+      if (unit.isBaseUnit) return 1;
 
-    if (unit.baseUnit) {
-      const baseUnit = await MeasurementUnit.findById(unit.baseUnit);
-      if (baseUnit) {
-        const conversion = await this.findConversionPath(unit, baseUnit);
-        return conversion.factor || 1;
+      if (unit.baseUnit) {
+        const baseUnit = await MeasurementUnit.findById(unit.baseUnit).lean();
+        if (baseUnit) {
+          const conversion = await this.findConversionPath(unit, baseUnit);
+          return conversion.factor || 1;
+        }
       }
-    }
 
-    return null;
+      return null;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -288,16 +296,20 @@ class UnitConversionService {
    * @returns {Number} Converted value
    */
   async performBaseConversion(value, fromUnit, toUnit) {
-    const fromBaseRate = await this.getBaseConversionRate(fromUnit);
-    const toBaseRate = await this.getBaseConversionRate(toUnit);
+    try {
+      const fromBaseRate = await this.getBaseConversionRate(fromUnit);
+      const toBaseRate = await this.getBaseConversionRate(toUnit);
 
-    if (!fromBaseRate || !toBaseRate) {
-      throw new Error('Unable to determine base conversion rates');
+      if (!fromBaseRate || !toBaseRate) {
+        throw new Error('Unable to determine base conversion rates');
+      }
+
+      // Convert to base unit, then to target unit
+      const baseValue = value * fromBaseRate;
+      return baseValue / toBaseRate;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Convert to base unit, then to target unit
-    const baseValue = value * fromBaseRate;
-    return baseValue / toBaseRate;
   }
 
   /**

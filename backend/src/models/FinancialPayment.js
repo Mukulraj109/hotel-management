@@ -180,20 +180,24 @@ financialPaymentSchema.pre('save', function(next) {
 
 // Generate payment reference
 financialPaymentSchema.statics.generatePaymentReference = async function(hotelId, type = 'receipt') {
-  const year = new Date().getFullYear();
-  const month = String(new Date().getMonth() + 1).padStart(2, '0');
+  try {
+    const year = new Date().getFullYear();
+    const month = String(new Date().getMonth() + 1).padStart(2, '0');
   
-  const count = await this.countDocuments({
-    hotelId,
-    type,
-    createdAt: {
-      $gte: new Date(year, new Date().getMonth(), 1),
-      $lt: new Date(year, new Date().getMonth() + 1, 1)
-    }
-  });
+    const count = await this.countDocuments({
+      hotelId,
+      type,
+      createdAt: {
+        $gte: new Date(year, new Date().getMonth(), 1),
+        $lt: new Date(year, new Date().getMonth() + 1, 1)
+      }
+    });
   
-  const typePrefix = type.toUpperCase().substring(0, 3);
-  return `${typePrefix}-${year}${month}-${String(count + 1).padStart(4, '0')}`;
+    const typePrefix = type.toUpperCase().substring(0, 3);
+    return `${typePrefix}-${year}${month}-${String(count + 1).padStart(4, '0')}`;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Virtual for payment summary
@@ -235,42 +239,46 @@ financialPaymentSchema.methods.process = async function(userId) {
 
 // Instance method to refund payment
 financialPaymentSchema.methods.refund = async function(amount, reason, userId) {
-  if (this.status !== 'completed') {
-    throw new Error('Can only refund completed payments');
+  try {
+    if (this.status !== 'completed') {
+      throw new Error('Can only refund completed payments');
+    }
+  
+    if (amount > this.amount) {
+      throw new Error('Refund amount cannot exceed payment amount');
+    }
+  
+    // Create refund record
+    const RefundPayment = this.constructor;
+    const refund = new RefundPayment({
+      hotelId: this.hotelId,
+      type: 'refund',
+      method: this.method,
+      amount: amount,
+      currency: this.currency,
+      customer: this.customer,
+      invoice: this.invoice,
+      booking: this.booking,
+      reference: `REFUND-${this.reference}`,
+      bankAccount: this.bankAccount,
+      notes: reason,
+      status: 'completed',
+      createdBy: userId
+    });
+  
+    await refund.save();
+  
+    // Update original payment if fully refunded
+    if (amount === this.amount) {
+      this.status = 'refunded';
+      this.updatedBy = userId;
+      await this.save();
+    }
+  
+    return refund;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  if (amount > this.amount) {
-    throw new Error('Refund amount cannot exceed payment amount');
-  }
-  
-  // Create refund record
-  const RefundPayment = this.constructor;
-  const refund = new RefundPayment({
-    hotelId: this.hotelId,
-    type: 'refund',
-    method: this.method,
-    amount: amount,
-    currency: this.currency,
-    customer: this.customer,
-    invoice: this.invoice,
-    booking: this.booking,
-    reference: `REFUND-${this.reference}`,
-    bankAccount: this.bankAccount,
-    notes: reason,
-    status: 'completed',
-    createdBy: userId
-  });
-  
-  await refund.save();
-  
-  // Update original payment if fully refunded
-  if (amount === this.amount) {
-    this.status = 'refunded';
-    this.updatedBy = userId;
-    await this.save();
-  }
-  
-  return refund;
 };
 
 const FinancialPayment = mongoose.model('FinancialPayment', financialPaymentSchema);

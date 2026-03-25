@@ -208,24 +208,28 @@ roomInventoryTemplateSchema.virtual('estimatedCost').get(function() {
 
 // Pre-save middleware
 roomInventoryTemplateSchema.pre('save', async function(next) {
-  // Only one default template per hotel
-  if (this.isDefault) {
-    await this.constructor.updateMany(
-      { 
-        hotelId: this.hotelId, 
-        _id: { $ne: this._id },
-        isDefault: true 
-      },
-      { isDefault: false }
-    );
-  }
+  try {
+    // Only one default template per hotel
+    if (this.isDefault) {
+      await this.constructor.updateMany(
+        { 
+          hotelId: this.hotelId, 
+          _id: { $ne: this._id },
+          isDefault: true 
+        },
+        { isDefault: false }
+      );
+    }
   
-  // Increment version on update
-  if (!this.isNew) {
-    this.version += 1;
-  }
+    // Increment version on update
+    if (!this.isNew) {
+      this.version += 1;
+    }
   
-  next();
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 });
 
 // Instance method to clone template
@@ -289,49 +293,57 @@ roomInventoryTemplateSchema.statics.getActiveTemplates = function(hotelId) {
 
 // Instance method to calculate total cost for room setup
 roomInventoryTemplateSchema.methods.calculateSetupCost = async function() {
-  await this.populate('items.itemId');
+  try {
+    await this.populate('items.itemId');
   
-  return this.items.reduce((total, item) => {
-    if (item.itemId && item.itemId.unitPrice) {
-      return total + (item.itemId.unitPrice * item.defaultQuantity);
-    }
-    return total;
-  }, 0);
+    return this.items.reduce((total, item) => {
+      if (item.itemId && item.itemId.unitPrice) {
+        return total + (item.itemId.unitPrice * item.defaultQuantity);
+      }
+      return total;
+    }, 0);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance method to validate template completeness
 roomInventoryTemplateSchema.methods.validateTemplate = async function() {
-  const errors = [];
+  try {
+    const errors = [];
   
-  // Check if all items exist and are active
-  await this.populate('items.itemId');
+    // Check if all items exist and are active
+    await this.populate('items.itemId');
   
-  this.items.forEach((item, index) => {
-    if (!item.itemId) {
-      errors.push(`Item at index ${index} does not exist`);
-    } else if (!item.itemId.isActive) {
-      errors.push(`Item "${item.itemId.name}" is not active`);
-    }
-  });
+    this.items.forEach((item, index) => {
+      if (!item.itemId) {
+        errors.push(`Item at index ${index} does not exist`);
+      } else if (!item.itemId.isActive) {
+        errors.push(`Item "${item.itemId.name}" is not active`);
+      }
+    });
   
-  // Check for required categories
-  const requiredCategories = ['bedding', 'toiletries', 'electronics'];
-  const presentCategories = new Set(
-    this.items
-      .filter(item => item.itemId)
-      .map(item => item.itemId.category)
-  );
+    // Check for required categories
+    const requiredCategories = ['bedding', 'toiletries', 'electronics'];
+    const presentCategories = new Set(
+      this.items
+        .filter(item => item.itemId)
+        .map(item => item.itemId.category)
+    );
   
-  requiredCategories.forEach(category => {
-    if (!presentCategories.has(category)) {
-      errors.push(`Missing required category: ${category}`);
-    }
-  });
+    requiredCategories.forEach(category => {
+      if (!presentCategories.has(category)) {
+        errors.push(`Missing required category: ${category}`);
+      }
+    });
   
-  return {
-    isValid: errors.length === 0,
-    errors
-  };
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 export default mongoose.model('RoomInventoryTemplate', roomInventoryTemplateSchema);

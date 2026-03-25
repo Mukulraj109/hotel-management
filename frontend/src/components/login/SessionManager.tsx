@@ -164,7 +164,7 @@ const SessionManager: React.FC<SessionManagerProps> = ({
             <Shield className="w-6 h-6 text-blue-600 mr-2" />
             <h3 className="text-lg font-medium text-gray-900">Session Management</h3>
           </div>
-          <button
+          <button aria-label="Close"
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
           >
@@ -399,7 +399,7 @@ const SessionManager: React.FC<SessionManagerProps> = ({
             Close
           </button>
           {session.isActive && (
-            <button
+            <button aria-label="Close"
               onClick={handleEndSession}
               disabled={loading}
               className="flex items-center px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 disabled:opacity-50"
@@ -459,7 +459,7 @@ const SessionManager: React.FC<SessionManagerProps> = ({
                 >
                   Cancel
                 </button>
-                <button
+                <button aria-label="Save"
                   onClick={handleUpdateRiskScore}
                   disabled={loading}
                   className="flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"

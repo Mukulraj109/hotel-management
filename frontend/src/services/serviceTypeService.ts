@@ -117,49 +117,77 @@ class ServiceTypeService {
     total: number;
     hotelId: string;
   }> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
 
-    if (filters?.hotelId) params.append('hotelId', filters.hotelId);
-    if (filters?.type) params.append('type', filters.type);
-    if (filters?.activeOnly !== undefined) params.append('activeOnly', filters.activeOnly.toString());
+      if (filters?.hotelId) params.append('hotelId', filters.hotelId);
+      if (filters?.type) params.append('type', filters.type);
+      if (filters?.activeOnly !== undefined) params.append('activeOnly', filters.activeOnly.toString());
 
-    const response = await api.get(`${this.baseUrl}?${params.toString()}`);
-    return response.data.data;
+      const response = await api.get(`${this.baseUrl}?${params.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get specific service type by ID
   async getServiceTypeById(id: string): Promise<ServiceType> {
-    const response = await api.get(`${this.baseUrl}/${id}`);
-    return response.data.data.serviceType;
+    try {
+      const response = await api.get(`${this.baseUrl}/${id}`);
+      return response.data.data.serviceType;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Create new service type
   async createServiceType(serviceTypeData: Omit<ServiceType, '_id' | 'createdAt' | 'updatedAt'>): Promise<ServiceType> {
-    const response = await api.post(this.baseUrl, serviceTypeData);
-    return response.data.data.serviceType;
+    try {
+      const response = await api.post(this.baseUrl, serviceTypeData);
+      return response.data.data.serviceType;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Update service type
   async updateServiceType(id: string, updates: Partial<ServiceType>): Promise<ServiceType> {
-    const response = await api.put(`${this.baseUrl}/${id}`, updates);
-    return response.data.data.serviceType;
+    try {
+      const response = await api.put(`${this.baseUrl}/${id}`, updates);
+      return response.data.data.serviceType;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Delete service type (soft delete)
   async deleteServiceType(id: string): Promise<void> {
-    await api.delete(`${this.baseUrl}/${id}`);
+    try {
+      await api.delete(`${this.baseUrl}/${id}`);
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Add variation to service type
   async addVariation(id: string, variation: Omit<ServiceVariation, 'isActive'>): Promise<ServiceType> {
-    const response = await api.post(`${this.baseUrl}/${id}/variations`, variation);
-    return response.data.data.serviceType;
+    try {
+      const response = await api.post(`${this.baseUrl}/${id}/variations`, variation);
+      return response.data.data.serviceType;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Add template to service type
   async addTemplate(id: string, template: Omit<ServiceTemplate, 'isActive'>): Promise<ServiceType> {
-    const response = await api.post(`${this.baseUrl}/${id}/templates`, template);
-    return response.data.data.serviceType;
+    try {
+      const response = await api.post(`${this.baseUrl}/${id}/templates`, template);
+      return response.data.data.serviceType;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Calculate price with variations
@@ -171,19 +199,27 @@ class ServiceTypeService {
       multiplier?: number;
     }
   ): Promise<PriceCalculation> {
-    const response = await api.post(`${this.baseUrl}/${type}/calculate-price`, {
-      hotelId: options.hotelId,
-      variations: options.variations || [],
-      multiplier: options.multiplier || 1
-    });
-    return response.data.data;
+    try {
+      const response = await api.post(`${this.baseUrl}/${type}/calculate-price`, {
+        hotelId: options.hotelId,
+        variations: options.variations || [],
+        multiplier: options.multiplier || 1
+      });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get service type statistics
   async getServiceTypeStats(hotelId?: string): Promise<ServiceTypeStats> {
-    const params = hotelId ? `?hotelId=${hotelId}` : '';
-    const response = await api.get(`${this.baseUrl}/stats${params}`);
-    return response.data.data.stats;
+    try {
+      const params = hotelId ? `?hotelId=${hotelId}` : '';
+      const response = await api.get(`${this.baseUrl}/stats${params}`);
+      return response.data.data.stats;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Utility methods for common operations

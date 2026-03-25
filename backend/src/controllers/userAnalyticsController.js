@@ -298,7 +298,7 @@ export const getUserAnalyticsById = catchAsync(async (req, res) => {
   const analytics = await UserAnalytics.find(query)
     .populate('userId', 'name email role')
     .sort({ date: -1 })
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   if (analytics.length === 0) {
     throw new ApplicationError('No analytics data found for this user', 404);

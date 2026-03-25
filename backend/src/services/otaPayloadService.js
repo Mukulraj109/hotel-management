@@ -428,7 +428,7 @@ class OTAPayloadService {
         .sort({ createdAt: options.sortOrder === 'asc' ? 1 : -1 })
         .limit(options.limit || 100)
         .skip(options.offset || 0)
-        .populate('auditLogId', 'logId userId changeType');
+        .populate('auditLogId', 'logId userId changeType').lean();
 
       return payloads;
 
@@ -485,7 +485,7 @@ class OTAPayloadService {
         }
       })
       .limit(limit)
-      .sort({ createdAt: 1 });
+      .sort({ createdAt: 1 }).lean();
 
       const results = [];
 

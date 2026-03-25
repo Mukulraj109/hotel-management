@@ -27,6 +27,7 @@ import PredictiveAnalytics from '../../components/analytics/PredictiveAnalytics'
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface UserAnalytics {
   totalUserCount: number;
@@ -497,7 +498,7 @@ const AdminUserAnalytics: React.FC = () => {
               ].map((tab) => {
                 const Icon = tab.icon;
                 return (
-                  <button
+                  <button aria-label="Close"
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as unknown)}
                     className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm ${
@@ -832,4 +833,4 @@ const AdminUserAnalytics: React.FC = () => {
   );
 };
 
-export default AdminUserAnalytics;
+export default withErrorBoundary(AdminUserAnalytics, { level: 'page' });

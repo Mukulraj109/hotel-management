@@ -131,13 +131,13 @@ const GuestRow = React.memo(({ guest, isSelected, onSelect, onEdit, onDelete }: 
     </td>
     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
       <div className="flex space-x-2">
-        <button
+        <button aria-label="Edit"
           onClick={() => onEdit(guest)}
           className="text-blue-600 hover:text-blue-900"
         >
           <PencilIcon className="w-4 h-4" />
         </button>
-        <button
+        <button aria-label="Delete"
           onClick={() => onDelete(guest._id)}
           className="text-red-600 hover:text-red-900"
         >

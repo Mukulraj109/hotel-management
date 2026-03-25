@@ -260,11 +260,11 @@ const HistoryTable: React.FC<HistoryTableProps> = ({ items, isLoading, onItemCli
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {items.map((item) => (
-              <tr
+              <tr role="button" tabIndex={0}
                 key={item.id}
                 onClick={() => onItemClick(item)}
                 className="hover:bg-gray-50 cursor-pointer"
-              >
+               onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => onItemClick(item); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                   {billingHistoryService.formatDate(item.date)}
                 </td>

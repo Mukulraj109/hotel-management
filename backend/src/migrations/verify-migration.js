@@ -30,7 +30,7 @@ async function verifyMigration() {
     // Check Room Types
     console.log('🏨 ROOM TYPES VERIFICATION');
     console.log('==========================');
-    const roomTypes = await RoomType.find({ legacyType: { $exists: true } });
+    const roomTypes = await RoomType.find({ legacyType: { $exists: true } }).lean().limit(1000);
     console.log(`✅ Found ${roomTypes.length} migrated room types:`);
     
     roomTypes.forEach(rt => {
@@ -49,7 +49,7 @@ async function verifyMigration() {
     console.log(`✅ Total availability records: ${totalAvailability}`);
     
     // Get sample availability records
-    const sampleAvailability = await RoomAvailability.find().limit(3).populate('roomTypeId');
+    const sampleAvailability = await RoomAvailability.find().limit(3).populate('roomTypeId').lean();
     console.log('📊 Sample availability records:');
     
     sampleAvailability.forEach(av => {
@@ -82,7 +82,7 @@ async function verifyMigration() {
     console.log('=========================');
     const auditLogs = await AuditLog.find({ 
       'metadata.batchId': 'production-migration-001' 
-    });
+    }).lean().limit(1000);
     console.log(`✅ Migration audit logs: ${auditLogs.length}`);
     
     // Check original rooms

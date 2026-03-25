@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '../../../context/ThemeContext';
@@ -89,6 +89,15 @@ export default function DisplaySettings({ onSettingsChange }: DisplaySettingsPro
 
   // Watch for theme changes and apply immediately
   const watchedTheme = watch('theme');
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (watchedTheme && watchedTheme !== theme) {
       setTheme(watchedTheme as 'light' | 'dark' | 'auto');
@@ -189,7 +198,8 @@ export default function DisplaySettings({ onSettingsChange }: DisplaySettingsPro
         if (!result) return; // Confirmation dialog shown
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Display preferences updated successfully${
           applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
         }`);
@@ -208,7 +218,8 @@ export default function DisplaySettings({ onSettingsChange }: DisplaySettingsPro
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Display preferences updated for ${result.propertiesUpdated} properties`);
         queryClient.invalidateQueries({ queryKey: ['display-settings'] });
       }

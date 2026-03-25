@@ -55,7 +55,7 @@ export default function TravelAgentSidebar({ isOpen = false, onClose }: TravelAg
     <>
       {/* Mobile overlay */}
       {isOpen && (
-        <div 
+        <div aria-hidden="true" 
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
           onClick={onClose}
         />

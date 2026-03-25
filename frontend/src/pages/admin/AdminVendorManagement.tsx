@@ -497,7 +497,7 @@ const AdminVendorManagement: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex items-center justify-end space-x-2">
-                      <button
+                      <button aria-label="View"
                         onClick={() => {
                           setSelectedVendor(vendor);
                           setShowDetailsModal(true);
@@ -507,7 +507,7 @@ const AdminVendorManagement: React.FC = () => {
                       >
                         <Eye className="w-4 h-4" />
                       </button>
-                      <button
+                      <button aria-label="Edit"
                         onClick={() => {
                           setSelectedVendor(vendor);
                           setShowEditModal(true);

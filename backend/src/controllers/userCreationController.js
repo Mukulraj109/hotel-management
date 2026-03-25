@@ -33,7 +33,7 @@ export const createUser = catchAsync(async (req, res) => {
   }
 
   // Check if email already exists
-  const existingUser = await User.findOne({ email: email.toLowerCase() });
+  const existingUser = await User.findOne({ email: email.toLowerCase() }).lean();
   if (existingUser) {
     throw new ApplicationError('Email already registered', 400);
   }
@@ -51,7 +51,7 @@ export const createUser = catchAsync(async (req, res) => {
   }
 
   // Verify property exists
-  const property = await Hotel.findById(propertyId);
+  const property = await Hotel.findById(propertyId).lean();
   if (!property) {
     throw new ApplicationError('Property not found', 404);
   }
@@ -82,7 +82,7 @@ export const createUser = catchAsync(async (req, res) => {
     // Verify all properties exist
     const propertiesToAdd = await Hotel.find({
       _id: { $in: properties }
-    });
+    }).lean().limit(1000);
 
     if (propertiesToAdd.length !== properties.length) {
       throw new ApplicationError('One or more properties not found', 404);
@@ -183,7 +183,7 @@ export const updateUser = catchAsync(async (req, res) => {
     const emailTaken = await User.findOne({
       email: email.toLowerCase(),
       _id: { $ne: userId }
-    });
+    }).lean();
     if (emailTaken) {
       throw new ApplicationError('Email already in use', 400);
     }
@@ -211,7 +211,7 @@ export const updateUser = catchAsync(async (req, res) => {
     // Verify all properties exist
     const propertiesToAdd = await Hotel.find({
       _id: { $in: properties }
-    });
+    }).lean().limit(1000);
 
     if (propertiesToAdd.length !== properties.length) {
       throw new ApplicationError('One or more properties not found', 404);
@@ -405,7 +405,7 @@ export const getUserById = catchAsync(async (req, res) => {
   const user = await User.findById(userId)
     .select('-password -passwordResetToken -passwordResetExpires')
     .populate('hotelId', 'name address.city')
-    .populate('properties', 'name address.city');
+    .populate('properties', 'name address.city').lean();
 
   if (!user) {
     throw new ApplicationError('User not found', 404);

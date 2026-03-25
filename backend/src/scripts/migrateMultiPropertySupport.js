@@ -82,7 +82,7 @@ class MultiPropertyMigration {
 
     try {
       // Get all hotels
-      const hotels = await Hotel.find({});
+      const hotels = await Hotel.find({}).lean().limit(1000);
       this.stats.hotelsChecked = hotels.length;
 
       console.log(`Found ${hotels.length} hotels to check`);
@@ -156,7 +156,7 @@ class MultiPropertyMigration {
     console.log('[Step 2] Processing property groups...');
 
     try {
-      const groups = await PropertyGroup.find({ status: 'active' });
+      const groups = await PropertyGroup.find({ status: 'active' }).lean().limit(1000);
       console.log(`Found ${groups.length} active property groups`);
 
       for (const group of groups) {
@@ -165,7 +165,7 @@ class MultiPropertyMigration {
           const properties = await Hotel.find({
             propertyGroupId: group._id,
             isActive: true
-          });
+          }).lean().limit(1000);
 
           console.log(`  - Group "${group.name}": ${properties.length} properties`);
 
@@ -215,7 +215,7 @@ class MultiPropertyMigration {
       const properties = await Hotel.find({
         propertyGroupId: { $ne: null },
         isActive: true
-      });
+      }).lean().limit(1000);
 
       console.log(`Creating inheritance records for ${properties.length} properties`);
 
@@ -255,7 +255,7 @@ class MultiPropertyMigration {
             const existing = await SettingsInheritance.findOne({
               propertyId: property._id,
               settingType
-            });
+            }).lean();
 
             if (!existing) {
               await SettingsInheritance.create({
@@ -324,7 +324,7 @@ class MultiPropertyMigration {
 
       for (const userData of users) {
         try {
-          const user = await User.findById(userData._id);
+          const user = await User.findById(userData._id).lean();
 
           if (user) {
             // Update multi-property access
@@ -401,10 +401,7 @@ async function runMigration() {
     }
 
     console.log('Connecting to MongoDB...');
-    await mongoose.connect(mongoUri, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    });
+    await mongoose.connect(mongoUri);
 
     console.log('Connected to MongoDB');
     console.log('');

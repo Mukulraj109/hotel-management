@@ -118,7 +118,7 @@ export default function SettingsDropdown({ isOpen, onToggle }: SettingsDropdownP
   return (
     <div className="relative">
       {/* Settings Icon Trigger */}
-      <button
+      <button aria-label="Toggle"
         onClick={onToggle}
         className="p-2 rounded-md text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 relative"
         title="Settings"
@@ -146,7 +146,7 @@ export default function SettingsDropdown({ isOpen, onToggle }: SettingsDropdownP
           {/* Menu Items */}
           <div className="py-2">
             {menuItems.map((item, index) => (
-              <button
+              <button aria-label="More options"
                 key={`menuItems-${index}-${item.label}`}
                 onClick={() => handleMenuItemClick(item.href)}
                 className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors flex items-center space-x-3"

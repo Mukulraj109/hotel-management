@@ -192,7 +192,7 @@ export const QuickNotificationSettings: React.FC<QuickNotificationSettingsProps>
               <Settings className="w-5 h-5 text-blue-600" />
               <h3 className="text-lg font-semibold text-gray-900">Quick Settings</h3>
             </div>
-            <button
+            <button aria-label="Close"
               onClick={onClose}
               className="p-1 hover:bg-gray-100 rounded transition-colors"
             >
@@ -205,7 +205,7 @@ export const QuickNotificationSettings: React.FC<QuickNotificationSettingsProps>
         <div className="px-6 py-3 border-b border-gray-200">
           <div className="flex space-x-4">
             {(['channels', 'categories', 'timing'] as const).map((tab) => (
-              <button
+              <button aria-label="Close"
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className={`text-sm font-medium pb-2 border-b-2 transition-colors ${
@@ -257,7 +257,7 @@ export const QuickNotificationSettings: React.FC<QuickNotificationSettingsProps>
                             {channelLabels[channel as keyof typeof channelLabels]}
                           </span>
                         </div>
-                        <button
+                        <button aria-label="Toggle"
                           onClick={() => handleChannelToggle(channel as keyof NotificationPreferences['channels'])}
                           disabled={updatePreferencesMutation.isPending}
                           className={`relative w-11 h-6 rounded-full transition-colors ${
@@ -285,7 +285,7 @@ export const QuickNotificationSettings: React.FC<QuickNotificationSettingsProps>
                         )}
                         <span className="font-medium text-gray-900">Sound</span>
                       </div>
-                      <button
+                      <button aria-label="Toggle"
                         onClick={handleSoundToggle}
                         disabled={updatePreferencesMutation.isPending}
                         className={`relative w-11 h-6 rounded-full transition-colors ${
@@ -320,7 +320,7 @@ export const QuickNotificationSettings: React.FC<QuickNotificationSettingsProps>
                           {categoryLabels[category as keyof typeof categoryLabels]}
                         </span>
                       </div>
-                      <button
+                      <button aria-label="Toggle"
                         onClick={() => handleCategoryToggle(category as keyof NotificationPreferences['categories'])}
                         disabled={updatePreferencesMutation.isPending}
                         className={`relative w-11 h-6 rounded-full transition-colors ${
@@ -356,7 +356,7 @@ export const QuickNotificationSettings: React.FC<QuickNotificationSettingsProps>
                         )}
                         <span className="font-medium text-gray-900">Quiet Hours</span>
                       </div>
-                      <button
+                      <button aria-label="Toggle"
                         onClick={handleQuietHoursToggle}
                         disabled={updatePreferencesMutation.isPending}
                         className={`relative w-11 h-6 rounded-full transition-colors ${
@@ -386,7 +386,7 @@ export const QuickNotificationSettings: React.FC<QuickNotificationSettingsProps>
                         { value: 'digest', label: 'Daily Digest' },
                         { value: 'weekly', label: 'Weekly Summary' }
                       ] as const).map((option) => (
-                        <button
+                        <button aria-label="Close"
                           key={option.value}
                           onClick={() => handleFrequencyChange(option.value)}
                           disabled={updatePreferencesMutation.isPending}

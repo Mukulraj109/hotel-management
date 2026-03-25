@@ -109,42 +109,50 @@ chartOfAccountsSchema.virtual('fullAccountName').get(function() {
 
 // Method to get account hierarchy
 chartOfAccountsSchema.methods.getHierarchy = async function() {
-  const hierarchy = [];
-  let currentAccount = this;
+  try {
+    const hierarchy = [];
+    let currentAccount = this;
   
-  while (currentAccount.parentAccount) {
-    currentAccount = await this.constructor.findById(currentAccount.parentAccount);
-    if (currentAccount) {
-      hierarchy.unshift(currentAccount);
-    } else {
-      break;
+    while (currentAccount.parentAccount) {
+      currentAccount = await this.constructor.findById(currentAccount.parentAccount);
+      if (currentAccount) {
+        hierarchy.unshift(currentAccount);
+      } else {
+        break;
+      }
     }
-  }
   
-  return hierarchy;
+    return hierarchy;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get account tree
 chartOfAccountsSchema.statics.getAccountTree = async function(hotelId) {
-  // Temporarily bypass hotel filtering for testing
-  const filter = hotelId ? { hotelId, isActive: true } : { isActive: true };
-  const accounts = await this.find(filter).lean();
+  try {
+    // Temporarily bypass hotel filtering for testing
+    const filter = hotelId ? { hotelId, isActive: true } : { isActive: true };
+    const accounts = await this.find(filter).lean().limit(1000);
   
-  const buildTree = (parentId = null) => {
-    return accounts
-      .filter(account => {
-        if (parentId === null) {
-          return !account.parentAccount;
-        }
-        return account.parentAccount && account.parentAccount.toString() === parentId.toString();
-      })
-      .map(account => ({
-        ...account,
-        children: buildTree(account._id)
-      }));
-  };
+    const buildTree = (parentId = null) => {
+      return accounts
+        .filter(account => {
+          if (parentId === null) {
+            return !account.parentAccount;
+          }
+          return account.parentAccount && account.parentAccount.toString() === parentId.toString();
+        })
+        .map(account => ({
+          ...account,
+          children: buildTree(account._id)
+        }));
+    };
   
-  return buildTree();
+    return buildTree();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Pre-save middleware to set normal balance based on account type

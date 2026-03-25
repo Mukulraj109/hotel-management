@@ -23,25 +23,33 @@ class SystemHealthMonitor {
   }
 
   async start() {
-    if (this.isMonitoring) return;
+    try {
+      if (this.isMonitoring) return;
 
-    this.isMonitoring = true;
-    logger.info('🔄 Starting system health monitoring...');
+      this.isMonitoring = true;
+      logger.info('🔄 Starting system health monitoring...');
 
-    // Run initial health check
-    await this.performHealthCheck();
-
-    // Schedule periodic monitoring
-    this.monitoringInterval = setInterval(async () => {
+      // Run initial health check
       await this.performHealthCheck();
-    }, 30000); // Every 30 seconds
 
-    // Schedule alert cleanup
-    this.alertCleanupInterval = setInterval(() => {
-      this.cleanupOldAlerts();
-    }, 300000); // Every 5 minutes
+      // Schedule periodic monitoring
+      this.monitoringInterval = setInterval(async () => {
+        try {
+          await this.performHealthCheck();
+        } catch (error) {
+          console.error('Health check failed:', error.message);
+        }
+      }, 30000); // Every 30 seconds
 
-    logger.info('✅ System health monitoring started');
+      // Schedule alert cleanup
+      this.alertCleanupInterval = setInterval(() => {
+        this.cleanupOldAlerts();
+      }, 300000); // Every 5 minutes
+
+      logger.info('✅ System health monitoring started');
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   stop() {
@@ -90,30 +98,34 @@ class SystemHealthMonitor {
   }
 
   async getSystemMetrics() {
-    const cpus = os.cpus();
-    const totalMem = os.totalmem();
-    const freeMem = os.freemem();
-    const usedMem = totalMem - freeMem;
+    try {
+      const cpus = os.cpus();
+      const totalMem = os.totalmem();
+      const freeMem = os.freemem();
+      const usedMem = totalMem - freeMem;
 
-    // Calculate CPU usage (simplified)
-    const cpuUsage = Math.round(os.loadavg()[0] / cpus.length * 100);
+      // Calculate CPU usage (simplified)
+      const cpuUsage = Math.round(os.loadavg()[0] / cpus.length * 100);
 
-    return {
-      cpu: {
-        usage: Math.min(100, cpuUsage),
-        cores: cpus.length,
-        loadAverage: os.loadavg()
-      },
-      memory: {
-        total: totalMem,
-        used: usedMem,
-        free: freeMem,
-        usage: Math.round((usedMem / totalMem) * 100)
-      },
-      uptime: os.uptime(),
-      platform: os.platform(),
-      arch: os.arch()
-    };
+      return {
+        cpu: {
+          usage: Math.min(100, cpuUsage),
+          cores: cpus.length,
+          loadAverage: os.loadavg()
+        },
+        memory: {
+          total: totalMem,
+          used: usedMem,
+          free: freeMem,
+          usage: Math.round((usedMem / totalMem) * 100)
+        },
+        uptime: os.uptime(),
+        platform: os.platform(),
+        arch: os.arch()
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getDatabaseMetrics() {
@@ -230,10 +242,10 @@ class SystemHealthMonitor {
       try {
         switch (serviceName) {
           case 'booking':
-            await Booking.findOne().limit(1);
+            await Booking.findOne().limit(1).lean();
             break;
           case 'authentication':
-            await User.findOne().limit(1);
+            await User.findOne().limit(1).lean();
             break;
           default:
             // For other services, just measure basic response time
@@ -290,106 +302,110 @@ class SystemHealthMonitor {
   }
 
   async checkAlerts(healthData) {
-    const alerts = [];
-
-    // CPU usage alert
-    if (healthData.system.cpu.usage > 85) {
-      alerts.push({
-        id: 'high_cpu',
-        type: 'system',
-        severity: healthData.system.cpu.usage > 95 ? 'critical' : 'warning',
-        title: 'High CPU Usage',
-        message: `CPU usage is at ${healthData.system.cpu.usage}%`,
-        metric: healthData.system.cpu.usage,
-        threshold: 85,
-        timestamp: healthData.timestamp
-      });
-    }
-
-    // Memory usage alert
-    if (healthData.system.memory.usage > 80) {
-      alerts.push({
-        id: 'high_memory',
-        type: 'system',
-        severity: healthData.system.memory.usage > 90 ? 'critical' : 'warning',
-        title: 'High Memory Usage',
-        message: `Memory usage is at ${healthData.system.memory.usage}%`,
-        metric: healthData.system.memory.usage,
-        threshold: 80,
-        timestamp: healthData.timestamp
-      });
-    }
-
-    // Database response time alert
-    if (healthData.database.responseTime > 1000) {
-      alerts.push({
-        id: 'slow_database',
-        type: 'database',
-        severity: healthData.database.responseTime > 5000 ? 'critical' : 'warning',
-        title: 'Slow Database Response',
-        message: `Database response time is ${healthData.database.responseTime}ms`,
-        metric: healthData.database.responseTime,
-        threshold: 1000,
-        timestamp: healthData.timestamp
-      });
-    }
-
-    // Database connection alert
-    if (!healthData.database.connected) {
-      alerts.push({
-        id: 'database_disconnected',
-        type: 'database',
-        severity: 'critical',
-        title: 'Database Disconnected',
-        message: 'Unable to connect to MongoDB database',
-        timestamp: healthData.timestamp
-      });
-    }
-
-    // Redis connection alert
-    if (!healthData.redis.connected) {
-      alerts.push({
-        id: 'redis_disconnected',
-        type: 'cache',
-        severity: 'warning',
-        title: 'Redis Disconnected',
-        message: 'Unable to connect to Redis cache',
-        timestamp: healthData.timestamp
-      });
-    }
-
-    // Check for high maintenance load
     try {
-      const urgentMaintenance = await MaintenanceTask.countDocuments({
-        priority: 'urgent',
-        status: { $in: ['pending', 'in_progress'] }
-      });
+      const alerts = [];
 
-      if (urgentMaintenance > 10) {
+      // CPU usage alert
+      if (healthData.system.cpu.usage > 85) {
         alerts.push({
-          id: 'high_maintenance_load',
-          type: 'operational',
-          severity: urgentMaintenance > 20 ? 'critical' : 'warning',
-          title: 'High Maintenance Load',
-          message: `${urgentMaintenance} urgent maintenance tasks require attention`,
-          metric: urgentMaintenance,
-          threshold: 10,
+          id: 'high_cpu',
+          type: 'system',
+          severity: healthData.system.cpu.usage > 95 ? 'critical' : 'warning',
+          title: 'High CPU Usage',
+          message: `CPU usage is at ${healthData.system.cpu.usage}%`,
+          metric: healthData.system.cpu.usage,
+          threshold: 85,
           timestamp: healthData.timestamp
         });
       }
+
+      // Memory usage alert
+      if (healthData.system.memory.usage > 80) {
+        alerts.push({
+          id: 'high_memory',
+          type: 'system',
+          severity: healthData.system.memory.usage > 90 ? 'critical' : 'warning',
+          title: 'High Memory Usage',
+          message: `Memory usage is at ${healthData.system.memory.usage}%`,
+          metric: healthData.system.memory.usage,
+          threshold: 80,
+          timestamp: healthData.timestamp
+        });
+      }
+
+      // Database response time alert
+      if (healthData.database.responseTime > 1000) {
+        alerts.push({
+          id: 'slow_database',
+          type: 'database',
+          severity: healthData.database.responseTime > 5000 ? 'critical' : 'warning',
+          title: 'Slow Database Response',
+          message: `Database response time is ${healthData.database.responseTime}ms`,
+          metric: healthData.database.responseTime,
+          threshold: 1000,
+          timestamp: healthData.timestamp
+        });
+      }
+
+      // Database connection alert
+      if (!healthData.database.connected) {
+        alerts.push({
+          id: 'database_disconnected',
+          type: 'database',
+          severity: 'critical',
+          title: 'Database Disconnected',
+          message: 'Unable to connect to MongoDB database',
+          timestamp: healthData.timestamp
+        });
+      }
+
+      // Redis connection alert
+      if (!healthData.redis.connected) {
+        alerts.push({
+          id: 'redis_disconnected',
+          type: 'cache',
+          severity: 'warning',
+          title: 'Redis Disconnected',
+          message: 'Unable to connect to Redis cache',
+          timestamp: healthData.timestamp
+        });
+      }
+
+      // Check for high maintenance load
+      try {
+        const urgentMaintenance = await MaintenanceTask.countDocuments({
+          priority: 'urgent',
+          status: { $in: ['pending', 'in_progress'] }
+        });
+
+        if (urgentMaintenance > 10) {
+          alerts.push({
+            id: 'high_maintenance_load',
+            type: 'operational',
+            severity: urgentMaintenance > 20 ? 'critical' : 'warning',
+            title: 'High Maintenance Load',
+            message: `${urgentMaintenance} urgent maintenance tasks require attention`,
+            metric: urgentMaintenance,
+            threshold: 10,
+            timestamp: healthData.timestamp
+          });
+        }
+      } catch (error) {
+        logger.error('Error checking maintenance load:', error);
+      }
+
+      // Store new alerts
+      alerts.forEach(alert => {
+        this.alerts.set(alert.id, alert);
+      });
+
+      // Log critical alerts
+      alerts.filter(a => a.severity === 'critical').forEach(alert => {
+        logger.error(`CRITICAL ALERT: ${alert.title} - ${alert.message}`);
+      });
     } catch (error) {
-      logger.error('Error checking maintenance load:', error);
+      throw new Error(`${error.message}`);
     }
-
-    // Store new alerts
-    alerts.forEach(alert => {
-      this.alerts.set(alert.id, alert);
-    });
-
-    // Log critical alerts
-    alerts.filter(a => a.severity === 'critical').forEach(alert => {
-      logger.error(`CRITICAL ALERT: ${alert.title} - ${alert.message}`);
-    });
   }
 
   cleanupOldAlerts() {

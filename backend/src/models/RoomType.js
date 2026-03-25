@@ -339,13 +339,19 @@ roomTypeSchema.statics.getLocalizedRoomTypes = async function(hotelId, language 
     const roomTypes = await this.find(query)
       .sort({ rank: 1, category: 1, name: 1 })
       .populate('createdBy updatedBy', 'name email')
-      .lean();
+      .lean().limit(1000);
 
     // Get translations for each room type
     const localizedRoomTypes = await Promise.all(
       roomTypes.map(async (roomType) => {
-        const localized = await this.getLocalizedContent(roomType, language);
-        return localized;
+        try {
+          const localized = await this.getLocalizedContent(roomType, language);
+          return localized;
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
+        }
       })
     );
 
@@ -376,7 +382,7 @@ roomTypeSchema.statics.getLocalizedContent = async function(roomType, language =
       targetLanguage: language,
       'quality.reviewStatus': 'approved',
       isActive: true
-    }).lean();
+    }).lean().limit(1000);
 
     // Apply translations
     translations.forEach(translation => {
@@ -401,7 +407,7 @@ roomTypeSchema.statics.getLocalizedContent = async function(roomType, language =
         targetLanguage: language,
         'quality.reviewStatus': 'approved',
         isActive: true
-      }).lean();
+      }).lean().limit(1000);
 
       localized.amenities = roomType.amenities.map(amenity => {
         const translation = amenityTranslations.find(t => 
@@ -424,7 +430,7 @@ roomTypeSchema.statics.getLocalizedContent = async function(roomType, language =
         targetLanguage: language,
         'quality.reviewStatus': 'approved',
         isActive: true
-      }).lean();
+      }).lean().limit(1000);
 
       localized.images = roomType.images.map((image, index) => {
         const translation = imageTranslations.find(t => 
@@ -600,12 +606,16 @@ roomTypeSchema.methods.updateTranslationStatus = async function(language, status
  * Get total number of rooms of this type
  */
 roomTypeSchema.methods.getTotalRooms = async function() {
-  const Room = mongoose.model('Room');
-  return await Room.countDocuments({ 
-    hotelId: this.hotelId, 
-    type: this.code,
-    isActive: true 
-  });
+  try {
+    const Room = mongoose.model('Room');
+    return await Room.countDocuments({ 
+      hotelId: this.hotelId, 
+      type: this.code,
+      isActive: true 
+    });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 /**

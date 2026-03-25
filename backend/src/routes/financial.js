@@ -50,7 +50,7 @@ router.get('/dashboard', authenticate, ensureTenantContext, ensurePropertyAccess
     const Hotel = (await import('../models/Hotel.js')).default;
     const mongoose = (await import('mongoose')).default;
     
-    const firstHotel = await Hotel.findOne();
+    const firstHotel = await Hotel.findOne().lean();
     const hotelId = firstHotel ? new mongoose.Types.ObjectId(firstHotel._id) : null;
     
     logger.debug('Dashboard API called', { period, hotelId: hotelId?.toString() });
@@ -96,6 +96,7 @@ router.get('/general-ledger/financial-statements', authorize('admin', 'manager',
 router.get('/general-ledger/aging-report', authorize('admin', 'staff', 'manager', 'frontdesk'), generalLedgerController.getAgingReport);
 router.get('/general-ledger/export', authorize('admin', 'manager', 'frontdesk'), generalLedgerController.exportLedger);
 router.get('/general-ledger/account/:accountId', authorize('admin', 'staff', 'manager', 'frontdesk'), generalLedgerController.getAccountLedger);
+router.get('/general-ledger/verify-balance', authorize('admin', 'manager'), generalLedgerController.verifyBalance);
 
 // === JOURNAL ENTRY ROUTES ===
 router.route('/journal-entries')
@@ -164,7 +165,7 @@ router.route('/invoices')
       const invoices = await FinancialInvoice.find({})
         .populate('customer.guestId', 'name email')
         .populate('bookingReference', 'bookingNumber')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 }).lean().limit(1000);
       
       res.status(200).json({
         status: 'success',
@@ -278,7 +279,7 @@ router.route('/payments')
         .populate('customer.guestId', 'name email')
         .populate('invoice', 'invoiceNumber totalAmount')
         .populate('bankAccount', 'accountName')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 }).lean().limit(1000);
 
       // Calculate statistics if requested
       let statistics = null;

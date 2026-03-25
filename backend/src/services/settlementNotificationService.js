@@ -41,7 +41,7 @@ class SettlementNotificationService {
       }).populate({
         path: 'bookingId',
         populate: { path: 'userId hotelId' }
-      });
+      }).lean().limit(1000);
 
       for (const settlement of overdueSettlements) {
         await this.sendOverdueNotification(settlement);
@@ -71,7 +71,7 @@ class SettlementNotificationService {
       }).populate({
         path: 'bookingId',
         populate: { path: 'userId hotelId' }
-      });
+      }).lean().limit(1000);
 
       for (const settlement of dueTodaySettlements) {
         await this.sendDueTodayNotification(settlement);
@@ -99,7 +99,7 @@ class SettlementNotificationService {
       }).populate({
         path: 'bookingId',
         populate: { path: 'userId hotelId' }
-      });
+      }).lean().limit(1000);
 
       for (const settlement of settlementsForEscalation) {
         await this.escalateSettlement(settlement);
@@ -309,7 +309,7 @@ class SettlementNotificationService {
       const settlement = await Settlement.findById(settlementId).populate({
         path: 'bookingId',
         populate: { path: 'userId hotelId' }
-      });
+      }).lean();
 
       if (!settlement) {
         throw new Error('Settlement not found');
@@ -337,73 +337,85 @@ class SettlementNotificationService {
   }
 
   async sendPaymentReminder(settlement) {
-    const booking = settlement.bookingId;
-    const guest = booking.userId;
-    const hotel = booking.hotelId;
+    try {
+      const booking = settlement.bookingId;
+      const guest = booking.userId;
+      const hotel = booking.hotelId;
 
-    const emailData = {
-      to: guest.email,
-      subject: `Payment Reminder: Settlement ${settlement.settlementNumber}`,
-      template: 'settlement-reminder',
-      data: {
-        guestName: guest.name,
-        hotelName: hotel.name,
-        bookingNumber: booking.bookingNumber,
-        settlementNumber: settlement.settlementNumber,
-        outstandingAmount: settlement.outstandingBalance,
-        dueDate: settlement.dueDate.toLocaleDateString(),
-        paymentLink: `${process.env.FRONTEND_URL}/settlements/${settlement._id}/pay`
-      }
-    };
+      const emailData = {
+        to: guest.email,
+        subject: `Payment Reminder: Settlement ${settlement.settlementNumber}`,
+        template: 'settlement-reminder',
+        data: {
+          guestName: guest.name,
+          hotelName: hotel.name,
+          bookingNumber: booking.bookingNumber,
+          settlementNumber: settlement.settlementNumber,
+          outstandingAmount: settlement.outstandingBalance,
+          dueDate: settlement.dueDate.toLocaleDateString(),
+          paymentLink: `${process.env.FRONTEND_URL}/settlements/${settlement._id}/pay`
+        }
+      };
 
-    await emailService.sendEmail(emailData);
+      await emailService.sendEmail(emailData);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async sendFinalNotice(settlement) {
-    const booking = settlement.bookingId;
-    const guest = booking.userId;
-    const hotel = booking.hotelId;
+    try {
+      const booking = settlement.bookingId;
+      const guest = booking.userId;
+      const hotel = booking.hotelId;
 
-    const emailData = {
-      to: guest.email,
-      subject: `Final Notice: Settlement ${settlement.settlementNumber}`,
-      template: 'settlement-final-notice',
-      data: {
-        guestName: guest.name,
-        hotelName: hotel.name,
-        bookingNumber: booking.bookingNumber,
-        settlementNumber: settlement.settlementNumber,
-        outstandingAmount: settlement.outstandingBalance,
-        dueDate: settlement.dueDate.toLocaleDateString(),
-        paymentLink: `${process.env.FRONTEND_URL}/settlements/${settlement._id}/pay`,
-        consequencesText: 'Failure to pay may result in collection activities and impact your credit rating.'
-      }
-    };
+      const emailData = {
+        to: guest.email,
+        subject: `Final Notice: Settlement ${settlement.settlementNumber}`,
+        template: 'settlement-final-notice',
+        data: {
+          guestName: guest.name,
+          hotelName: hotel.name,
+          bookingNumber: booking.bookingNumber,
+          settlementNumber: settlement.settlementNumber,
+          outstandingAmount: settlement.outstandingBalance,
+          dueDate: settlement.dueDate.toLocaleDateString(),
+          paymentLink: `${process.env.FRONTEND_URL}/settlements/${settlement._id}/pay`,
+          consequencesText: 'Failure to pay may result in collection activities and impact your credit rating.'
+        }
+      };
 
-    await emailService.sendEmail(emailData);
+      await emailService.sendEmail(emailData);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async sendCourtesyReminder(settlement) {
-    const booking = settlement.bookingId;
-    const guest = booking.userId;
-    const hotel = booking.hotelId;
+    try {
+      const booking = settlement.bookingId;
+      const guest = booking.userId;
+      const hotel = booking.hotelId;
 
-    const emailData = {
-      to: guest.email,
-      subject: `Courtesy Reminder: Settlement ${settlement.settlementNumber}`,
-      template: 'settlement-courtesy',
-      data: {
-        guestName: guest.name,
-        hotelName: hotel.name,
-        bookingNumber: booking.bookingNumber,
-        settlementNumber: settlement.settlementNumber,
-        outstandingAmount: settlement.outstandingBalance,
-        dueDate: settlement.dueDate.toLocaleDateString(),
-        paymentLink: `${process.env.FRONTEND_URL}/settlements/${settlement._id}/pay`
-      }
-    };
+      const emailData = {
+        to: guest.email,
+        subject: `Courtesy Reminder: Settlement ${settlement.settlementNumber}`,
+        template: 'settlement-courtesy',
+        data: {
+          guestName: guest.name,
+          hotelName: hotel.name,
+          bookingNumber: booking.bookingNumber,
+          settlementNumber: settlement.settlementNumber,
+          outstandingAmount: settlement.outstandingBalance,
+          dueDate: settlement.dueDate.toLocaleDateString(),
+          paymentLink: `${process.env.FRONTEND_URL}/settlements/${settlement._id}/pay`
+        }
+      };
 
-    await emailService.sendEmail(emailData);
+      await emailService.sendEmail(emailData);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Utility methods

@@ -407,10 +407,10 @@ async function seedAttractions() {
     
     // Find the hotel
     console.log('Looking for hotel...');
-    const allHotels = await Hotel.find({});
+    const allHotels = await Hotel.find({}).lean().limit(1000);
     console.log('All hotels found:', allHotels.map(h => h.name));
     
-    const hotel = await Hotel.findOne({ name: 'THE PENTOUZ' });
+    const hotel = await Hotel.findOne({ name: 'THE PENTOUZ' }).lean();
     if (!hotel) {
       console.error('Hotel "THE PENTOUZ" not found');
       console.log('Available hotels:', allHotels.map(h => h.name));

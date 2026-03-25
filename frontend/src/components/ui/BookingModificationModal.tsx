@@ -355,7 +355,7 @@ export default function BookingModificationModal({
             <h3 className="font-medium text-gray-900 mb-4">What would you like to modify?</h3>
             <div className="space-y-3">
               {modificationOptions.map((option) => (
-                <button
+                <button aria-label="Close"
                   key={option.id}
                   onClick={() => option.available && setSelectedModification(option.id)}
                   disabled={!option.available}

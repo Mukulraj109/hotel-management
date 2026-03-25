@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import Invoice from '../models/Invoice.js';
 import InventoryTransaction from '../models/InventoryTransaction.js';
 import CheckoutInspection from '../models/CheckoutInspection.js';
@@ -12,7 +13,7 @@ class InventoryBillingService {
     try {
       const inspection = await CheckoutInspection.findById(checkoutInspectionId)
         .populate('roomId')
-        .populate('bookingId');
+        .populate('bookingId').lean();
 
       if (!inspection) {
         throw new Error('Checkout inspection not found');
@@ -129,17 +130,38 @@ class InventoryBillingService {
         }
       });
 
-      await invoice.save();
+      // Save invoice, update inspection, and update booking atomically in a transaction
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          try {
+            await invoice.save({ session });
 
-      // Update checkout inspection with invoice reference
-      inspection.invoiceId = invoice._id;
-      inspection.inspectionStatus = 'pending_charges';
-      await inspection.save();
+            // Update checkout inspection with invoice reference (use findByIdAndUpdate since inspection is lean)
+            await CheckoutInspection.findByIdAndUpdate(
+              inspection._id,
+              { $set: { invoiceId: invoice._id, inspectionStatus: 'pending_charges' } },
+              { session, new: true }
+            );
 
-      // Update booking with additional charges
-      booking.additionalCharges = (booking.additionalCharges || 0) + total;
-      booking.totalAmount = booking.baseAmount + booking.additionalCharges;
-      await booking.save();
+            // Update booking with additional charges atomically
+            await Booking.findByIdAndUpdate(
+              booking._id,
+              {
+                $inc: { additionalCharges: total },
+                $set: { totalAmount: (booking.baseAmount || 0) + (booking.additionalCharges || 0) + total }
+              },
+              { session, new: true }
+            );
+        
+          } catch (error) {
+            console.error('Operation failed:', error.message);
+            throw error;
+          }
+        });
+      } finally {
+        session.endSession();
+      }
 
       logger.info(`Created inventory invoice ${invoice.invoiceNumber} for booking ${booking.bookingNumber}`);
 
@@ -160,14 +182,14 @@ class InventoryBillingService {
         replacementRequestId: replacementRequestId,
         status: 'approved',
         chargedToGuest: true
-      }).populate('roomId').populate('bookingId');
+      }).populate('roomId').populate('bookingId').lean().limit(1000);
 
       if (transactions.length === 0) {
         logger.info('No chargeable transactions found for replacement request', replacementRequestId);
         return null;
       }
 
-      const booking = await Booking.findById(bookingId);
+      const booking = await Booking.findById(bookingId).lean();
       if (!booking) {
         throw new Error('Booking not found');
       }
@@ -234,18 +256,38 @@ class InventoryBillingService {
         }
       });
 
-      await invoice.save();
+      // Save invoice, update transactions, and update booking atomically in a transaction
+      const session = await mongoose.startSession();
+      try {
+        await session.withTransaction(async () => {
+          try {
+            await invoice.save({ session });
 
-      // Update transactions with invoice reference
-      await InventoryTransaction.updateMany(
-        { _id: { $in: transactions.map(t => t._id) } },
-        { $set: { invoiceId: invoice._id } }
-      );
+            // Update transactions with invoice reference
+            await InventoryTransaction.updateMany(
+              { _id: { $in: transactions.map(t => t._id) } },
+              { $set: { invoiceId: invoice._id } },
+              { session }
+            );
 
-      // Update booking with additional charges
-      booking.additionalCharges = (booking.additionalCharges || 0) + total;
-      booking.totalAmount = booking.baseAmount + booking.additionalCharges;
-      await booking.save();
+            // Update booking with additional charges atomically (booking is lean)
+            await Booking.findByIdAndUpdate(
+              booking._id,
+              {
+                $inc: { additionalCharges: total },
+                $set: { totalAmount: (booking.baseAmount || 0) + (booking.additionalCharges || 0) + total }
+              },
+              { session, new: true }
+            );
+        
+          } catch (error) {
+            console.error('Operation failed:', error.message);
+            throw error;
+          }
+        });
+      } finally {
+        session.endSession();
+      }
 
       logger.info(`Created replacement invoice ${invoice.invoiceNumber} for booking ${booking.bookingNumber}`);
 
@@ -294,6 +336,8 @@ class InventoryBillingService {
               checkoutBlocked: false
             }
           }
+        ,
+          { new: true }
         );
       }
 
@@ -433,7 +477,7 @@ class InventoryBillingService {
         'bookingId._id': bookingId,
         transactionType: 'extra_request',
         status: 'approved'
-      }).populate('items.itemId');
+      }).populate('items.itemId').lean().limit(1000);
 
       const overageCharges = [];
 
@@ -478,8 +522,8 @@ class InventoryBillingService {
 
       if (overageCharges.length > 0) {
         // Create overage invoice
-        const booking = await Booking.findById(bookingId);
-        const room = await InventoryTransaction.findOne({ 'roomId._id': roomId }).populate('roomId');
+        const booking = await Booking.findById(bookingId).lean();
+        const room = await InventoryTransaction.findOne({ 'roomId._id': roomId }).populate('roomId').lean();
         
         const lineItems = overageCharges.map(charge => ({
           description: `${charge.itemName} overage (${charge.overageQuantity} above ${charge.complimentaryAllowed} complimentary)`,
@@ -527,12 +571,31 @@ class InventoryBillingService {
           }
         });
 
-        await invoice.save();
+        // Save invoice and update booking atomically in a transaction
+        const session = await mongoose.startSession();
+        try {
+          await session.withTransaction(async () => {
+            try {
+              await invoice.save({ session });
 
-        // Update booking
-        booking.additionalCharges = (booking.additionalCharges || 0) + total;
-        booking.totalAmount = booking.baseAmount + booking.additionalCharges;
-        await booking.save();
+              // Update booking atomically (booking is lean)
+              await Booking.findByIdAndUpdate(
+                booking._id,
+                {
+                  $inc: { additionalCharges: total },
+                  $set: { totalAmount: (booking.baseAmount || 0) + (booking.additionalCharges || 0) + total }
+                },
+                { session, new: true }
+              );
+          
+            } catch (error) {
+              console.error('Operation failed:', error.message);
+              throw error;
+            }
+          });
+        } finally {
+          session.endSession();
+        }
 
         logger.info(`Created overage invoice ${invoice.invoiceNumber} for booking ${booking.bookingNumber}`);
 

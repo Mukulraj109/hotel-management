@@ -84,6 +84,8 @@ class BookingEngineService {
           await PromoCode.findOneAndUpdate(
             { _id: promoValidation.promoCode._id },
             { $inc: { 'usage.currentUsage': 1 } }
+          ,
+            { new: true }
           );
         }
       }
@@ -120,64 +122,68 @@ class BookingEngineService {
    * Validate promo code
    */
   async validatePromoCode(code, bookingValue, checkInDate, checkOutDate) {
-    const promoCode = await PromoCode.findOne({
-      code: code.toUpperCase(),
-      isActive: true,
-      'validity.startDate': { $lte: new Date() },
-      'validity.endDate': { $gte: new Date() }
-    });
+    try {
+      const promoCode = await PromoCode.findOne({
+        code: code.toUpperCase(),
+        isActive: true,
+        'validity.startDate': { $lte: new Date() },
+        'validity.endDate': { $gte: new Date() }
+      }).lean();
 
-    if (!promoCode) {
-      return { valid: false, message: 'Invalid or expired promo code' };
-    }
+      if (!promoCode) {
+        return { valid: false, message: 'Invalid or expired promo code' };
+      }
 
-    // Check usage limits
-    if (promoCode.usage.totalUsageLimit && promoCode.usage.currentUsage >= promoCode.usage.totalUsageLimit) {
-      return { valid: false, message: 'Promo code usage limit reached' };
-    }
+      // Check usage limits
+      if (promoCode.usage.totalUsageLimit && promoCode.usage.currentUsage >= promoCode.usage.totalUsageLimit) {
+        return { valid: false, message: 'Promo code usage limit reached' };
+      }
 
-    // Check conditions
-    const conditions = promoCode.conditions;
+      // Check conditions
+      const conditions = promoCode.conditions;
     
-    if (conditions.minBookingValue && bookingValue < conditions.minBookingValue) {
-      return { valid: false, message: `Minimum booking value of ${conditions.minBookingValue} required` };
-    }
+      if (conditions.minBookingValue && bookingValue < conditions.minBookingValue) {
+        return { valid: false, message: `Minimum booking value of ${conditions.minBookingValue} required` };
+      }
 
-    const nights = Math.ceil((new Date(checkOutDate) - new Date(checkInDate)) / (1000 * 60 * 60 * 24));
+      const nights = Math.ceil((new Date(checkOutDate) - new Date(checkInDate)) / (1000 * 60 * 60 * 24));
     
-    if (conditions.minNights && nights < conditions.minNights) {
-      return { valid: false, message: `Minimum ${conditions.minNights} nights required` };
-    }
+      if (conditions.minNights && nights < conditions.minNights) {
+        return { valid: false, message: `Minimum ${conditions.minNights} nights required` };
+      }
 
-    if (conditions.maxNights && nights > conditions.maxNights) {
-      return { valid: false, message: `Maximum ${conditions.maxNights} nights allowed` };
-    }
+      if (conditions.maxNights && nights > conditions.maxNights) {
+        return { valid: false, message: `Maximum ${conditions.maxNights} nights allowed` };
+      }
 
-    // Calculate discount
-    let discount = 0;
-    switch (promoCode.type) {
-      case 'percentage':
-        discount = (bookingValue * promoCode.discount.value) / 100;
-        if (promoCode.discount.maxAmount) {
-          discount = Math.min(discount, promoCode.discount.maxAmount);
-        }
-        break;
-      case 'fixed_amount':
-        discount = promoCode.discount.value;
-        break;
-      case 'free_night':
-        // Calculate one night's average rate
-        discount = bookingValue / nights;
-        break;
-      default:
-        discount = 0;
-    }
+      // Calculate discount
+      let discount = 0;
+      switch (promoCode.type) {
+        case 'percentage':
+          discount = (bookingValue * promoCode.discount.value) / 100;
+          if (promoCode.discount.maxAmount) {
+            discount = Math.min(discount, promoCode.discount.maxAmount);
+          }
+          break;
+        case 'fixed_amount':
+          discount = promoCode.discount.value;
+          break;
+        case 'free_night':
+          // Calculate one night's average rate
+          discount = bookingValue / nights;
+          break;
+        default:
+          discount = 0;
+      }
 
-    return {
-      valid: true,
-      discount,
-      promoCode
-    };
+      return {
+        valid: true,
+        discount,
+        promoCode
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -299,47 +305,51 @@ class BookingEngineService {
    * Get campaign recipients based on targeting
    */
   async getCampaignRecipients(campaign) {
-    const pipeline = [];
-    const matchStage = {
-      'profile.email': { $exists: true, $ne: null }
-    };
+    try {
+      const pipeline = [];
+      const matchStage = {
+        'profile.email': { $exists: true, $ne: null }
+      };
 
-    // Apply targeting criteria
-    if (campaign.targeting.segments && campaign.targeting.segments.length > 0) {
-      matchStage['segmentation.segment'] = { $in: campaign.targeting.segments };
-    }
-
-    if (campaign.targeting.criteria.lastBookingDays) {
-      const daysAgo = new Date();
-      daysAgo.setDate(daysAgo.getDate() - campaign.targeting.criteria.lastBookingDays);
-      matchStage['bookingHistory.lastBookingDate'] = { $gte: daysAgo };
-    }
-
-    if (campaign.targeting.criteria.spentAmount) {
-      if (campaign.targeting.criteria.spentAmount.min) {
-        matchStage['bookingHistory.totalSpent'] = { 
-          $gte: campaign.targeting.criteria.spentAmount.min 
-        };
+      // Apply targeting criteria
+      if (campaign.targeting.segments && campaign.targeting.segments.length > 0) {
+        matchStage['segmentation.segment'] = { $in: campaign.targeting.segments };
       }
-      if (campaign.targeting.criteria.spentAmount.max) {
-        matchStage['bookingHistory.totalSpent'] = {
-          ...matchStage['bookingHistory.totalSpent'],
-          $lte: campaign.targeting.criteria.spentAmount.max
-        };
+
+      if (campaign.targeting.criteria.lastBookingDays) {
+        const daysAgo = new Date();
+        daysAgo.setDate(daysAgo.getDate() - campaign.targeting.criteria.lastBookingDays);
+        matchStage['bookingHistory.lastBookingDate'] = { $gte: daysAgo };
       }
-    }
 
-    pipeline.push({ $match: matchStage });
+      if (campaign.targeting.criteria.spentAmount) {
+        if (campaign.targeting.criteria.spentAmount.min) {
+          matchStage['bookingHistory.totalSpent'] = { 
+            $gte: campaign.targeting.criteria.spentAmount.min 
+          };
+        }
+        if (campaign.targeting.criteria.spentAmount.max) {
+          matchStage['bookingHistory.totalSpent'] = {
+            ...matchStage['bookingHistory.totalSpent'],
+            $lte: campaign.targeting.criteria.spentAmount.max
+          };
+        }
+      }
 
-    const recipients = await GuestCRM.aggregate(pipeline);
+      pipeline.push({ $match: matchStage });
+
+      const recipients = await GuestCRM.aggregate(pipeline);
     
-    return recipients.map(guest => ({
-      email: guest.profile.email,
-      name: `${guest.profile.firstName} ${guest.profile.lastName}`,
-      guestId: guest._id,
-      preferences: guest.preferences,
-      bookingHistory: guest.bookingHistory
-    }));
+      return recipients.map(guest => ({
+        email: guest.profile.email,
+        name: `${guest.profile.firstName} ${guest.profile.lastName}`,
+        guestId: guest._id,
+        preferences: guest.preferences,
+        bookingHistory: guest.bookingHistory
+      }));
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -377,30 +387,34 @@ class BookingEngineService {
    */
   async trackEmailEvent(campaignId, email, event, data = {}) {
     try {
-      const campaign = await EmailCampaign.findById(campaignId);
+      // Use atomic $inc instead of read-modify-write to avoid race conditions
+      const incField = {};
+      const eventFieldMap = {
+        'open': 'tracking.opens',
+        'click': 'tracking.clicks',
+        'bounce': 'tracking.bounces',
+        'unsubscribe': 'tracking.unsubscribes'
+      };
+
+      const fieldName = eventFieldMap[event];
+      if (!fieldName) return;
+
+      incField[fieldName] = 1;
+
+      const campaign = await EmailCampaign.findByIdAndUpdate(
+        campaignId,
+        { $inc: incField },
+        { new: true }
+      );
       if (!campaign) return;
 
-      switch (event) {
-        case 'open':
-          campaign.tracking.opens += 1;
-          break;
-        case 'click':
-          campaign.tracking.clicks += 1;
-          break;
-        case 'bounce':
-          campaign.tracking.bounces += 1;
-          break;
-        case 'unsubscribe':
-          campaign.tracking.unsubscribes += 1;
-          // Update guest CRM
-          await GuestCRM.updateOne(
-            { 'profile.email': email },
-            { 'engagement.emailEngagement.unsubscribed': true }
-          );
-          break;
+      if (event === 'unsubscribe') {
+        // Update guest CRM
+        await GuestCRM.updateOne(
+          { 'profile.email': email },
+          { $set: { 'engagement.emailEngagement.unsubscribed': true } }
+        );
       }
-
-      await campaign.save();
 
       // Update guest engagement
       if (event === 'open' || event === 'click') {
@@ -426,7 +440,7 @@ class BookingEngineService {
    */
   async generateLoyaltyPoints(guestId, action, bookingAmount = 0) {
     try {
-      const loyaltyProgram = await LoyaltyProgram.findOne({ isActive: true });
+      const loyaltyProgram = await LoyaltyProgram.findOne({ isActive: true }).lean();
       if (!loyaltyProgram) return 0;
 
       const rule = loyaltyProgram.pointsRules.earningRates.find(r => r.action === action);
@@ -504,43 +518,51 @@ class BookingEngineService {
    * Simple sentiment analysis
    */
   async analyzeSentiment(text) {
-    const positiveWords = ['excellent', 'amazing', 'wonderful', 'great', 'fantastic', 'perfect', 'love', 'best', 'outstanding'];
-    const negativeWords = ['terrible', 'awful', 'horrible', 'worst', 'hate', 'bad', 'poor', 'disappointing', 'dirty'];
+    try {
+      const positiveWords = ['excellent', 'amazing', 'wonderful', 'great', 'fantastic', 'perfect', 'love', 'best', 'outstanding'];
+      const negativeWords = ['terrible', 'awful', 'horrible', 'worst', 'hate', 'bad', 'poor', 'disappointing', 'dirty'];
 
-    const words = text.toLowerCase().split(/\s+/);
-    let score = 0;
+      const words = text.toLowerCase().split(/\s+/);
+      let score = 0;
 
-    words.forEach(word => {
-      if (positiveWords.includes(word)) score += 1;
-      if (negativeWords.includes(word)) score -= 1;
-    });
+      words.forEach(word => {
+        if (positiveWords.includes(word)) score += 1;
+        if (negativeWords.includes(word)) score -= 1;
+      });
 
-    const normalizedScore = score / words.length;
-    let label = 'neutral';
+      const normalizedScore = score / words.length;
+      let label = 'neutral';
     
-    if (normalizedScore > 0.1) label = 'positive';
-    else if (normalizedScore < -0.1) label = 'negative';
+      if (normalizedScore > 0.1) label = 'positive';
+      else if (normalizedScore < -0.1) label = 'negative';
 
-    return {
-      score: normalizedScore,
-      label,
-      confidence: Math.abs(normalizedScore)
-    };
+      return {
+        score: normalizedScore,
+        label,
+        confidence: Math.abs(normalizedScore)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Calculate average rating for a guest
    */
   async calculateAverageRating(email) {
-    const reviews = await ReviewManagement.find({
-      'guest.email': email,
-      'moderation.status': 'approved'
-    });
+    try {
+      const reviews = await ReviewManagement.find({
+        'guest.email': email,
+        'moderation.status': 'approved'
+      }).lean().limit(1000);
 
-    if (reviews.length === 0) return 0;
+      if (reviews.length === 0) return 0;
 
-    const totalRating = reviews.reduce((sum, review) => sum + review.content.rating, 0);
-    return totalRating / reviews.length;
+      const totalRating = reviews.reduce((sum, review) => sum + review.content.rating, 0);
+      return totalRating / reviews.length;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -584,21 +606,34 @@ class BookingEngineService {
    * Update widget performance
    */
   async updateWidgetPerformance(widgetId, action) {
-    const updateField = {};
-    updateField[`performance.${action}s`] = 1;
+    try {
+      const incField = {};
+      incField[`performance.${action}s`] = 1;
 
-    await BookingWidget.findOneAndUpdate(
-      { widgetId },
-      { $inc: updateField },
-      { new: true }
-    );
+      // Atomically increment and get the updated document
+      const widget = await BookingWidget.findOneAndUpdate(
+        { widgetId },
+        { $inc: incField },
+        { new: true }
+      );
 
-    // Recalculate conversion rate
-    const widget = await BookingWidget.findOne({ widgetId });
-    if (widget && widget.performance.clicks > 0) {
-      widget.performance.conversionRate = 
-        (widget.performance.conversions / widget.performance.clicks) * 100;
-      await widget.save();
+      if (!widget) return;
+
+      // Atomically update derived conversionRate using the already-incremented values
+      if (widget.performance.clicks > 0) {
+        await BookingWidget.findOneAndUpdate(
+          { widgetId },
+          {
+            $set: {
+              'performance.conversionRate':
+                (widget.performance.conversions / widget.performance.clicks) * 100
+            }
+          },
+          { new: true }
+        );
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -660,36 +695,48 @@ class BookingEngineService {
   }
 
   async findAbandonedBookings() {
-    // Find incomplete bookings from last 24 hours
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
+    try {
+      // Find incomplete bookings from last 24 hours
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
     
-    return await Booking.find({
-      status: 'pending',
-      createdAt: { $gte: yesterday, $lte: new Date() }
-    });
+      return await Booking.find({
+        status: 'pending',
+        createdAt: { $gte: yesterday, $lte: new Date() }
+      }).lean().limit(1000);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async findRecentCheckouts() {
-    // Find guests who checked out in the last 2 days
-    const twoDaysAgo = new Date();
-    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+    try {
+      // Find guests who checked out in the last 2 days
+      const twoDaysAgo = new Date();
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
     
-    return await Booking.find({
-      status: 'checked_out',
-      checkOutDate: { $gte: twoDaysAgo, $lte: new Date() }
-    });
+      return await Booking.find({
+        status: 'checked_out',
+        checkOutDate: { $gte: twoDaysAgo, $lte: new Date() }
+      }).lean().limit(1000);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async findBirthdayGuests() {
-    const today = new Date();
-    const monthDay = `${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
+    try {
+      const today = new Date();
+      const monthDay = `${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
     
-    return await GuestCRM.find({
-      'profile.dateOfBirth': {
-        $regex: `-${monthDay}$`
-      }
-    });
+      return await GuestCRM.find({
+        'profile.dateOfBirth': {
+          $regex: `-${monthDay}$`
+        }
+      }).lean().limit(1000);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 

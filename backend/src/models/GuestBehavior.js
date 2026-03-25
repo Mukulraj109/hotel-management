@@ -174,115 +174,123 @@ guestBehaviorSchema.methods.calculateEngagementScore = function() {
 
 // Static methods
 guestBehaviorSchema.statics.getBehaviorAnalytics = async function(userId, timeRange = 30) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - timeRange);
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - timeRange);
 
-  const behaviors = await this.find({
-    userId,
-    timestamp: { $gte: startDate }
-  }).sort({ timestamp: -1 });
+    const behaviors = await this.find({
+      userId,
+      timestamp: { $gte: startDate }
+    }).sort({ timestamp: -1 }).lean().limit(1000);
 
-  const analytics = {
-    totalInteractions: behaviors.length,
-    uniqueSessions: new Set(behaviors.map(b => b.sessionId)).size,
-    totalEngagementScore: behaviors.reduce((sum, b) => sum + b.engagementScore, 0),
-    averageEngagementScore: 0,
-    conversionEvents: behaviors.filter(b => b.behaviorType === 'booking_complete').length,
-    topBehaviors: {},
-    deviceBreakdown: {},
-    sourceBreakdown: {},
-    timelineData: []
-  };
+    const analytics = {
+      totalInteractions: behaviors.length,
+      uniqueSessions: new Set(behaviors.map(b => b.sessionId)).size,
+      totalEngagementScore: behaviors.reduce((sum, b) => sum + b.engagementScore, 0),
+      averageEngagementScore: 0,
+      conversionEvents: behaviors.filter(b => b.behaviorType === 'booking_complete').length,
+      topBehaviors: {},
+      deviceBreakdown: {},
+      sourceBreakdown: {},
+      timelineData: []
+    };
 
-  if (behaviors.length > 0) {
-    analytics.averageEngagementScore = analytics.totalEngagementScore / behaviors.length;
-  }
-
-  // Behavior frequency
-  behaviors.forEach(behavior => {
-    analytics.topBehaviors[behavior.behaviorType] =
-      (analytics.topBehaviors[behavior.behaviorType] || 0) + 1;
-    analytics.deviceBreakdown[behavior.deviceType] =
-      (analytics.deviceBreakdown[behavior.deviceType] || 0) + 1;
-    analytics.sourceBreakdown[behavior.source] =
-      (analytics.sourceBreakdown[behavior.source] || 0) + 1;
-  });
-
-  // Timeline data (daily aggregation)
-  const timeline = {};
-  behaviors.forEach(behavior => {
-    const day = behavior.timestamp.toISOString().split('T')[0];
-    if (!timeline[day]) {
-      timeline[day] = { date: day, interactions: 0, engagement: 0 };
+    if (behaviors.length > 0) {
+      analytics.averageEngagementScore = analytics.totalEngagementScore / behaviors.length;
     }
-    timeline[day].interactions++;
-    timeline[day].engagement += behavior.engagementScore;
-  });
 
-  analytics.timelineData = Object.values(timeline).sort((a, b) =>
-    new Date(a.date) - new Date(b.date)
-  );
+    // Behavior frequency
+    behaviors.forEach(behavior => {
+      analytics.topBehaviors[behavior.behaviorType] =
+        (analytics.topBehaviors[behavior.behaviorType] || 0) + 1;
+      analytics.deviceBreakdown[behavior.deviceType] =
+        (analytics.deviceBreakdown[behavior.deviceType] || 0) + 1;
+      analytics.sourceBreakdown[behavior.source] =
+        (analytics.sourceBreakdown[behavior.source] || 0) + 1;
+    });
 
-  return analytics;
+    // Timeline data (daily aggregation)
+    const timeline = {};
+    behaviors.forEach(behavior => {
+      const day = behavior.timestamp.toISOString().split('T')[0];
+      if (!timeline[day]) {
+        timeline[day] = { date: day, interactions: 0, engagement: 0 };
+      }
+      timeline[day].interactions++;
+      timeline[day].engagement += behavior.engagementScore;
+    });
+
+    analytics.timelineData = Object.values(timeline).sort((a, b) =>
+      new Date(a.date) - new Date(b.date)
+    );
+
+    return analytics;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 guestBehaviorSchema.statics.getSegmentationData = async function(hotelId, segmentCriteria = {}) {
-  const pipeline = [
-    { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
-    {
-      $group: {
-        _id: '$userId',
-        totalInteractions: { $sum: 1 },
-        totalEngagement: { $sum: '$engagementScore' },
-        lastInteraction: { $max: '$timestamp' },
-        firstInteraction: { $min: '$timestamp' },
-        conversions: {
-          $sum: { $cond: [{ $eq: ['$behaviorType', 'booking_complete'] }, 1, 0] }
-        },
-        totalValue: { $sum: '$transactionValue' },
-        primarySource: { $first: '$source' },
-        devices: { $addToSet: '$deviceType' }
-      }
-    },
-    {
-      $addFields: {
-        avgEngagement: { $divide: ['$totalEngagement', '$totalInteractions'] },
-        daysSinceFirst: {
-          $divide: [
-            { $subtract: [new Date(), '$firstInteraction'] },
-            1000 * 60 * 60 * 24
-          ]
-        },
-        daysSinceLast: {
-          $divide: [
-            { $subtract: [new Date(), '$lastInteraction'] },
-            1000 * 60 * 60 * 24
-          ]
+  try {
+    const pipeline = [
+      { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
+      {
+        $group: {
+          _id: '$userId',
+          totalInteractions: { $sum: 1 },
+          totalEngagement: { $sum: '$engagementScore' },
+          lastInteraction: { $max: '$timestamp' },
+          firstInteraction: { $min: '$timestamp' },
+          conversions: {
+            $sum: { $cond: [{ $eq: ['$behaviorType', 'booking_complete'] }, 1, 0] }
+          },
+          totalValue: { $sum: '$transactionValue' },
+          primarySource: { $first: '$source' },
+          devices: { $addToSet: '$deviceType' }
+        }
+      },
+      {
+        $addFields: {
+          avgEngagement: { $divide: ['$totalEngagement', '$totalInteractions'] },
+          daysSinceFirst: {
+            $divide: [
+              { $subtract: [new Date(), '$firstInteraction'] },
+              1000 * 60 * 60 * 24
+            ]
+          },
+          daysSinceLast: {
+            $divide: [
+              { $subtract: [new Date(), '$lastInteraction'] },
+              1000 * 60 * 60 * 24
+            ]
+          }
         }
       }
+    ];
+
+    // Apply filters
+    if (segmentCriteria.minInteractions) {
+      pipeline.push({
+        $match: { totalInteractions: { $gte: segmentCriteria.minInteractions } }
+      });
     }
-  ];
 
-  // Apply filters
-  if (segmentCriteria.minInteractions) {
-    pipeline.push({
-      $match: { totalInteractions: { $gte: segmentCriteria.minInteractions } }
-    });
+    if (segmentCriteria.minEngagement) {
+      pipeline.push({
+        $match: { avgEngagement: { $gte: segmentCriteria.minEngagement } }
+      });
+    }
+
+    if (segmentCriteria.recencyDays) {
+      pipeline.push({
+        $match: { daysSinceLast: { $lte: segmentCriteria.recencyDays } }
+      });
+    }
+
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  if (segmentCriteria.minEngagement) {
-    pipeline.push({
-      $match: { avgEngagement: { $gte: segmentCriteria.minEngagement } }
-    });
-  }
-
-  if (segmentCriteria.recencyDays) {
-    pipeline.push({
-      $match: { daysSinceLast: { $lte: segmentCriteria.recencyDays } }
-    });
-  }
-
-  return await this.aggregate(pipeline);
 };
 
 // Pre-save middleware
@@ -292,5 +300,8 @@ guestBehaviorSchema.pre('save', function(next) {
   }
   next();
 });
+
+// Data retention TTL: auto-delete guest behavior data after 3 years (GDPR behavioral data retention)
+guestBehaviorSchema.index({ createdAt: 1 }, { expireAfterSeconds: 1095 * 24 * 60 * 60 });
 
 export default mongoose.models.GuestBehavior || mongoose.model('GuestBehavior', guestBehaviorSchema);

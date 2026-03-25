@@ -408,7 +408,7 @@ class UserEngagementService {
 
       const analytics = await UserAnalytics.find(matchStage)
         .populate('userId', 'name email role')
-        .sort({ date: -1 });
+        .sort({ date: -1 }).lean().limit(1000);
 
       // Calculate engagement scores for each record
       const updatedAnalytics = analytics.map(record => {

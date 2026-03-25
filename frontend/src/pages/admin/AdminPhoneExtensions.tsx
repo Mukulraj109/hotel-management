@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -46,6 +46,7 @@ import PhoneExtensionForm from '@/components/admin/PhoneExtensionForm';
 import PhoneAssignmentTool from '@/components/admin/PhoneAssignmentTool';
 import PhoneDirectory from '@/components/admin/PhoneDirectory';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface PhoneExtension {
   _id: string;
@@ -154,6 +155,15 @@ const AdminPhoneExtensions: React.FC = () => {
     features: string[];
   } | null>(null);
 
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     fetchExtensions();
     fetchOptions();
@@ -228,7 +238,8 @@ const AdminPhoneExtensions: React.FC = () => {
         if (!result) return; // Confirmation dialog will show
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast({
           title: 'Success',
           description: `Extension deleted successfully${
@@ -276,7 +287,8 @@ const AdminPhoneExtensions: React.FC = () => {
         if (!result) return; // Confirmation dialog will show
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast({
           title: 'Success',
           description: `Extensions updated successfully${
@@ -321,7 +333,8 @@ const AdminPhoneExtensions: React.FC = () => {
         if (!result) return; // Confirmation dialog will show
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast({
           title: 'Success',
           description: `Maintenance mode set successfully${
@@ -364,7 +377,8 @@ const AdminPhoneExtensions: React.FC = () => {
         if (!result) return; // Confirmation dialog will show
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast({
           title: 'Success',
           description: `Maintenance mode cleared successfully${
@@ -395,7 +409,8 @@ const AdminPhoneExtensions: React.FC = () => {
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast({
           title: 'Success',
           description: `Updated for ${result.propertiesUpdated} properties`
@@ -917,4 +932,4 @@ const AdminPhoneExtensions: React.FC = () => {
   );
 };
 
-export default AdminPhoneExtensions;
+export default withErrorBoundary(AdminPhoneExtensions, { level: 'page' });

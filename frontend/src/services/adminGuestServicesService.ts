@@ -257,23 +257,27 @@ class AdminGuestServicesService {
 
   // Export services data for reporting
   async exportServices(filters?: GuestServiceFilters, format: 'csv' | 'excel' = 'csv'): Promise<Blob> {
-    const queryParams = new URLSearchParams();
+    try {
+      const queryParams = new URLSearchParams();
 
-    if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          queryParams.append(key, value.toString());
-        }
+      if (filters) {
+        Object.entries(filters).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            queryParams.append(key, value.toString());
+          }
+        });
+      }
+
+      queryParams.append('format', format);
+
+      const response = await api.get(`${this.basePath}/export?${queryParams.toString()}`, {
+        responseType: 'blob',
       });
+
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-
-    queryParams.append('format', format);
-
-    const response = await api.get(`${this.basePath}/export?${queryParams.toString()}`, {
-      responseType: 'blob',
-    });
-
-    return response.data;
   }
 }
 

@@ -119,7 +119,7 @@ class BillMessageService {
 
       const messages = await BillMessage.find(query)
         .sort({ priority: -1, messageName: 1 })
-        .lean();
+        .lean().limit(1000);
 
       // Filter messages based on applicability rules
       const applicableMessages = messages.filter(message => {
@@ -146,6 +146,8 @@ class BillMessageService {
       );
 
       const generatedMessages = [];
+      const successIds = [];
+      const failureIds = [];
 
       for (const message of autoMessages) {
         try {
@@ -153,9 +155,8 @@ class BillMessageService {
           if (message.triggerConditions.conditions.requiresApproval) {
             const amount = triggerData.amount || 0;
             const threshold = message.triggerConditions.conditions.approvalThreshold || 0;
-            
+
             if (amount >= threshold) {
-              // Queue for approval instead of auto-generating
               await this._queueForApproval(message, triggerData);
               continue;
             }
@@ -181,35 +182,37 @@ class BillMessageService {
           );
 
           generatedMessages.push(processedMessage);
-
-          // Update usage statistics
-          await BillMessage.findByIdAndUpdate(
-            message._id,
-            {
-              $inc: {
-                'usageStats.timesUsed': 1,
-                'usageStats.successfulDeliveries': 1
-              },
-              $set: {
-                'usageStats.lastUsed': new Date()
-              }
-            }
-          );
+          successIds.push(message._id);
 
         } catch (messageError) {
           logger.error(`Error processing message ${message._id}:`, messageError);
-          
-          // Update failure statistics
-          await BillMessage.findByIdAndUpdate(
-            message._id,
-            {
-              $inc: {
-                'usageStats.timesUsed': 1,
-                'usageStats.failedDeliveries': 1
-              }
-            }
-          );
+          failureIds.push(message._id);
         }
+      }
+
+      // Batch: update usage statistics with bulkWrite instead of individual updates
+      const statsBulkOps = [];
+      if (successIds.length > 0) {
+        statsBulkOps.push({
+          updateMany: {
+            filter: { _id: { $in: successIds } },
+            update: {
+              $inc: { 'usageStats.timesUsed': 1, 'usageStats.successfulDeliveries': 1 },
+              $set: { 'usageStats.lastUsed': new Date() }
+            }
+          }
+        });
+      }
+      if (failureIds.length > 0) {
+        statsBulkOps.push({
+          updateMany: {
+            filter: { _id: { $in: failureIds } },
+            update: { $inc: { 'usageStats.timesUsed': 1, 'usageStats.failedDeliveries': 1 } }
+          }
+        });
+      }
+      if (statsBulkOps.length > 0) {
+        await BillMessage.bulkWrite(statsBulkOps);
       }
 
       return {
@@ -329,7 +332,7 @@ class BillMessageService {
       const messages = await BillMessage.find(query)
         .populate('hotelInfo', 'name')
         .sort({ messageType: 1, messageName: 1 })
-        .lean();
+        .lean().limit(1000);
 
       switch (format.toLowerCase()) {
         case 'csv':
@@ -366,25 +369,36 @@ class BillMessageService {
         errors: []
       };
 
+      // Batch: check which messages already exist in a single query
+      const messageCodes = messagesData.map(m => m.messageCode);
+      const existingMessages = await BillMessage.find({
+        hotelId,
+        messageCode: { $in: messageCodes }
+      }).limit(1000).lean();
+      const existingByCode = new Map(existingMessages.map(m => [m.messageCode, m]));
+
+      const newMessages = [];
+      const updateOps = [];
+
       for (const messageData of messagesData) {
         try {
-          // Check if message already exists
-          const existing = await BillMessage.findOne({
-            hotelId,
-            messageCode: messageData.messageCode
-          });
+          const existing = existingByCode.get(messageData.messageCode);
 
           if (existing) {
             if (updateExisting) {
-              await BillMessage.findByIdAndUpdate(
-                existing._id,
-                {
-                  ...messageData,
-                  hotelId,
-                  'auditInfo.updatedBy': createdBy,
-                  'auditInfo.lastModified': new Date()
+              updateOps.push({
+                updateOne: {
+                  filter: { _id: existing._id },
+                  update: {
+                    $set: {
+                      ...messageData,
+                      hotelId,
+                      'auditInfo.updatedBy': createdBy,
+                      'auditInfo.lastModified': new Date()
+                    }
+                  }
                 }
-              );
+              });
               results.updated++;
             } else if (skipDuplicates) {
               results.skipped++;
@@ -392,8 +406,7 @@ class BillMessageService {
               throw new Error(`Message code ${messageData.messageCode} already exists`);
             }
           } else {
-            // Create new message
-            const newMessage = new BillMessage({
+            newMessages.push({
               ...messageData,
               hotelId,
               auditInfo: {
@@ -401,8 +414,6 @@ class BillMessageService {
                 version: 1
               }
             });
-
-            await newMessage.save();
             results.imported++;
           }
 
@@ -412,6 +423,14 @@ class BillMessageService {
             error: messageError.message
           });
         }
+      }
+
+      // Batch: insert new messages and update existing ones
+      if (newMessages.length > 0) {
+        await BillMessage.insertMany(newMessages);
+      }
+      if (updateOps.length > 0) {
+        await BillMessage.bulkWrite(updateOps);
       }
 
       return results;
@@ -469,7 +488,7 @@ class BillMessageService {
         ]
       })
       .select('messageName messageType usageStats isActive')
-      .lean();
+      .lean().limit(1000);
 
       return {
         summary: {
@@ -664,13 +683,21 @@ class BillMessageService {
   }
 
   async _queueForApproval(message, triggerData) {
-    // In a real implementation, this would queue the message for approval
-    logger.debug(`Message ${message.messageCode} queued for approval`);
+    try {
+      // In a real implementation, this would queue the message for approval
+      logger.debug(`Message ${message.messageCode} queued for approval`);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async _scheduleDelayedMessage(message, triggerData, delay) {
-    // In a real implementation, this would schedule the message using a job queue
-    logger.debug(`Message ${message.messageCode} scheduled with ${delay.amount} ${delay.unit} delay`);
+    try {
+      // In a real implementation, this would schedule the message using a job queue
+      logger.debug(`Message ${message.messageCode} scheduled with ${delay.amount} ${delay.unit} delay`);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   _exportToCSV(messages) {

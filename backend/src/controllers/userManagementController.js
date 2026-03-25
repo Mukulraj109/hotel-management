@@ -310,9 +310,16 @@ export const importUsers = catchAsync(async (req, res) => {
     errors: []
   };
 
+  // Batch: check which users already exist in a single query
+  const emails = usersData.filter(u => u.email).map(u => u.email);
+  const existingUsers = await User.find({ email: { $in: emails } }).lean();
+  const existingByEmail = new Map(existingUsers.map(u => [u.email, u]));
+
+  const updateOps = [];
+  const newUsers = [];
+
   for (const userData of usersData) {
     try {
-      // Validate required fields
       if (!userData.email || !userData.name) {
         results.errors.push({
           email: userData.email || 'unknown',
@@ -321,11 +328,9 @@ export const importUsers = catchAsync(async (req, res) => {
         continue;
       }
 
-      // Check if user exists
-      const existingUser = await User.findOne({ email: userData.email });
+      const existingUser = existingByEmail.get(userData.email);
 
       if (existingUser) {
-        // Update existing user
         const updateData = {
           name: userData.name,
           phone: userData.phone,
@@ -337,7 +342,12 @@ export const importUsers = catchAsync(async (req, res) => {
           updateData.hotelId = req.user.hotelId;
         }
 
-        await User.findByIdAndUpdate(existingUser._id, updateData);
+        updateOps.push({
+          updateOne: {
+            filter: { _id: existingUser._id },
+            update: { $set: updateData }
+          }
+        });
         results.updated++;
       } else {
         // Create new user
@@ -365,6 +375,11 @@ export const importUsers = catchAsync(async (req, res) => {
     }
   }
 
+  // Batch: execute all updates with bulkWrite
+  if (updateOps.length > 0) {
+    await User.bulkWrite(updateOps);
+  }
+
   res.json({
     status: 'success',
     data: results
@@ -389,7 +404,7 @@ export const exportUsers = catchAsync(async (req, res) => {
   const users = await User.find(query)
     .select('-password -passwordResetToken -passwordResetExpires')
     .populate('hotelId', 'name')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 }).lean().limit(1000);
 
   if (format === 'csv') {
     const csvData = convertUsersToCSV(users);
@@ -432,7 +447,7 @@ export const getUserActivityTimeline = catchAsync(async (req, res) => {
   const activities = await AuditLog.find(matchStage)
     .sort({ timestamp: -1 })
     .limit(parseInt(limit))
-    .populate('user', 'name email role');
+    .populate('user', 'name email role').lean();
 
   res.json({
     status: 'success',
@@ -593,7 +608,7 @@ export const updateUserBillingDetails = catchAsync(async (req, res) => {
   }
 
   if (req.user.role === 'guest') {
-    user = await User.findById(userId);
+    user = await User.findById(userId).lean();
   } else {
     // Staff/admin can update guests or users in their hotel
     user = await User.findOne({
@@ -602,7 +617,7 @@ export const updateUserBillingDetails = catchAsync(async (req, res) => {
         { role: 'guest' },
         { hotelId: req.user.hotelId }
       ]
-    });
+    }).lean();
   }
 
   if (!user) {
@@ -639,7 +654,7 @@ export const getUserBillingDetails = catchAsync(async (req, res) => {
 
   let user;
   if (req.user.role === 'guest') {
-    user = await User.findById(userId).select('name email billingDetails guestType');
+    user = await User.findById(userId).select('name email billingDetails guestType').lean();
   } else {
     user = await User.findOne({
       _id: userId,
@@ -647,7 +662,7 @@ export const getUserBillingDetails = catchAsync(async (req, res) => {
         { role: 'guest' },
         { hotelId: req.user.hotelId }
       ]
-    }).select('name email billingDetails guestType role');
+    }).select('name email billingDetails guestType role').lean();
   }
 
   if (!user) {
@@ -683,7 +698,7 @@ export const updateUserProfile = catchAsync(async (req, res) => {
 
   let user;
   if (req.user.role === 'guest') {
-    user = await User.findById(userId);
+    user = await User.findById(userId).lean();
   } else {
     user = await User.findOne({
       _id: userId,
@@ -691,7 +706,7 @@ export const updateUserProfile = catchAsync(async (req, res) => {
         { role: 'guest' },
         { hotelId: req.user.hotelId }
       ]
-    });
+    }).lean();
   }
 
   if (!user) {
@@ -702,7 +717,7 @@ export const updateUserProfile = catchAsync(async (req, res) => {
   if (name) user.name = name;
   if (email && email !== user.email) {
     // Check if email already exists
-    const existingUser = await User.findOne({ email, _id: { $ne: userId } });
+    const existingUser = await User.findOne({ email, _id: { $ne: userId } }).lean();
     if (existingUser) {
       throw new ApplicationError('Email already exists', 400);
     }

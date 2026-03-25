@@ -487,11 +487,11 @@ export default function ReportBuilder() {
       >
         <div className="space-y-4 max-h-96 overflow-y-auto">
           {REPORT_TEMPLATES.map((template) => (
-            <div
+            <div role="button" tabIndex={0}
               key={template.id}
               className="p-4 border border-gray-200 rounded-lg cursor-pointer hover:border-blue-300 hover:bg-blue-50"
               onClick={() => handleTemplateSelect(template)}
-            >
+             onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => handleTemplateSelect(template); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
               <div className="flex justify-between items-start mb-2">
                 <h3 className="font-medium text-gray-900">{template.name}</h3>
                 <Badge variant="secondary">{template.category}</Badge>

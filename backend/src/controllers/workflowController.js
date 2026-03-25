@@ -30,58 +30,64 @@ class WorkflowController {
       // Wrap all booking creations + room status updates + workflow log
       // in a single transaction so partial failures roll back completely.
       const bookings = await withTransaction(async (session) => {
-        const txBookings = [];
-        for (const roomId of roomIds) {
-          const room = await Room.findById(roomId).session(session);
-          if (!room) {
-            continue;
+        try {
+          const txBookings = [];
+          for (const roomId of roomIds) {
+            const room = await Room.findById(roomId).session(session);
+            if (!room) {
+              continue;
+            }
+
+            const [booking] = await Booking.create([{
+              hotelId,
+              roomId,
+              guestName: guestData.name,
+              guestEmail: guestData.email,
+              guestPhone: guestData.phone,
+              checkIn: guestData.checkInDate,
+              checkOut: guestData.checkOutDate,
+              status: 'confirmed',
+              paymentMethod,
+              specialRequests: guestData.specialRequests,
+              notes,
+              createdBy: req.user?.id || 'system'
+            }], { session });
+
+            txBookings.push(booking);
+
+            // Update room status atomically within the transaction
+            await Room.findByIdAndUpdate(
+              roomId,
+              {
+                $set: {
+                  status: 'occupied',
+                  currentBooking: {
+                    bookingId: booking._id,
+                    checkIn: booking.checkIn,
+                    checkOut: booking.checkOut,
+                    status: booking.status
+                  }
+                }
+              },
+              { new: true, session }
+            );
           }
 
-          const [booking] = await Booking.create([{
-            hotelId,
-            roomId,
-            guestName: guestData.name,
-            guestEmail: guestData.email,
-            guestPhone: guestData.phone,
-            checkIn: guestData.checkInDate,
-            checkOut: guestData.checkOutDate,
-            status: 'confirmed',
-            paymentMethod,
-            specialRequests: guestData.specialRequests,
-            notes,
+          // Log workflow action within the same transaction
+          await WorkflowAction.create([{
+            type: 'checkin',
+            roomIds,
+            data: { guestData, paymentMethod, notes },
+            status: 'completed',
             createdBy: req.user?.id || 'system'
           }], { session });
 
-          txBookings.push(booking);
-
-          // Update room status atomically within the transaction
-          await Room.findByIdAndUpdate(
-            roomId,
-            {
-              $set: {
-                status: 'occupied',
-                currentBooking: {
-                  bookingId: booking._id,
-                  checkIn: booking.checkIn,
-                  checkOut: booking.checkOut,
-                  status: booking.status
-                }
-              }
-            },
-            { session }
-          );
+          return txBookings;
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
         }
-
-        // Log workflow action within the same transaction
-        await WorkflowAction.create([{
-          type: 'checkin',
-          roomIds,
-          data: { guestData, paymentMethod, notes },
-          status: 'completed',
-          createdBy: req.user?.id || 'system'
-        }], { session });
-
-        return txBookings;
       });
 
       res.json({
@@ -116,48 +122,54 @@ class WorkflowController {
       // Wrap all booking updates + room status changes + workflow log
       // in a single transaction so partial failures roll back completely.
       const updatedBookings = await withTransaction(async (session) => {
-        const txBookings = [];
-        for (const roomId of roomIds) {
-          const room = await Room.findById(roomId).session(session);
-          if (!room || !room.currentBooking) {
-            continue;
+        try {
+          const txBookings = [];
+          for (const roomId of roomIds) {
+            const room = await Room.findById(roomId).session(session);
+            if (!room || !room.currentBooking) {
+              continue;
+            }
+
+            // Atomically update booking status within transaction
+            const booking = await Booking.findByIdAndUpdate(
+              room.currentBooking.bookingId,
+              {
+                $set: {
+                  status: 'checked_out',
+                  checkOut: checkoutTime,
+                  paymentStatus,
+                  notes
+                }
+              },
+              { new: true, session }
+            );
+            if (booking) {
+              txBookings.push(booking);
+            }
+
+            // Update room status atomically within the transaction
+            await Room.findByIdAndUpdate(
+              roomId,
+              { $set: { status: 'dirty' }, $unset: { currentBooking: 1 } },
+              { new: true, session }
+            );
           }
 
-          // Atomically update booking status within transaction
-          const booking = await Booking.findByIdAndUpdate(
-            room.currentBooking.bookingId,
-            {
-              $set: {
-                status: 'checked_out',
-                checkOut: checkoutTime,
-                paymentStatus,
-                notes
-              }
-            },
-            { new: true, session }
-          );
-          if (booking) {
-            txBookings.push(booking);
-          }
+          // Log workflow action within the same transaction
+          await WorkflowAction.create([{
+            type: 'checkout',
+            roomIds,
+            data: { checkoutTime, paymentStatus, notes },
+            status: 'completed',
+            createdBy: req.user?.id || 'system'
+          }], { session });
 
-          // Update room status atomically within the transaction
-          await Room.findByIdAndUpdate(
-            roomId,
-            { $set: { status: 'dirty' }, $unset: { currentBooking: 1 } },
-            { session }
-          );
+          return txBookings;
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
         }
-
-        // Log workflow action within the same transaction
-        await WorkflowAction.create([{
-          type: 'checkout',
-          roomIds,
-          data: { checkoutTime, paymentStatus, notes },
-          status: 'completed',
-          createdBy: req.user?.id || 'system'
-        }], { session });
-
-        return txBookings;
       });
 
       res.json({
@@ -191,35 +203,41 @@ class WorkflowController {
 
       // Wrap all task creations + workflow log in a single transaction
       const housekeepingTasks = await withTransaction(async (session) => {
-        const txTasks = [];
-        for (const roomId of roomIds) {
-          const [task] = await HousekeepingTask.create([{
-            hotelId,
-            roomId,
+        try {
+          const txTasks = [];
+          for (const roomId of roomIds) {
+            const [task] = await HousekeepingTask.create([{
+              hotelId,
+              roomId,
+              floorId,
+              priority,
+              tasks,
+              estimatedDuration,
+              specialInstructions,
+              status: 'pending',
+              assignedTo: req.body.assignedTo,
+              createdBy: req.user?.id || 'system'
+            }], { session });
+
+            txTasks.push(task);
+          }
+
+          // Log workflow action within the same transaction
+          await WorkflowAction.create([{
+            type: 'housekeeping',
+            roomIds,
             floorId,
-            priority,
-            tasks,
-            estimatedDuration,
-            specialInstructions,
-            status: 'pending',
-            assignedTo: req.body.assignedTo,
+            data: { priority, tasks, estimatedDuration, specialInstructions },
+            status: 'completed',
             createdBy: req.user?.id || 'system'
           }], { session });
 
-          txTasks.push(task);
+          return txTasks;
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
         }
-
-        // Log workflow action within the same transaction
-        await WorkflowAction.create([{
-          type: 'housekeeping',
-          roomIds,
-          floorId,
-          data: { priority, tasks, estimatedDuration, specialInstructions },
-          status: 'completed',
-          createdBy: req.user?.id || 'system'
-        }], { session });
-
-        return txTasks;
       });
 
       res.json({
@@ -254,45 +272,51 @@ class WorkflowController {
       // Wrap maintenance request creation + room status updates + workflow log
       // in a single transaction so partial failures roll back completely.
       const maintenanceRequests = await withTransaction(async (session) => {
-        const txRequests = [];
-        for (const roomId of roomIds) {
-          const [request] = await MaintenanceRequest.create([{
-            hotelId,
-            roomId,
+        try {
+          const txRequests = [];
+          for (const roomId of roomIds) {
+            const [request] = await MaintenanceRequest.create([{
+              hotelId,
+              roomId,
+              floorId,
+              issueType,
+              priority,
+              description,
+              estimatedCost,
+              scheduledDate,
+              status: 'pending',
+              vendorId: req.body.vendorId,
+              createdBy: req.user?.id || 'system'
+            }], { session });
+
+            txRequests.push(request);
+
+            // Update room status if high priority (within transaction)
+            if (priority === 'urgent' || priority === 'high') {
+              await Room.findByIdAndUpdate(
+                roomId,
+                { $set: { status: 'maintenance' } },
+                { new: true, session }
+              );
+            }
+          }
+
+          // Log workflow action within the same transaction
+          await WorkflowAction.create([{
+            type: 'maintenance',
+            roomIds,
             floorId,
-            issueType,
-            priority,
-            description,
-            estimatedCost,
-            scheduledDate,
-            status: 'pending',
-            vendorId: req.body.vendorId,
+            data: { issueType, priority, description, estimatedCost, scheduledDate },
+            status: 'completed',
             createdBy: req.user?.id || 'system'
           }], { session });
 
-          txRequests.push(request);
-
-          // Update room status if high priority (within transaction)
-          if (priority === 'urgent' || priority === 'high') {
-            await Room.findByIdAndUpdate(
-              roomId,
-              { $set: { status: 'maintenance' } },
-              { session }
-            );
-          }
+          return txRequests;
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
         }
-
-        // Log workflow action within the same transaction
-        await WorkflowAction.create([{
-          type: 'maintenance',
-          roomIds,
-          floorId,
-          data: { issueType, priority, description, estimatedCost, scheduledDate },
-          status: 'completed',
-          createdBy: req.user?.id || 'system'
-        }], { session });
-
-        return txRequests;
       });
 
       res.json({
@@ -326,28 +350,34 @@ class WorkflowController {
 
       // Wrap all room status updates + workflow log in a single transaction
       const updatedRooms = await withTransaction(async (session) => {
-        const txRooms = [];
-        for (const roomId of roomIds) {
-          const room = await Room.findByIdAndUpdate(
-            roomId,
-            { $set: { status: newStatus, notes } },
-            { new: true, session }
-          );
-          if (room) {
-            txRooms.push(room);
+        try {
+          const txRooms = [];
+          for (const roomId of roomIds) {
+            const room = await Room.findByIdAndUpdate(
+              roomId,
+              { $set: { status: newStatus, notes } },
+              { new: true, session }
+            );
+            if (room) {
+              txRooms.push(room);
+            }
           }
+
+          // Log workflow action within the same transaction
+          await WorkflowAction.create([{
+            type: 'status_update',
+            roomIds,
+            data: { newStatus, reason, notes },
+            status: 'completed',
+            createdBy: req.user?.id || 'system'
+          }], { session });
+
+          return txRooms;
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
         }
-
-        // Log workflow action within the same transaction
-        await WorkflowAction.create([{
-          type: 'status_update',
-          roomIds,
-          data: { newStatus, reason, notes },
-          status: 'completed',
-          createdBy: req.user?.id || 'system'
-        }], { session });
-
-        return txRooms;
       });
 
       res.json({
@@ -384,7 +414,7 @@ class WorkflowController {
 
       const actions = await WorkflowAction.find(query)
         .sort({ createdAt: -1 })
-        .limit(100);
+        .limit(100).lean();
 
       res.json({
         status: 'success',
@@ -408,7 +438,7 @@ class WorkflowController {
       const hotelId = req.user?.hotelId;
 
       // Get rooms on the floor
-      const rooms = await Room.find({ hotelId, floor: parseInt(floorId) });
+      const rooms = await Room.find({ hotelId, floor: parseInt(floorId) }).lean().limit(1000);
       const totalRooms = rooms.length;
       const occupiedRooms = rooms.filter(room => room.status === 'occupied').length;
       const occupancyRate = totalRooms > 0 ? (occupiedRooms / totalRooms) * 100 : 0;
@@ -419,7 +449,7 @@ class WorkflowController {
         hotelId, 
         roomId: { $in: roomIds },
         status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-      });
+      }).lean().limit(1000);
 
       // Calculate average stay duration
       const totalNights = bookings.reduce((sum, booking) => {
@@ -438,7 +468,7 @@ class WorkflowController {
         hotelId, 
         floorId: parseInt(floorId),
         status: { $in: ['pending', 'in_progress'] }
-      });
+      }).lean().limit(1000);
 
       res.json({
         status: 'success',
@@ -479,7 +509,7 @@ class WorkflowController {
         hotelId,
         checkIn: { $gte: startDate, $lte: endDate },
         status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-      });
+      }).lean().limit(1000);
 
       // Simple forecasting (in a real system, you'd use more sophisticated algorithms)
       const occupancyForecast = [];
@@ -508,7 +538,7 @@ class WorkflowController {
 
       // Maintenance predictions (placeholder)
       const maintenancePredictions = [];
-      const rooms = await Room.find({ hotelId }).limit(5);
+      const rooms = await Room.find({ hotelId }).limit(5).lean();
       for (const room of rooms) {
         if (Math.random() > 0.7) { // 30% chance of maintenance needed
           maintenancePredictions.push({
@@ -551,7 +581,7 @@ class WorkflowController {
         checkIn: { $gte: new Date(checkInDate || Date.now()) },
         checkOut: { $lte: new Date(checkOutDate || Date.now() + 7 * 24 * 60 * 60 * 1000) },
         status: { $in: ['confirmed', 'checked_in'] }
-      }).populate('userId').populate('rooms.roomId');
+      }).populate('userId').populate('rooms.roomId').lean().limit(1000);
 
       const suggestions = [];
 
@@ -631,7 +661,7 @@ class WorkflowController {
             roomType: upgradeTarget,
             status: 'available',
             isActive: true
-          });
+          }).lean();
 
           if (availableRoom) {
             suggestions.push({
@@ -749,7 +779,7 @@ class WorkflowController {
           $gte: new Date(startDate || Date.now() - 30 * 24 * 60 * 60 * 1000),
           $lte: new Date(endDate || Date.now())
         }
-      });
+      }).lean().limit(1000);
 
       const totalSuggestions = upgradeActions.length;
       const approvedUpgrades = upgradeActions.filter(action => action.status === 'completed').length;

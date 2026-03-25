@@ -112,7 +112,7 @@ export const getPropertyGroupById = async (req, res) => {
     }).populate([
       { path: 'properties', select: 'name address isActive totalRooms metrics' },
       { path: 'ownerId', select: 'name email' }
-    ]);
+    ]).lean();
 
     if (!propertyGroup) {
       return res.status(404).json({
@@ -211,7 +211,7 @@ export const deletePropertyGroup = async (req, res) => {
     const propertyGroup = await PropertyGroup.findOne({
       _id: id,
       ownerId: req.user._id
-    });
+    }).lean();
 
     if (!propertyGroup) {
       return res.status(404).json({
@@ -271,7 +271,7 @@ export const addPropertiesToGroup = async (req, res) => {
     const propertyGroup = await PropertyGroup.findOne({
       _id: id,
       ownerId: req.user._id
-    });
+    }).lean();
 
     if (!propertyGroup) {
       return res.status(404).json({
@@ -347,7 +347,7 @@ export const removePropertiesFromGroup = async (req, res) => {
     const propertyGroup = await PropertyGroup.findOne({
       _id: id,
       ownerId: req.user._id
-    });
+    }).lean();
 
     if (!propertyGroup) {
       return res.status(404).json({
@@ -494,7 +494,7 @@ export const getConsolidatedDashboard = async (req, res) => {
     const propertyGroup = await PropertyGroup.findOne({
       _id: id,
       ownerId: req.user._id
-    });
+    }).lean();
 
     if (!propertyGroup) {
       return res.status(404).json({
@@ -507,7 +507,7 @@ export const getConsolidatedDashboard = async (req, res) => {
     const properties = await Hotel.find({ 
       propertyGroupId: id,
       isActive: true 
-    }).select('_id name address.city totalRooms');
+    }).select('_id name address.city totalRooms').lean().limit(1000);
 
     const propertyIds = properties.map(p => p._id);
 
@@ -654,7 +654,7 @@ export const getPropertyGroupAuditLog = async (req, res) => {
     }).populate({
       path: 'auditLog.performedBy',
       select: 'name email'
-    });
+    }).lean();
 
     if (!propertyGroup) {
       return res.status(404).json({
@@ -714,21 +714,25 @@ const calculateGroupMetrics = async (group) => {
       };
     }
 
-    // Calculate metrics for each property in the group
+    // Batch: get room counts for all active properties in a single aggregation
+    const activeProps = group.properties.filter(p => p.isActive);
+    const activePropertyIds = activeProps.map(p => p._id);
+
+    const roomCounts = await Room.aggregate([
+      { $match: { hotelId: { $in: activePropertyIds.map(id => new mongoose.Types.ObjectId(id)) }, isActive: true } },
+      { $group: { _id: '$hotelId', count: { $sum: 1 } } }
+    ]);
+    const roomCountMap = new Map(roomCounts.map(r => [r._id.toString(), r.count]));
+
     for (const property of group.properties) {
       if (!property.isActive) continue;
 
       activeProperties++;
 
-      // Get property hotel ID (property is a hotel object)
       const hotelId = property._id;
       console.log(`🏢 CALCULATING METRICS - Processing hotel: ${property.name} (${hotelId})`);
 
-      // Get total rooms for this property
-      const roomCount = await Room.countDocuments({
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        isActive: true
-      });
+      const roomCount = roomCountMap.get(hotelId.toString()) || 0;
 
       totalRooms += roomCount;
       console.log(`🏢 CALCULATING METRICS - Hotel ${property.name} has ${roomCount} rooms`);
@@ -740,7 +744,7 @@ const calculateGroupMetrics = async (group) => {
         checkIn: { $lte: today },
         checkOut: { $gt: today },
         status: { $in: ['confirmed', 'checked_in'] }
-      });
+      }).lean().limit(1000);
 
       totalOccupied += currentBookings.length;
       console.log(`🏢 CALCULATING METRICS - Hotel ${property.name} has ${currentBookings.length} occupied rooms`);
@@ -760,7 +764,7 @@ const calculateGroupMetrics = async (group) => {
           }
         ],
         status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-      });
+      }).lean().limit(1000);
 
       const propertyRevenue = monthlyBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
       totalRevenue += propertyRevenue;

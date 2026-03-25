@@ -148,7 +148,7 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({
                 {selectedRoom ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <button
+                      <button aria-label="Close"
                         onClick={() => onQuantityChange(room.roomTypeId, -1)}
                         className="p-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                         disabled={selectedRoom.quantity <= 0}
@@ -158,7 +158,7 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({
                       <span className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded min-w-[40px] text-center">
                         {selectedRoom.quantity}
                       </span>
-                      <button
+                      <button aria-label="Add"
                         onClick={() => onQuantityChange(room.roomTypeId, 1)}
                         className="p-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
                         disabled={selectedRoom.quantity >= room.availability}
@@ -183,7 +183,7 @@ const RoomSelector: React.FC<RoomSelectorProps> = ({
                     </button>
                   </div>
                 ) : (
-                  <button
+                  <button aria-label="Add"
                     onClick={() => onRoomAdd(room)}
                     disabled={room.availability === 0}
                     className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"

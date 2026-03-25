@@ -145,7 +145,7 @@ router.get('/quick-stock-check', [
     const items = await InventoryItem.find(filter)
       .select('name category currentStock stockThreshold unitPrice imageUrl')
       .sort({ currentStock: 1, name: 1 })
-      .limit(parseInt(limit));
+      .limit(parseInt(limit)).lean();
 
     // Calculate summary
     const totalItems = await InventoryItem.countDocuments({
@@ -334,7 +334,7 @@ router.post('/stock-update', [
     await InventoryItem.findByIdAndUpdate(
       itemId,
       { currentStock: newStock },
-      { session }
+      { new: true, session }
     );
 
     // Handle photo upload if provided
@@ -493,7 +493,7 @@ router.get('/barcode-lookup/:barcode', [
         { name: new RegExp(barcode, 'i') }, // Fallback: search by name
         { _id: mongoose.Types.ObjectId.isValid(barcode) ? barcode : null }
       ]
-    }).select('name category currentStock stockThreshold unitPrice imageUrl');
+    }).select('name category currentStock stockThreshold unitPrice imageUrl').lean();
 
     if (!item) {
       return res.status(404).json({
@@ -510,7 +510,7 @@ router.get('/barcode-lookup/:barcode', [
       .select('movementType quantity previousStock newStock createdAt performedBy reason')
       .populate('performedBy', 'firstName lastName')
       .sort({ createdAt: -1 })
-      .limit(5);
+      .limit(5).lean();
 
     res.json({
       success: true,
@@ -617,7 +617,7 @@ router.post('/photo-upload', [
       _id: itemId,
       hotelId: new mongoose.Types.ObjectId(hotelId),
       isActive: true
-    });
+    }).lean();
 
     if (!item) {
       return res.status(404).json({
@@ -783,7 +783,7 @@ router.post('/offline-sync', [
                 _id: itemId,
                 hotelId: new mongoose.Types.ObjectId(hotelId),
                 isActive: true
-              });
+              }).lean();
 
               if (!item) {
                 result.message = 'Item not found';
@@ -812,7 +812,7 @@ router.post('/offline-sync', [
               if (result.message) break; // Skip if validation failed
 
               // Update item
-              await InventoryItem.findByIdAndUpdate(itemId, { currentStock: newStock });
+              await InventoryItem.findByIdAndUpdate(itemId, { currentStock: newStock }, { new: true });
 
               // Create transaction
               const transaction = new InventoryTransaction({

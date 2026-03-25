@@ -314,7 +314,7 @@ const ApprovalReviewModal: React.FC<ApprovalReviewModalProps> = ({
               >
                 Back
               </button>
-              <button
+              <button aria-label="Close"
                 onClick={handleSubmit}
                 className={`flex-1 px-4 py-2 rounded-lg font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
                   action === 'approve'

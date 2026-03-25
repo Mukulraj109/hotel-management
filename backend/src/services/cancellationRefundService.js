@@ -32,51 +32,57 @@ class CancellationRefundService {
 
     try {
       await session.withTransaction(async () => {
-        // 1. Fetch and validate booking
-        const booking = await this.Booking.findOne({ _id: bookingId, hotelId }).session(session);
-        if (!booking) throw new Error('Booking not found');
+        try {
+          // 1. Fetch and validate booking
+          const booking = await this.Booking.findOne({ _id: bookingId, hotelId }).session(session);
+          if (!booking) throw new Error('Booking not found');
 
-        const allowedStatuses = ['pending', 'confirmed'];
-        if (!allowedStatuses.includes(booking.status)) {
-          throw new Error(`Cannot cancel booking in "${booking.status}" status. Only pending/confirmed bookings can be cancelled.`);
+          const allowedStatuses = ['pending', 'confirmed'];
+          if (!allowedStatuses.includes(booking.status)) {
+            throw new Error(`Cannot cancel booking in "${booking.status}" status. Only pending/confirmed bookings can be cancelled.`);
+          }
+
+          // 2. Calculate refund amount
+          const refundCalc = this.calculateRefund(booking);
+
+          // 3. Update booking status
+          booking.status = 'cancelled';
+          booking.cancellationReason = reason;
+          booking.cancelledBy = cancelledBy;
+          booking.cancelledAt = new Date();
+          booking.refundAmount = refundCalc.refundAmount;
+          booking.cancellationFee = refundCalc.cancellationFee;
+          await booking.save({ session });
+
+          // 4. Release room inventory
+          await this.releaseRoomInventory(booking, session);
+
+          // 5. Process refund (if applicable)
+          let refundResult = null;
+          if (!skipRefund && refundCalc.refundAmount > 0) {
+            refundResult = await this.processRefund(booking, refundCalc.refundAmount);
+          }
+
+          result = {
+            success: true,
+            bookingId: booking._id,
+            previousStatus: 'confirmed',
+            newStatus: 'cancelled',
+            refund: {
+              originalAmount: refundCalc.originalAmount,
+              refundAmount: refundCalc.refundAmount,
+              cancellationFee: refundCalc.cancellationFee,
+              refundPercentage: refundCalc.refundPercentage,
+              policy: refundCalc.policyApplied,
+              stripeRefundId: refundResult?.id || null,
+            },
+            roomsReleased: true,
+          };
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
         }
-
-        // 2. Calculate refund amount
-        const refundCalc = this.calculateRefund(booking);
-
-        // 3. Update booking status
-        booking.status = 'cancelled';
-        booking.cancellationReason = reason;
-        booking.cancelledBy = cancelledBy;
-        booking.cancelledAt = new Date();
-        booking.refundAmount = refundCalc.refundAmount;
-        booking.cancellationFee = refundCalc.cancellationFee;
-        await booking.save({ session });
-
-        // 4. Release room inventory
-        await this.releaseRoomInventory(booking, session);
-
-        // 5. Process refund (if applicable)
-        let refundResult = null;
-        if (!skipRefund && refundCalc.refundAmount > 0) {
-          refundResult = await this.processRefund(booking, refundCalc.refundAmount);
-        }
-
-        result = {
-          success: true,
-          bookingId: booking._id,
-          previousStatus: 'confirmed',
-          newStatus: 'cancelled',
-          refund: {
-            originalAmount: refundCalc.originalAmount,
-            refundAmount: refundCalc.refundAmount,
-            cancellationFee: refundCalc.cancellationFee,
-            refundPercentage: refundCalc.refundPercentage,
-            policy: refundCalc.policyApplied,
-            stripeRefundId: refundResult?.id || null,
-          },
-          roomsReleased: true,
-        };
       });
     } finally {
       session.endSession();
@@ -126,30 +132,34 @@ class CancellationRefundService {
    * Release room inventory for cancelled dates.
    */
   async releaseRoomInventory(booking, session) {
-    if (!booking.room && !booking.rooms) return;
+    try {
+      if (!booking.room && !booking.rooms) return;
 
-    const roomIds = booking.rooms || (booking.room ? [booking.room] : []);
-    const checkIn = new Date(booking.checkIn || booking.checkInDate);
-    const checkOut = new Date(booking.checkOut || booking.checkOutDate);
+      const roomIds = booking.rooms || (booking.room ? [booking.room] : []);
+      const checkIn = new Date(booking.checkIn || booking.checkInDate);
+      const checkOut = new Date(booking.checkOut || booking.checkOutDate);
 
-    // Generate all dates in the range
-    const dates = [];
-    const current = new Date(checkIn);
-    while (current < checkOut) {
-      dates.push(new Date(current));
-      current.setDate(current.getDate() + 1);
-    }
+      // Generate all dates in the range
+      const dates = [];
+      const current = new Date(checkIn);
+      while (current < checkOut) {
+        dates.push(new Date(current));
+        current.setDate(current.getDate() + 1);
+      }
 
-    if (this.RoomAvailability && dates.length > 0) {
-      await this.RoomAvailability.updateMany(
-        {
-          room: { $in: roomIds },
-          date: { $in: dates },
-          bookingId: booking._id,
-        },
-        { $set: { status: 'available', bookingId: null } },
-        { session }
-      );
+      if (this.RoomAvailability && dates.length > 0) {
+        await this.RoomAvailability.updateMany(
+          {
+            room: { $in: roomIds },
+            date: { $in: dates },
+            bookingId: booking._id,
+          },
+          { $set: { status: 'available', bookingId: null } },
+          { session }
+        );
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 

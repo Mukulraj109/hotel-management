@@ -117,7 +117,7 @@ router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
 
   // If using a template, render it with variables
   if (templateId) {
-    const template = await MessageTemplate.findById(templateId);
+    const template = await MessageTemplate.findById(templateId).lean();
     if (!template) {
       throw new ApplicationError('Template not found', 404);
     }
@@ -135,30 +135,34 @@ router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
     await template.incrementUsage();
   }
 
-  // Process recipients
-  const processedRecipients = await Promise.all(recipients.map(async (recipient) => {
+  // Batch: fetch all users referenced by recipients in a single query
+  const recipientUserIds = recipients.filter(r => r.userId).map(r => r.userId);
+  const recipientUsers = recipientUserIds.length > 0
+    ? await User.find({ _id: { $in: recipientUserIds } }).select('name email phone').lean()
+    : [];
+  const recipientUserMap = new Map(recipientUsers.map(u => [u._id.toString(), u]));
+
+  const processedRecipients = recipients.map((recipient) => {
     const recipientData = {
       ...recipient,
       status: 'pending',
       personalData: new Map()
     };
 
-    // If userId provided, fetch user data
     if (recipient.userId) {
-      const user = await User.findById(recipient.userId).select('name email phone');
+      const user = recipientUserMap.get(recipient.userId.toString());
       if (user) {
         recipientData.name = recipientData.name || user.name;
         recipientData.email = recipientData.email || user.email;
         recipientData.phone = recipientData.phone || user.phone;
-        
-        // Add user data for personalization
+
         recipientData.personalData.set('firstName', user.name ? user.name.split(' ')[0] : '');
         recipientData.personalData.set('fullName', user.name || '');
       }
     }
 
     return recipientData;
-  }));
+  });
 
   const communicationData = {
     hotelId,
@@ -355,7 +359,7 @@ router.get('/:id', catchAsync(async (req, res) => {
     .populate('hotelId', 'name address contact')
     .populate('sentBy', 'name email')
     .populate('template.id', 'name description')
-    .populate('recipients.userId', 'name email');
+    .populate('recipients.userId', 'name email').lean();
 
   if (!communication) {
     throw new ApplicationError('Communication not found', 404);
@@ -403,7 +407,7 @@ router.get('/:id', catchAsync(async (req, res) => {
  *         description: Communication cancelled successfully
  */
 router.post('/:id/cancel', authorize('staff', 'admin'), catchAsync(async (req, res) => {
-  const communication = await Communication.findById(req.params.id);
+  const communication = await Communication.findById(req.params.id).lean();
   
   if (!communication) {
     throw new ApplicationError('Communication not found', 404);
@@ -452,7 +456,7 @@ router.post('/:id/cancel', authorize('staff', 'admin'), catchAsync(async (req, r
 router.post('/:id/track/open', catchAsync(async (req, res) => {
   const { trackingId } = req.query;
   
-  const communication = await Communication.findById(req.params.id);
+  const communication = await Communication.findById(req.params.id).lean();
   
   if (!communication) {
     return res.status(404).json({ error: 'Communication not found' });
@@ -506,7 +510,7 @@ router.post('/:id/track/open', catchAsync(async (req, res) => {
 router.get('/:id/track/click', catchAsync(async (req, res) => {
   const { trackingId, url } = req.query;
   
-  const communication = await Communication.findById(req.params.id);
+  const communication = await Communication.findById(req.params.id).lean();
   
   if (!communication) {
     return res.redirect(isAllowedRedirectUrl(url) ? url : '/');
@@ -691,7 +695,7 @@ router.post('/bulk', authorize('staff', 'admin'), catchAsync(async (req, res) =>
   // Find matching recipients
   const recipients = await User.find(recipientQuery)
     .select('name email phone')
-    .limit(1000); // Limit to prevent abuse
+    .limit(1000).lean(); // Limit to prevent abuse
 
   if (recipients.length === 0) {
     throw new ApplicationError('No recipients found matching segmentation criteria', 400);
@@ -726,7 +730,7 @@ router.post('/bulk', authorize('staff', 'admin'), catchAsync(async (req, res) =>
   });
 
   if (templateId) {
-    const template = await MessageTemplate.findById(templateId);
+    const template = await MessageTemplate.findById(templateId).lean();
     if (template) {
       const rendered = template.render(templateVariables || {});
       communication.subject = rendered.subject;

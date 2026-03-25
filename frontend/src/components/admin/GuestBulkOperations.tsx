@@ -326,7 +326,7 @@ const GuestBulkOperations: React.FC<GuestBulkOperationsProps> = ({
               Bulk Operations ({selectedGuests.length} guests)
             </h3>
           </div>
-          <button
+          <button aria-label="Close"
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
           >
@@ -365,7 +365,7 @@ const GuestBulkOperations: React.FC<GuestBulkOperationsProps> = ({
             >
               Cancel
             </button>
-            <button
+            <button aria-label="Close"
               type="submit"
               disabled={loading || !operation}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"

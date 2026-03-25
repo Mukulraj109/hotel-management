@@ -244,41 +244,49 @@ settingsInheritanceSchema.methods.applyInheritance = async function(groupSetting
  * Set override values
  */
 settingsInheritanceSchema.methods.setOverride = async function(overrideValues, userId) {
-  this.hasOverride = true;
-  this.overrideValues = overrideValues;
-  this.isInheriting = false;
-  this.syncStatus = 'manual_override';
-  this.syncedBy = userId;
-  this.metadata.previousVersion = this.metadata.currentVersion;
-  this.metadata.currentVersion = new Date();
+  try {
+    this.hasOverride = true;
+    this.overrideValues = overrideValues;
+    this.isInheriting = false;
+    this.syncStatus = 'manual_override';
+    this.syncedBy = userId;
+    this.metadata.previousVersion = this.metadata.currentVersion;
+    this.metadata.currentVersion = new Date();
 
-  await this.save();
+    await this.save();
 
-  return {
-    success: true,
-    message: 'Override values set successfully',
-    inheritance: this
-  };
+    return {
+      success: true,
+      message: 'Override values set successfully',
+      inheritance: this
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 /**
  * Remove override and revert to inheritance
  */
 settingsInheritanceSchema.methods.removeOverride = async function() {
-  this.hasOverride = false;
-  this.overrideValues = {};
-  this.isInheriting = true;
-  this.syncStatus = 'synced';
-  this.metadata.previousVersion = this.metadata.currentVersion;
-  this.metadata.currentVersion = new Date();
+  try {
+    this.hasOverride = false;
+    this.overrideValues = {};
+    this.isInheriting = true;
+    this.syncStatus = 'synced';
+    this.metadata.previousVersion = this.metadata.currentVersion;
+    this.metadata.currentVersion = new Date();
 
-  await this.save();
+    await this.save();
 
-  return {
-    success: true,
-    message: 'Override removed, inheritance restored',
-    inheritance: this
-  };
+    return {
+      success: true,
+      message: 'Override removed, inheritance restored',
+      inheritance: this
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 /**
@@ -303,32 +311,36 @@ settingsInheritanceSchema.methods.needsSync = function(groupLastUpdated) {
  * Add entry to change history
  */
 settingsInheritanceSchema.methods.addToHistory = async function(changedBy, previousValues, newValues, scope, propertiesAffected) {
-  // Get user name
-  const User = mongoose.model('User');
-  const user = await User.findById(changedBy).select('name');
+  try {
+    // Get user name
+    const User = mongoose.model('User');
+    const user = await User.findById(changedBy).select('name').lean();
 
-  // Calculate rollback expiration (30 days from now)
-  const rollbackExpiresAt = new Date();
-  rollbackExpiresAt.setDate(rollbackExpiresAt.getDate() + 30);
+    // Calculate rollback expiration (30 days from now)
+    const rollbackExpiresAt = new Date();
+    rollbackExpiresAt.setDate(rollbackExpiresAt.getDate() + 30);
 
-  this.changeHistory.push({
-    changedBy,
-    changedByName: user ? user.name : 'Unknown User',
-    previousValues,
-    newValues,
-    changeScope: scope,
-    propertiesAffected: propertiesAffected || 1,
-    rollbackExpiresAt
-  });
+    this.changeHistory.push({
+      changedBy,
+      changedByName: user ? user.name : 'Unknown User',
+      previousValues,
+      newValues,
+      changeScope: scope,
+      propertiesAffected: propertiesAffected || 1,
+      rollbackExpiresAt
+    });
 
-  // Keep only last 50 history entries to prevent unbounded growth
-  if (this.changeHistory.length > 50) {
-    this.changeHistory = this.changeHistory.slice(-50);
+    // Keep only last 50 history entries to prevent unbounded growth
+    if (this.changeHistory.length > 50) {
+      this.changeHistory = this.changeHistory.slice(-50);
+    }
+
+    await this.save();
+
+    return this.changeHistory[this.changeHistory.length - 1];
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  await this.save();
-
-  return this.changeHistory[this.changeHistory.length - 1];
 };
 
 // Static methods
@@ -391,120 +403,132 @@ settingsInheritanceSchema.statics.findPendingSync = function(groupId, settingTyp
  * Bulk create or update inheritance records
  */
 settingsInheritanceSchema.statics.bulkUpsert = async function(records) {
-  const operations = records.map(record => ({
-    updateOne: {
-      filter: {
-        propertyId: record.propertyId,
-        settingType: record.settingType
-      },
-      update: {
-        $set: record
-      },
-      upsert: true
-    }
-  }));
+  try {
+    const operations = records.map(record => ({
+      updateOne: {
+        filter: {
+          propertyId: record.propertyId,
+          settingType: record.settingType
+        },
+        update: {
+          $set: record
+        },
+        upsert: true
+      }
+    }));
 
-  return this.bulkWrite(operations);
+    return this.bulkWrite(operations);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 /**
  * Get inheritance summary for a property
  */
 settingsInheritanceSchema.statics.getPropertySummary = async function(propertyId) {
-  const records = await this.find({ propertyId });
+  try {
+    const records = await this.find({ propertyId }).lean().limit(1000);
 
-  const summary = {
-    total: records.length,
-    inheriting: 0,
-    overridden: 0,
-    synced: 0,
-    pending: 0,
-    failed: 0,
-    bySettingType: {}
-  };
-
-  records.forEach(record => {
-    if (record.isInheriting) summary.inheriting++;
-    if (record.hasOverride) summary.overridden++;
-
-    switch (record.syncStatus) {
-      case 'synced':
-        summary.synced++;
-        break;
-      case 'pending':
-        summary.pending++;
-        break;
-      case 'failed':
-        summary.failed++;
-        break;
-    }
-
-    summary.bySettingType[record.settingType] = {
-      isInheriting: record.isInheriting,
-      hasOverride: record.hasOverride,
-      syncStatus: record.syncStatus,
-      syncedAt: record.syncedAt
+    const summary = {
+      total: records.length,
+      inheriting: 0,
+      overridden: 0,
+      synced: 0,
+      pending: 0,
+      failed: 0,
+      bySettingType: {}
     };
-  });
 
-  return summary;
+    records.forEach(record => {
+      if (record.isInheriting) summary.inheriting++;
+      if (record.hasOverride) summary.overridden++;
+
+      switch (record.syncStatus) {
+        case 'synced':
+          summary.synced++;
+          break;
+        case 'pending':
+          summary.pending++;
+          break;
+        case 'failed':
+          summary.failed++;
+          break;
+      }
+
+      summary.bySettingType[record.settingType] = {
+        isInheriting: record.isInheriting,
+        hasOverride: record.hasOverride,
+        syncStatus: record.syncStatus,
+        syncedAt: record.syncedAt
+      };
+    });
+
+    return summary;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 /**
  * Get inheritance summary for a group
  */
 settingsInheritanceSchema.statics.getGroupSummary = async function(groupId) {
-  const records = await this.find({ groupId });
+  try {
+    const records = await this.find({ groupId }).lean().limit(1000);
 
-  const summary = {
-    total: records.length,
-    properties: new Set(),
-    settingTypes: new Set(),
-    inheriting: 0,
-    overridden: 0,
-    synced: 0,
-    pending: 0,
-    failed: 0,
-    byProperty: {}
-  };
+    const summary = {
+      total: records.length,
+      properties: new Set(),
+      settingTypes: new Set(),
+      inheriting: 0,
+      overridden: 0,
+      synced: 0,
+      pending: 0,
+      failed: 0,
+      byProperty: {}
+    };
 
-  records.forEach(record => {
-    summary.properties.add(record.propertyId.toString());
-    summary.settingTypes.add(record.settingType);
+    records.forEach(record => {
+      summary.properties.add(record.propertyId.toString());
+      summary.settingTypes.add(record.settingType);
 
-    if (record.isInheriting) summary.inheriting++;
-    if (record.hasOverride) summary.overridden++;
+      if (record.isInheriting) summary.inheriting++;
+      if (record.hasOverride) summary.overridden++;
 
-    switch (record.syncStatus) {
-      case 'synced':
-        summary.synced++;
-        break;
-      case 'pending':
-        summary.pending++;
-        break;
-      case 'failed':
-        summary.failed++;
-        break;
-    }
+      switch (record.syncStatus) {
+        case 'synced':
+          summary.synced++;
+          break;
+        case 'pending':
+          summary.pending++;
+          break;
+        case 'failed':
+          summary.failed++;
+          break;
+      }
 
-    const propId = record.propertyId.toString();
-    if (!summary.byProperty[propId]) {
-      summary.byProperty[propId] = {
-        total: 0,
-        inheriting: 0,
-        overridden: 0
-      };
-    }
+      const propId = record.propertyId.toString();
+      if (!summary.byProperty[propId]) {
+        summary.byProperty[propId] = {
+          total: 0,
+          inheriting: 0,
+          overridden: 0
+        };
+      }
 
-    summary.byProperty[propId].total++;
-    if (record.isInheriting) summary.byProperty[propId].inheriting++;
-    if (record.hasOverride) summary.byProperty[propId].overridden++;
-  });
+      summary.byProperty[propId].total++;
+      if (record.isInheriting) summary.byProperty[propId].inheriting++;
+      if (record.hasOverride) summary.byProperty[propId].overridden++;
+    });
 
-  summary.properties = Array.from(summary.properties);
-  summary.settingTypes = Array.from(summary.settingTypes);
+    summary.properties = Array.from(summary.properties);
+    summary.settingTypes = Array.from(summary.settingTypes);
 
-  return summary;
+    return summary;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Pre-save middleware

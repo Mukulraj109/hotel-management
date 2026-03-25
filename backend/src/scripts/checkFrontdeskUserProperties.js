@@ -19,7 +19,7 @@ async function checkFrontdeskUser() {
     const User = mongoose.connection.collection('users');
 
     // Find frontdesk users
-    const frontdeskUsers = await User.find({ role: 'frontdesk' }).toArray();
+    const frontdeskUsers = await User.find({ role: 'frontdesk' }).toArray().lean().limit(1000);
 
     console.log(`📊 Found ${frontdeskUsers.length} frontdesk users\n`);
 
@@ -33,7 +33,7 @@ async function checkFrontdeskUser() {
     }
 
     // Check guest users with hotelId
-    const guestUsers = await User.find({ role: 'guest' }).toArray();
+    const guestUsers = await User.find({ role: 'guest' }).toArray().lean().limit(1000);
     console.log(`📊 Found ${guestUsers.length} guest users\n`);
 
     const hotelId = '68cd01414419c17b5f6b4c12';

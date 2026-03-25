@@ -36,7 +36,7 @@ router.get('/', async (req, res) => {
     
     const channels = await Channel.find({ hotelId })
       .sort({ createdAt: -1 })
-      .limit(parseInt(req.query.limit) || 50);
+      .limit(parseInt(req.query.limit) || 50).lean();
     
     res.json({
       success: true,
@@ -120,15 +120,15 @@ router.post('/initialize', async (req, res) => {
 router.post('/:channelId/test', async (req, res) => {
   try {
     const { channelId } = req.params;
-    
-    const channel = await Channel.findOne({ channelId });
+
+    const channel = await Channel.findOne({ channelId }).lean();
     if (!channel) {
       return res.status(404).json({
         success: false,
         error: 'Channel not found'
       });
     }
-    
+
     const channelService = channelServices[channel.category];
     if (!channelService) {
       return res.status(400).json({
@@ -136,19 +136,23 @@ router.post('/:channelId/test', async (req, res) => {
         error: `Service not available for ${channel.category}`
       });
     }
-    
+
     const result = await channelService.testConnection(channel);
-    
-    // Update connection status based on test result
-    channel.connectionStatus = result.success ? 'connected' : 'disconnected';
-    await channel.save();
-    
+
+    // Update connection status atomically
+    const newStatus = result.success ? 'connected' : 'disconnected';
+    await Channel.findOneAndUpdate(
+      { channelId },
+      { $set: { connectionStatus: newStatus } },
+      { new: true }
+    );
+
     res.json({
       ...result,
       channelId,
-      status: channel.connectionStatus
+      status: newStatus
     });
-    
+
   } catch (error) {
     logger.error('Channel test failed', { error: error.message });
     res.status(500).json({
@@ -170,7 +174,7 @@ router.get('/:channelId/mappings', async (req, res) => {
     const { channelId } = req.params;
     
     const channel = await Channel.findOne({ channelId })
-      .populate('roomMappings.hotelRoomTypeId');
+      .populate('roomMappings.hotelRoomTypeId').lean();
     
     if (!channel) {
       return res.status(404).json({
@@ -234,7 +238,7 @@ router.post('/:channelId/mappings', async (req, res) => {
       });
     }
     
-    const channel = await Channel.findOne({ channelId });
+    const channel = await Channel.findOne({ channelId }).lean();
     if (!channel) {
       return res.status(404).json({
         success: false,
@@ -295,7 +299,7 @@ router.post('/:channelId/sync', async (req, res) => {
     const syncStartDate = startDate ? new Date(startDate) : new Date();
     const syncEndDate = endDate ? new Date(endDate) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     
-    const channel = await Channel.findOne({ channelId });
+    const channel = await Channel.findOne({ channelId }).lean();
     if (!channel) {
       return res.status(404).json({
         success: false,
@@ -359,7 +363,7 @@ router.get('/:channelId/metrics', async (req, res) => {
     const metricsStartDate = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const metricsEndDate = endDate ? new Date(endDate) : new Date();
     
-    const channel = await Channel.findOne({ channelId });
+    const channel = await Channel.findOne({ channelId }).lean();
     if (!channel) {
       return res.status(404).json({
         success: false,
@@ -419,36 +423,47 @@ router.put('/:channelId', async (req, res) => {
   try {
     const { channelId } = req.params;
     const { settings, credentials, isActive } = req.body;
-    
-    const channel = await Channel.findOne({ channelId });
+
+    // Build atomic update
+    const updateOps = {};
+
+    if (settings) {
+      // Merge settings by setting individual keys
+      Object.keys(settings).forEach(key => {
+        updateOps[`settings.${key}`] = settings[key];
+      });
+    }
+
+    if (credentials) {
+      // Merge credentials by setting individual keys
+      Object.keys(credentials).forEach(key => {
+        updateOps[`credentials.${key}`] = credentials[key];
+      });
+    }
+
+    if (typeof isActive === 'boolean') {
+      updateOps.isActive = isActive;
+    }
+
+    const channel = await Channel.findOneAndUpdate(
+      { channelId },
+      { $set: updateOps },
+      { new: true, runValidators: true }
+    );
+
     if (!channel) {
       return res.status(404).json({
         success: false,
         error: 'Channel not found'
       });
     }
-    
-    // Update fields if provided
-    if (settings) {
-      channel.settings = { ...channel.settings, ...settings };
-    }
-    
-    if (credentials) {
-      channel.credentials = { ...channel.credentials, ...credentials };
-    }
-    
-    if (typeof isActive === 'boolean') {
-      channel.isActive = isActive;
-    }
-    
-    await channel.save();
-    
+
     res.json({
       success: true,
       message: 'Channel updated successfully',
       channel
     });
-    
+
   } catch (error) {
     logger.error('Failed to update channel', { error: error.message });
     res.status(500).json({
@@ -506,7 +521,7 @@ router.get('/room-types', async (req, res) => {
       hotelId,
       isActive: true
     }).select('_id name code maxOccupancy basePrice legacyType')
-      .limit(parseInt(req.query.limit) || 50);
+      .limit(parseInt(req.query.limit) || 50).lean();
     
     res.json({
       success: true,

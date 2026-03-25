@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '../LoadingSpinner';
 import { formatCurrency } from '../../utils/formatters';
 import { roomInventoryService, RoomInventory, InventoryItem } from '../../services/roomInventoryService';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface HousekeepingInspectionFormProps {
   roomId: string;
@@ -49,7 +50,7 @@ interface InspectionFinding {
   chargedToGuest: boolean;
 }
 
-export function HousekeepingInspectionForm({
+function HousekeepingInspectionForm({
   roomId,
   inspectionType,
   onComplete,
@@ -774,3 +775,6 @@ export function HousekeepingInspectionForm({
     </div>
   );
 }
+
+export { HousekeepingInspectionForm };
+export default withErrorBoundary(HousekeepingInspectionForm, { level: 'component' });

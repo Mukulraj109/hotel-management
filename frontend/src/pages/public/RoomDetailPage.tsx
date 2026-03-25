@@ -182,13 +182,13 @@ export default function RoomDetailPage() {
                 />
                 
                 {/* Navigation Arrows */}
-                <button
+                <button aria-label="Previous"
                   onClick={prevImage}
                   className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-80 hover:bg-opacity-100 rounded-full p-2 shadow-lg"
                 >
                   <ChevronLeft className="h-5 w-5" />
                 </button>
-                <button
+                <button aria-label="Next"
                   onClick={nextImage}
                   className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-80 hover:bg-opacity-100 rounded-full p-2 shadow-lg"
                 >

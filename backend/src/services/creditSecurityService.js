@@ -274,13 +274,13 @@ class CreditSecurityService {
    */
   async verifyTransactionIntegrity(transactionId) {
     try {
-      const transaction = await CorporateCredit.findById(transactionId);
+      const transaction = await CorporateCredit.findById(transactionId).lean();
       if (!transaction) {
         return { isValid: false, reason: 'Transaction not found' };
       }
 
       // Verify transaction consistency
-      const company = await CorporateCompany.findById(transaction.corporateCompanyId);
+      const company = await CorporateCompany.findById(transaction.corporateCompanyId).lean();
       if (!company) {
         return { isValid: false, reason: 'Associated company not found' };
       }
@@ -308,7 +308,7 @@ class CreditSecurityService {
           $lte: new Date(transaction.transactionDate.getTime() + 1000)
         },
         _id: { $ne: transactionId }
-      });
+      }).lean();
 
       if (duplicateCheck) {
         return {
@@ -421,7 +421,7 @@ class CreditSecurityService {
         transactionType: 'credit',
         category: 'adjustment',
         transactionDate: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // Last 30 days
-      });
+      }).lean().limit(1000);
 
       if (recentChanges.length > 3) {
         suspiciousPatterns.push({

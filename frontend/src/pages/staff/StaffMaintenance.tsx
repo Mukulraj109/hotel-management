@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +24,15 @@ export default function StaffMaintenance() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<MaintenanceTask | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     fetchTasks();
@@ -78,7 +87,8 @@ export default function StaffMaintenance() {
 
       setError(errorMessage);
       toast.error(errorMessage);
-      setTimeout(() => setError(null), 5000); // Clear error after 5 seconds
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = setTimeout(() => setError(null), 5000); // Clear error after 5 seconds
     } finally {
       setActionLoading(null);
     }
@@ -103,7 +113,8 @@ export default function StaffMaintenance() {
       setSelectedTask(null);
     } catch (err) {
       setError('Failed to complete task. Please try again.');
-      setTimeout(() => setError(null), 3000); // Clear error after 3 seconds
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = setTimeout(() => setError(null), 3000); // Clear error after 3 seconds
     } finally {
       setActionLoading(null);
     }

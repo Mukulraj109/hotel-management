@@ -285,27 +285,31 @@ roomTaxSchema.methods.calculateTax = function(baseAmount, criteria = {}) {
 
 // Static method to get applicable taxes for criteria
 roomTaxSchema.statics.getApplicableTaxes = async function(hotelId, criteria = {}) {
-  const query = {
-    hotelId,
-    isActive: true,
-    validFrom: { $lte: new Date() },
-    $or: [
-      { validTo: { $exists: false } },
-      { validTo: { $gte: new Date() } }
-    ]
-  };
+  try {
+    const query = {
+      hotelId,
+      isActive: true,
+      validFrom: { $lte: new Date() },
+      $or: [
+        { validTo: { $exists: false } },
+        { validTo: { $gte: new Date() } }
+      ]
+    };
   
-  // Add room type filter if specified
-  if (criteria.roomTypeId) {
-    query.$or = [
-      { applicableRoomTypes: { $size: 0 } }, // No specific room types (applies to all)
-      { applicableRoomTypes: criteria.roomTypeId }
-    ];
+    // Add room type filter if specified
+    if (criteria.roomTypeId) {
+      query.$or = [
+        { applicableRoomTypes: { $size: 0 } }, // No specific room types (applies to all)
+        { applicableRoomTypes: criteria.roomTypeId }
+      ];
+    }
+  
+    const taxes = await this.find(query).sort({ compoundOrder: 1, taxCategory: 1 }).lean().limit(1000);
+  
+    return taxes.filter(tax => tax.isApplicable(criteria));
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  const taxes = await this.find(query).sort({ compoundOrder: 1, taxCategory: 1 });
-  
-  return taxes.filter(tax => tax.isApplicable(criteria));
 };
 
 // Pre-save middleware for validation

@@ -198,7 +198,7 @@ async function seedOffers() {
     console.log('✅ Connected to MongoDB');
 
     // Get the first hotel to associate offers with
-    const hotel = await Hotel.findOne();
+    const hotel = await Hotel.findOne().lean();
     if (!hotel) {
       console.log('❌ No hotel found. Please seed hotels first.');
       return;

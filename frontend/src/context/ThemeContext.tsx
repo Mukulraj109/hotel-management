@@ -5,6 +5,7 @@ interface ThemeContextType {
   theme: 'light' | 'dark' | 'auto';
   setTheme: (theme: 'light' | 'dark' | 'auto') => void;
   actualTheme: 'light' | 'dark'; // The actual computed theme after resolving 'auto'
+  isLoading: boolean;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -24,6 +25,7 @@ interface ThemeProviderProps {
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const [theme, setTheme] = useState<'light' | 'dark' | 'auto'>('light');
   const [actualTheme, setActualTheme] = useState<'light' | 'dark'>('light');
+  const [isLoading, setIsLoading] = useState(true);
 
   // Function to get system preference
   const getSystemTheme = (): 'light' | 'dark' => {
@@ -50,6 +52,8 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
         setTheme(savedTheme);
       } catch {
         // Error handled silently
+      } finally {
+        setIsLoading(false);
       }
     };
 
@@ -103,7 +107,8 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const value: ThemeContextType = {
     theme,
     setTheme: handleSetTheme,
-    actualTheme
+    actualTheme,
+    isLoading
   };
 
   return (

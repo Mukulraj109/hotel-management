@@ -171,14 +171,14 @@ async function testMigrationSteps() {
     
     // Test audit log
     console.log('\n📋 Testing Audit Log...');
-    const auditLogs = await AuditLog.find({ hotelId: sampleData.hotelId }).limit(5);
+    const auditLogs = await AuditLog.find({ hotelId: sampleData.hotelId }).limit(5).lean();
     console.log(`✅ Found ${auditLogs.length} audit log entries`);
     
     // Verify data integrity
     console.log('\n🔍 Verifying Data Integrity...');
     
-    const roomTypes = await RoomType.find({ hotelId: sampleData.hotelId });
-    const availabilityRecords = await RoomAvailability.find({ hotelId: sampleData.hotelId });
+    const roomTypes = await RoomType.find({ hotelId: sampleData.hotelId }).lean().limit(1000);
+    const availabilityRecords = await RoomAvailability.find({ hotelId: sampleData.hotelId }).lean().limit(1000);
     
     console.log(`✅ Room types created: ${roomTypes.length}`);
     console.log(`✅ Availability records: ${availabilityRecords.length}`);

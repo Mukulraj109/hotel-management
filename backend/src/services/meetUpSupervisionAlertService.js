@@ -12,7 +12,7 @@ class MeetUpSupervisionAlertService {
       const meetUp = await MeetUpRequest.findById(meetUpId)
         .populate('requesterId', 'name email')
         .populate('targetUserId', 'name email')
-        .populate('hotelId', 'name');
+        .populate('hotelId', 'name').lean();
 
       if (!meetUp) {
         throw new Error('Meet-up not found');
@@ -269,7 +269,7 @@ class MeetUpSupervisionAlertService {
         hotelId,
         role: { $in: ['staff', 'admin'] },
         // Add additional filters for availability if needed
-      }).select('_id name email role');
+      }).select('_id name email role').lean();
 
       return availableStaff;
     } catch (error) {
@@ -298,21 +298,24 @@ class MeetUpSupervisionAlertService {
       const upcomingMeetUps = await MeetUpRequest.find(query)
         .populate('requesterId', 'name email')
         .populate('targetUserId', 'name email')
-        .populate('hotelId', 'name');
+        .populate('hotelId', 'name').lean().limit(1000);
 
       const alertsCreated = [];
+
+      // Batch: check existing alerts for all meet-ups in a single query
+      const meetUpIds = upcomingMeetUps.map(m => m._id.toString());
+      const existingAlerts = await StaffAlert.find({
+        'source.id': { $in: meetUpIds },
+        'source.type': 'meetup',
+        status: { $in: ['active', 'acknowledged', 'in_progress'] }
+      }).select('source.id').lean();
+      const alertedMeetUpIds = new Set(existingAlerts.map(a => a.source.id));
 
       for (const meetUp of upcomingMeetUps) {
         const supervisionData = this.assessSupervisionNeeds(meetUp);
 
-        // Only create alerts for meet-ups that require supervision
         if (supervisionData.requiresSupervision) {
-          // Check if we already have an alert for this meet-up
-          const existingAlert = await StaffAlert.findOne({
-            'source.id': meetUp._id.toString(),
-            'source.type': 'meetup',
-            status: { $in: ['active', 'acknowledged', 'in_progress'] }
-          });
+          const existingAlert = alertedMeetUpIds.has(meetUp._id.toString());
 
           if (!existingAlert) {
             let alertType = 'meetup_supervision_required';

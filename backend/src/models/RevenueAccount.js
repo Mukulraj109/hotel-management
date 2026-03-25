@@ -347,187 +347,203 @@ revenueAccountSchema.methods.calculateTieredAmount = function(baseAmount) {
 
 // Static method to get applicable accounts
 revenueAccountSchema.statics.getApplicableAccounts = async function(hotelId, criteria = {}) {
-  const query = {
-    hotelId,
-    isActive: true,
-    validFrom: { $lte: new Date() },
-    $or: [
-      { validTo: { $exists: false } },
-      { validTo: { $gte: new Date() } }
-    ]
-  };
+  try {
+    const query = {
+      hotelId,
+      isActive: true,
+      validFrom: { $lte: new Date() },
+      $or: [
+        { validTo: { $exists: false } },
+        { validTo: { $gte: new Date() } }
+      ]
+    };
   
-  // Add category filter if specified
-  if (criteria.revenueCategory) {
-    query.revenueCategory = criteria.revenueCategory;
+    // Add category filter if specified
+    if (criteria.revenueCategory) {
+      query.revenueCategory = criteria.revenueCategory;
+    }
+  
+    // Add account type filter if specified
+    if (criteria.accountType) {
+      query.accountType = criteria.accountType;
+    }
+  
+    const accounts = await this.find(query)
+      .populate('parentAccount', 'accountCode accountName')
+      .populate('applicableRoomTypes', 'name code')
+      .sort({ accountLevel: 1, sortOrder: 1, accountCode: 1 }).lean().limit(1000);
+  
+    return accounts.filter(account => account.isApplicable(criteria));
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  // Add account type filter if specified
-  if (criteria.accountType) {
-    query.accountType = criteria.accountType;
-  }
-  
-  const accounts = await this.find(query)
-    .populate('parentAccount', 'accountCode accountName')
-    .populate('applicableRoomTypes', 'name code')
-    .sort({ accountLevel: 1, sortOrder: 1, accountCode: 1 });
-  
-  return accounts.filter(account => account.isApplicable(criteria));
 };
 
 // Static method to get account hierarchy
 revenueAccountSchema.statics.getAccountHierarchy = async function(hotelId) {
-  const accounts = await this.find({
-    hotelId,
-    isActive: true
-  }).sort({ accountLevel: 1, sortOrder: 1, accountCode: 1 });
+  try {
+    const accounts = await this.find({
+      hotelId,
+      isActive: true
+    }).sort({ accountLevel: 1, sortOrder: 1, accountCode: 1 }).lean().limit(1000);
   
-  const hierarchy = [];
-  const accountMap = new Map();
+    const hierarchy = [];
+    const accountMap = new Map();
   
-  // First pass: create account map
-  accounts.forEach(account => {
-    accountMap.set(account._id.toString(), {
-      ...account.toObject(),
-      children: []
+    // First pass: create account map
+    accounts.forEach(account => {
+      accountMap.set(account._id.toString(), {
+        ...account.toObject(),
+        children: []
+      });
     });
-  });
   
-  // Second pass: build hierarchy
-  accounts.forEach(account => {
-    const accountObj = accountMap.get(account._id.toString());
+    // Second pass: build hierarchy
+    accounts.forEach(account => {
+      const accountObj = accountMap.get(account._id.toString());
     
-    if (account.parentAccount) {
-      const parent = accountMap.get(account.parentAccount.toString());
-      if (parent) {
-        parent.children.push(accountObj);
+      if (account.parentAccount) {
+        const parent = accountMap.get(account.parentAccount.toString());
+        if (parent) {
+          parent.children.push(accountObj);
+        } else {
+          hierarchy.push(accountObj);
+        }
       } else {
         hierarchy.push(accountObj);
       }
-    } else {
-      hierarchy.push(accountObj);
-    }
-  });
+    });
   
-  return hierarchy;
+    return hierarchy;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get revenue summary
 revenueAccountSchema.statics.getRevenueSummary = async function(hotelId, filters = {}) {
-  const matchQuery = { hotelId };
+  try {
+    const matchQuery = { hotelId };
   
-  if (filters.startDate || filters.endDate) {
-    matchQuery.createdAt = {};
-    if (filters.startDate) matchQuery.createdAt.$gte = new Date(filters.startDate);
-    if (filters.endDate) matchQuery.createdAt.$lte = new Date(filters.endDate);
-  }
+    if (filters.startDate || filters.endDate) {
+      matchQuery.createdAt = {};
+      if (filters.startDate) matchQuery.createdAt.$gte = new Date(filters.startDate);
+      if (filters.endDate) matchQuery.createdAt.$lte = new Date(filters.endDate);
+    }
   
-  if (filters.revenueCategory) matchQuery.revenueCategory = filters.revenueCategory;
-  if (filters.accountType) matchQuery.accountType = filters.accountType;
+    if (filters.revenueCategory) matchQuery.revenueCategory = filters.revenueCategory;
+    if (filters.accountType) matchQuery.accountType = filters.accountType;
   
-  const summary = await this.aggregate([
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: null,
-        totalAccounts: { $sum: 1 },
-        activeAccounts: {
-          $sum: { $cond: [{ $eq: ['$isActive', true] }, 1, 0] }
-        },
-        totalBudgetedRevenue: { $sum: '$budgetInfo.yearlyBudget' },
-        totalActualRevenue: { $sum: '$auditInfo.totalRevenue' },
-        accountsByCategory: {
-          $push: {
-            category: '$revenueCategory',
-            revenue: '$auditInfo.totalRevenue'
-          }
-        },
-        accountsByType: {
-          $push: {
-            type: '$accountType',
-            revenue: '$auditInfo.totalRevenue'
+    const summary = await this.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: null,
+          totalAccounts: { $sum: 1 },
+          activeAccounts: {
+            $sum: { $cond: [{ $eq: ['$isActive', true] }, 1, 0] }
+          },
+          totalBudgetedRevenue: { $sum: '$budgetInfo.yearlyBudget' },
+          totalActualRevenue: { $sum: '$auditInfo.totalRevenue' },
+          accountsByCategory: {
+            $push: {
+              category: '$revenueCategory',
+              revenue: '$auditInfo.totalRevenue'
+            }
+          },
+          accountsByType: {
+            $push: {
+              type: '$accountType',
+              revenue: '$auditInfo.totalRevenue'
+            }
           }
         }
       }
-    }
-  ]);
+    ]);
   
-  if (summary.length === 0) {
+    if (summary.length === 0) {
+      return {
+        totalAccounts: 0,
+        activeAccounts: 0,
+        totalBudgetedRevenue: 0,
+        totalActualRevenue: 0,
+        categoryBreakdown: {},
+        typeBreakdown: {}
+      };
+    }
+  
+    const result = summary[0];
+  
+    // Process category breakdown
+    const categoryBreakdown = {};
+    result.accountsByCategory.forEach(item => {
+      if (!categoryBreakdown[item.category]) {
+        categoryBreakdown[item.category] = 0;
+      }
+      categoryBreakdown[item.category] += item.revenue || 0;
+    });
+  
+    // Process type breakdown
+    const typeBreakdown = {};
+    result.accountsByType.forEach(item => {
+      if (!typeBreakdown[item.type]) {
+        typeBreakdown[item.type] = 0;
+      }
+      typeBreakdown[item.type] += item.revenue || 0;
+    });
+  
     return {
-      totalAccounts: 0,
-      activeAccounts: 0,
-      totalBudgetedRevenue: 0,
-      totalActualRevenue: 0,
-      categoryBreakdown: {},
-      typeBreakdown: {}
+      totalAccounts: result.totalAccounts,
+      activeAccounts: result.activeAccounts,
+      totalBudgetedRevenue: result.totalBudgetedRevenue || 0,
+      totalActualRevenue: result.totalActualRevenue || 0,
+      categoryBreakdown,
+      typeBreakdown,
+      budgetVariance: (result.totalActualRevenue || 0) - (result.totalBudgetedRevenue || 0)
     };
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  const result = summary[0];
-  
-  // Process category breakdown
-  const categoryBreakdown = {};
-  result.accountsByCategory.forEach(item => {
-    if (!categoryBreakdown[item.category]) {
-      categoryBreakdown[item.category] = 0;
-    }
-    categoryBreakdown[item.category] += item.revenue || 0;
-  });
-  
-  // Process type breakdown
-  const typeBreakdown = {};
-  result.accountsByType.forEach(item => {
-    if (!typeBreakdown[item.type]) {
-      typeBreakdown[item.type] = 0;
-    }
-    typeBreakdown[item.type] += item.revenue || 0;
-  });
-  
-  return {
-    totalAccounts: result.totalAccounts,
-    activeAccounts: result.activeAccounts,
-    totalBudgetedRevenue: result.totalBudgetedRevenue || 0,
-    totalActualRevenue: result.totalActualRevenue || 0,
-    categoryBreakdown,
-    typeBreakdown,
-    budgetVariance: (result.totalActualRevenue || 0) - (result.totalBudgetedRevenue || 0)
-  };
 };
 
 // Pre-save middleware for validation and auto-calculations
 revenueAccountSchema.pre('save', async function(next) {
-  // Set account level based on parent
-  if (this.parentAccount) {
-    const parent = await this.constructor.findById(this.parentAccount);
-    if (parent) {
-      this.accountLevel = parent.accountLevel + 1;
+  try {
+    // Set account level based on parent
+    if (this.parentAccount) {
+      const parent = await this.constructor.findById(this.parentAccount);
+      if (parent) {
+        this.accountLevel = parent.accountLevel + 1;
+      }
     }
-  }
   
-  // Validate account level depth
-  if (this.accountLevel > 5) {
-    return next(new Error('Account hierarchy cannot exceed 5 levels'));
-  }
+    // Validate account level depth
+    if (this.accountLevel > 5) {
+      return next(new Error('Account hierarchy cannot exceed 5 levels'));
+    }
   
-  // Ensure account code is unique within hotel
-  if (this.isNew || this.isModified('accountCode')) {
-    const existing = await this.constructor.findOne({
-      hotelId: this.hotelId,
-      accountCode: this.accountCode,
-      _id: { $ne: this._id }
-    });
+    // Ensure account code is unique within hotel
+    if (this.isNew || this.isModified('accountCode')) {
+      const existing = await this.constructor.findOne({
+        hotelId: this.hotelId,
+        accountCode: this.accountCode,
+        _id: { $ne: this._id }
+      });
     
-    if (existing) {
-      return next(new Error('Account code must be unique within hotel'));
+      if (existing) {
+        return next(new Error('Account code must be unique within hotel'));
+      }
     }
-  }
   
-  // Auto-generate GL account code if not provided
-  if (!this.glAccountCode && this.isNew) {
-    this.glAccountCode = this.generateGLAccountCode();
-  }
+    // Auto-generate GL account code if not provided
+    if (!this.glAccountCode && this.isNew) {
+      this.glAccountCode = this.generateGLAccountCode();
+    }
   
-  next();
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 });
 
 // Method to generate GL account code

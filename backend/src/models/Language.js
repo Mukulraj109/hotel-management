@@ -266,7 +266,7 @@ languageSchema.statics.getActiveLanguages = async function(filters = {}) {
     const query = { isActive: true, ...filters };
     return await this.find(query)
       .sort({ isDefault: -1, name: 1 })
-      .select('-translation.providers.apiKey'); // Exclude sensitive data
+      .select('-translation.providers.apiKey').lean().limit(1000); // Exclude sensitive data
   } catch (error) {
     logger.error('Failed to get active languages', { error: error.message });
     throw error;
@@ -278,10 +278,10 @@ languageSchema.statics.getActiveLanguages = async function(filters = {}) {
  */
 languageSchema.statics.getDefaultLanguage = async function() {
   try {
-    const defaultLang = await this.findOne({ isDefault: true, isActive: true });
+    const defaultLang = await this.findOne({ isDefault: true, isActive: true }).lean();
     if (!defaultLang) {
       // Fallback to English if no default is set
-      return await this.findOne({ code: 'EN', isActive: true });
+      return await this.findOne({ code: 'EN', isActive: true }).lean();
     }
     return defaultLang;
   } catch (error) {
@@ -298,7 +298,7 @@ languageSchema.statics.getLanguageByCode = async function(code) {
     return await this.findOne({ 
       code: code.toUpperCase(), 
       isActive: true 
-    }).select('-translation.providers.apiKey');
+    }).select('-translation.providers.apiKey').lean();
   } catch (error) {
     logger.error('Failed to get language by code', { code, error: error.message });
     throw error;
@@ -316,7 +316,7 @@ languageSchema.statics.getLanguagesByChannel = async function(channel) {
       'otaChannels.isSupported': true
     })
     .sort({ 'otaChannels.isDefault': -1, name: 1 })
-    .select('-translation.providers.apiKey');
+    .select('-translation.providers.apiKey').lean().limit(1000);
   } catch (error) {
     logger.error('Failed to get languages by channel', { channel, error: error.message });
     throw error;
@@ -334,7 +334,7 @@ languageSchema.statics.getLanguagesByContext = async function(context) {
       'contexts.isEnabled': true
     })
     .sort({ 'contexts.priority': 1, name: 1 })
-    .select('-translation.providers.apiKey');
+    .select('-translation.providers.apiKey').lean().limit(1000);
   } catch (error) {
     logger.error('Failed to get languages by context', { context, error: error.message });
     throw error;
@@ -461,7 +461,7 @@ languageSchema.methods.addChannelSupport = async function(channel, options = {})
  */
 languageSchema.statics.ensureSingleDefault = async function() {
   try {
-    const defaultLanguages = await this.find({ isDefault: true });
+    const defaultLanguages = await this.find({ isDefault: true }).lean().limit(1000);
     
     if (defaultLanguages.length > 1) {
       // Keep the first one as default, remove default from others
@@ -484,15 +484,19 @@ languageSchema.statics.ensureSingleDefault = async function() {
 
 // Pre-save middleware
 languageSchema.pre('save', async function(next) {
-  if (this.isDefault && this.isModified('isDefault')) {
-    // Ensure only one default language
-    await this.constructor.updateMany(
-      { _id: { $ne: this._id }, isDefault: true },
-      { isDefault: false }
-    );
-  }
+  try {
+    if (this.isDefault && this.isModified('isDefault')) {
+      // Ensure only one default language
+      await this.constructor.updateMany(
+        { _id: { $ne: this._id }, isDefault: true },
+        { isDefault: false }
+      );
+    }
   
-  next();
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 });
 
 // Post-save middleware for audit logging

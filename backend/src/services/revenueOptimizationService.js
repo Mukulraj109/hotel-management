@@ -148,356 +148,388 @@ class RevenueOptimizationService {
 
   // Optimize pricing strategies
   async optimizePricing(hotelId, data, options) {
-    const pricingOptimization = {
-      currentStrategy: data.currentPricing?.strategy || 'fixed',
-      recommendedStrategy: 'dynamic',
+    try {
+      const pricingOptimization = {
+        currentStrategy: data.currentPricing?.strategy || 'fixed',
+        recommendedStrategy: 'dynamic',
       
-      // Dynamic pricing recommendations
-      dynamicPricing: {
-        enabled: true,
-        factors: [
-          'demand_forecast',
-          'competitor_rates',
-          'market_conditions',
-          'booking_pace',
-          'length_of_stay',
-          'advance_booking'
-        ],
-        adjustmentRules: await this.generatePricingRules(data),
-        priceFloors: await this.calculatePriceFloors(hotelId, data),
-        priceCeilings: await this.calculatePriceCeilings(hotelId, data),
-        optimalPricePoints: await this.calculateOptimalPrices(hotelId, data)
-      },
+        // Dynamic pricing recommendations
+        dynamicPricing: {
+          enabled: true,
+          factors: [
+            'demand_forecast',
+            'competitor_rates',
+            'market_conditions',
+            'booking_pace',
+            'length_of_stay',
+            'advance_booking'
+          ],
+          adjustmentRules: await this.generatePricingRules(data),
+          priceFloors: await this.calculatePriceFloors(hotelId, data),
+          priceCeilings: await this.calculatePriceCeilings(hotelId, data),
+          optimalPricePoints: await this.calculateOptimalPrices(hotelId, data)
+        },
       
-      // Currency-specific pricing
-      currencyOptimization: await this.optimizeCurrencyPricing(hotelId, data, options),
+        // Currency-specific pricing
+        currencyOptimization: await this.optimizeCurrencyPricing(hotelId, data, options),
       
-      // Market-specific pricing
-      marketSpecificPricing: await this.generateMarketPricing(hotelId, data),
+        // Market-specific pricing
+        marketSpecificPricing: await this.generateMarketPricing(hotelId, data),
       
-      // Seasonal pricing strategy
-      seasonalStrategy: await this.optimizeSeasonalPricing(hotelId, data),
+        // Seasonal pricing strategy
+        seasonalStrategy: await this.optimizeSeasonalPricing(hotelId, data),
       
-      // Length of stay optimization
-      lengthOfStayPricing: await this.optimizeLengthOfStayPricing(hotelId, data),
+        // Length of stay optimization
+        lengthOfStayPricing: await this.optimizeLengthOfStayPricing(hotelId, data),
       
-      // Expected impact
-      expectedImpact: {
-        revenueIncrease: await this.calculatePricingImpact(data, 'revenue'),
-        occupancyImpact: await this.calculatePricingImpact(data, 'occupancy'),
-        competitivePosition: await this.calculateCompetitiveImpact(data)
-      }
-    };
+        // Expected impact
+        expectedImpact: {
+          revenueIncrease: await this.calculatePricingImpact(data, 'revenue'),
+          occupancyImpact: await this.calculatePricingImpact(data, 'occupancy'),
+          competitivePosition: await this.calculateCompetitiveImpact(data)
+        }
+      };
 
-    return pricingOptimization;
+      return pricingOptimization;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Optimize channel mix strategy
   async optimizeChannelMix(hotelId, data, options) {
-    const channelOptimization = {
-      currentMix: data.channelPerformance?.currentDistribution || {},
-      recommendedMix: {},
+    try {
+      const channelOptimization = {
+        currentMix: data.channelPerformance?.currentDistribution || {},
+        recommendedMix: {},
       
-      // Channel performance analysis
-      channelAnalysis: await this.analyzeChannelPerformance(data.channelPerformance),
+        // Channel performance analysis
+        channelAnalysis: await this.analyzeChannelPerformance(data.channelPerformance),
       
-      // Optimal channel allocation
-      optimalAllocation: await this.calculateOptimalChannelAllocation(data),
+        // Optimal channel allocation
+        optimalAllocation: await this.calculateOptimalChannelAllocation(data),
       
-      // Channel-specific strategies
-      channelStrategies: {
-        direct: await this.optimizeDirectChannel(hotelId, data),
-        ota: await this.optimizeOTAChannels(hotelId, data),
-        corporate: await this.optimizeCorporateChannel(hotelId, data),
-        group: await this.optimizeGroupChannel(hotelId, data)
-      },
+        // Channel-specific strategies
+        channelStrategies: {
+          direct: await this.optimizeDirectChannel(hotelId, data),
+          ota: await this.optimizeOTAChannels(hotelId, data),
+          corporate: await this.optimizeCorporateChannel(hotelId, data),
+          group: await this.optimizeGroupChannel(hotelId, data)
+        },
       
-      // Commission optimization
-      commissionOptimization: await this.optimizeCommissions(data),
+        // Commission optimization
+        commissionOptimization: await this.optimizeCommissions(data),
       
-      // Channel diversification strategy
-      diversificationStrategy: await this.generateDiversificationStrategy(data),
+        // Channel diversification strategy
+        diversificationStrategy: await this.generateDiversificationStrategy(data),
       
-      // Expected impact
-      expectedImpact: {
-        revenueIncrease: await this.calculateChannelImpact(data, 'revenue'),
-        profitImprovement: await this.calculateChannelImpact(data, 'profit'),
-        riskReduction: await this.calculateChannelRiskReduction(data)
-      }
-    };
+        // Expected impact
+        expectedImpact: {
+          revenueIncrease: await this.calculateChannelImpact(data, 'revenue'),
+          profitImprovement: await this.calculateChannelImpact(data, 'profit'),
+          riskReduction: await this.calculateChannelRiskReduction(data)
+        }
+      };
 
-    // Calculate recommended mix based on profitability and risk
-    channelOptimization.recommendedMix = await this.calculateRecommendedChannelMix(
-      channelOptimization.channelAnalysis,
-      options.riskTolerance
-    );
+      // Calculate recommended mix based on profitability and risk
+      channelOptimization.recommendedMix = await this.calculateRecommendedChannelMix(
+        channelOptimization.channelAnalysis,
+        options.riskTolerance
+      );
 
-    return channelOptimization;
+      return channelOptimization;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Optimize market segments
   async optimizeSegments(hotelId, data, options) {
-    const segmentOptimization = {
-      currentSegmentation: data.segmentPerformance?.segments || {},
+    try {
+      const segmentOptimization = {
+        currentSegmentation: data.segmentPerformance?.segments || {},
       
-      // Segment profitability analysis
-      profitabilityAnalysis: await this.analyzeSegmentProfitability(data.segmentPerformance),
+        // Segment profitability analysis
+        profitabilityAnalysis: await this.analyzeSegmentProfitability(data.segmentPerformance),
       
-      // Optimal segment mix
-      optimalSegmentMix: await this.calculateOptimalSegmentMix(data),
+        // Optimal segment mix
+        optimalSegmentMix: await this.calculateOptimalSegmentMix(data),
       
-      // Segment-specific strategies
-      segmentStrategies: {
-        corporate: await this.optimizeCorporateSegment(hotelId, data),
-        leisure: await this.optimizeLeisureSegment(hotelId, data),
-        group: await this.optimizeGroupSegment(hotelId, data),
-        government: await this.optimizeGovernmentSegment(hotelId, data),
-        mice: await this.optimizeMICESegment(hotelId, data)
-      },
+        // Segment-specific strategies
+        segmentStrategies: {
+          corporate: await this.optimizeCorporateSegment(hotelId, data),
+          leisure: await this.optimizeLeisureSegment(hotelId, data),
+          group: await this.optimizeGroupSegment(hotelId, data),
+          government: await this.optimizeGovernmentSegment(hotelId, data),
+          mice: await this.optimizeMICESegment(hotelId, data)
+        },
       
-      // Customer lifetime value optimization
-      clvOptimization: await this.optimizeCustomerLifetimeValue(data),
+        // Customer lifetime value optimization
+        clvOptimization: await this.optimizeCustomerLifetimeValue(data),
       
-      // Segment pricing strategies
-      segmentPricing: await this.optimizeSegmentPricing(data),
+        // Segment pricing strategies
+        segmentPricing: await this.optimizeSegmentPricing(data),
       
-      // Expected impact
-      expectedImpact: {
-        revenueIncrease: await this.calculateSegmentImpact(data, 'revenue'),
-        profitMarginImprovement: await this.calculateSegmentImpact(data, 'margin'),
-        customerRetention: await this.calculateSegmentImpact(data, 'retention')
-      }
-    };
+        // Expected impact
+        expectedImpact: {
+          revenueIncrease: await this.calculateSegmentImpact(data, 'revenue'),
+          profitMarginImprovement: await this.calculateSegmentImpact(data, 'margin'),
+          customerRetention: await this.calculateSegmentImpact(data, 'retention')
+        }
+      };
 
-    return segmentOptimization;
+      return segmentOptimization;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Generate dynamic optimization strategies
   async generateDynamicStrategies(hotelId, data, options) {
-    return {
-      realTimePricing: {
-        enabled: true,
-        updateFrequency: '15min',
-        triggers: [
-          'demand_spike',
-          'competitor_change',
-          'inventory_threshold',
-          'booking_pace_change'
-        ],
-        automationLevel: options.riskTolerance === 'high' ? 'full' : 'semi',
-        humanOverride: true
-      },
-      
-      inventoryOptimization: {
-        overbookingStrategy: await this.optimizeOverbooking(data),
-        allotmentManagement: await this.optimizeAllotments(data),
-        roomTypeOptimization: await this.optimizeRoomTypes(data),
-        upgradeStrategy: await this.optimizeUpgrades(data)
-      },
-      
-      demandManagement: {
-        demandShaping: await this.generateDemandShaping(data),
-        capacityOptimization: await this.optimizeCapacity(data),
-        cancellationOptimization: await this.optimizeCancellations(data),
-        noShowManagement: await this.optimizeNoShows(data)
-      },
-      
-      competitiveStrategy: {
-        competitorMonitoring: {
-          frequency: 'hourly',
-          priceMatchingRules: await this.generatePriceMatchingRules(data),
-          competitiveAlerts: await this.setupCompetitiveAlerts(data)
+    try {
+      return {
+        realTimePricing: {
+          enabled: true,
+          updateFrequency: '15min',
+          triggers: [
+            'demand_spike',
+            'competitor_change',
+            'inventory_threshold',
+            'booking_pace_change'
+          ],
+          automationLevel: options.riskTolerance === 'high' ? 'full' : 'semi',
+          humanOverride: true
         },
-        marketPositioning: await this.optimizeMarketPositioning(data)
-      }
-    };
+      
+        inventoryOptimization: {
+          overbookingStrategy: await this.optimizeOverbooking(data),
+          allotmentManagement: await this.optimizeAllotments(data),
+          roomTypeOptimization: await this.optimizeRoomTypes(data),
+          upgradeStrategy: await this.optimizeUpgrades(data)
+        },
+      
+        demandManagement: {
+          demandShaping: await this.generateDemandShaping(data),
+          capacityOptimization: await this.optimizeCapacity(data),
+          cancellationOptimization: await this.optimizeCancellations(data),
+          noShowManagement: await this.optimizeNoShows(data)
+        },
+      
+        competitiveStrategy: {
+          competitorMonitoring: {
+            frequency: 'hourly',
+            priceMatchingRules: await this.generatePriceMatchingRules(data),
+            competitiveAlerts: await this.setupCompetitiveAlerts(data)
+          },
+          marketPositioning: await this.optimizeMarketPositioning(data)
+        }
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Generate risk management strategies
   async generateRiskManagement(hotelId, data, riskTolerance) {
-    const riskProfiles = {
-      low: { maxPriceVariation: 10, maxChannelConcentration: 30 },
-      medium: { maxPriceVariation: 20, maxChannelConcentration: 50 },
-      high: { maxPriceVariation: 35, maxChannelConcentration: 70 }
-    };
+    try {
+      const riskProfiles = {
+        low: { maxPriceVariation: 10, maxChannelConcentration: 30 },
+        medium: { maxPriceVariation: 20, maxChannelConcentration: 50 },
+        high: { maxPriceVariation: 35, maxChannelConcentration: 70 }
+      };
 
-    const profile = riskProfiles[riskTolerance] || riskProfiles.medium;
+      const profile = riskProfiles[riskTolerance] || riskProfiles.medium;
 
-    return {
-      riskProfile: profile,
+      return {
+        riskProfile: profile,
       
-      // Price volatility management
-      priceRiskManagement: {
-        maxDailyVariation: profile.maxPriceVariation,
-        gradualAdjustmentRules: await this.generateGradualAdjustmentRules(profile),
-        priceFloors: await this.calculateRiskAdjustedFloors(data, riskTolerance),
-        volatilityAlerts: await this.setupVolatilityAlerts(data)
-      },
+        // Price volatility management
+        priceRiskManagement: {
+          maxDailyVariation: profile.maxPriceVariation,
+          gradualAdjustmentRules: await this.generateGradualAdjustmentRules(profile),
+          priceFloors: await this.calculateRiskAdjustedFloors(data, riskTolerance),
+          volatilityAlerts: await this.setupVolatilityAlerts(data)
+        },
       
-      // Channel concentration risk
-      channelRiskManagement: {
-        maxChannelConcentration: profile.maxChannelConcentration,
-        diversificationTargets: await this.calculateDiversificationTargets(data, profile),
-        channelRiskAlerts: await this.setupChannelRiskAlerts(data)
-      },
+        // Channel concentration risk
+        channelRiskManagement: {
+          maxChannelConcentration: profile.maxChannelConcentration,
+          diversificationTargets: await this.calculateDiversificationTargets(data, profile),
+          channelRiskAlerts: await this.setupChannelRiskAlerts(data)
+        },
       
-      // Market risk management
-      marketRiskManagement: {
-        currencyHedging: await this.generateCurrencyHedging(data, riskTolerance),
-        marketDiversification: await this.optimizeMarketDiversification(data, profile),
-        economicRiskFactors: await this.assessEconomicRisks(data)
-      },
+        // Market risk management
+        marketRiskManagement: {
+          currencyHedging: await this.generateCurrencyHedging(data, riskTolerance),
+          marketDiversification: await this.optimizeMarketDiversification(data, profile),
+          economicRiskFactors: await this.assessEconomicRisks(data)
+        },
       
-      // Operational risk management
-      operationalRiskManagement: {
-        overbookingLimits: await this.calculateSafeOverbookingLimits(data, riskTolerance),
-        cancellationBuffers: await this.calculateCancellationBuffers(data, profile),
-        staffingOptimization: await this.optimizeStaffingForRisk(data)
-      },
+        // Operational risk management
+        operationalRiskManagement: {
+          overbookingLimits: await this.calculateSafeOverbookingLimits(data, riskTolerance),
+          cancellationBuffers: await this.calculateCancellationBuffers(data, profile),
+          staffingOptimization: await this.optimizeStaffingForRisk(data)
+        },
       
-      // Contingency planning
-      contingencyPlans: await this.generateContingencyPlans(data, riskTolerance)
-    };
+        // Contingency planning
+        contingencyPlans: await this.generateContingencyPlans(data, riskTolerance)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Generate revenue projections based on optimization
   async generateProjections(hotelId, data, options) {
-    const baselineProjection = await this.calculateBaselineProjection(data);
-    const optimizedProjection = await this.calculateOptimizedProjection(data, options);
+    try {
+      const baselineProjection = await this.calculateBaselineProjection(data);
+      const optimizedProjection = await this.calculateOptimizedProjection(data, options);
 
-    return {
-      baseline: baselineProjection,
-      optimized: optimizedProjection,
-      improvement: {
-        revenue: optimizedProjection.totalRevenue - baselineProjection.totalRevenue,
-        percentage: ((optimizedProjection.totalRevenue - baselineProjection.totalRevenue) / baselineProjection.totalRevenue) * 100,
-        profit: optimizedProjection.totalProfit - baselineProjection.totalProfit,
-        profitMargin: optimizedProjection.profitMargin - baselineProjection.profitMargin
-      },
+      return {
+        baseline: baselineProjection,
+        optimized: optimizedProjection,
+        improvement: {
+          revenue: optimizedProjection.totalRevenue - baselineProjection.totalRevenue,
+          percentage: ((optimizedProjection.totalRevenue - baselineProjection.totalRevenue) / baselineProjection.totalRevenue) * 100,
+          profit: optimizedProjection.totalProfit - baselineProjection.totalProfit,
+          profitMargin: optimizedProjection.profitMargin - baselineProjection.profitMargin
+        },
       
-      // Scenario analysis
-      scenarios: {
-        conservative: await this.calculateConservativeScenario(data),
-        mostLikely: optimizedProjection,
-        optimistic: await this.calculateOptimisticScenario(data)
-      },
+        // Scenario analysis
+        scenarios: {
+          conservative: await this.calculateConservativeScenario(data),
+          mostLikely: optimizedProjection,
+          optimistic: await this.calculateOptimisticScenario(data)
+        },
       
-      // Monthly breakdown
-      monthlyProjections: await this.generateMonthlyProjections(data, options),
+        // Monthly breakdown
+        monthlyProjections: await this.generateMonthlyProjections(data, options),
       
-      // Key metrics projections
-      kpiProjections: {
-        occupancyRate: await this.projectOccupancyRate(data),
-        averageDailyRate: await this.projectAverageDailyRate(data),
-        revenuePerAvailableRoom: await this.projectRevPAR(data),
-        totalRevenue: optimizedProjection.totalRevenue,
-        profitMargin: optimizedProjection.profitMargin
-      }
-    };
+        // Key metrics projections
+        kpiProjections: {
+          occupancyRate: await this.projectOccupancyRate(data),
+          averageDailyRate: await this.projectAverageDailyRate(data),
+          revenuePerAvailableRoom: await this.projectRevPAR(data),
+          totalRevenue: optimizedProjection.totalRevenue,
+          profitMargin: optimizedProjection.profitMargin
+        }
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Calculate expected impact of optimization
   async calculateExpectedImpact(strategy, data) {
-    const impacts = {
-      revenue: 0,
-      profit: 0,
-      occupancy: 0,
-      adr: 0,
-      revpar: 0,
-      customerSatisfaction: 0,
-      marketShare: 0
-    };
+    try {
+      const impacts = {
+        revenue: 0,
+        profit: 0,
+        occupancy: 0,
+        adr: 0,
+        revpar: 0,
+        customerSatisfaction: 0,
+        marketShare: 0
+      };
 
-    // Pricing optimization impact
-    if (strategy.pricingOptimization) {
-      impacts.revenue += strategy.pricingOptimization.expectedImpact.revenueIncrease || 0;
-      impacts.occupancy += strategy.pricingOptimization.expectedImpact.occupancyImpact || 0;
+      // Pricing optimization impact
+      if (strategy.pricingOptimization) {
+        impacts.revenue += strategy.pricingOptimization.expectedImpact.revenueIncrease || 0;
+        impacts.occupancy += strategy.pricingOptimization.expectedImpact.occupancyImpact || 0;
+      }
+
+      // Channel optimization impact
+      if (strategy.channelOptimization) {
+        impacts.revenue += strategy.channelOptimization.expectedImpact.revenueIncrease || 0;
+        impacts.profit += strategy.channelOptimization.expectedImpact.profitImprovement || 0;
+      }
+
+      // Segment optimization impact
+      if (strategy.segmentOptimization) {
+        impacts.revenue += strategy.segmentOptimization.expectedImpact.revenueIncrease || 0;
+        impacts.profit += strategy.segmentOptimization.expectedImpact.profitMarginImprovement || 0;
+      }
+
+      // Calculate derived metrics
+      const currentRevenue = data.historical?.totalRevenue || 100000;
+      impacts.revenuePercentage = (impacts.revenue / currentRevenue) * 100;
+      impacts.profitPercentage = impacts.profit > 0 ? (impacts.profit / (currentRevenue * 0.3)) * 100 : 0;
+
+      // Risk-adjusted impact
+      impacts.riskAdjustedRevenue = impacts.revenue * this.getRiskAdjustmentFactor(strategy.riskTolerance);
+      impacts.confidenceLevel = await this.calculateConfidenceLevel(strategy, data);
+
+      return impacts;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Channel optimization impact
-    if (strategy.channelOptimization) {
-      impacts.revenue += strategy.channelOptimization.expectedImpact.revenueIncrease || 0;
-      impacts.profit += strategy.channelOptimization.expectedImpact.profitImprovement || 0;
-    }
-
-    // Segment optimization impact
-    if (strategy.segmentOptimization) {
-      impacts.revenue += strategy.segmentOptimization.expectedImpact.revenueIncrease || 0;
-      impacts.profit += strategy.segmentOptimization.expectedImpact.profitMarginImprovement || 0;
-    }
-
-    // Calculate derived metrics
-    const currentRevenue = data.historical?.totalRevenue || 100000;
-    impacts.revenuePercentage = (impacts.revenue / currentRevenue) * 100;
-    impacts.profitPercentage = impacts.profit > 0 ? (impacts.profit / (currentRevenue * 0.3)) * 100 : 0;
-
-    // Risk-adjusted impact
-    impacts.riskAdjustedRevenue = impacts.revenue * this.getRiskAdjustmentFactor(strategy.riskTolerance);
-    impacts.confidenceLevel = await this.calculateConfidenceLevel(strategy, data);
-
-    return impacts;
   }
 
   // Generate implementation plan
   async generateImplementationPlan(hotelId, data, options) {
-    return {
-      phases: [
-        {
-          phase: 1,
-          name: 'Foundation Setup',
-          duration: '2-4 weeks',
-          tasks: [
-            'Setup dynamic pricing system',
-            'Configure optimization rules',
-            'Establish monitoring dashboards',
-            'Train staff on new processes'
-          ],
-          expectedImpact: '15-20% of total impact',
-          prerequisites: ['Management approval', 'System integration']
+    try {
+      return {
+        phases: [
+          {
+            phase: 1,
+            name: 'Foundation Setup',
+            duration: '2-4 weeks',
+            tasks: [
+              'Setup dynamic pricing system',
+              'Configure optimization rules',
+              'Establish monitoring dashboards',
+              'Train staff on new processes'
+            ],
+            expectedImpact: '15-20% of total impact',
+            prerequisites: ['Management approval', 'System integration']
+          },
+          {
+            phase: 2,
+            name: 'Channel Optimization',
+            duration: '4-6 weeks',
+            tasks: [
+              'Optimize channel mix allocation',
+              'Implement new pricing strategies',
+              'Launch targeted marketing campaigns',
+              'Monitor and adjust channel performance'
+            ],
+            expectedImpact: '40-50% of total impact',
+            prerequisites: ['Phase 1 completion', 'Channel partner agreements']
+          },
+          {
+            phase: 3,
+            name: 'Market Expansion',
+            duration: '6-12 weeks',
+            tasks: [
+              'Launch new market penetration strategies',
+              'Implement localized pricing',
+              'Expand language support',
+              'Develop region-specific campaigns'
+            ],
+            expectedImpact: '35-45% of total impact',
+            prerequisites: ['Market research', 'Localization resources']
+          }
+        ],
+      
+        milestones: [
+          { week: 2, milestone: 'Dynamic pricing live', kpi: 'Price changes > 0' },
+          { week: 6, milestone: 'Channel mix optimized', kpi: 'Profit margin > baseline + 5%' },
+          { week: 12, milestone: 'Full optimization active', kpi: 'Revenue > baseline + target%' }
+        ],
+      
+        resources: {
+          technology: await this.calculateTechRequirements(options),
+          personnel: await this.calculateStaffRequirements(options),
+          budget: await this.estimateImplementationCost(options),
+          timeline: '3-6 months for full implementation'
         },
-        {
-          phase: 2,
-          name: 'Channel Optimization',
-          duration: '4-6 weeks',
-          tasks: [
-            'Optimize channel mix allocation',
-            'Implement new pricing strategies',
-            'Launch targeted marketing campaigns',
-            'Monitor and adjust channel performance'
-          ],
-          expectedImpact: '40-50% of total impact',
-          prerequisites: ['Phase 1 completion', 'Channel partner agreements']
-        },
-        {
-          phase: 3,
-          name: 'Market Expansion',
-          duration: '6-12 weeks',
-          tasks: [
-            'Launch new market penetration strategies',
-            'Implement localized pricing',
-            'Expand language support',
-            'Develop region-specific campaigns'
-          ],
-          expectedImpact: '35-45% of total impact',
-          prerequisites: ['Market research', 'Localization resources']
-        }
-      ],
       
-      milestones: [
-        { week: 2, milestone: 'Dynamic pricing live', kpi: 'Price changes > 0' },
-        { week: 6, milestone: 'Channel mix optimized', kpi: 'Profit margin > baseline + 5%' },
-        { week: 12, milestone: 'Full optimization active', kpi: 'Revenue > baseline + target%' }
-      ],
-      
-      resources: {
-        technology: await this.calculateTechRequirements(options),
-        personnel: await this.calculateStaffRequirements(options),
-        budget: await this.estimateImplementationCost(options),
-        timeline: '3-6 months for full implementation'
-      },
-      
-      riskMitigation: await this.generateImplementationRisks(options)
-    };
+        riskMitigation: await this.generateImplementationRisks(options)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Helper methods for calculations (real data implementations)
@@ -529,7 +561,7 @@ class RevenueOptimizationService {
         hotelId: new mongoose.Types.ObjectId(hotelId),
         checkIn: { $gte: startDate, $lte: endDate },
         status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-      }).populate('userId', 'email createdAt');
+      }).populate('userId', 'email createdAt').lean().limit(1000);
 
       // Calculate total revenue
       const totalRevenue = bookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
@@ -625,15 +657,19 @@ class RevenueOptimizationService {
   }
 
   async calculateConfidenceLevel(strategy, data) {
-    // Simplified confidence calculation based on data quality
-    let confidence = 0.7; // Base confidence
+    try {
+      // Simplified confidence calculation based on data quality
+      let confidence = 0.7; // Base confidence
     
-    if (data.historical) confidence += 0.1;
-    if (data.competitors) confidence += 0.1;
-    if (data.demand) confidence += 0.05;
-    if (data.market) confidence += 0.05;
+      if (data.historical) confidence += 0.1;
+      if (data.competitors) confidence += 0.1;
+      if (data.demand) confidence += 0.05;
+      if (data.market) confidence += 0.05;
     
-    return Math.min(confidence, 0.95);
+      return Math.min(confidence, 0.95);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Cache management

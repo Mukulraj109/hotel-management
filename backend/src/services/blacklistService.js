@@ -27,14 +27,14 @@ class BlacklistService {
         guestId: blacklistData.guestId,
         hotelId,
         isActive: true
-      });
+      }).lean();
 
       if (existingBlacklist) {
         throw new ApplicationError('Guest is already blacklisted', 400);
       }
 
       // Validate guest exists
-      const guest = await User.findById(blacklistData.guestId);
+      const guest = await User.findById(blacklistData.guestId).lean();
       if (!guest || guest.role !== 'guest') {
         throw new ApplicationError('Guest not found', 404);
       }
@@ -156,7 +156,7 @@ class BlacklistService {
             { phone: { $regex: search, $options: 'i' } }
           ],
           role: 'guest'
-        }).distinct('_id');
+        }).distinct('_id').lean().limit(1000);
 
         query.guestId = { $in: guestIds };
       }
@@ -171,7 +171,7 @@ class BlacklistService {
         .populate('reviewedBy', 'name email')
         .sort(sort)
         .skip(skip)
-        .limit(limit);
+        .limit(limit).lean();
 
       const total = await GuestBlacklist.countDocuments(query);
 
@@ -206,7 +206,7 @@ class BlacklistService {
    */
   async submitAppeal(blacklistId, appealNotes) {
     try {
-      const blacklistEntry = await GuestBlacklist.findById(blacklistId);
+      const blacklistEntry = await GuestBlacklist.findById(blacklistId).lean();
       
       if (!blacklistEntry) {
         throw new ApplicationError('Blacklist entry not found', 404);
@@ -240,7 +240,7 @@ class BlacklistService {
    */
   async reviewAppeal(blacklistId, status, reviewedBy, notes) {
     try {
-      const blacklistEntry = await GuestBlacklist.findById(blacklistId);
+      const blacklistEntry = await GuestBlacklist.findById(blacklistId).lean();
       
       if (!blacklistEntry) {
         throw new ApplicationError('Blacklist entry not found', 404);
@@ -328,7 +328,7 @@ class BlacklistService {
         .populate('createdBy', 'name email')
         .populate('updatedBy', 'name email')
         .populate('reviewedBy', 'name email')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 }).lean().limit(1000);
 
       return history;
     } catch (error) {
@@ -363,7 +363,7 @@ class BlacklistService {
       const blacklistEntries = await GuestBlacklist.find({ hotelId })
         .populate('guestId', 'name email phone')
         .populate('createdBy', 'name email')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 }).lean().limit(1000);
 
       if (format === 'csv') {
         const csvHeader = 'Guest Name,Guest Email,Guest Phone,Reason,Type,Category,Incident Date,Expiry Date,Status,Appeal Status,Created By,Created At\n';

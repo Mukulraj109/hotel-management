@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -279,7 +279,8 @@ export const AutomatedReportScheduling: React.FC<AutomatedReportSchedulingProps>
     }
 
     // Simulate completion after 3 seconds
-    setTimeout(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
       const schedule = scheduledReports.find(s => s.id === id);
       if (schedule) {
         const newExecution = {

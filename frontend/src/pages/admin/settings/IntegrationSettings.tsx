@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation } from '@tanstack/react-query';
 import {
@@ -137,6 +137,15 @@ export default function IntegrationSettings({ onSettingsChange }: IntegrationSet
   const watchedValues = watch();
 
   // Load existing integration settings on mount
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     const loadIntegrationSettings = async () => {
       try {
@@ -195,7 +204,8 @@ export default function IntegrationSettings({ onSettingsChange }: IntegrationSet
       }
 
       setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 3000);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
 
       toast.success(`Integration settings updated successfully${
         applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
@@ -216,7 +226,8 @@ export default function IntegrationSettings({ onSettingsChange }: IntegrationSet
 
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
 
         toast.success(`Integration settings updated for ${result.propertiesUpdated} properties`);
 
@@ -249,7 +260,7 @@ export default function IntegrationSettings({ onSettingsChange }: IntegrationSet
           placeholder={placeholder}
           className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-        <button
+        <button aria-label="Toggle"
           type="button"
           onClick={() => toggleShowSecret(secretKey)}
           className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"

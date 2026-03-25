@@ -37,6 +37,7 @@ import {
   Activity
 } from 'lucide-react';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface ComplianceAlert {
   type: string;
@@ -351,7 +352,7 @@ const ComplianceCenter: React.FC = () => {
         {/* Tab Navigation */}
         <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
           {['dashboard', 'monitoring', 'reports', 'actions'].map((tab) => (
-            <button
+            <button aria-label="Close"
               key={tab}
               onClick={() => setActiveTab(tab as typeof activeTab)}
               className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -835,4 +836,4 @@ const ComplianceCenter: React.FC = () => {
   );
 };
 
-export default ComplianceCenter;
+export default withErrorBoundary(ComplianceCenter, { level: 'component' });

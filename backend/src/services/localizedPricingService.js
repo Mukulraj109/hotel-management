@@ -85,74 +85,78 @@ class LocalizedPricingService {
 
   // Calculate prices with local market adjustments
   async calculateLocalizedPrices(params) {
-    const {
-      baseRates,
-      marketConditions,
-      competitorAnalysis,
-      demandForecast,
-      currency,
-      market,
-      channelIds
-    } = params;
+    try {
+      const {
+        baseRates,
+        marketConditions,
+        competitorAnalysis,
+        demandForecast,
+        currency,
+        market,
+        channelIds
+      } = params;
 
-    const localizedPrices = new Map();
+      const localizedPrices = new Map();
 
-    for (const [roomTypeId, baseRate] of Object.entries(baseRates)) {
-      // Apply market-specific adjustments
-      let adjustedRate = baseRate;
+      for (const [roomTypeId, baseRate] of Object.entries(baseRates)) {
+        // Apply market-specific adjustments
+        let adjustedRate = baseRate;
 
-      // Seasonality adjustment
-      if (marketConditions.seasonality) {
-        const seasonalFactor = this.priceAdjustmentFactors.seasonality[marketConditions.seasonality.level] || 1.0;
-        adjustedRate *= seasonalFactor;
+        // Seasonality adjustment
+        if (marketConditions.seasonality) {
+          const seasonalFactor = this.priceAdjustmentFactors.seasonality[marketConditions.seasonality.level] || 1.0;
+          adjustedRate *= seasonalFactor;
+        }
+
+        // Demand adjustment
+        if (demandForecast.level) {
+          const demandFactor = this.priceAdjustmentFactors.demand[demandForecast.level] || 1.0;
+          adjustedRate *= demandFactor;
+        }
+
+        // Competition adjustment
+        if (competitorAnalysis.position) {
+          const compFactor = this.priceAdjustmentFactors.competition[competitorAnalysis.position] || 1.0;
+          adjustedRate *= compFactor;
+        }
+
+        // Occupancy-based adjustment
+        if (marketConditions.occupancyTrend) {
+          const occFactor = this.priceAdjustmentFactors.occupancy[marketConditions.occupancyTrend] || 1.0;
+          adjustedRate *= occFactor;
+        }
+
+        // Local market premium/discount
+        if (marketConditions.marketPremium) {
+          adjustedRate *= (1 + marketConditions.marketPremium / 100);
+        }
+
+        // Currency conversion and local purchasing power adjustment
+        const convertedRate = await this.convertWithPurchasingPower(adjustedRate, currency, market);
+
+        // Channel-specific pricing
+        const channelPrices = await this.calculateChannelPricing(convertedRate, channelIds, market);
+
+        localizedPrices.set(roomTypeId, {
+          baseRate,
+          adjustedRate,
+          convertedRate,
+          channelPrices,
+          adjustmentFactors: {
+            seasonality: marketConditions.seasonality?.level,
+            demand: demandForecast.level,
+            competition: competitorAnalysis.position,
+            occupancy: marketConditions.occupancyTrend,
+            marketPremium: marketConditions.marketPremium
+          },
+          confidence: this.calculateConfidence(marketConditions, competitorAnalysis, demandForecast)
+        });
       }
 
-      // Demand adjustment
-      if (demandForecast.level) {
-        const demandFactor = this.priceAdjustmentFactors.demand[demandForecast.level] || 1.0;
-        adjustedRate *= demandFactor;
-      }
-
-      // Competition adjustment
-      if (competitorAnalysis.position) {
-        const compFactor = this.priceAdjustmentFactors.competition[competitorAnalysis.position] || 1.0;
-        adjustedRate *= compFactor;
-      }
-
-      // Occupancy-based adjustment
-      if (marketConditions.occupancyTrend) {
-        const occFactor = this.priceAdjustmentFactors.occupancy[marketConditions.occupancyTrend] || 1.0;
-        adjustedRate *= occFactor;
-      }
-
-      // Local market premium/discount
-      if (marketConditions.marketPremium) {
-        adjustedRate *= (1 + marketConditions.marketPremium / 100);
-      }
-
-      // Currency conversion and local purchasing power adjustment
-      const convertedRate = await this.convertWithPurchasingPower(adjustedRate, currency, market);
-
-      // Channel-specific pricing
-      const channelPrices = await this.calculateChannelPricing(convertedRate, channelIds, market);
-
-      localizedPrices.set(roomTypeId, {
-        baseRate,
-        adjustedRate,
-        convertedRate,
-        channelPrices,
-        adjustmentFactors: {
-          seasonality: marketConditions.seasonality?.level,
-          demand: demandForecast.level,
-          competition: competitorAnalysis.position,
-          occupancy: marketConditions.occupancyTrend,
-          marketPremium: marketConditions.marketPremium
-        },
-        confidence: this.calculateConfidence(marketConditions, competitorAnalysis, demandForecast)
-      });
+      return Object.fromEntries(localizedPrices);
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return Object.fromEntries(localizedPrices);
   }
 
   // Convert rates with purchasing power parity adjustment
@@ -180,65 +184,77 @@ class LocalizedPricingService {
 
   // Get purchasing power adjustment factor for market
   async getPurchasingPowerAdjustment(market, currency) {
-    const pppFactors = {
-      'US': 1.0,
-      'EU': 0.95,
-      'UK': 1.1,
-      'JP': 1.05,
-      'CN': 0.65,
-      'IN': 0.45,
-      'BR': 0.55,
-      'AU': 1.15,
-      'CA': 0.92,
-      'MX': 0.48
-    };
+    try {
+      const pppFactors = {
+        'US': 1.0,
+        'EU': 0.95,
+        'UK': 1.1,
+        'JP': 1.05,
+        'CN': 0.65,
+        'IN': 0.45,
+        'BR': 0.55,
+        'AU': 1.15,
+        'CA': 0.92,
+        'MX': 0.48
+      };
 
-    return pppFactors[market] || 1.0;
+      return pppFactors[market] || 1.0;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Get local tax adjustment factor
   async getLocalTaxAdjustment(market, currency) {
-    const taxFactors = {
-      'US': 1.0,
-      'EU': 1.12, // Higher VAT rates
-      'UK': 1.10,
-      'JP': 1.08,
-      'CN': 1.06,
-      'IN': 1.18, // Higher GST
-      'BR': 1.15,
-      'AU': 1.10,
-      'CA': 1.08,
-      'MX': 1.16
-    };
+    try {
+      const taxFactors = {
+        'US': 1.0,
+        'EU': 1.12, // Higher VAT rates
+        'UK': 1.10,
+        'JP': 1.08,
+        'CN': 1.06,
+        'IN': 1.18, // Higher GST
+        'BR': 1.15,
+        'AU': 1.10,
+        'CA': 1.08,
+        'MX': 1.16
+      };
 
-    return taxFactors[market] || 1.0;
+      return taxFactors[market] || 1.0;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Calculate channel-specific pricing
   async calculateChannelPricing(baseRate, channelIds, market) {
-    const channelPrices = new Map();
+    try {
+      const channelPrices = new Map();
 
-    // Default channel markups by market
-    const channelMarkups = {
-      booking_com: { US: 0.05, EU: 0.08, default: 0.06 },
-      expedia: { US: 0.04, EU: 0.07, default: 0.05 },
-      agoda: { CN: 0.03, default: 0.06 },
-      airbnb: { US: 0.08, EU: 0.10, default: 0.09 },
-      direct: { default: 0.0 } // No markup for direct bookings
-    };
+      // Default channel markups by market
+      const channelMarkups = {
+        booking_com: { US: 0.05, EU: 0.08, default: 0.06 },
+        expedia: { US: 0.04, EU: 0.07, default: 0.05 },
+        agoda: { CN: 0.03, default: 0.06 },
+        airbnb: { US: 0.08, EU: 0.10, default: 0.09 },
+        direct: { default: 0.0 } // No markup for direct bookings
+      };
 
-    for (const channelId of channelIds) {
-      const markup = channelMarkups[channelId]?.[market] || channelMarkups[channelId]?.default || 0.05;
-      const channelRate = baseRate * (1 + markup);
+      for (const channelId of channelIds) {
+        const markup = channelMarkups[channelId]?.[market] || channelMarkups[channelId]?.default || 0.05;
+        const channelRate = baseRate * (1 + markup);
       
-      channelPrices.set(channelId, {
-        rate: Math.round(channelRate * 100) / 100,
-        markup: markup * 100,
-        commission: this.getChannelCommission(channelId, market)
-      });
-    }
+        channelPrices.set(channelId, {
+          rate: Math.round(channelRate * 100) / 100,
+          markup: markup * 100,
+          commission: this.getChannelCommission(channelId, market)
+        });
+      }
 
-    return Object.fromEntries(channelPrices);
+      return Object.fromEntries(channelPrices);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Get channel commission rates by market
@@ -352,59 +368,67 @@ class LocalizedPricingService {
 
   // Generate pricing recommendations
   async generateRecommendations(localizedPrices, marketConditions) {
-    const recommendations = [];
+    try {
+      const recommendations = [];
 
-    for (const [roomTypeId, pricing] of Object.entries(localizedPrices)) {
-      if (pricing.confidence < 0.6) {
-        recommendations.push({
-          type: 'low_confidence',
-          roomTypeId,
-          message: 'Consider manual review due to low confidence in market data',
-          priority: 'medium'
-        });
-      }
+      for (const [roomTypeId, pricing] of Object.entries(localizedPrices)) {
+        if (pricing.confidence < 0.6) {
+          recommendations.push({
+            type: 'low_confidence',
+            roomTypeId,
+            message: 'Consider manual review due to low confidence in market data',
+            priority: 'medium'
+          });
+        }
 
-      if (marketConditions.seasonality?.level === 'peak') {
-        recommendations.push({
-          type: 'seasonal_opportunity',
-          roomTypeId,
-          message: 'Peak season detected - consider premium pricing strategy',
-          priority: 'high',
-          suggestedAdjustment: '+15%'
-        });
-      }
+        if (marketConditions.seasonality?.level === 'peak') {
+          recommendations.push({
+            type: 'seasonal_opportunity',
+            roomTypeId,
+            message: 'Peak season detected - consider premium pricing strategy',
+            priority: 'high',
+            suggestedAdjustment: '+15%'
+          });
+        }
 
-      // Check for significant price differences between channels
-      const channelRates = Object.values(pricing.channelPrices || {}).map(cp => cp.rate);
-      const maxRate = Math.max(...channelRates);
-      const minRate = Math.min(...channelRates);
+        // Check for significant price differences between channels
+        const channelRates = Object.values(pricing.channelPrices || {}).map(cp => cp.rate);
+        const maxRate = Math.max(...channelRates);
+        const minRate = Math.min(...channelRates);
       
-      if (maxRate / minRate > 1.2) {
-        recommendations.push({
-          type: 'channel_disparity',
-          roomTypeId,
-          message: 'Large price disparity across channels - review channel strategy',
-          priority: 'medium'
-        });
+        if (maxRate / minRate > 1.2) {
+          recommendations.push({
+            type: 'channel_disparity',
+            roomTypeId,
+            message: 'Large price disparity across channels - review channel strategy',
+            priority: 'medium'
+          });
+        }
       }
-    }
 
-    return recommendations;
+      return recommendations;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Optimize pricing for specific channels
   async optimizeForChannels(localizedPrices, channelIds) {
-    const optimization = {};
+    try {
+      const optimization = {};
 
-    for (const channelId of channelIds) {
-      optimization[channelId] = {
-        recommendedStrategy: await this.getChannelStrategy(channelId),
-        competitivePosition: await this.analyzeChannelPosition(channelId),
-        optimizations: await this.generateChannelOptimizations(channelId, localizedPrices)
-      };
+      for (const channelId of channelIds) {
+        optimization[channelId] = {
+          recommendedStrategy: await this.getChannelStrategy(channelId),
+          competitivePosition: await this.analyzeChannelPosition(channelId),
+          optimizations: await this.generateChannelOptimizations(channelId, localizedPrices)
+        };
+      }
+
+      return optimization;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return optimization;
   }
 
   // Get cached pricing strategy
@@ -455,26 +479,30 @@ class LocalizedPricingService {
 
   // Helper methods for market analysis
   async getSeasonalityData(market, dateRange) {
-    // Simplified seasonality detection
-    const month = new Date().getMonth();
-    const seasons = {
-      spring: [2, 3, 4], // Mar-May
-      summer: [5, 6, 7], // Jun-Aug
-      fall: [8, 9, 10],  // Sep-Nov
-      winter: [11, 0, 1] // Dec-Feb
-    };
+    try {
+      // Simplified seasonality detection
+      const month = new Date().getMonth();
+      const seasons = {
+        spring: [2, 3, 4], // Mar-May
+        summer: [5, 6, 7], // Jun-Aug
+        fall: [8, 9, 10],  // Sep-Nov
+        winter: [11, 0, 1] // Dec-Feb
+      };
 
-    for (const [season, months] of Object.entries(seasons)) {
-      if (months.includes(month)) {
-        return {
-          season,
-          level: this.getSeasonalLevel(season, market),
-          trend: 'stable'
-        };
+      for (const [season, months] of Object.entries(seasons)) {
+        if (months.includes(month)) {
+          return {
+            season,
+            level: this.getSeasonalLevel(season, market),
+            trend: 'stable'
+          };
+        }
       }
-    }
 
-    return { season: 'unknown', level: 'medium', trend: 'stable' };
+      return { season: 'unknown', level: 'medium', trend: 'stable' };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   getSeasonalLevel(season, market) {
@@ -497,7 +525,7 @@ class LocalizedPricingService {
         query._id = new mongoose.Types.ObjectId(roomTypeId);
       }
 
-      const roomTypes = await RoomType.find(query).select('code name baseRate baseCurrency');
+      const roomTypes = await RoomType.find(query).select('code name baseRate baseCurrency').lean().limit(1000);
 
       // Build rate map with room type codes as keys
       const rates = {};
@@ -553,12 +581,16 @@ class LocalizedPricingService {
 
   // Additional helper methods would be implemented here
   async analyzeCompetitors(hotelId, market, competitorData) {
-    return {
-      position: 'at',
-      dataQuality: 'medium',
-      averageRate: 175.00,
-      insights: []
-    };
+    try {
+      return {
+        position: 'at',
+        dataQuality: 'medium',
+        averageRate: 175.00,
+        insights: []
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   assessPricingRisk(localizedPrices, marketConditions) {

@@ -31,7 +31,7 @@ export const createBillingSession = catchAsync(async (req, res) => {
     roomNumber,
     hotelId,
     status: { $in: ['draft', 'room_charged'] }
-  });
+  }).lean();
 
   if (existingSession) {
     throw new ApplicationError('There is already an active billing session for this room', 409);
@@ -41,7 +41,7 @@ export const createBillingSession = catchAsync(async (req, res) => {
   let actualBookingId = bookingId;
   if (bookingNumber && !bookingId) {
     try {
-      const booking = await Booking.findOne({ bookingNumber });
+      const booking = await Booking.findOne({ bookingNumber }).lean();
       if (booking) {
         actualBookingId = booking._id;
       }
@@ -76,7 +76,7 @@ export const getBillingSession = catchAsync(async (req, res) => {
   const billingSession = await BillingSession.findById(id)
     .populate('hotelId', 'name')
     .populate('bookingId', 'bookingNumber checkIn checkOut')
-    .populate('createdBy', 'name');
+    .populate('createdBy', 'name').lean();
 
   if (!billingSession) {
     throw new ApplicationError('Billing session not found', 404);
@@ -138,7 +138,7 @@ export const updateBillingSession = catchAsync(async (req, res) => {
 export const deleteBillingSession = catchAsync(async (req, res) => {
   const { id } = req.params;
 
-  const billingSession = await BillingSession.findById(id);
+  const billingSession = await BillingSession.findById(id).lean();
 
   if (!billingSession) {
     throw new ApplicationError('Billing session not found', 404);
@@ -299,7 +299,7 @@ export const checkoutSession = catchAsync(async (req, res) => {
 
   if (!billingSession) {
     // Determine the specific error
-    const existing = await BillingSession.findById(id);
+    const existing = await BillingSession.findById(id).lean();
     if (!existing) {
       throw new ApplicationError('Billing session not found', 404);
     }
@@ -315,7 +315,7 @@ export const checkoutSession = catchAsync(async (req, res) => {
   // Check access permissions (post-update verification)
   if (req.user.role === 'staff' && billingSession.hotelId.toString() !== req.user.hotelId.toString()) {
     // Revert the status change since the user doesn't have permission
-    await BillingSession.findByIdAndUpdate(id, { $set: { status: 'draft' }, $unset: { 'payment.paidAt': 1 } });
+    await BillingSession.findByIdAndUpdate(id, { $set: { status: 'draft' }, $unset: { 'payment.paidAt': 1 } }, { new: true });
     throw new ApplicationError('You can only checkout billing sessions for your hotel', 403);
   }
 
@@ -372,7 +372,7 @@ export const voidSession = catchAsync(async (req, res) => {
   );
 
   if (!billingSession) {
-    const existing = await BillingSession.findById(id);
+    const existing = await BillingSession.findById(id).lean();
     if (!existing) {
       throw new ApplicationError('Billing session not found', 404);
     }
@@ -382,7 +382,7 @@ export const voidSession = catchAsync(async (req, res) => {
   // Check access permissions (post-update verification)
   if (req.user.role === 'staff' && billingSession.hotelId.toString() !== req.user.hotelId.toString()) {
     // Revert the void since the user doesn't have permission
-    await BillingSession.findByIdAndUpdate(id, { $set: { status: 'draft' }, $unset: { voidedAt: 1 } });
+    await BillingSession.findByIdAndUpdate(id, { $set: { status: 'draft' }, $unset: { voidedAt: 1 } }, { new: true });
     throw new ApplicationError('You can only void billing sessions for your hotel', 403);
   }
 
@@ -416,7 +416,7 @@ export const getHotelBillingSessions = catchAsync(async (req, res) => {
     .populate('createdBy', 'name')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   const total = await BillingSession.countDocuments(query);
 

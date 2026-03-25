@@ -373,7 +373,7 @@ router.get('/notifications/export', authorize(['admin']), validateAnalyticsReque
   const data = await NotificationAnalytics.find({
     hotelId,
     createdAt: { $gte: startDate }
-  }).populate('userId', 'name email role').populate('notificationId', 'title message category');
+  }).populate('userId', 'name email role').populate('notificationId', 'title message category').lean().limit(1000);
 
   if (format === 'csv') {
     // Convert to CSV format

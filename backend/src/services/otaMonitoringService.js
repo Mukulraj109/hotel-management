@@ -101,139 +101,163 @@ class OTAMonitoringService extends EventEmitter {
    * Record sync performance metrics
    */
   async recordSyncPerformance(hotelId, channelId, syncData) {
-    const performanceData = {
-      syncType: syncData.syncType || 'unknown',
-      duration: syncData.duration,
-      itemsSynced: syncData.itemsSynced || 0,
-      itemsFailed: syncData.itemsFailed || 0,
-      responseTime: syncData.responseTime,
-      httpStatus: syncData.httpStatus,
-      success: syncData.success,
-      error: syncData.error || null,
-      retryCount: syncData.retryCount || 0
-    };
+    try {
+      const performanceData = {
+        syncType: syncData.syncType || 'unknown',
+        duration: syncData.duration,
+        itemsSynced: syncData.itemsSynced || 0,
+        itemsFailed: syncData.itemsFailed || 0,
+        responseTime: syncData.responseTime,
+        httpStatus: syncData.httpStatus,
+        success: syncData.success,
+        error: syncData.error || null,
+        retryCount: syncData.retryCount || 0
+      };
 
-    await this.recordMetric(hotelId, channelId, 'sync_performance', performanceData, {
-      syncType: syncData.syncType,
-      success: syncData.success.toString()
-    });
+      await this.recordMetric(hotelId, channelId, 'sync_performance', performanceData, {
+        syncType: syncData.syncType,
+        success: syncData.success.toString()
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Record translation quality metrics
    */
   async recordTranslationQuality(hotelId, channelId, translationData) {
-    const qualityData = {
-      sourceLanguage: translationData.sourceLanguage,
-      targetLanguage: translationData.targetLanguage,
-      contentType: translationData.contentType,
-      originalLength: translationData.originalLength,
-      translatedLength: translationData.translatedLength,
-      confidenceScore: translationData.confidenceScore,
-      processingTime: translationData.processingTime,
-      method: translationData.method || 'automatic',
-      approved: translationData.approved || false,
-      reviewerRating: translationData.reviewerRating || null
-    };
+    try {
+      const qualityData = {
+        sourceLanguage: translationData.sourceLanguage,
+        targetLanguage: translationData.targetLanguage,
+        contentType: translationData.contentType,
+        originalLength: translationData.originalLength,
+        translatedLength: translationData.translatedLength,
+        confidenceScore: translationData.confidenceScore,
+        processingTime: translationData.processingTime,
+        method: translationData.method || 'automatic',
+        approved: translationData.approved || false,
+        reviewerRating: translationData.reviewerRating || null
+      };
 
-    await this.recordMetric(hotelId, channelId, 'translation_quality', qualityData, {
-      sourceLanguage: translationData.sourceLanguage,
-      targetLanguage: translationData.targetLanguage,
-      contentType: translationData.contentType,
-      method: translationData.method
-    });
+      await this.recordMetric(hotelId, channelId, 'translation_quality', qualityData, {
+        sourceLanguage: translationData.sourceLanguage,
+        targetLanguage: translationData.targetLanguage,
+        contentType: translationData.contentType,
+        method: translationData.method
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Record rate distribution metrics
    */
   async recordRateDistribution(hotelId, channelId, rateData) {
-    const distributionData = {
-      baseCurrency: rateData.baseCurrency,
-      targetCurrency: rateData.targetCurrency,
-      conversionRate: rateData.conversionRate,
-      originalRate: rateData.originalRate,
-      convertedRate: rateData.convertedRate,
-      markup: rateData.markup || 0,
-      ratesProcessed: rateData.ratesProcessed || 1,
-      processingTime: rateData.processingTime,
-      success: rateData.success,
-      errors: rateData.errors || []
-    };
+    try {
+      const distributionData = {
+        baseCurrency: rateData.baseCurrency,
+        targetCurrency: rateData.targetCurrency,
+        conversionRate: rateData.conversionRate,
+        originalRate: rateData.originalRate,
+        convertedRate: rateData.convertedRate,
+        markup: rateData.markup || 0,
+        ratesProcessed: rateData.ratesProcessed || 1,
+        processingTime: rateData.processingTime,
+        success: rateData.success,
+        errors: rateData.errors || []
+      };
 
-    await this.recordMetric(hotelId, channelId, 'rate_distribution', distributionData, {
-      baseCurrency: rateData.baseCurrency,
-      targetCurrency: rateData.targetCurrency,
-      success: rateData.success.toString()
-    });
+      await this.recordMetric(hotelId, channelId, 'rate_distribution', distributionData, {
+        baseCurrency: rateData.baseCurrency,
+        targetCurrency: rateData.targetCurrency,
+        success: rateData.success.toString()
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Record content delivery metrics
    */
   async recordContentDelivery(hotelId, channelId, contentData) {
-    const deliveryData = {
-      contentType: contentData.contentType,
-      languages: contentData.languages || [],
-      totalSize: contentData.totalSize || 0,
-      compressionRatio: contentData.compressionRatio || 0,
-      deliveryTime: contentData.deliveryTime,
-      cacheHit: contentData.cacheHit || false,
-      cdnUsed: contentData.cdnUsed || false,
-      httpStatus: contentData.httpStatus,
-      success: contentData.success
-    };
+    try {
+      const deliveryData = {
+        contentType: contentData.contentType,
+        languages: contentData.languages || [],
+        totalSize: contentData.totalSize || 0,
+        compressionRatio: contentData.compressionRatio || 0,
+        deliveryTime: contentData.deliveryTime,
+        cacheHit: contentData.cacheHit || false,
+        cdnUsed: contentData.cdnUsed || false,
+        httpStatus: contentData.httpStatus,
+        success: contentData.success
+      };
 
-    await this.recordMetric(hotelId, channelId, 'content_delivery', deliveryData, {
-      contentType: contentData.contentType,
-      cacheHit: contentData.cacheHit.toString(),
-      success: contentData.success.toString()
-    });
+      await this.recordMetric(hotelId, channelId, 'content_delivery', deliveryData, {
+        contentType: contentData.contentType,
+        cacheHit: contentData.cacheHit.toString(),
+        success: contentData.success.toString()
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Record error tracking metrics
    */
   async recordError(hotelId, channelId, errorData) {
-    const errorMetric = {
-      errorType: errorData.type || 'unknown',
-      errorCode: errorData.code || null,
-      errorMessage: errorData.message || '',
-      stackTrace: errorData.stack || null,
-      context: errorData.context || {},
-      severity: errorData.severity || 'medium',
-      recoverable: errorData.recoverable || false,
-      userImpact: errorData.userImpact || 'unknown',
-      resolution: errorData.resolution || null
-    };
+    try {
+      const errorMetric = {
+        errorType: errorData.type || 'unknown',
+        errorCode: errorData.code || null,
+        errorMessage: errorData.message || '',
+        stackTrace: errorData.stack || null,
+        context: errorData.context || {},
+        severity: errorData.severity || 'medium',
+        recoverable: errorData.recoverable || false,
+        userImpact: errorData.userImpact || 'unknown',
+        resolution: errorData.resolution || null
+      };
 
-    await this.recordMetric(hotelId, channelId, 'error_tracking', errorMetric, {
-      errorType: errorData.type,
-      severity: errorData.severity,
-      recoverable: errorData.recoverable.toString()
-    });
+      await this.recordMetric(hotelId, channelId, 'error_tracking', errorMetric, {
+        errorType: errorData.type,
+        severity: errorData.severity,
+        recoverable: errorData.recoverable.toString()
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Record business metrics
    */
   async recordBusinessMetrics(hotelId, channelId, businessData) {
-    const metrics = {
-      bookingsReceived: businessData.bookingsReceived || 0,
-      revenue: businessData.revenue || 0,
-      currency: businessData.currency || 'USD',
-      averageRate: businessData.averageRate || 0,
-      occupancyRate: businessData.occupancyRate || 0,
-      conversionRate: businessData.conversionRate || 0,
-      clickThroughRate: businessData.clickThroughRate || 0,
-      impressions: businessData.impressions || 0,
-      period: businessData.period || 'daily'
-    };
+    try {
+      const metrics = {
+        bookingsReceived: businessData.bookingsReceived || 0,
+        revenue: businessData.revenue || 0,
+        currency: businessData.currency || 'USD',
+        averageRate: businessData.averageRate || 0,
+        occupancyRate: businessData.occupancyRate || 0,
+        conversionRate: businessData.conversionRate || 0,
+        clickThroughRate: businessData.clickThroughRate || 0,
+        impressions: businessData.impressions || 0,
+        period: businessData.period || 'daily'
+      };
 
-    await this.recordMetric(hotelId, channelId, 'business_metrics', metrics, {
-      currency: businessData.currency,
-      period: businessData.period
-    });
+      await this.recordMetric(hotelId, channelId, 'business_metrics', metrics, {
+        currency: businessData.currency,
+        period: businessData.period
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -461,50 +485,54 @@ class OTAMonitoringService extends EventEmitter {
   }
 
   async checkAlerts(hotelId, channelId, metricType, data) {
-    const alertConditions = [];
+    try {
+      const alertConditions = [];
 
-    switch (metricType) {
-      case 'sync_performance':
-        if (!data.success) {
-          alertConditions.push({
-            type: 'sync_failure',
-            severity: 'high',
-            message: `Sync failed for ${channelId}: ${data.error}`
-          });
-        }
-        if (data.responseTime > this.alertThresholds.averageResponseTime) {
-          alertConditions.push({
-            type: 'slow_response',
-            severity: 'medium',
-            message: `Slow response time for ${channelId}: ${data.responseTime}ms`
-          });
-        }
-        break;
+      switch (metricType) {
+        case 'sync_performance':
+          if (!data.success) {
+            alertConditions.push({
+              type: 'sync_failure',
+              severity: 'high',
+              message: `Sync failed for ${channelId}: ${data.error}`
+            });
+          }
+          if (data.responseTime > this.alertThresholds.averageResponseTime) {
+            alertConditions.push({
+              type: 'slow_response',
+              severity: 'medium',
+              message: `Slow response time for ${channelId}: ${data.responseTime}ms`
+            });
+          }
+          break;
 
-      case 'translation_quality':
-        if (data.confidenceScore < this.alertThresholds.translationAccuracy) {
-          alertConditions.push({
-            type: 'poor_translation',
-            severity: 'medium',
-            message: `Low translation quality for ${channelId}: ${data.confidenceScore}%`
-          });
-        }
-        break;
+        case 'translation_quality':
+          if (data.confidenceScore < this.alertThresholds.translationAccuracy) {
+            alertConditions.push({
+              type: 'poor_translation',
+              severity: 'medium',
+              message: `Low translation quality for ${channelId}: ${data.confidenceScore}%`
+            });
+          }
+          break;
 
-      case 'error_tracking':
-        if (data.severity === 'high' || data.severity === 'critical') {
-          alertConditions.push({
-            type: 'critical_error',
-            severity: data.severity,
-            message: `${data.severity} error in ${channelId}: ${data.errorMessage}`
-          });
-        }
-        break;
-    }
+        case 'error_tracking':
+          if (data.severity === 'high' || data.severity === 'critical') {
+            alertConditions.push({
+              type: 'critical_error',
+              severity: data.severity,
+              message: `${data.severity} error in ${channelId}: ${data.errorMessage}`
+            });
+          }
+          break;
+      }
 
-    // Process alerts
-    for (const alert of alertConditions) {
-      await this.processAlert(hotelId, channelId, alert);
+      // Process alerts
+      for (const alert of alertConditions) {
+        await this.processAlert(hotelId, channelId, alert);
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -552,7 +580,7 @@ class OTAMonitoringService extends EventEmitter {
     const activeChannels = await ChannelConfiguration.find({
       'status.isActive': true,
       'status.connectionStatus': 'connected'
-    });
+    }).lean().limit(1000);
 
     for (const channel of activeChannels) {
       try {
@@ -601,152 +629,176 @@ class OTAMonitoringService extends EventEmitter {
   }
 
   async getSyncMetrics(hotelId, startDate, endDate) {
-    return await OTAMetric.aggregate([
-      {
-        $match: {
-          hotelId: mongoose.Types.ObjectId(hotelId),
-          metricType: 'sync_performance',
-          timestamp: { $gte: startDate, $lte: endDate }
-        }
-      },
-      {
-        $group: {
-          _id: '$channelId',
-          totalSyncs: { $sum: 1 },
-          successfulSyncs: { 
-            $sum: { $cond: ['$data.success', 1, 0] }
-          },
-          averageResponseTime: { $avg: '$data.responseTime' },
-          totalItems: { $sum: '$data.itemsSynced' }
-        }
-      },
-      {
-        $addFields: {
-          successRate: {
-            $multiply: [
-              { $divide: ['$successfulSyncs', '$totalSyncs'] },
-              100
-            ]
+    try {
+      return await OTAMetric.aggregate([
+        {
+          $match: {
+            hotelId: mongoose.Types.ObjectId(hotelId),
+            metricType: 'sync_performance',
+            timestamp: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: '$channelId',
+            totalSyncs: { $sum: 1 },
+            successfulSyncs: { 
+              $sum: { $cond: ['$data.success', 1, 0] }
+            },
+            averageResponseTime: { $avg: '$data.responseTime' },
+            totalItems: { $sum: '$data.itemsSynced' }
+          }
+        },
+        {
+          $addFields: {
+            successRate: {
+              $multiply: [
+                { $divide: ['$successfulSyncs', '$totalSyncs'] },
+                100
+              ]
+            }
           }
         }
-      }
-    ]);
+      ]);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getTranslationMetrics(hotelId, startDate, endDate) {
-    return await OTAMetric.aggregate([
-      {
-        $match: {
-          hotelId: mongoose.Types.ObjectId(hotelId),
-          metricType: 'translation_quality',
-          timestamp: { $gte: startDate, $lte: endDate }
+    try {
+      return await OTAMetric.aggregate([
+        {
+          $match: {
+            hotelId: mongoose.Types.ObjectId(hotelId),
+            metricType: 'translation_quality',
+            timestamp: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              channelId: '$channelId',
+              targetLanguage: '$data.targetLanguage'
+            },
+            totalTranslations: { $sum: 1 },
+            averageConfidence: { $avg: '$data.confidenceScore' },
+            averageProcessingTime: { $avg: '$data.processingTime' }
+          }
         }
-      },
-      {
-        $group: {
-          _id: {
-            channelId: '$channelId',
-            targetLanguage: '$data.targetLanguage'
-          },
-          totalTranslations: { $sum: 1 },
-          averageConfidence: { $avg: '$data.confidenceScore' },
-          averageProcessingTime: { $avg: '$data.processingTime' }
-        }
-      }
-    ]);
+      ]);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getRateMetrics(hotelId, startDate, endDate) {
-    return await OTAMetric.aggregate([
-      {
-        $match: {
-          hotelId: mongoose.Types.ObjectId(hotelId),
-          metricType: 'rate_distribution',
-          timestamp: { $gte: startDate, $lte: endDate }
+    try {
+      return await OTAMetric.aggregate([
+        {
+          $match: {
+            hotelId: mongoose.Types.ObjectId(hotelId),
+            metricType: 'rate_distribution',
+            timestamp: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: '$channelId',
+            totalRates: { $sum: '$data.ratesProcessed' },
+            successfulDistributions: {
+              $sum: { $cond: ['$data.success', 1, 0] }
+            },
+            averageProcessingTime: { $avg: '$data.processingTime' }
+          }
         }
-      },
-      {
-        $group: {
-          _id: '$channelId',
-          totalRates: { $sum: '$data.ratesProcessed' },
-          successfulDistributions: {
-            $sum: { $cond: ['$data.success', 1, 0] }
-          },
-          averageProcessingTime: { $avg: '$data.processingTime' }
-        }
-      }
-    ]);
+      ]);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getContentMetrics(hotelId, startDate, endDate) {
-    return await OTAMetric.aggregate([
-      {
-        $match: {
-          hotelId: mongoose.Types.ObjectId(hotelId),
-          metricType: 'content_delivery',
-          timestamp: { $gte: startDate, $lte: endDate }
+    try {
+      return await OTAMetric.aggregate([
+        {
+          $match: {
+            hotelId: mongoose.Types.ObjectId(hotelId),
+            metricType: 'content_delivery',
+            timestamp: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: '$channelId',
+            totalDeliveries: { $sum: 1 },
+            successfulDeliveries: {
+              $sum: { $cond: ['$data.success', 1, 0] }
+            },
+            cacheHitRate: {
+              $avg: { $cond: ['$data.cacheHit', 1, 0] }
+            },
+            averageDeliveryTime: { $avg: '$data.deliveryTime' }
+          }
         }
-      },
-      {
-        $group: {
-          _id: '$channelId',
-          totalDeliveries: { $sum: 1 },
-          successfulDeliveries: {
-            $sum: { $cond: ['$data.success', 1, 0] }
-          },
-          cacheHitRate: {
-            $avg: { $cond: ['$data.cacheHit', 1, 0] }
-          },
-          averageDeliveryTime: { $avg: '$data.deliveryTime' }
-        }
-      }
-    ]);
+      ]);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getErrorMetrics(hotelId, startDate, endDate) {
-    return await OTAMetric.aggregate([
-      {
-        $match: {
-          hotelId: mongoose.Types.ObjectId(hotelId),
-          metricType: 'error_tracking',
-          timestamp: { $gte: startDate, $lte: endDate }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            channelId: '$channelId',
-            errorType: '$data.errorType',
-            severity: '$data.severity'
-          },
-          count: { $sum: 1 },
-          recoverable: {
-            $sum: { $cond: ['$data.recoverable', 1, 0] }
+    try {
+      return await OTAMetric.aggregate([
+        {
+          $match: {
+            hotelId: mongoose.Types.ObjectId(hotelId),
+            metricType: 'error_tracking',
+            timestamp: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              channelId: '$channelId',
+              errorType: '$data.errorType',
+              severity: '$data.severity'
+            },
+            count: { $sum: 1 },
+            recoverable: {
+              $sum: { $cond: ['$data.recoverable', 1, 0] }
+            }
           }
         }
-      }
-    ]);
+      ]);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getBusinessMetrics(hotelId, startDate, endDate) {
-    return await OTAMetric.aggregate([
-      {
-        $match: {
-          hotelId: mongoose.Types.ObjectId(hotelId),
-          metricType: 'business_metrics',
-          timestamp: { $gte: startDate, $lte: endDate }
+    try {
+      return await OTAMetric.aggregate([
+        {
+          $match: {
+            hotelId: mongoose.Types.ObjectId(hotelId),
+            metricType: 'business_metrics',
+            timestamp: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: '$channelId',
+            totalBookings: { $sum: '$data.bookingsReceived' },
+            totalRevenue: { $sum: '$data.revenue' },
+            averageRate: { $avg: '$data.averageRate' },
+            averageOccupancy: { $avg: '$data.occupancyRate' }
+          }
         }
-      },
-      {
-        $group: {
-          _id: '$channelId',
-          totalBookings: { $sum: '$data.bookingsReceived' },
-          totalRevenue: { $sum: '$data.revenue' },
-          averageRate: { $avg: '$data.averageRate' },
-          averageOccupancy: { $avg: '$data.occupancyRate' }
-        }
-      }
-    ]);
+      ]);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   calculateSummaryStats(channelConfigs, syncMetrics, translationMetrics, errorMetrics) {

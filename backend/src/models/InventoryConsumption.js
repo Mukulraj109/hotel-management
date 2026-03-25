@@ -383,246 +383,266 @@ inventoryConsumptionSchema.methods.updateGuestCharges = function(chargeAmount, i
 
 // Static method to get consumption statistics
 inventoryConsumptionSchema.statics.getConsumptionStats = async function(hotelId, filters = {}) {
-  const matchQuery = { hotelId, ...filters };
+  try {
+    const matchQuery = { hotelId, ...filters };
 
-  const pipeline = [
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: {
-          type: '$consumptionType',
-          department: '$departmentType'
-        },
-        totalQuantity: { $sum: '$quantity' },
-        totalCost: { $sum: '$totalCost' },
-        totalRevenue: { $sum: { $cond: ['$chargeToGuest', '$guestChargeAmount', 0] } },
-        avgEfficiency: { $avg: '$efficiency' },
-        count: { $sum: 1 }
+    const pipeline = [
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: {
+            type: '$consumptionType',
+            department: '$departmentType'
+          },
+          totalQuantity: { $sum: '$quantity' },
+          totalCost: { $sum: '$totalCost' },
+          totalRevenue: { $sum: { $cond: ['$chargeToGuest', '$guestChargeAmount', 0] } },
+          avgEfficiency: { $avg: '$efficiency' },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.type',
+          departmentStats: {
+            $push: {
+              department: '$_id.department',
+              totalQuantity: '$totalQuantity',
+              totalCost: '$totalCost',
+              totalRevenue: '$totalRevenue',
+              avgEfficiency: '$avgEfficiency',
+              count: '$count'
+            }
+          },
+          overallQuantity: { $sum: '$totalQuantity' },
+          overallCost: { $sum: '$totalCost' },
+          overallRevenue: { $sum: '$totalRevenue' }
+        }
       }
-    },
-    {
-      $group: {
-        _id: '$_id.type',
-        departmentStats: {
-          $push: {
-            department: '$_id.department',
-            totalQuantity: '$totalQuantity',
-            totalCost: '$totalCost',
-            totalRevenue: '$totalRevenue',
-            avgEfficiency: '$avgEfficiency',
-            count: '$count'
-          }
-        },
-        overallQuantity: { $sum: '$totalQuantity' },
-        overallCost: { $sum: '$totalCost' },
-        overallRevenue: { $sum: '$totalRevenue' }
-      }
-    }
-  ];
+    ];
 
-  return await this.aggregate(pipeline);
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get top consuming items
 inventoryConsumptionSchema.statics.getTopConsumingItems = async function(hotelId, limit = 10, dateRange = {}) {
-  const matchQuery = { hotelId };
+  try {
+    const matchQuery = { hotelId };
 
-  if (dateRange.start && dateRange.end) {
-    matchQuery.consumedAt = {
-      $gte: new Date(dateRange.start),
-      $lte: new Date(dateRange.end)
-    };
+    if (dateRange.start && dateRange.end) {
+      matchQuery.consumedAt = {
+        $gte: new Date(dateRange.start),
+        $lte: new Date(dateRange.end)
+      };
+    }
+
+    const pipeline = [
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: '$inventoryItemId',
+          totalQuantity: { $sum: '$quantity' },
+          totalCost: { $sum: '$totalCost' },
+          totalRevenue: { $sum: { $cond: ['$chargeToGuest', '$guestChargeAmount', 0] } },
+          avgEfficiency: { $avg: '$efficiency' },
+          consumptionCount: { $sum: 1 }
+        }
+      },
+      { $sort: { totalQuantity: -1 } },
+      { $limit: limit },
+      {
+        $lookup: {
+          from: 'inventoryitems',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'item'
+        }
+      },
+      { $unwind: '$item' }
+    ];
+
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  const pipeline = [
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: '$inventoryItemId',
-        totalQuantity: { $sum: '$quantity' },
-        totalCost: { $sum: '$totalCost' },
-        totalRevenue: { $sum: { $cond: ['$chargeToGuest', '$guestChargeAmount', 0] } },
-        avgEfficiency: { $avg: '$efficiency' },
-        consumptionCount: { $sum: 1 }
-      }
-    },
-    { $sort: { totalQuantity: -1 } },
-    { $limit: limit },
-    {
-      $lookup: {
-        from: 'inventoryitems',
-        localField: '_id',
-        foreignField: '_id',
-        as: 'item'
-      }
-    },
-    { $unwind: '$item' }
-  ];
-
-  return await this.aggregate(pipeline);
 };
 
 // Static method to get staff consumption efficiency
 inventoryConsumptionSchema.statics.getStaffEfficiency = async function(hotelId, dateRange = {}) {
-  const matchQuery = {
-    hotelId,
-    consumedBy: { $exists: true },
-    efficiency: { $exists: true }
-  };
-
-  if (dateRange.start && dateRange.end) {
-    matchQuery.consumedAt = {
-      $gte: new Date(dateRange.start),
-      $lte: new Date(dateRange.end)
+  try {
+    const matchQuery = {
+      hotelId,
+      consumedBy: { $exists: true },
+      efficiency: { $exists: true }
     };
+
+    if (dateRange.start && dateRange.end) {
+      matchQuery.consumedAt = {
+        $gte: new Date(dateRange.start),
+        $lte: new Date(dateRange.end)
+      };
+    }
+
+    const pipeline = [
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: '$consumedBy',
+          avgEfficiency: { $avg: '$efficiency' },
+          totalTasks: { $sum: 1 },
+          totalCost: { $sum: '$totalCost' },
+          totalQuantity: { $sum: '$quantity' }
+        }
+      },
+      { $sort: { avgEfficiency: -1 } },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'staff'
+        }
+      },
+      { $unwind: '$staff' }
+    ];
+
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  const pipeline = [
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: '$consumedBy',
-        avgEfficiency: { $avg: '$efficiency' },
-        totalTasks: { $sum: 1 },
-        totalCost: { $sum: '$totalCost' },
-        totalQuantity: { $sum: '$quantity' }
-      }
-    },
-    { $sort: { avgEfficiency: -1 } },
-    {
-      $lookup: {
-        from: 'users',
-        localField: '_id',
-        foreignField: '_id',
-        as: 'staff'
-      }
-    },
-    { $unwind: '$staff' }
-  ];
-
-  return await this.aggregate(pipeline);
 };
 
 // Static method to get consumption trends
 inventoryConsumptionSchema.statics.getConsumptionTrends = async function(hotelId, period = 'daily', limit = 30) {
-  const matchQuery = { hotelId };
+  try {
+    const matchQuery = { hotelId };
 
-  let groupBy;
-  switch (period) {
-    case 'hourly':
-      groupBy = {
-        year: { $year: '$consumedAt' },
-        month: { $month: '$consumedAt' },
-        day: { $dayOfMonth: '$consumedAt' },
-        hour: { $hour: '$consumedAt' }
-      };
-      break;
-    case 'weekly':
-      groupBy = {
-        year: { $year: '$consumedAt' },
-        week: { $week: '$consumedAt' }
-      };
-      break;
-    case 'monthly':
-      groupBy = {
-        year: { $year: '$consumedAt' },
-        month: { $month: '$consumedAt' }
-      };
-      break;
-    default: // daily
-      groupBy = {
-        year: { $year: '$consumedAt' },
-        month: { $month: '$consumedAt' },
-        day: { $dayOfMonth: '$consumedAt' }
-      };
+    let groupBy;
+    switch (period) {
+      case 'hourly':
+        groupBy = {
+          year: { $year: '$consumedAt' },
+          month: { $month: '$consumedAt' },
+          day: { $dayOfMonth: '$consumedAt' },
+          hour: { $hour: '$consumedAt' }
+        };
+        break;
+      case 'weekly':
+        groupBy = {
+          year: { $year: '$consumedAt' },
+          week: { $week: '$consumedAt' }
+        };
+        break;
+      case 'monthly':
+        groupBy = {
+          year: { $year: '$consumedAt' },
+          month: { $month: '$consumedAt' }
+        };
+        break;
+      default: // daily
+        groupBy = {
+          year: { $year: '$consumedAt' },
+          month: { $month: '$consumedAt' },
+          day: { $dayOfMonth: '$consumedAt' }
+        };
+    }
+
+    const pipeline = [
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: groupBy,
+          totalQuantity: { $sum: '$quantity' },
+          totalCost: { $sum: '$totalCost' },
+          totalRevenue: { $sum: { $cond: ['$chargeToGuest', '$guestChargeAmount', 0] } },
+          avgEfficiency: { $avg: '$efficiency' },
+          uniqueItems: { $addToSet: '$inventoryItemId' },
+          consumptionCount: { $sum: 1 }
+        }
+      },
+      {
+        $addFields: {
+          uniqueItemCount: { $size: '$uniqueItems' }
+        }
+      },
+      { $sort: { '_id.year': -1, '_id.month': -1, '_id.day': -1, '_id.hour': -1 } },
+      { $limit: limit }
+    ];
+
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  const pipeline = [
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: groupBy,
-        totalQuantity: { $sum: '$quantity' },
-        totalCost: { $sum: '$totalCost' },
-        totalRevenue: { $sum: { $cond: ['$chargeToGuest', '$guestChargeAmount', 0] } },
-        avgEfficiency: { $avg: '$efficiency' },
-        uniqueItems: { $addToSet: '$inventoryItemId' },
-        consumptionCount: { $sum: 1 }
-      }
-    },
-    {
-      $addFields: {
-        uniqueItemCount: { $size: '$uniqueItems' }
-      }
-    },
-    { $sort: { '_id.year': -1, '_id.month': -1, '_id.day': -1, '_id.hour': -1 } },
-    { $limit: limit }
-  ];
-
-  return await this.aggregate(pipeline);
 };
 
 // Static method to predict consumption for housekeeping
 inventoryConsumptionSchema.statics.predictHousekeepingConsumption = async function(hotelId, roomTypeId, taskTypes = []) {
-  const matchQuery = {
-    hotelId,
-    consumptionType: 'housekeeping',
-    housekeepingTaskId: { $exists: true }
-  };
+  try {
+    const matchQuery = {
+      hotelId,
+      consumptionType: 'housekeeping',
+      housekeepingTaskId: { $exists: true }
+    };
 
-  // Add date filter for recent consumption patterns (last 90 days)
-  const ninetyDaysAgo = new Date();
-  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-  matchQuery.consumedAt = { $gte: ninetyDaysAgo };
+    // Add date filter for recent consumption patterns (last 90 days)
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    matchQuery.consumedAt = { $gte: ninetyDaysAgo };
 
-  const pipeline = [
-    { $match: matchQuery },
-    {
-      $lookup: {
-        from: 'housekeepingtasks',
-        localField: 'housekeepingTaskId',
-        foreignField: '_id',
-        as: 'task'
-      }
-    },
-    { $unwind: '$task' },
-    {
-      $lookup: {
-        from: 'rooms',
-        localField: 'roomId',
-        foreignField: '_id',
-        as: 'room'
-      }
-    },
-    { $unwind: '$room' },
-    {
-      $match: roomTypeId ? { 'room.roomType': roomTypeId } : {}
-    },
-    {
-      $group: {
-        _id: {
-          inventoryItemId: '$inventoryItemId',
-          taskType: '$task.tasks',
-          roomType: '$room.roomType'
-        },
-        avgQuantity: { $avg: '$quantity' },
-        minQuantity: { $min: '$quantity' },
-        maxQuantity: { $max: '$quantity' },
-        totalConsumptions: { $sum: 1 }
-      }
-    },
-    {
-      $lookup: {
-        from: 'inventoryitems',
-        localField: '_id.inventoryItemId',
-        foreignField: '_id',
-        as: 'item'
-      }
-    },
-    { $unwind: '$item' }
-  ];
+    const pipeline = [
+      { $match: matchQuery },
+      {
+        $lookup: {
+          from: 'housekeepingtasks',
+          localField: 'housekeepingTaskId',
+          foreignField: '_id',
+          as: 'task'
+        }
+      },
+      { $unwind: '$task' },
+      {
+        $lookup: {
+          from: 'rooms',
+          localField: 'roomId',
+          foreignField: '_id',
+          as: 'room'
+        }
+      },
+      { $unwind: '$room' },
+      {
+        $match: roomTypeId ? { 'room.roomType': roomTypeId } : {}
+      },
+      {
+        $group: {
+          _id: {
+            inventoryItemId: '$inventoryItemId',
+            taskType: '$task.tasks',
+            roomType: '$room.roomType'
+          },
+          avgQuantity: { $avg: '$quantity' },
+          minQuantity: { $min: '$quantity' },
+          maxQuantity: { $max: '$quantity' },
+          totalConsumptions: { $sum: 1 }
+        }
+      },
+      {
+        $lookup: {
+          from: 'inventoryitems',
+          localField: '_id.inventoryItemId',
+          foreignField: '_id',
+          as: 'item'
+        }
+      },
+      { $unwind: '$item' }
+    ];
 
-  return await this.aggregate(pipeline);
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // NOTIFICATION AUTOMATION HOOKS

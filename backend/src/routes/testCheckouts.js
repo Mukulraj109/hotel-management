@@ -38,13 +38,13 @@ router.get('/compare-checkouts', async (req, res) => {
     }).populate([
       { path: 'bookingId', populate: { path: 'hotelId', select: 'name' } },
       { path: 'roomId', select: 'roomNumber' }
-    ]).limit(5);
+    ]).limit(5).lean();
 
     // Get sample booking checkouts
     const sampleBookingCheckouts = await Booking.find({
       status: 'checked_out',
       updatedAt: { $gte: today, $lt: tomorrow }
-    }).populate('userId rooms.roomId hotelId').limit(5);
+    }).populate('userId rooms.roomId hotelId').limit(5).lean();
 
     // Count by hotel ID for CheckoutInventory
     const checkoutsByHotel = await CheckoutInventory.aggregate([
@@ -110,7 +110,7 @@ router.get('/staff-today-debug', async (req, res) => {
     // Also get all CheckoutInventory records today regardless of hotel
     const allCheckoutsToday = await CheckoutInventory.find({
       createdAt: { $gte: today, $lt: tomorrow }
-    }).populate('bookingId roomId');
+    }).populate('bookingId roomId').lean().limit(1000);
 
     res.json({
       status: 'success',
@@ -156,7 +156,7 @@ router.get('/debug-user-checkouts', async (req, res) => {
       { path: 'bookingId', populate: { path: 'hotelId', select: 'name' } },
       { path: 'roomId', select: 'roomNumber' },
       { path: 'staffId', select: 'name email' }
-    ]);
+    ]).lean().limit(1000);
 
     // Get checkout count for user's hotel (same logic as staff dashboard)
     const userHotelCheckouts = await CheckoutInventory.aggregate([
@@ -211,13 +211,13 @@ router.get('/available-checkouts', async (req, res) => {
       { path: 'userId', select: 'name email' },
       { path: 'rooms.roomId', select: 'roomNumber type' },
       { path: 'hotelId', select: 'name' }
-    ]).limit(10);
+    ]).limit(10).lean();
 
     // Check if any of these bookings already have checkout inventory
     const bookingIds = eligibleBookings.map(b => b._id);
     const existingCheckouts = await CheckoutInventory.find({
       bookingId: { $in: bookingIds }
-    });
+    }).lean().limit(1000);
 
     const existingCheckoutBookingIds = existingCheckouts.map(c => c.bookingId.toString());
 
@@ -267,7 +267,7 @@ router.post('/create-test-checkout', async (req, res) => {
     const booking = await Booking.findOne({
       hotelId: new mongoose.Types.ObjectId(hotelId),
       status: 'checked_in'
-    }).populate('rooms.roomId');
+    }).populate('rooms.roomId').lean();
 
     if (!booking) {
       return res.status(400).json({
@@ -334,7 +334,7 @@ router.get('/booking-statuses', async (req, res) => {
     }).populate('userId rooms.roomId')
     .sort({ createdAt: -1 })
     .limit(10)
-    .select('bookingNumber status checkIn checkOut createdAt userId');
+    .select('bookingNumber status checkIn checkOut createdAt userId').lean();
 
     res.json({
       status: 'success',
@@ -365,7 +365,7 @@ router.post('/create-checked-in-booking', async (req, res) => {
     logger.debug('Creating test booking for hotel', { hotelId });
     
     // Find an existing user
-    let user = await User.findOne({ role: 'guest' });
+    let user = await User.findOne({ role: 'guest' }).lean();
     if (!user) {
       // Create a test user if none exists
       user = await User.create({
@@ -382,7 +382,7 @@ router.post('/create-checked-in-booking', async (req, res) => {
     let room = await Room.findOne({ 
       hotelId: new mongoose.Types.ObjectId(hotelId),
       isActive: true 
-    });
+    }).lean();
 
     // If no room exists, create one
     if (!room) {
@@ -492,13 +492,13 @@ router.get('/debug-checkins', async (req, res) => {
       hotelId: new mongoose.Types.ObjectId(hotelId),
       checkIn: { $gte: today, $lt: tomorrow },
       status: { $in: ['confirmed', 'checked_in'] }
-    }).populate('userId rooms.roomId').select('bookingNumber checkIn status createdAt userId');
+    }).populate('userId rooms.roomId').select('bookingNumber checkIn status createdAt userId').lean().limit(1000);
 
     // Get all bookings with checked_in status regardless of date
     const allCheckedIn = await Booking.find({
       hotelId: new mongoose.Types.ObjectId(hotelId),
       status: 'checked_in'
-    }).select('bookingNumber checkIn status createdAt').limit(5);
+    }).select('bookingNumber checkIn status createdAt').limit(5).lean();
 
     res.json({
       status: 'success',

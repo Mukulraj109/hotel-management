@@ -134,115 +134,119 @@ class POSTaxCalculationService {
    * @returns {Object} Tax calculation result
    */
   async calculateTaxForAmount(taxes, amount, options = {}) {
-    const {
-      customerType = 'individual',
-      productCategory = null,
-      outletId = null,
-      applyExemptions = true
-    } = options;
+    try {
+      const {
+        customerType = 'individual',
+        productCategory = null,
+        outletId = null,
+        applyExemptions = true
+      } = options;
 
-    let totalTax = 0;
-    let exemptedAmount = 0;
-    const taxBreakdown = [];
+      let totalTax = 0;
+      let exemptedAmount = 0;
+      const taxBreakdown = [];
 
-    // Sort taxes by calculation order
-    const sortedTaxes = taxes.sort((a, b) => a.calculationOrder - b.calculationOrder);
+      // Sort taxes by calculation order
+      const sortedTaxes = taxes.sort((a, b) => a.calculationOrder - b.calculationOrder);
 
-    for (const tax of sortedTaxes) {
-      let taxAmount = 0;
-      let exemptionApplied = false;
-      let exemptionPercentage = 0;
+      for (const tax of sortedTaxes) {
+        let taxAmount = 0;
+        let exemptionApplied = false;
+        let exemptionPercentage = 0;
 
-      // Check for exemptions
-      if (applyExemptions && tax.exemptions.length > 0) {
-        const exemption = this.findApplicableExemption(tax.exemptions, {
-          customerType,
-          productCategory,
-          outletId,
-          amount
-        });
+        // Check for exemptions
+        if (applyExemptions && tax.exemptions.length > 0) {
+          const exemption = this.findApplicableExemption(tax.exemptions, {
+            customerType,
+            productCategory,
+            outletId,
+            amount
+          });
 
-        if (exemption) {
-          exemptionApplied = true;
-          exemptionPercentage = exemption.exemptionPercentage;
+          if (exemption) {
+            exemptionApplied = true;
+            exemptionPercentage = exemption.exemptionPercentage;
+          }
         }
-      }
 
-      if (exemptionApplied && exemptionPercentage === 100) {
-        // Full exemption
-        exemptedAmount += amount;
+        if (exemptionApplied && exemptionPercentage === 100) {
+          // Full exemption
+          exemptedAmount += amount;
+          taxBreakdown.push({
+            taxId: tax._id,
+            taxName: tax.name,
+            taxType: tax.taxType,
+            amount: 0,
+            rate: tax.effectiveRate,
+            exemptionApplied: true,
+            exemptionPercentage: 100
+          });
+          continue;
+        }
+
+        // Calculate tax based on rules
+        const taxableAmount = exemptionApplied ? 
+          amount * (1 - exemptionPercentage / 100) : amount;
+
+        for (const rule of tax.rules) {
+          let ruleAmount = 0;
+
+          switch (rule.type) {
+            case 'percentage':
+              ruleAmount = (taxableAmount * rule.value) / 100;
+              break;
+            case 'fixed_amount':
+              ruleAmount = rule.value;
+              break;
+            case 'compound':
+              // Tax on previous taxes + base amount
+              const baseAmount = amount + totalTax;
+              ruleAmount = (baseAmount * rule.value) / 100;
+              break;
+          }
+
+          // Apply thresholds
+          if (rule.minThreshold && amount < rule.minThreshold) {
+            ruleAmount = 0;
+          }
+          if (rule.maxThreshold && amount > rule.maxThreshold) {
+            const maxAmount = rule.type === 'percentage' ? 
+              (rule.maxThreshold * rule.value) / 100 : rule.value;
+            ruleAmount = Math.min(ruleAmount, maxAmount);
+          }
+
+          // Apply rounding
+          ruleAmount = this.applyRounding(ruleAmount, rule.rounding, rule.decimalPlaces);
+
+          taxAmount += ruleAmount;
+        }
+
+        totalTax += taxAmount;
         taxBreakdown.push({
           taxId: tax._id,
           taxName: tax.name,
           taxType: tax.taxType,
-          amount: 0,
+          amount: taxAmount,
           rate: tax.effectiveRate,
-          exemptionApplied: true,
-          exemptionPercentage: 100
+          exemptionApplied,
+          exemptionPercentage,
+          rules: tax.rules.map(rule => ({
+            type: rule.type,
+            value: rule.value,
+            applied: true
+          }))
         });
-        continue;
       }
 
-      // Calculate tax based on rules
-      const taxableAmount = exemptionApplied ? 
-        amount * (1 - exemptionPercentage / 100) : amount;
-
-      for (const rule of tax.rules) {
-        let ruleAmount = 0;
-
-        switch (rule.type) {
-          case 'percentage':
-            ruleAmount = (taxableAmount * rule.value) / 100;
-            break;
-          case 'fixed_amount':
-            ruleAmount = rule.value;
-            break;
-          case 'compound':
-            // Tax on previous taxes + base amount
-            const baseAmount = amount + totalTax;
-            ruleAmount = (baseAmount * rule.value) / 100;
-            break;
-        }
-
-        // Apply thresholds
-        if (rule.minThreshold && amount < rule.minThreshold) {
-          ruleAmount = 0;
-        }
-        if (rule.maxThreshold && amount > rule.maxThreshold) {
-          const maxAmount = rule.type === 'percentage' ? 
-            (rule.maxThreshold * rule.value) / 100 : rule.value;
-          ruleAmount = Math.min(ruleAmount, maxAmount);
-        }
-
-        // Apply rounding
-        ruleAmount = this.applyRounding(ruleAmount, rule.rounding, rule.decimalPlaces);
-
-        taxAmount += ruleAmount;
-      }
-
-      totalTax += taxAmount;
-      taxBreakdown.push({
-        taxId: tax._id,
-        taxName: tax.name,
-        taxType: tax.taxType,
-        amount: taxAmount,
-        rate: tax.effectiveRate,
-        exemptionApplied,
-        exemptionPercentage,
-        rules: tax.rules.map(rule => ({
-          type: rule.type,
-          value: rule.value,
-          applied: true
-        }))
-      });
+      return {
+        totalTax: this.roundAmount(totalTax, 2),
+        taxBreakdown,
+        exemptedAmount,
+        taxableAmount: amount - exemptedAmount
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return {
-      totalTax: this.roundAmount(totalTax, 2),
-      taxBreakdown,
-      exemptedAmount,
-      taxableAmount: amount - exemptedAmount
-    };
   }
 
   /**
@@ -526,7 +530,7 @@ class POSTaxCalculationService {
           { validTo: { $exists: false } },
           { validTo: null }
         ]
-      });
+      }).lean().limit(1000);
 
       if (overlappingTaxes.length > 1) {
         warnings.push({

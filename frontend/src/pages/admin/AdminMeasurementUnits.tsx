@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +27,7 @@ import { api } from '../../services/api';
 import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../components/settings/ApplyToSelector';
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface ConversionFactor {
   targetUnit: string;
@@ -196,6 +197,15 @@ const AdminMeasurementUnits: React.FC = () => {
     { value: 'GENERAL', label: 'General' }
   ];
 
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     fetchUnits();
   }, []);
@@ -227,7 +237,8 @@ const AdminMeasurementUnits: React.FC = () => {
         if (!result) return; // Confirmation dialog shown
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Measurement unit created successfully${
           applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
         }`);
@@ -262,7 +273,8 @@ const AdminMeasurementUnits: React.FC = () => {
         if (!result) return; // Confirmation dialog shown
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Measurement unit updated successfully${
           applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
         }`);
@@ -300,7 +312,8 @@ const AdminMeasurementUnits: React.FC = () => {
         if (!result) return; // Confirmation dialog shown
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Measurement unit deleted successfully${
           applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
         }`);
@@ -323,7 +336,8 @@ const AdminMeasurementUnits: React.FC = () => {
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Updated for ${result.propertiesUpdated} properties`);
         setApplyToScope('single');
         fetchUnits();
@@ -1198,4 +1212,4 @@ const UnitConverter: React.FC<{
   );
 };
 
-export default AdminMeasurementUnits;
+export default withErrorBoundary(AdminMeasurementUnits, { level: 'page' });

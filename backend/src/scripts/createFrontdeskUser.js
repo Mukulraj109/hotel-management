@@ -12,7 +12,7 @@ const createFrontdeskUser = async () => {
     console.log('✅ Database connected');
 
     // Get first hotel (or you can specify a specific hotel)
-    const hotel = await Hotel.findOne();
+    const hotel = await Hotel.findOne().lean();
 
     if (!hotel) {
       console.error('❌ No hotel found. Please create a hotel first.');

@@ -372,101 +372,109 @@ export class OutboundAPILogger {
    * Log outbound HTTP request
    */
   async logRequest(requestConfig, metadata = {}) {
-    const startTime = Date.now();
-    const requestId = uuidv4();
-    const correlationId = metadata.correlationId || otaPayloadService.generateCorrelationId();
+    try {
+      const startTime = Date.now();
+      const requestId = uuidv4();
+      const correlationId = metadata.correlationId || otaPayloadService.generateCorrelationId();
 
-    const requestData = {
-      id: requestId,
-      correlationId,
-      timestamp: new Date().toISOString(),
-      method: requestConfig.method?.toUpperCase() || 'GET',
-      url: requestConfig.url,
-      headers: sanitizeHeaders(requestConfig.headers || {}),
-      timeout: requestConfig.timeout,
-      metadata
-    };
+      const requestData = {
+        id: requestId,
+        correlationId,
+        timestamp: new Date().toISOString(),
+        method: requestConfig.method?.toUpperCase() || 'GET',
+        url: requestConfig.url,
+        headers: sanitizeHeaders(requestConfig.headers || {}),
+        timeout: requestConfig.timeout,
+        metadata
+      };
 
-    // Log payload if enabled
-    if (this.options.logPayloads && requestConfig.data) {
-      const payloadSize = Buffer.byteLength(JSON.stringify(requestConfig.data));
-      if (payloadSize <= this.options.maxPayloadSize) {
-        requestData.payload = requestConfig.data;
+      // Log payload if enabled
+      if (this.options.logPayloads && requestConfig.data) {
+        const payloadSize = Buffer.byteLength(JSON.stringify(requestConfig.data));
+        if (payloadSize <= this.options.maxPayloadSize) {
+          requestData.payload = requestConfig.data;
+        }
+        requestData.payloadSize = payloadSize;
       }
-      requestData.payloadSize = payloadSize;
+
+      logger.info('Outbound API Request', requestData);
+
+      return {
+        requestId,
+        correlationId,
+        startTime,
+        requestData
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    logger.info('Outbound API Request', requestData);
-
-    return {
-      requestId,
-      correlationId,
-      startTime,
-      requestData
-    };
   }
 
   /**
    * Log outbound HTTP response
    */
   async logResponse(responseData, requestContext) {
-    const endTime = Date.now();
-    const duration = endTime - requestContext.startTime;
+    try {
+      const endTime = Date.now();
+      const duration = endTime - requestContext.startTime;
 
-    const logData = {
-      requestId: requestContext.requestId,
-      correlationId: requestContext.correlationId,
-      statusCode: responseData.status,
-      statusText: responseData.statusText,
-      headers: sanitizeHeaders(responseData.headers || {}),
-      duration: `${duration}ms`,
-      responseSize: responseData.data ? Buffer.byteLength(JSON.stringify(responseData.data)) : 0
-    };
+      const logData = {
+        requestId: requestContext.requestId,
+        correlationId: requestContext.correlationId,
+        statusCode: responseData.status,
+        statusText: responseData.statusText,
+        headers: sanitizeHeaders(responseData.headers || {}),
+        duration: `${duration}ms`,
+        responseSize: responseData.data ? Buffer.byteLength(JSON.stringify(responseData.data)) : 0
+      };
 
-    // Log response payload if enabled
-    if (this.options.logPayloads && responseData.data) {
-      const payloadSize = Buffer.byteLength(JSON.stringify(responseData.data));
-      if (payloadSize <= this.options.maxPayloadSize) {
-        logData.response = responseData.data;
+      // Log response payload if enabled
+      if (this.options.logPayloads && responseData.data) {
+        const payloadSize = Buffer.byteLength(JSON.stringify(responseData.data));
+        if (payloadSize <= this.options.maxPayloadSize) {
+          logData.response = responseData.data;
+        }
       }
-    }
 
-    // Determine log level
-    if (responseData.status >= 500) {
-      logger.error('Outbound API Response - Server Error', logData);
-    } else if (responseData.status >= 400) {
-      logger.warn('Outbound API Response - Client Error', logData);
-    } else {
-      logger.info('Outbound API Response', logData);
-    }
-
-    // Store OTA payload if applicable
-    if (this.options.storeOTAPayloads && this.isOTACall(requestContext.requestData.url)) {
-      try {
-        await otaPayloadService.storeOutboundPayload(
-          {
-            url: requestContext.requestData.url,
-            method: requestContext.requestData.method,
-            headers: requestContext.requestData.headers,
-            payload: requestContext.requestData.payload
-          },
-          {
-            status: responseData.status,
-            headers: responseData.headers,
-            data: responseData.data
-          },
-          {
-            correlationId: requestContext.correlationId,
-            responseTime: duration,
-            ...requestContext.requestData.metadata
-          }
-        );
-      } catch (error) {
-        logger.error('Failed to store outbound OTA payload:', error);
+      // Determine log level
+      if (responseData.status >= 500) {
+        logger.error('Outbound API Response - Server Error', logData);
+      } else if (responseData.status >= 400) {
+        logger.warn('Outbound API Response - Client Error', logData);
+      } else {
+        logger.info('Outbound API Response', logData);
       }
-    }
 
-    return logData;
+      // Store OTA payload if applicable
+      if (this.options.storeOTAPayloads && this.isOTACall(requestContext.requestData.url)) {
+        try {
+          await otaPayloadService.storeOutboundPayload(
+            {
+              url: requestContext.requestData.url,
+              method: requestContext.requestData.method,
+              headers: requestContext.requestData.headers,
+              payload: requestContext.requestData.payload
+            },
+            {
+              status: responseData.status,
+              headers: responseData.headers,
+              data: responseData.data
+            },
+            {
+              correlationId: requestContext.correlationId,
+              responseTime: duration,
+              ...requestContext.requestData.metadata
+            }
+          );
+        } catch (error) {
+          logger.error('Failed to store outbound OTA payload:', error);
+        }
+      }
+
+      return logData;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

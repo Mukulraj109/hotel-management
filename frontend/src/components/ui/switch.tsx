@@ -29,7 +29,7 @@ export function Switch({
   };
 
   return (
-    <button
+    <button aria-label="Lock"
       type="button"
       role="switch"
       aria-checked={checked}

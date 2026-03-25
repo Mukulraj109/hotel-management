@@ -3,6 +3,7 @@ import { Plus, Search, Filter, Download, Eye, Edit, Send, Package, CheckCircle, 
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface PurchaseOrder {
   _id: string;
@@ -543,7 +544,7 @@ const AdminPurchaseOrders: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex items-center justify-end space-x-2">
-                      <button
+                      <button aria-label="View"
                         onClick={() => {
                           setSelectedPO(po);
                           setShowDetailsModal(true);
@@ -555,7 +556,7 @@ const AdminPurchaseOrders: React.FC = () => {
                       </button>
 
                       {po.status === 'approved' && (
-                        <button
+                        <button aria-label="Send"
                           onClick={() => handleStatusAction(po._id, 'send')}
                           className="text-purple-600 hover:text-purple-900"
                           title="Send to Vendor"
@@ -565,7 +566,7 @@ const AdminPurchaseOrders: React.FC = () => {
                       )}
 
                       {['confirmed_by_vendor', 'in_transit', 'partially_received'].includes(po.status) && (
-                        <button
+                        <button aria-label="Close"
                           onClick={() => {
                             setSelectedPO(po);
                             setShowReceiveModal(true);
@@ -578,7 +579,7 @@ const AdminPurchaseOrders: React.FC = () => {
                       )}
 
                       {['draft', 'pending_approval', 'approved'].includes(po.status) && (
-                        <button
+                        <button aria-label="Edit"
                           onClick={() => {
                             setSelectedPO(po);
                             // setShowEditModal(true);
@@ -651,4 +652,4 @@ const AdminPurchaseOrders: React.FC = () => {
   );
 };
 
-export default AdminPurchaseOrders;
+export default withErrorBoundary(AdminPurchaseOrders, { level: 'page' });

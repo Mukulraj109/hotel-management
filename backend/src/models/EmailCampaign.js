@@ -268,66 +268,74 @@ emailCampaignSchema.methods.incrementUnsubscribes = function() {
 
 // Static methods
 emailCampaignSchema.statics.getActiveRecipientCount = async function(hotelId, segmentCriteria = {}) {
-  const User = mongoose.model('User');
-  const filter = { hotelId, isActive: true };
+  try {
+    const User = mongoose.model('User');
+    const filter = { hotelId, isActive: true };
 
-  if (segmentCriteria.role) filter.role = segmentCriteria.role;
-  if (segmentCriteria.lastLoginAfter) {
-    filter.lastLogin = { $gte: new Date(segmentCriteria.lastLoginAfter) };
-  }
-  if (segmentCriteria.totalBookingsMin) {
-    filter.totalBookings = { $gte: segmentCriteria.totalBookingsMin };
-  }
-  if (segmentCriteria.totalBookingsMax) {
-    filter.totalBookings = { ...filter.totalBookings, $lte: segmentCriteria.totalBookingsMax };
-  }
-  if (segmentCriteria.loyaltyTier) {
-    filter['loyaltyProgram.tier'] = segmentCriteria.loyaltyTier;
-  }
+    if (segmentCriteria.role) filter.role = segmentCriteria.role;
+    if (segmentCriteria.lastLoginAfter) {
+      filter.lastLogin = { $gte: new Date(segmentCriteria.lastLoginAfter) };
+    }
+    if (segmentCriteria.totalBookingsMin) {
+      filter.totalBookings = { $gte: segmentCriteria.totalBookingsMin };
+    }
+    if (segmentCriteria.totalBookingsMax) {
+      filter.totalBookings = { ...filter.totalBookings, $lte: segmentCriteria.totalBookingsMax };
+    }
+    if (segmentCriteria.loyaltyTier) {
+      filter['loyaltyProgram.tier'] = segmentCriteria.loyaltyTier;
+    }
 
-  return await User.countDocuments(filter);
+    return await User.countDocuments(filter);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 emailCampaignSchema.statics.getCampaignPerformance = async function(hotelId, dateRange = {}) {
-  const filter = { hotelId, status: 'sent' };
+  try {
+    const filter = { hotelId, status: 'sent' };
 
-  if (dateRange.start && dateRange.end) {
-    filter.sentAt = {
-      $gte: new Date(dateRange.start),
-      $lte: new Date(dateRange.end)
+    if (dateRange.start && dateRange.end) {
+      filter.sentAt = {
+        $gte: new Date(dateRange.start),
+        $lte: new Date(dateRange.end)
+      };
+    }
+
+    const campaigns = await this.find(filter).select('analytics sentAt name').lean().limit(1000);
+
+    const totalSent = campaigns.reduce((sum, c) => sum + c.analytics.totalSent, 0);
+    const totalOpened = campaigns.reduce((sum, c) => sum + c.analytics.totalOpened, 0);
+    const totalClicked = campaigns.reduce((sum, c) => sum + c.analytics.totalClicked, 0);
+    const totalUnsubscribed = campaigns.reduce((sum, c) => sum + c.analytics.totalUnsubscribed, 0);
+
+    return {
+      totalCampaigns: campaigns.length,
+      totalSent,
+      totalOpened,
+      totalClicked,
+      totalUnsubscribed,
+      averageOpenRate: totalSent > 0 ? (totalOpened / totalSent) * 100 : 0,
+      averageClickRate: totalSent > 0 ? (totalClicked / totalSent) * 100 : 0,
+      averageUnsubscribeRate: totalSent > 0 ? (totalUnsubscribed / totalSent) * 100 : 0,
+      campaigns: campaigns.map(c => ({
+        id: c._id,
+        name: c.name,
+        sentAt: c.sentAt,
+        performance: {
+          sent: c.analytics.totalSent,
+          opened: c.analytics.totalOpened,
+          clicked: c.analytics.totalClicked,
+          openRate: c.analytics.openRate,
+          clickRate: c.analytics.clickRate,
+          engagementScore: c.engagementScore
+        }
+      }))
     };
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  const campaigns = await this.find(filter).select('analytics sentAt name');
-
-  const totalSent = campaigns.reduce((sum, c) => sum + c.analytics.totalSent, 0);
-  const totalOpened = campaigns.reduce((sum, c) => sum + c.analytics.totalOpened, 0);
-  const totalClicked = campaigns.reduce((sum, c) => sum + c.analytics.totalClicked, 0);
-  const totalUnsubscribed = campaigns.reduce((sum, c) => sum + c.analytics.totalUnsubscribed, 0);
-
-  return {
-    totalCampaigns: campaigns.length,
-    totalSent,
-    totalOpened,
-    totalClicked,
-    totalUnsubscribed,
-    averageOpenRate: totalSent > 0 ? (totalOpened / totalSent) * 100 : 0,
-    averageClickRate: totalSent > 0 ? (totalClicked / totalSent) * 100 : 0,
-    averageUnsubscribeRate: totalSent > 0 ? (totalUnsubscribed / totalSent) * 100 : 0,
-    campaigns: campaigns.map(c => ({
-      id: c._id,
-      name: c.name,
-      sentAt: c.sentAt,
-      performance: {
-        sent: c.analytics.totalSent,
-        opened: c.analytics.totalOpened,
-        clicked: c.analytics.totalClicked,
-        openRate: c.analytics.openRate,
-        clickRate: c.analytics.clickRate,
-        engagementScore: c.engagementScore
-      }
-    }))
-  };
 };
 
 // Pre-save middleware

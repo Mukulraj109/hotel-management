@@ -339,14 +339,18 @@ posAttributeSchema.virtual('defaultValue').get(function() {
 
 // Pre-save middleware to generate attributeId if not provided
 posAttributeSchema.pre('save', async function(next) {
-  if (!this.attributeId) {
-    const prefix = this.attributeType.substring(0, 3).toUpperCase();
-    const count = await this.constructor.countDocuments({
-      attributeId: new RegExp(`^${prefix}`)
-    });
-    this.attributeId = `${prefix}${(count + 1).toString().padStart(3, '0')}`;
+  try {
+    if (!this.attributeId) {
+      const prefix = this.attributeType.substring(0, 3).toUpperCase();
+      const count = await this.constructor.countDocuments({
+        attributeId: new RegExp(`^${prefix}`)
+      });
+      this.attributeId = `${prefix}${(count + 1).toString().padStart(3, '0')}`;
+    }
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  next();
 });
 
 // Static method to get attributes by type
@@ -414,7 +418,7 @@ posAttributeSchema.methods.updateValue = function(valueId, updateData) {
 posAttributeSchema.methods.removeValue = function(valueId) {
   const value = this.values.id(valueId);
   if (value) {
-    value.remove();
+    value.deleteOne();
     return this.save();
   }
   throw new Error('Value not found');

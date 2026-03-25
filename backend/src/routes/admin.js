@@ -191,7 +191,7 @@ router.get('/dashboard', catchAsync(async (req, res) => {
     .populate('hotelId', 'name')
     .sort('-createdAt')
     .limit(10)
-    .select('bookingNumber status totalAmount checkIn checkOut createdAt');
+    .select('bookingNumber status totalAmount checkIn checkOut createdAt').lean();
 
   // Get user registration trends (last 12 months)
   const userTrends = await User.aggregate([
@@ -272,7 +272,7 @@ router.post('/users', catchAsync(async (req, res) => {
   const { name, email, phone, password, role, preferences } = req.body;
 
   // Check if user already exists
-  const existingUser = await User.findOne({ email });
+  const existingUser = await User.findOne({ email }).lean();
   if (existingUser) {
     throw new ApplicationError('User with this email already exists', 409);
   }

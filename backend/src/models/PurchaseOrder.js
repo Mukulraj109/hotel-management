@@ -439,70 +439,74 @@ purchaseOrderSchema.virtual('pendingAmount').get(function() {
 
 // Pre-save middleware
 purchaseOrderSchema.pre('save', async function(next) {
-  // Generate PO number if new document
-  if (this.isNew && !this.poNumber) {
-    const year = new Date().getFullYear();
-    const count = await this.constructor.countDocuments({
-      hotelId: this.hotelId,
-      orderDate: {
-        $gte: new Date(year, 0, 1),
-        $lt: new Date(year + 1, 0, 1)
-      }
-    });
-    this.poNumber = `PO${year}${String(count + 1).padStart(6, '0')}`;
-  }
-
-  // Calculate item totals
-  if (this.items && this.items.length > 0) {
-    this.items.forEach(item => {
-      // Calculate total price
-      item.totalPrice = item.quantityOrdered * item.unitPrice;
-
-      // Calculate discount amount
-      if (item.discountPercentage > 0) {
-        item.discountAmount = (item.totalPrice * item.discountPercentage) / 100;
-      }
-
-      // Calculate tax amount
-      const taxableAmount = item.totalPrice - item.discountAmount;
-      if (item.taxRate > 0) {
-        item.taxAmount = (taxableAmount * item.taxRate) / 100;
-      }
-
-      // Calculate final amount
-      item.finalAmount = taxableAmount + item.taxAmount;
-
-      // Update pending quantity
-      item.quantityPending = item.quantityOrdered - item.quantityReceived;
-    });
-
-    // Calculate order totals
-    this.subtotal = this.items.reduce((sum, item) => sum + item.totalPrice, 0);
-    this.discountAmount = this.items.reduce((sum, item) => sum + item.discountAmount, 0);
-    this.taxAmount = this.items.reduce((sum, item) => sum + item.taxAmount, 0);
-
-    this.grandTotal = (this.subtotal - this.discountAmount) + this.taxAmount + this.shippingCost + this.additionalCharges;
-  }
-
-  // Set payment due date
-  if (this.paymentTerms && this.paymentTerms.days && this.orderDate) {
-    const dueDate = new Date(this.orderDate);
-    dueDate.setDate(dueDate.getDate() + this.paymentTerms.days);
-    this.paymentTerms.dueDate = dueDate;
-  }
-
-  // Update status based on completion
-  if (this.status !== 'cancelled' && this.status !== 'completed') {
-    const completionPercentage = this.completionPercentage;
-
-    if (completionPercentage === 100) {
-      this.status = 'fully_received';
-    } else if (completionPercentage > 0 && completionPercentage < 100) {
-      this.status = 'partially_received';
+  try {
+    // Generate PO number if new document
+    if (this.isNew && !this.poNumber) {
+      const year = new Date().getFullYear();
+      const count = await this.constructor.countDocuments({
+        hotelId: this.hotelId,
+        orderDate: {
+          $gte: new Date(year, 0, 1),
+          $lt: new Date(year + 1, 0, 1)
+        }
+      });
+      this.poNumber = `PO${year}${String(count + 1).padStart(6, '0')}`;
     }
-  }
 
-  next();
+    // Calculate item totals
+    if (this.items && this.items.length > 0) {
+      this.items.forEach(item => {
+        // Calculate total price
+        item.totalPrice = item.quantityOrdered * item.unitPrice;
+
+        // Calculate discount amount
+        if (item.discountPercentage > 0) {
+          item.discountAmount = (item.totalPrice * item.discountPercentage) / 100;
+        }
+
+        // Calculate tax amount
+        const taxableAmount = item.totalPrice - item.discountAmount;
+        if (item.taxRate > 0) {
+          item.taxAmount = (taxableAmount * item.taxRate) / 100;
+        }
+
+        // Calculate final amount
+        item.finalAmount = taxableAmount + item.taxAmount;
+
+        // Update pending quantity
+        item.quantityPending = item.quantityOrdered - item.quantityReceived;
+      });
+
+      // Calculate order totals
+      this.subtotal = this.items.reduce((sum, item) => sum + item.totalPrice, 0);
+      this.discountAmount = this.items.reduce((sum, item) => sum + item.discountAmount, 0);
+      this.taxAmount = this.items.reduce((sum, item) => sum + item.taxAmount, 0);
+
+      this.grandTotal = (this.subtotal - this.discountAmount) + this.taxAmount + this.shippingCost + this.additionalCharges;
+    }
+
+    // Set payment due date
+    if (this.paymentTerms && this.paymentTerms.days && this.orderDate) {
+      const dueDate = new Date(this.orderDate);
+      dueDate.setDate(dueDate.getDate() + this.paymentTerms.days);
+      this.paymentTerms.dueDate = dueDate;
+    }
+
+    // Update status based on completion
+    if (this.status !== 'cancelled' && this.status !== 'completed') {
+      const completionPercentage = this.completionPercentage;
+
+      if (completionPercentage === 100) {
+        this.status = 'fully_received';
+      } else if (completionPercentage > 0 && completionPercentage < 100) {
+        this.status = 'partially_received';
+      }
+    }
+
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 });
 
 // Instance methods
@@ -645,94 +649,98 @@ purchaseOrderSchema.statics.getOrdersByDateRange = function(hotelId, startDate, 
 };
 
 purchaseOrderSchema.statics.getOrderStatistics = async function(hotelId, period = 'month') {
-  const now = new Date();
-  let startDate;
+  try {
+    const now = new Date();
+    let startDate;
 
-  switch (period) {
-    case 'week':
-      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
-      break;
-    case 'month':
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-      break;
-    case 'quarter':
-      startDate = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
-      break;
-    case 'year':
-      startDate = new Date(now.getFullYear(), 0, 1);
-      break;
-    default:
-      startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-  }
+    switch (period) {
+      case 'week':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+        break;
+      case 'month':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case 'quarter':
+        startDate = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+        break;
+      case 'year':
+        startDate = new Date(now.getFullYear(), 0, 1);
+        break;
+      default:
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
 
-  const stats = await this.aggregate([
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        orderDate: { $gte: startDate }
-      }
-    },
-    {
-      $group: {
-        _id: null,
-        totalOrders: { $sum: 1 },
-        totalValue: { $sum: '$grandTotal' },
-        avgOrderValue: { $avg: '$grandTotal' },
-        pendingOrders: {
-          $sum: {
-            $cond: [
-              { $in: ['$status', ['approved', 'sent_to_vendor', 'confirmed_by_vendor', 'in_transit', 'partially_received']] },
-              1,
-              0
-            ]
-          }
-        },
-        completedOrders: {
-          $sum: {
-            $cond: [
-              { $in: ['$status', ['completed', 'fully_received']] },
-              1,
-              0
-            ]
-          }
-        },
-        cancelledOrders: {
-          $sum: {
-            $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0]
+    const stats = await this.aggregate([
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          orderDate: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalOrders: { $sum: 1 },
+          totalValue: { $sum: '$grandTotal' },
+          avgOrderValue: { $avg: '$grandTotal' },
+          pendingOrders: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['approved', 'sent_to_vendor', 'confirmed_by_vendor', 'in_transit', 'partially_received']] },
+                1,
+                0
+              ]
+            }
+          },
+          completedOrders: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['completed', 'fully_received']] },
+                1,
+                0
+              ]
+            }
+          },
+          cancelledOrders: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0]
+            }
           }
         }
       }
-    }
-  ]);
+    ]);
 
-  const departmentStats = await this.aggregate([
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        orderDate: { $gte: startDate }
-      }
-    },
-    {
-      $group: {
-        _id: '$department',
-        orders: { $sum: 1 },
-        totalValue: { $sum: '$grandTotal' }
-      }
-    },
-    { $sort: { totalValue: -1 } }
-  ]);
+    const departmentStats = await this.aggregate([
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          orderDate: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: '$department',
+          orders: { $sum: 1 },
+          totalValue: { $sum: '$grandTotal' }
+        }
+      },
+      { $sort: { totalValue: -1 } }
+    ]);
 
-  return {
-    overall: stats[0] || {
-      totalOrders: 0,
-      totalValue: 0,
-      avgOrderValue: 0,
-      pendingOrders: 0,
-      completedOrders: 0,
-      cancelledOrders: 0
-    },
-    byDepartment: departmentStats
-  };
+    return {
+      overall: stats[0] || {
+        totalOrders: 0,
+        totalValue: 0,
+        avgOrderValue: 0,
+        pendingOrders: 0,
+        completedOrders: 0,
+        cancelledOrders: 0
+      },
+      byDepartment: departmentStats
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 const PurchaseOrder = mongoose.model('PurchaseOrder', purchaseOrderSchema);

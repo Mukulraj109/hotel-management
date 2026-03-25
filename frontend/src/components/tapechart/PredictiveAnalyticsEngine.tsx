@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +16,7 @@ import {
   Phone, Mail, Heart, Baby, Plane, Coffee, MapPin
 } from 'lucide-react';
 import { format, addDays, subDays, isWeekend } from 'date-fns';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 // Predictive Analytics Interfaces
 interface NoShowPrediction {
@@ -89,6 +90,12 @@ export const PredictiveAnalyticsEngine: React.FC<PredictiveAnalyticsEngineProps>
   const [loading, setLoading] = useState(false);
 
   // Mock data generation for realistic business scenarios
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   useEffect(() => {
     generateMockNoShowPredictions();
     generateMockDemandForecasts();
@@ -272,6 +279,7 @@ export const PredictiveAnalyticsEngine: React.FC<PredictiveAnalyticsEngineProps>
     try {
       // Simulate AI analysis
       await new Promise(resolve => setTimeout(resolve, 3000));
+    if (!isMountedRef.current) return;
 
       // Refresh all predictions
       generateMockNoShowPredictions();
@@ -866,3 +874,5 @@ export const PredictiveAnalyticsEngine: React.FC<PredictiveAnalyticsEngineProps>
     </Dialog>
   );
 };
+
+export default withErrorBoundary(PredictiveAnalyticsEngine, { level: 'component' });

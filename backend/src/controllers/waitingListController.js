@@ -22,7 +22,7 @@ class WaitingListController {
       } = req.query;
 
       // Get hotel from user context
-      const hotel = await Hotel.findOne();
+      const hotel = await Hotel.findOne().lean();
       if (!hotel) {
         return res.status(404).json({
           success: false,
@@ -109,7 +109,7 @@ class WaitingListController {
         .populate('notes.createdBy', 'name email')
         .populate('contactHistory.contactedBy', 'name email')
         .populate('convertedToBooking.bookingId', 'bookingNumber guestName')
-        .populate('convertedToBooking.convertedBy', 'name email');
+        .populate('convertedToBooking.convertedBy', 'name email').lean();
 
       if (!entry) {
         return res.status(404).json({
@@ -164,7 +164,7 @@ class WaitingListController {
       } = req.body;
 
       // Get hotel
-      const hotel = await Hotel.findOne();
+      const hotel = await Hotel.findOne().lean();
       if (!hotel) {
         return res.status(404).json({
           success: false,
@@ -179,7 +179,7 @@ class WaitingListController {
         status: { $in: ['active', 'contacted'] },
         'preferredDates.checkIn': preferredDates.checkIn,
         'preferredDates.checkOut': preferredDates.checkOut
-      });
+      }).lean();
 
       if (existingEntry) {
         return res.status(409).json({
@@ -223,7 +223,7 @@ class WaitingListController {
 
       // Populate the created entry
       const populatedEntry = await WaitingList.findById(waitingListEntry._id)
-        .populate('notes.createdBy', 'name email');
+        .populate('notes.createdBy', 'name email').lean();
 
       res.status(201).json({
         success: true,
@@ -247,14 +247,6 @@ class WaitingListController {
       const { id } = req.params;
       const updates = req.body;
 
-      const entry = await WaitingList.findById(id);
-      if (!entry) {
-        return res.status(404).json({
-          success: false,
-          message: 'Waiting list entry not found'
-        });
-      }
-
       // Allowed updates
       const allowedUpdates = [
         'guestName', 'email', 'phone', 'roomType', 'preferredDates',
@@ -262,24 +254,36 @@ class WaitingListController {
         'specialRequests', 'contactPreference', 'maxRate', 'notificationPreferences'
       ];
 
+      const setFields = {};
       allowedUpdates.forEach(field => {
         if (updates[field] !== undefined) {
-          entry[field] = updates[field];
+          setFields[field] = updates[field];
         }
       });
 
-      // Add update note
-      entry.notes.push({
-        content: `Entry updated by ${req.user.name}`,
-        createdBy: req.user._id,
-        isInternal: true
-      });
-
-      await entry.save();
-
-      const updatedEntry = await WaitingList.findById(id)
+      const updatedEntry = await WaitingList.findByIdAndUpdate(
+        id,
+        {
+          $set: setFields,
+          $push: {
+            notes: {
+              content: `Entry updated by ${req.user.name}`,
+              createdBy: req.user._id,
+              isInternal: true
+            }
+          }
+        },
+        { new: true, runValidators: true }
+      )
         .populate('notes.createdBy', 'name email')
         .populate('contactHistory.contactedBy', 'name email');
+
+      if (!updatedEntry) {
+        return res.status(404).json({
+          success: false,
+          message: 'Waiting list entry not found'
+        });
+      }
 
       res.json({
         success: true,
@@ -303,23 +307,34 @@ class WaitingListController {
       const { id } = req.params;
       const { status, note } = req.body;
 
-      const entry = await WaitingList.findById(id);
-      if (!entry) {
+      const updateOps = {
+        $set: { status, statusUpdatedAt: new Date(), statusUpdatedBy: req.user._id }
+      };
+
+      if (note) {
+        updateOps.$push = {
+          notes: {
+            content: note,
+            createdBy: req.user._id,
+            isInternal: true
+          }
+        };
+      }
+
+      const updatedEntry = await WaitingList.findByIdAndUpdate(
+        id,
+        updateOps,
+        { new: true, runValidators: true }
+      )
+        .populate('notes.createdBy', 'name email')
+        .populate('contactHistory.contactedBy', 'name email');
+
+      if (!updatedEntry) {
         return res.status(404).json({
           success: false,
           message: 'Waiting list entry not found'
         });
       }
-
-      await entry.updateStatus(status, req.user._id);
-
-      if (note) {
-        await entry.addNote(note, req.user._id);
-      }
-
-      const updatedEntry = await WaitingList.findById(id)
-        .populate('notes.createdBy', 'name email')
-        .populate('contactHistory.contactedBy', 'name email');
 
       res.json({
         success: true,
@@ -343,24 +358,38 @@ class WaitingListController {
       const { id } = req.params;
       const { priority } = req.body;
 
-      const entry = await WaitingList.findById(id);
-      if (!entry) {
+      // First get the old priority for the note, then update atomically
+      const existingEntry = await WaitingList.findById(id).select('priority').lean();
+      if (!existingEntry) {
         return res.status(404).json({
           success: false,
           message: 'Waiting list entry not found'
         });
       }
 
-      const oldPriority = entry.priority;
-      entry.priority = priority;
+      const oldPriority = existingEntry.priority;
 
-      entry.notes.push({
-        content: `Priority changed from ${oldPriority} to ${priority}`,
-        createdBy: req.user._id,
-        isInternal: true
-      });
+      const entry = await WaitingList.findByIdAndUpdate(
+        id,
+        {
+          $set: { priority },
+          $push: {
+            notes: {
+              content: `Priority changed from ${oldPriority} to ${priority}`,
+              createdBy: req.user._id,
+              isInternal: true
+            }
+          }
+        },
+        { new: true, runValidators: true }
+      );
 
-      await entry.save();
+      if (!entry) {
+        return res.status(404).json({
+          success: false,
+          message: 'Waiting list entry not found'
+        });
+      }
 
       res.json({
         success: true,
@@ -384,7 +413,7 @@ class WaitingListController {
       const { id } = req.params;
       const { content, isInternal = true } = req.body;
 
-      const entry = await WaitingList.findById(id);
+      const entry = await WaitingList.findById(id).lean();
       if (!entry) {
         return res.status(404).json({
           success: false,
@@ -395,7 +424,7 @@ class WaitingListController {
       await entry.addNote(content, req.user._id, isInternal);
 
       const updatedEntry = await WaitingList.findById(id)
-        .populate('notes.createdBy', 'name email');
+        .populate('notes.createdBy', 'name email').lean();
 
       res.json({
         success: true,
@@ -419,7 +448,7 @@ class WaitingListController {
       const { id } = req.params;
       const { method, message } = req.body;
 
-      const entry = await WaitingList.findById(id);
+      const entry = await WaitingList.findById(id).lean();
       if (!entry) {
         return res.status(404).json({
           success: false,
@@ -435,7 +464,7 @@ class WaitingListController {
       }
 
       const updatedEntry = await WaitingList.findById(id)
-        .populate('contactHistory.contactedBy', 'name email');
+        .populate('contactHistory.contactedBy', 'name email').lean();
 
       res.json({
         success: true,
@@ -458,7 +487,7 @@ class WaitingListController {
     try {
       const { id } = req.params;
 
-      const entry = await WaitingList.findById(id);
+      const entry = await WaitingList.findById(id).lean();
       if (!entry) {
         return res.status(404).json({
           success: false,
@@ -489,7 +518,7 @@ class WaitingListController {
       const { checkIn, checkOut } = req.query;
 
       // Get hotel
-      const hotel = await Hotel.findOne();
+      const hotel = await Hotel.findOne().lean();
       if (!hotel) {
         return res.status(404).json({
           success: false,
@@ -552,7 +581,7 @@ class WaitingListController {
   async getWaitlistStats(req, res) {
     try {
       // Get hotel
-      const hotel = await Hotel.findOne();
+      const hotel = await Hotel.findOne().lean();
       if (!hotel) {
         return res.status(404).json({
           success: false,
@@ -613,7 +642,7 @@ class WaitingListController {
       const { id } = req.params;
       const { message } = req.body;
 
-      const entry = await WaitingList.findById(id);
+      const entry = await WaitingList.findById(id).lean();
       if (!entry) {
         return res.status(404).json({
           success: false,

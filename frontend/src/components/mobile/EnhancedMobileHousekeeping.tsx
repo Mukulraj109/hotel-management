@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface HousekeepingTask {
   id: string;
@@ -132,6 +133,14 @@ const EnhancedMobileHousekeeping: React.FC = () => {
     startTime: null,
     elapsed: 0
   });
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     initializeApp();
@@ -563,7 +572,8 @@ const EnhancedMobileHousekeeping: React.FC = () => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
       
-      setTimeout(() => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
         clearInterval(timer);
       }, 60000); // Max 1 minute recording
       
@@ -1060,4 +1070,4 @@ const EnhancedMobileHousekeeping: React.FC = () => {
   );
 };
 
-export default EnhancedMobileHousekeeping;
+export default withErrorBoundary(EnhancedMobileHousekeeping, { level: 'component' });

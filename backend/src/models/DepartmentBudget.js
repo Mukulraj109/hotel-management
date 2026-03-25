@@ -98,37 +98,41 @@ departmentBudgetSchema.pre('save', function(next) {
 
 // Static method to get or create department budget
 departmentBudgetSchema.statics.getOrCreateBudget = async function(hotelId, department, year, month = null) {
-  const query = {
-    hotelId,
-    department,
-    'budgetPeriod.year': year
-  };
-
-  if (month) {
-    query['budgetPeriod.month'] = month;
-  }
-
-  let budget = await this.findOne(query);
-
-  if (!budget) {
-    // Create default budget based on department
-    const defaultAllocations = this.getDefaultAllocation(department);
-
-    budget = await this.create({
+  try {
+    const query = {
       hotelId,
       department,
-      budgetPeriod: { year, month },
-      allocations: {
-        total: defaultAllocations.supply_requests,
-        supply_requests: defaultAllocations.supply_requests,
-        equipment: defaultAllocations.equipment || 0,
-        maintenance: defaultAllocations.maintenance || 0,
-        other: defaultAllocations.other || 0
-      }
-    });
-  }
+      'budgetPeriod.year': year
+    };
 
-  return budget;
+    if (month) {
+      query['budgetPeriod.month'] = month;
+    }
+
+    let budget = await this.findOne(query).lean();
+
+    if (!budget) {
+      // Create default budget based on department
+      const defaultAllocations = this.getDefaultAllocation(department);
+
+      budget = await this.create({
+        hotelId,
+        department,
+        budgetPeriod: { year, month },
+        allocations: {
+          total: defaultAllocations.supply_requests,
+          supply_requests: defaultAllocations.supply_requests,
+          equipment: defaultAllocations.equipment || 0,
+          maintenance: defaultAllocations.maintenance || 0,
+          other: defaultAllocations.other || 0
+        }
+      });
+    }
+
+    return budget;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get default allocation by department
@@ -150,44 +154,60 @@ departmentBudgetSchema.statics.getDefaultAllocation = function(department) {
 
 // Method to update spending
 departmentBudgetSchema.methods.updateSpending = async function(amount, category = 'supply_requests') {
-  if (!this.spent[category]) {
-    throw new Error(`Invalid spending category: ${category}`);
+  try {
+    if (!this.spent[category]) {
+      throw new Error(`Invalid spending category: ${category}`);
+    }
+
+    this.spent[category] += amount;
+    await this.save();
+
+    return this;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  this.spent[category] += amount;
-  await this.save();
-
-  return this;
 };
 
 // Method to update commitments
 departmentBudgetSchema.methods.updateCommitments = async function(amount, type = 'pending_approvals') {
-  if (!this.commitments[type]) {
-    throw new Error(`Invalid commitment type: ${type}`);
+  try {
+    if (!this.commitments[type]) {
+      throw new Error(`Invalid commitment type: ${type}`);
+    }
+
+    this.commitments[type] += amount;
+    await this.save();
+
+    return this;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  this.commitments[type] += amount;
-  await this.save();
-
-  return this;
 };
 
 // Method to move commitment from pending to approved
 departmentBudgetSchema.methods.approveCommitment = async function(amount) {
-  this.commitments.pending_approvals = Math.max(0, this.commitments.pending_approvals - amount);
-  this.commitments.approved_orders += amount;
-  await this.save();
+  try {
+    this.commitments.pending_approvals = Math.max(0, this.commitments.pending_approvals - amount);
+    this.commitments.approved_orders += amount;
+    await this.save();
 
-  return this;
+    return this;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Method to complete order (move from commitment to spent)
 departmentBudgetSchema.methods.completeOrder = async function(approvedAmount, actualAmount) {
-  this.commitments.approved_orders = Math.max(0, this.commitments.approved_orders - approvedAmount);
-  this.spent.supply_requests += actualAmount;
-  await this.save();
+  try {
+    this.commitments.approved_orders = Math.max(0, this.commitments.approved_orders - approvedAmount);
+    this.spent.supply_requests += actualAmount;
+    await this.save();
 
-  return this;
+    return this;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Method to check if budget allows spending
@@ -233,76 +253,84 @@ departmentBudgetSchema.methods.getAlerts = function() {
 
 // Static method to get department budget summary
 departmentBudgetSchema.statics.getDepartmentSummary = async function(hotelId, year, month = null) {
-  const query = {
-    hotelId,
-    'budgetPeriod.year': year,
-    status: 'active'
-  };
+  try {
+    const query = {
+      hotelId,
+      'budgetPeriod.year': year,
+      status: 'active'
+    };
 
-  if (month) {
-    query['budgetPeriod.month'] = month;
-  }
+    if (month) {
+      query['budgetPeriod.month'] = month;
+    }
 
-  const budgets = await this.find(query);
+    const budgets = await this.find(query).lean().limit(1000);
 
-  const summary = {
-    totalAllocated: 0,
-    totalSpent: 0,
-    totalCommitments: 0,
-    totalAvailable: 0,
-    departments: []
-  };
+    const summary = {
+      totalAllocated: 0,
+      totalSpent: 0,
+      totalCommitments: 0,
+      totalAvailable: 0,
+      departments: []
+    };
 
-  budgets.forEach(budget => {
-    summary.totalAllocated += budget.allocations.supply_requests;
-    summary.totalSpent += budget.spent.supply_requests;
-    summary.totalCommitments += budget.totalCommitments;
-    summary.totalAvailable += budget.availableBudget;
+    budgets.forEach(budget => {
+      summary.totalAllocated += budget.allocations.supply_requests;
+      summary.totalSpent += budget.spent.supply_requests;
+      summary.totalCommitments += budget.totalCommitments;
+      summary.totalAvailable += budget.availableBudget;
 
-    summary.departments.push({
-      department: budget.department,
-      allocated: budget.allocations.supply_requests,
-      spent: budget.spent.supply_requests,
-      utilization: budget.utilizationPercentage,
-      available: budget.availableBudget,
-      alerts: budget.getAlerts()
+      summary.departments.push({
+        department: budget.department,
+        allocated: budget.allocations.supply_requests,
+        spent: budget.spent.supply_requests,
+        utilization: budget.utilizationPercentage,
+        available: budget.availableBudget,
+        alerts: budget.getAlerts()
+      });
     });
-  });
 
-  summary.departments.sort((a, b) => b.utilization - a.utilization);
+    summary.departments.sort((a, b) => b.utilization - a.utilization);
 
-  return summary;
+    return summary;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to analyze spending trends
 departmentBudgetSchema.statics.getSpendingTrends = async function(hotelId, department, months = 6) {
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setMonth(startDate.getMonth() - months);
+  try {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - months);
 
-  const trends = await this.aggregate([
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        department,
-        'budgetPeriod.year': { $gte: startDate.getFullYear() }
+    const trends = await this.aggregate([
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          department,
+          'budgetPeriod.year': { $gte: startDate.getFullYear() }
+        }
+      },
+      {
+        $project: {
+          year: '$budgetPeriod.year',
+          month: '$budgetPeriod.month',
+          spent: '$spent.supply_requests',
+          allocated: '$allocations.supply_requests',
+          utilization: '$utilizationPercentage'
+        }
+      },
+      {
+        $sort: { year: 1, month: 1 }
       }
-    },
-    {
-      $project: {
-        year: '$budgetPeriod.year',
-        month: '$budgetPeriod.month',
-        spent: '$spent.supply_requests',
-        allocated: '$allocations.supply_requests',
-        utilization: '$utilizationPercentage'
-      }
-    },
-    {
-      $sort: { year: 1, month: 1 }
-    }
-  ]);
+    ]);
 
-  return trends;
+    return trends;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 const DepartmentBudget = mongoose.model('DepartmentBudget', departmentBudgetSchema);

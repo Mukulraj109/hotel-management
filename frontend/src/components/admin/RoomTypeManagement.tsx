@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import {
   Plus,
   Edit,
@@ -25,6 +25,7 @@ import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../settings/
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface RoomTypeManagementProps {
   hotelId: string;
@@ -62,6 +63,15 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
     applyToScope,
     inheritanceStatus?.groupPropertyCount || 0
   );
+
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     fetchRoomTypes();
@@ -121,7 +131,8 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
         if (!result) return; // Confirmation dialog shown
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Room type created successfully${
           applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
         }`);
@@ -172,7 +183,8 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
         if (!result) return; // Confirmation dialog shown
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Room type updated successfully${
           applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
         }`);
@@ -203,7 +215,8 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Settings updated for ${result.propertiesUpdated} properties`);
         setApplyToScope('single');
         await fetchRoomTypes();
@@ -801,4 +814,4 @@ const RoomTypeManagement: React.FC<RoomTypeManagementProps> = ({ hotelId, viewOn
   );
 };
 
-export default RoomTypeManagement;
+export default withErrorBoundary(RoomTypeManagement, { level: 'component' });

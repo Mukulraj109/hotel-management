@@ -132,32 +132,48 @@ class LaundryService {
     totalItems: number;
     totalCost: number;
   }> {
-    const response = await api.post('/laundry/send-items', data);
-    return response.data.data;
+    try {
+      const response = await api.post('/laundry/send-items', data);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Mark items as in laundry
    */
   async markItemsAsInLaundry(transactionId: string): Promise<LaundryTransaction> {
-    const response = await api.put(`/laundry/${transactionId}/mark-in-laundry`);
-    return response.data.data;
+    try {
+      const response = await api.put(`/laundry/${transactionId}/mark-in-laundry`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Mark items as cleaning
    */
   async markItemsAsCleaning(transactionId: string): Promise<LaundryTransaction> {
-    const response = await api.put(`/laundry/${transactionId}/mark-cleaning`);
-    return response.data.data;
+    try {
+      const response = await api.put(`/laundry/${transactionId}/mark-cleaning`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Mark items as ready for return
    */
   async markItemsAsReady(transactionId: string): Promise<LaundryTransaction> {
-    const response = await api.put(`/laundry/${transactionId}/mark-ready`);
-    return response.data.data;
+    try {
+      const response = await api.put(`/laundry/${transactionId}/mark-ready`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -169,28 +185,40 @@ class LaundryService {
     issues: string[] = [],
     photos: string[] = []
   ): Promise<LaundryTransaction> {
-    const response = await api.put(`/laundry/${transactionId}/return-items`, {
-      quality,
-      issues,
-      photos
-    });
-    return response.data.data;
+    try {
+      const response = await api.put(`/laundry/${transactionId}/return-items`, {
+        quality,
+        issues,
+        photos
+      });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Mark items as lost
    */
   async markItemsAsLost(transactionId: string, notes?: string): Promise<LaundryTransaction> {
-    const response = await api.put(`/laundry/${transactionId}/mark-lost`, { notes });
-    return response.data.data;
+    try {
+      const response = await api.put(`/laundry/${transactionId}/mark-lost`, { notes });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Mark items as damaged
    */
   async markItemsAsDamaged(transactionId: string, notes?: string): Promise<LaundryTransaction> {
-    const response = await api.put(`/laundry/${transactionId}/mark-damaged`, { notes });
-    return response.data.data;
+    try {
+      const response = await api.put(`/laundry/${transactionId}/mark-damaged`, { notes });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -201,13 +229,17 @@ class LaundryService {
     startDate?: string;
     endDate?: string;
   }): Promise<LaundryDashboard> {
-    const params = new URLSearchParams();
-    if (filters?.status) params.append('status', filters.status);
-    if (filters?.startDate) params.append('startDate', filters.startDate);
-    if (filters?.endDate) params.append('endDate', filters.endDate);
+    try {
+      const params = new URLSearchParams();
+      if (filters?.status) params.append('status', filters.status);
+      if (filters?.startDate) params.append('startDate', filters.startDate);
+      if (filters?.endDate) params.append('endDate', filters.endDate);
 
-    const response = await api.get(`/laundry/dashboard?${params.toString()}`);
-    return response.data.data;
+      const response = await api.get(`/laundry/dashboard?${params.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -218,21 +250,29 @@ class LaundryService {
     status?: string;
     itemId?: string;
   }): Promise<LaundryTransaction[]> {
-    const params = new URLSearchParams();
-    if (filters?.roomId) params.append('roomId', filters.roomId);
-    if (filters?.status) params.append('status', filters.status);
-    if (filters?.itemId) params.append('itemId', filters.itemId);
+    try {
+      const params = new URLSearchParams();
+      if (filters?.roomId) params.append('roomId', filters.roomId);
+      if (filters?.status) params.append('status', filters.status);
+      if (filters?.itemId) params.append('itemId', filters.itemId);
 
-    const response = await api.get(`/laundry/status?${params.toString()}`);
-    return response.data.data;
+      const response = await api.get(`/laundry/status?${params.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get overdue laundry items
    */
   async getOverdueItems(): Promise<LaundryTransaction[]> {
-    const response = await api.get('/laundry/overdue');
-    return response.data.data;
+    try {
+      const response = await api.get('/laundry/overdue');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -242,12 +282,16 @@ class LaundryService {
     startDate?: string;
     endDate?: string;
   }): Promise<LaundryStatistics> {
-    const params = new URLSearchParams();
-    if (dateRange?.startDate) params.append('startDate', dateRange.startDate);
-    if (dateRange?.endDate) params.append('endDate', dateRange.endDate);
+    try {
+      const params = new URLSearchParams();
+      if (dateRange?.startDate) params.append('startDate', dateRange.startDate);
+      if (dateRange?.endDate) params.append('endDate', dateRange.endDate);
 
-    const response = await api.get(`/laundry/statistics?${params.toString()}`);
-    return response.data.data;
+      const response = await api.get(`/laundry/statistics?${params.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -265,28 +309,36 @@ class LaundryService {
     page: number;
     pages: number;
   }> {
-    const queryParams = new URLSearchParams();
-    if (params?.page) queryParams.append('page', params.page.toString());
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
-    if (params?.status) queryParams.append('status', params.status);
-    if (params?.roomId) queryParams.append('roomId', params.roomId);
-    if (params?.sort) queryParams.append('sort', params.sort);
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.page) queryParams.append('page', params.page.toString());
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
+      if (params?.status) queryParams.append('status', params.status);
+      if (params?.roomId) queryParams.append('roomId', params.roomId);
+      if (params?.sort) queryParams.append('sort', params.sort);
 
-    const response = await api.get(`/laundry?${queryParams.toString()}`);
-    return {
-      data: response.data.data,
-      total: response.data.results,
-      page: params?.page || 1,
-      pages: Math.ceil(response.data.results / (params?.limit || 10))
-    };
+      const response = await api.get(`/laundry?${queryParams.toString()}`);
+      return {
+        data: response.data.data,
+        total: response.data.results,
+        page: params?.page || 1,
+        pages: Math.ceil(response.data.results / (params?.limit || 10))
+      };
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get laundry transaction by ID
    */
   async getLaundryTransaction(transactionId: string): Promise<LaundryTransaction> {
-    const response = await api.get(`/laundry/${transactionId}`);
-    return response.data.data;
+    try {
+      const response = await api.get(`/laundry/${transactionId}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**

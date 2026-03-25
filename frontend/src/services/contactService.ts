@@ -71,14 +71,22 @@ export interface HotelContact {
 class ContactService {
   // Submit contact form
   async submitContactForm(formData: ContactForm): Promise<ContactSubmissionResponse> {
-    const response = await api.post('/contact', formData);
-    return response.data.data;
+    try {
+      const response = await api.post('/contact', formData);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get contact information
   async getContactInfo(): Promise<ContactInfo> {
-    const response = await api.get('/contact/info');
-    return response.data.data;
+    try {
+      const response = await api.get('/contact/info');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get hotels with contact information
@@ -86,8 +94,12 @@ class ContactService {
     hotels: HotelContact[];
     total: number;
   }> {
-    const response = await api.get('/contact/hotels');
-    return response.data.data;
+    try {
+      const response = await api.get('/contact/hotels');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Validate contact form data

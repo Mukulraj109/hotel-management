@@ -364,7 +364,9 @@ describe('Multi-Property Integration Tests', () => {
       await Hotel.findByIdAndUpdate(newProperty._id, {
         propertyGroupId: testGroup._id,
         'groupSettings.inheritSettings': true
-      });
+      },
+        { new: true }
+      );
 
       // Apply settings to group
       const response = await request(app)
@@ -391,7 +393,9 @@ describe('Multi-Property Integration Tests', () => {
 
       await Hotel.findByIdAndUpdate(properties[2]._id, {
         $unset: { propertyGroupId: 1 }
-      });
+      },
+        { new: true }
+      );
 
       // Apply settings to group
       const response = await request(app)
@@ -415,7 +419,9 @@ describe('Multi-Property Integration Tests', () => {
       // Make one property invalid
       await Hotel.findByIdAndUpdate(properties[2]._id, {
         isActive: false
-      });
+      },
+        { new: true }
+      );
 
       const response = await request(app)
         .post('/api/v1/settings/apply')

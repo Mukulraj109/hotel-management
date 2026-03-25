@@ -93,8 +93,12 @@ class AttractionsService {
   }
 
   async getAttractionById(id: string): Promise<LocalAttraction> {
-    const response = await api.get(`${this.baseUrl}/${id}`);
-    return response.data.data.attraction;
+    try {
+      const response = await api.get(`${this.baseUrl}/${id}`);
+      return response.data.data.attraction;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getAttractionsByCategory(hotelId: string, category: LocalAttraction['category'], maxDistance?: number): Promise<LocalAttraction[]> {
@@ -114,17 +118,29 @@ class AttractionsService {
 
   // Admin methods for managing attractions
   async createAttraction(attraction: Omit<LocalAttraction, '_id' | 'createdAt' | 'updatedAt' | 'isActive' | 'distanceText' | 'ratingStars'>): Promise<LocalAttraction> {
-    const response = await api.post(this.baseUrl, attraction);
-    return response.data.data.attraction;
+    try {
+      const response = await api.post(this.baseUrl, attraction);
+      return response.data.data.attraction;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateAttraction(id: string, updates: Partial<LocalAttraction>): Promise<LocalAttraction> {
-    const response = await api.patch(`${this.baseUrl}/${id}`, updates);
-    return response.data.data.attraction;
+    try {
+      const response = await api.patch(`${this.baseUrl}/${id}`, updates);
+      return response.data.data.attraction;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async deleteAttraction(id: string): Promise<void> {
-    await api.delete(`${this.baseUrl}/${id}`);
+    try {
+      await api.delete(`${this.baseUrl}/${id}`);
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Utility methods

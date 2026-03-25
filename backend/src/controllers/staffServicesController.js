@@ -157,7 +157,7 @@ export const getServiceRequestDetails = catchAsync(async (req, res) => {
     { path: 'userId', select: 'name email phone' },
     { path: 'bookingId', select: 'bookingNumber roomNumber checkIn checkOut' },
     { path: 'relatedHotelService', select: 'name type description contactInfo' }
-  ]);
+  ]).lean();
 
   if (!request) {
     throw new ApplicationError('Service request not found or not assigned to you', 404);
@@ -208,47 +208,60 @@ export const updateServiceRequestStatus = catchAsync(async (req, res) => {
   const staffId = req.user._id;
   const { status, notes, actualCost } = req.body;
 
-  const request = await GuestService.findOne({
-    _id: requestId,
-    assignedTo: staffId
-  });
-
-  if (!request) {
-    throw new ApplicationError('Service request not found or not assigned to you', 404);
-  }
-
-  // Validate status transitions
+  // Validate status transitions using the current status
   const validTransitions = {
     'assigned': ['in_progress'],
     'in_progress': ['completed'],
     'pending': ['in_progress']
   };
 
-  if (!validTransitions[request.status]?.includes(status)) {
-    throw new ApplicationError(`Cannot change status from ${request.status} to ${status}`, 400);
+  // Build the query to atomically match valid current statuses
+  const validFromStatuses = Object.keys(validTransitions).filter(
+    fromStatus => validTransitions[fromStatus]?.includes(status)
+  );
+
+  if (validFromStatuses.length === 0) {
+    throw new ApplicationError(`Invalid target status: ${status}`, 400);
   }
 
-  const oldStatus = request.status;
+  const updateFields = {
+    status,
+    statusUpdatedAt: new Date()
+  };
+  if (notes) updateFields.notes = notes;
+  if (actualCost !== undefined) updateFields.actualCost = actualCost;
+  if (status === 'completed') updateFields.completedAt = new Date();
 
-  // Update request
-  request.updateStatus(status);
-  if (notes) request.notes = notes;
-  if (actualCost !== undefined) request.actualCost = actualCost;
-
-  await request.save();
-
-  // Send notifications about status change
-  try {
-    await serviceNotificationService.notifyStatusChange(request, oldStatus, status, staffId);
-  } catch (error) {
-    console.error('Failed to send status change notification:', error);
-  }
-
-  await request.populate([
+  const request = await GuestService.findOneAndUpdate(
+    {
+      _id: requestId,
+      assignedTo: staffId,
+      status: { $in: validFromStatuses }
+    },
+    { $set: updateFields },
+    { new: true, runValidators: true }
+  ).populate([
     { path: 'hotelId', select: 'name' },
     { path: 'userId', select: 'name email' },
     { path: 'bookingId', select: 'bookingNumber roomNumber' }
   ]);
+
+  if (!request) {
+    // Determine if request doesn't exist or transition is invalid
+    const exists = await GuestService.findOne({ _id: requestId, assignedTo: staffId }).lean();
+    if (!exists) {
+      throw new ApplicationError('Service request not found or not assigned to you', 404);
+    }
+    throw new ApplicationError(`Cannot change status from ${exists.status} to ${status}`, 400);
+  }
+
+  // Send notifications about status change
+  try {
+    const oldStatus = validFromStatuses.find(s => validTransitions[s]?.includes(status));
+    await serviceNotificationService.notifyStatusChange(request, oldStatus, status, staffId);
+  } catch (error) {
+    console.error('Failed to send status change notification:', error);
+  }
 
   res.json({
     status: 'success',
@@ -291,17 +304,15 @@ export const addNotesToRequest = catchAsync(async (req, res) => {
   const staffId = req.user._id;
   const { notes } = req.body;
 
-  const request = await GuestService.findOne({
-    _id: requestId,
-    assignedTo: staffId
-  });
+  const request = await GuestService.findOneAndUpdate(
+    { _id: requestId, assignedTo: staffId },
+    { $set: { notes } },
+    { new: true, runValidators: true }
+  );
 
   if (!request) {
     throw new ApplicationError('Service request not found or not assigned to you', 404);
   }
-
-  request.notes = notes;
-  await request.save();
 
   res.json({
     status: 'success',
@@ -376,7 +387,7 @@ export const getStaffServiceDashboard = catchAsync(async (req, res) => {
   }).sort({ scheduledTime: 1 })
     .limit(5)
     .populate('userId', 'name')
-    .populate('bookingId', 'roomNumber');
+    .populate('bookingId', 'roomNumber').lean();
 
   res.json({
     status: 'success',

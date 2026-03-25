@@ -140,7 +140,7 @@ export const NotificationSummaryWidget: React.FC<NotificationSummaryWidgetProps>
           </div>
           <div className="flex items-center gap-2">
             {variant === 'full' && (
-              <button
+              <button aria-label="Expand"
                 onClick={() => setIsExpanded(!isExpanded)}
                 className="text-xs text-blue-600 hover:text-blue-700 font-medium"
               >
@@ -148,7 +148,7 @@ export const NotificationSummaryWidget: React.FC<NotificationSummaryWidgetProps>
               </button>
             )}
             {showSettings && (
-              <button
+              <button aria-label="Settings"
                 onClick={handleNavigateToSettings}
                 className="p-1 hover:bg-gray-100 rounded transition-colors"
                 title="Notification Settings"

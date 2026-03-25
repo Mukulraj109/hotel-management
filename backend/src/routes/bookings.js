@@ -16,6 +16,7 @@ import { marketingSyncMiddleware } from '../middleware/marketingSyncMiddleware.j
 import { bookingCompletionMiddleware } from '../middleware/crmTrackingMiddleware.js';
 import logger from '../utils/logger.js';
 import cancellationService from '../services/cancellationService.js';
+import { validateTransition } from '../utils/bookingStateMachine.js';
 
 const router = express.Router();
 
@@ -124,7 +125,7 @@ router.get('/upcoming', authenticate, ensureTenantContext, ensurePropertyAccess,
     .populate('corporateBooking.corporateCompanyId', 'name gstNumber')
     .sort({ checkIn: 1 }) // Sort by check-in date (ascending)
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   const total = await Booking.countDocuments(finalQuery);
 
@@ -278,7 +279,7 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
     .populate('corporateBooking.corporateCompanyId', 'name gstNumber')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   const total = await Booking.countDocuments(query);
 
@@ -371,7 +372,7 @@ router.get('/room/:roomId', authenticate, ensureTenantContext, authorize('admin'
   } = req.query;
   
   // Validate room exists and user has access
-  const room = await Room.findById(roomId);
+  const room = await Room.findById(roomId).lean();
   if (!room) {
     throw new ApplicationError('Room not found', 404);
   }
@@ -418,7 +419,7 @@ router.get('/room/:roomId', authenticate, ensureTenantContext, authorize('admin'
     .populate('hotelId', 'name')
     .sort({ checkIn: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
   
   const total = await Booking.countDocuments(query);
   
@@ -459,7 +460,7 @@ router.post('/check-availability', authenticate, ensurePropertyAccess, catchAsyn
     $or: [
       { checkIn: { $lt: checkOutDate }, checkOut: { $gt: checkInDate } }
     ]
-  }).select('rooms checkIn checkOut status bookingNumber');
+  }).select('rooms checkIn checkOut status bookingNumber').lean().limit(1000);
 
   const unavailableRoomIds = new Set();
   for (const booking of overlappingBookings) {
@@ -508,7 +509,7 @@ router.get('/:id', authenticate, ensureTenantContext, ensurePropertyAccess, catc
   const booking = await Booking.findById(req.params.id)
     .populate('userId', 'name email phone')
     .populate('rooms.roomId', 'roomNumber type baseRate currentRate')
-    .populate('hotelId', 'name address contact policies');
+    .populate('hotelId', 'name address contact policies').lean();
 
   if (!booking) {
     throw new ApplicationError('Booking not found', 404);
@@ -623,7 +624,7 @@ router.post('/',
     try {
       await session.withTransaction(async () => {
         // Check for duplicate booking with same idempotency key (with intelligent expiration)
-        const existingBooking = await Booking.findOne({ idempotencyKey });
+        const existingBooking = await Booking.findOne({ idempotencyKey }).lean();
         if (existingBooking) {
           // Allow reuse of idempotency key if:
           // 1. The existing booking is from the same user AND
@@ -667,7 +668,7 @@ router.post('/',
             _id: { $in: roomIds },
             hotelId,
             isActive: true
-          });
+          }).lean().limit(1000);
 
           if (rooms.length !== roomIds.length) {
             throw new ApplicationError('One or more rooms not found or not available', 404);
@@ -747,7 +748,7 @@ router.post('/',
         if (req.body.ratePlanId) {
           try {
             const { RatePlan } = await import('../models/RateManagement.js');
-            const ratePlan = await RatePlan.findOne({ planId: req.body.ratePlanId });
+            const ratePlan = await RatePlan.findOne({ planId: req.body.ratePlanId }).lean();
             if (ratePlan?.cancellationPolicy) {
               ratePlanSnapshot = { cancellationPolicy: ratePlan.cancellationPolicy };
             }
@@ -761,10 +762,10 @@ router.post('/',
             // Check if guest exists by phone or email
             let guestUser = null;
             if (guestEmail) {
-              guestUser = await User.findOne({ email: guestEmail });
+              guestUser = await User.findOne({ email: guestEmail }).lean();
             }
             if (!guestUser && guestPhone) {
-              guestUser = await User.findOne({ phone: guestPhone });
+              guestUser = await User.findOne({ phone: guestPhone }).lean();
             }
 
             if (!guestUser) {
@@ -935,7 +936,7 @@ router.patch('/:id',
   ensurePropertyAccess,
   marketingSyncMiddleware('booking_updated'),
   catchAsync(async (req, res) => {
-    const booking = await Booking.findById(req.params.id);
+    const booking = await Booking.findById(req.params.id).lean();
 
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
@@ -962,7 +963,7 @@ router.patch('/:id',
       }
     });
 
-    const originalBooking = await Booking.findById(req.params.id);
+    const originalBooking = await Booking.findById(req.params.id).lean();
     const oldPaymentStatus = originalBooking?.paymentStatus;
 
     const updatedBooking = await Booking.findByIdAndUpdate(
@@ -1114,6 +1115,12 @@ router.patch('/:id/cancel',
       }
     }
 
+    // Validate status transition using state machine
+    const transition = validateTransition(booking.status, 'cancelled');
+    if (!transition.valid) {
+      throw new ApplicationError(transition.error, 400);
+    }
+
     booking.status = 'cancelled';
     booking.cancellationReason = req.body.reason || 'Cancelled by user';
     await booking.save();
@@ -1203,7 +1210,7 @@ router.post('/change-room-by-guest',
     // First try to find by bookingId if provided
     if (bookingId) {
       logger.debug('Searching by booking ID', { bookingId });
-      booking = await Booking.findById(bookingId);
+      booking = await Booking.findById(bookingId).lean();
     }
 
     // If not found by ID, search by guest name and dates
@@ -1213,7 +1220,7 @@ router.post('/change-room-by-guest',
       // Find the user by name
       const user = await User.findOne({
         name: { $regex: new RegExp(guestName, 'i') }
-      });
+      }).lean();
 
       if (user) {
         logger.debug('Found user for room change', { userId: user._id });
@@ -1238,7 +1245,7 @@ router.post('/change-room-by-guest',
         };
 
         logger.debug('Booking search query constructed');
-        booking = await Booking.findOne(searchQuery);
+        booking = await Booking.findOne(searchQuery).lean();
       } else {
         logger.debug('No user found for room change lookup');
       }
@@ -1256,21 +1263,17 @@ router.post('/change-room-by-guest',
       booking.rooms = [];
     }
 
-    // Check if booking is cancelled and reactivate it if needed
-    if (booking.status === 'cancelled') {
-      logger.info('Reactivating cancelled booking for room assignment', { bookingId: booking._id });
-      booking.status = 'confirmed';
-      booking.lastStatusChange = {
-        from: 'cancelled',
-        to: 'confirmed',
-        timestamp: new Date(),
-        reason: 'Reactivated for room assignment'
-      };
+    // Cancelled bookings cannot be reactivated - they are a terminal state
+    if (booking.status === 'cancelled' || booking.status === 'no_show' || booking.status === 'checked_out') {
+      throw new ApplicationError(
+        `Cannot assign rooms to a booking in terminal state "${booking.status}". Please create a new booking.`,
+        400
+      );
     }
 
     // Find the room to get its rate and validate room type
     const Room = mongoose.model('Room');
-    const room = await Room.findById(newRoomId);
+    const room = await Room.findById(newRoomId).lean();
 
     if (!room) {
       throw new ApplicationError(`Room not found: ${newRoomNumber}`, 404);
@@ -1515,7 +1518,7 @@ router.get('/:id/modification-requests',
     const bookingId = req.params.id;
 
     const booking = await Booking.findById(bookingId)
-      .populate('userId', 'name email');
+      .populate('userId', 'name email').lean();
 
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
@@ -1545,7 +1548,7 @@ router.get('/:id/audit-trail',
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
     const booking = await Booking.findById(req.params.id)
-      .select('modificationHistory statusHistory modifications bookingNumber');
+      .select('modificationHistory statusHistory modifications bookingNumber').lean();
 
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
@@ -1623,7 +1626,7 @@ router.patch('/:id/modification-requests/:requestId/review',
     const { action, reviewNotes, approvedChanges } = req.body;
     const { id: bookingId, requestId } = req.params;
 
-    const booking = await Booking.findById(bookingId).populate('userId hotelId');
+    const booking = await Booking.findById(bookingId).populate('userId hotelId').lean();
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
     }
@@ -1752,7 +1755,7 @@ router.patch('/:id/check-in',
   authorize(['admin', 'staff', 'frontdesk']),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
-    const booking = await Booking.findById(req.params.id);
+    const booking = await Booking.findById(req.params.id).lean();
 
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
@@ -1780,6 +1783,11 @@ router.patch('/:id/check-in',
 
     // Auto-confirm pending bookings before checking in
     if (booking.status === 'pending') {
+      // Validate pending -> confirmed transition
+      const confirmTransition = validateTransition(booking.status, 'confirmed');
+      if (!confirmTransition.valid) {
+        throw new ApplicationError(confirmTransition.error, 400);
+      }
       booking.status = 'confirmed';
       booking.lastStatusChange = {
         from: 'pending',
@@ -1788,6 +1796,12 @@ router.patch('/:id/check-in',
         reason: 'Auto-confirmed during check-in'
       };
       await booking.save();
+    }
+
+    // Validate confirmed -> checked_in transition
+    const checkInTransition = validateTransition(booking.status, 'checked_in');
+    if (!checkInTransition.valid) {
+      throw new ApplicationError(checkInTransition.error, 400);
     }
 
     // Update booking with check-in information
@@ -1874,15 +1888,16 @@ router.patch('/:id/check-in',
     // Save the booking - this will trigger pre-save hooks to calculate paymentDetails.totalPaid
     await updatedBooking.save();
 
-    // Update room status to 'occupied' in database
+    // Batch: update all room statuses to 'occupied' with a single updateMany
     if (updatedBooking.rooms && updatedBooking.rooms.length > 0) {
-      for (const room of updatedBooking.rooms) {
-        if (room.roomId) {
-          await Room.findByIdAndUpdate(room.roomId, {
-            status: 'occupied',
-            currentBookingId: updatedBooking._id
-          });
-        }
+      const roomIdsToUpdate = updatedBooking.rooms
+        .filter(r => r.roomId)
+        .map(r => r.roomId._id || r.roomId);
+      if (roomIdsToUpdate.length > 0) {
+        await Room.updateMany(
+          { _id: { $in: roomIdsToUpdate } },
+          { $set: { status: 'occupied', currentBookingId: updatedBooking._id } }
+        );
       }
     }
 
@@ -1943,7 +1958,7 @@ router.patch('/:id/check-out',
   authorize(['admin', 'staff', 'frontdesk']),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
-    const booking = await Booking.findById(req.params.id);
+    const booking = await Booking.findById(req.params.id).lean();
 
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
@@ -2033,16 +2048,16 @@ router.patch('/:id/check-out',
 
     await updatedBooking.save();
 
-    // Update room status to 'dirty' for housekeeping
+    // Batch: update all room statuses to 'dirty' with a single updateMany
     if (updatedBooking.rooms && updatedBooking.rooms.length > 0) {
-      for (const room of updatedBooking.rooms) {
-        if (room.roomId) {
-          const roomId = room.roomId._id || room.roomId;
-          await Room.findByIdAndUpdate(roomId, {
-            status: 'dirty',
-            lastCheckout: new Date()
-          });
-        }
+      const roomIdsForDirty = updatedBooking.rooms
+        .filter(r => r.roomId)
+        .map(r => r.roomId._id || r.roomId);
+      if (roomIdsForDirty.length > 0) {
+        await Room.updateMany(
+          { _id: { $in: roomIdsForDirty } },
+          { $set: { status: 'dirty', lastCheckout: new Date() } }
+        );
       }
       logger.debug('Room status updated to dirty at checkout', {
         bookingNumber: updatedBooking.bookingNumber,
@@ -2057,7 +2072,7 @@ router.patch('/:id/check-out',
         bookingId: booking._id,
         type: 'accommodation',
         status: { $ne: 'cancelled' }
-      });
+      }).lean();
 
       if (!existingInvoice) {
         const invoiceData = {
@@ -2711,7 +2726,7 @@ router.post('/:id/extra-persons/payment',
     const { paymentMethods, extraPersonCharges, totalAmount } = req.body;
 
     // Find booking
-    const booking = await Booking.findById(id);
+    const booking = await Booking.findById(id).lean();
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
     }
@@ -2868,7 +2883,7 @@ router.get('/:id/settlement',
     const { id } = req.params;
 
     // Find booking
-    const booking = await Booking.findById(id);
+    const booking = await Booking.findById(id).lean();
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
     }
@@ -3053,7 +3068,7 @@ router.post('/:id/settlement/payment',
     const { id } = req.params;
 
     // Find booking
-    const booking = await Booking.findById(id);
+    const booking = await Booking.findById(id).lean();
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
     }
@@ -3249,7 +3264,7 @@ router.post('/:id/no-show',
     // Find booking
     const booking = await Booking.findById(id)
       .populate('userId', 'name email phone')
-      .populate('rooms.roomId', 'roomNumber type');
+      .populate('rooms.roomId', 'roomNumber type').lean();
 
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
@@ -3259,10 +3274,11 @@ router.post('/:id/no-show',
     // No need for additional hotelId check - supports multi-property
 
     // Validate booking status - can only mark confirmed or pending bookings as no-show
-    const validStatuses = ['confirmed', 'pending'];
-    if (!validStatuses.includes(booking.status)) {
+    // Validate status transition using state machine
+    const noShowTransition = validateTransition(booking.status, 'no_show');
+    if (!noShowTransition.valid) {
       throw new ApplicationError(
-        `Cannot mark booking as no-show. Current status: ${booking.status}. Only confirmed or pending bookings can be marked as no-show.`,
+        `Cannot mark booking as no-show. ${noShowTransition.error}`,
         400
       );
     }

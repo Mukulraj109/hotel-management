@@ -47,6 +47,7 @@ import { ColorCodedManagement } from './ColorCodedManagement';
 import BlockManagementPanel from './BlockManagementPanel';
 import BookingDetailsModal from './BookingDetailsModal';
 import WalkInBooking from '../../pages/admin/WalkInBooking';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface RoomCell {
   id: string;
@@ -176,6 +177,20 @@ const TapeChartView: React.FC = () => {
   const [dragOverCache, setDragOverCache] = useState<Map<string, boolean>>(new Map());
 
   // Global event handlers for slide-to-create feature
+  const isMountedRef = useRef(true);
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   React.useEffect(() => {
     const handleGlobalMouseUp = () => {
       if (slideToCreate.isSliding) {
@@ -280,6 +295,7 @@ const TapeChartView: React.FC = () => {
     try {
       // Simulate booking creation
       await new Promise(resolve => setTimeout(resolve, 1000));
+    if (!isMountedRef.current) return;
 
       toast.success(`Booking created for Room ${quickBookingModal.roomNumber}!`);
 
@@ -839,7 +855,8 @@ const TapeChartView: React.FC = () => {
     });
 
     // Clean up drag image
-    setTimeout(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
       if (document.body.contains(dragImage)) {
         document.body.removeChild(dragImage);
       }
@@ -1132,7 +1149,8 @@ const TapeChartView: React.FC = () => {
         });
 
         // Force a React re-render to clear any lingering drag indicators
-        setTimeout(() => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
           setDragOverCell(null);
         }, 0);
 
@@ -1142,7 +1160,8 @@ const TapeChartView: React.FC = () => {
 
         // Set success animation
         setLastAssignedCell(cellId);
-        setTimeout(() => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
           setLastAssignedCell(null);
           // Clear the recently updated tracking after data refresh is complete
           setRecentlyUpdatedCells(prev => {
@@ -1419,7 +1438,7 @@ const TapeChartView: React.FC = () => {
     const rate = timelineData?.rate;
     
     return (
-      <div
+      <div aria-hidden="true"
         key={cellId}
         className={`
           relative min-h-[${compactView ? '28px' : '40px'}] border border-gray-200/60
@@ -1760,7 +1779,7 @@ const TapeChartView: React.FC = () => {
   return (
     <TooltipProvider>
       <>
-        <div className="h-screen flex overflow-x-auto" onClick={hideContextMenu}>
+        <div role="button" tabIndex={0} className="h-screen flex overflow-x-auto" onClick={hideContextMenu} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); hideContextMenu(e as any); } }}>
         {/* Collapsible Menu Sidebar */}
         <CollapsibleSidebar
           isCollapsed={isMenuCollapsed}
@@ -2517,7 +2536,7 @@ const TapeChartView: React.FC = () => {
                       {contextMenu.currentStatus.replace('_', ' ')}
                     </span>
                   </div>
-                  <button
+                  <button aria-label="Close"
                     onClick={handleCloseContextMenu}
                     className="p-1 hover:bg-white hover:bg-opacity-50 rounded-full transition-colors"
                     title="Close menu"
@@ -2843,4 +2862,4 @@ const TapeChartView: React.FC = () => {
   );
 };
 
-export default TapeChartView;
+export default withErrorBoundary(TapeChartView, { level: 'component' });

@@ -70,7 +70,7 @@ export function DialogTrigger({ children, asChild }: DialogTriggerProps) {
   }
   
   return (
-    <button onClick={() => setOpen(true)}>
+    <button aria-label="Close" onClick={() => setOpen(true)}>
       {children}
     </button>
   );
@@ -95,11 +95,13 @@ export function DialogContent({ children, className }: DialogContentProps) {
   
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <div
+      <div aria-hidden="true"
         className="fixed inset-0 bg-black bg-opacity-50"
         onClick={() => setOpen(false)}
       />
       <div
+        role="dialog"
+        aria-modal="true"
         className={cn(
           'relative bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[80vh] overflow-y-auto',
           'animate-in fade-in-0 zoom-in-95',
@@ -107,7 +109,7 @@ export function DialogContent({ children, className }: DialogContentProps) {
         )}
         onClick={(e) => e.stopPropagation()}
       >
-        <button
+        <button aria-label="Close"
           onClick={() => setOpen(false)}
           className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
         >

@@ -48,6 +48,7 @@ import { toast } from '@/components/ui/use-toast';
 import { apiManagementApi } from '../../services/api';
 import { APIKeyCreationForm } from './APIKeyCreationForm';
 import { WebhookCreationForm } from './WebhookCreationForm';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface APIEndpoint {
   id: string;
@@ -1189,7 +1190,7 @@ export const ComprehensiveAPIAccess: React.FC = () => {
             {tabs.map(tab => {
               const Icon = tab.icon;
               return (
-                <button
+                <button aria-label="Close"
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
@@ -1536,3 +1537,5 @@ export const ComprehensiveAPIAccess: React.FC = () => {
     </div>
   );
 };
+
+export default withErrorBoundary(ComprehensiveAPIAccess, { level: 'component' });

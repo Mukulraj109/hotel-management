@@ -116,7 +116,7 @@ const DraggableReservation: React.FC<DraggableReservationProps> = ({
   };
 
   return (
-    <div
+    <div role="button" tabIndex={0}
       draggable
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
@@ -149,12 +149,12 @@ const DraggableReservation: React.FC<DraggableReservationProps> = ({
           ? `Ctrl+click to select • ${isSelected ? 'Selected' : 'Click to select'} • Drag to assign ${reservation.guestName}`
           : `Drag to assign ${reservation.guestName} to a room`
       }
-    >
+     onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick(e as any); } }}>
       {/* Selection checkbox and drag handle */}
       <div className="absolute top-1 left-1 flex items-center gap-1">
         {/* Selection checkbox for multi-select mode */}
         {selectionMode && (
-          <div
+          <div role="button" tabIndex={0}
             className={cn(
               'w-4 h-4 rounded border-2 flex items-center justify-center cursor-pointer',
               isSelected
@@ -166,7 +166,11 @@ const DraggableReservation: React.FC<DraggableReservationProps> = ({
               e.stopPropagation();
               handleClick(e as unknown);
             }}
-          >
+           onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleClick(e as unknown);
+            }; if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
             {isSelected && <Check className="w-3 h-3" />}
           </div>
         )}

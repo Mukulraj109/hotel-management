@@ -312,14 +312,18 @@ class UnifiedInventoryService {
 
   // Dashboard and Analytics Methods
   async getDashboardStats(): Promise<DashboardStats> {
-    this.validateHotelId();
-
     try {
-      const response = await api.get(`/inventory/dashboard/stats?hotelId=${this.hotelId}`);
-      return response.data.data;
+      this.validateHotelId();
+
+      try {
+        const response = await api.get(`/inventory/dashboard/stats?hotelId=${this.hotelId}`);
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch dashboard statistics'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch dashboard statistics'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -328,19 +332,23 @@ class UnifiedInventoryService {
     endDate?: string;
     category?: string;
   }): Promise<InventoryAnalytics> {
-    this.validateHotelId();
-
     try {
-      const queryParams = new URLSearchParams({
-        hotelId: this.hotelId!,
-        ...params
-      });
+      this.validateHotelId();
 
-      const response = await api.get(`/inventory/analytics?${queryParams.toString()}`);
-      return response.data.data;
+      try {
+        const queryParams = new URLSearchParams({
+          hotelId: this.hotelId!,
+          ...params
+        });
+
+        const response = await api.get(`/inventory/analytics?${queryParams.toString()}`);
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch inventory analytics'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch inventory analytics'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -380,56 +388,72 @@ class UnifiedInventoryService {
   }
 
   async getInventoryItem(itemId: string): Promise<InventoryItem> {
-    this.validateHotelId();
-
     try {
-      const response = await api.get(`/inventory/items/${itemId}?hotelId=${this.hotelId}`);
-      return response.data.data;
+      this.validateHotelId();
+
+      try {
+        const response = await api.get(`/inventory/items/${itemId}?hotelId=${this.hotelId}`);
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch inventory item'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch inventory item'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
   async createInventoryItem(itemData: Partial<InventoryItem>): Promise<InventoryItem> {
-    this.validateHotelId();
-
     try {
-      const response = await api.post('/inventory/items', {
-        ...itemData,
-        hotelId: this.hotelId
-      });
-      return response.data.data;
+      this.validateHotelId();
+
+      try {
+        const response = await api.post('/inventory/items', {
+          ...itemData,
+          hotelId: this.hotelId
+        });
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to create inventory item'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to create inventory item'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
   async updateInventoryItem(itemId: string, updateData: Partial<InventoryItem>): Promise<InventoryItem> {
-    this.validateHotelId();
-
     try {
-      const response = await api.patch(`/inventory/items/${itemId}`, {
-        ...updateData,
-        hotelId: this.hotelId
-      });
-      return response.data.data;
+      this.validateHotelId();
+
+      try {
+        const response = await api.patch(`/inventory/items/${itemId}`, {
+          ...updateData,
+          hotelId: this.hotelId
+        });
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to update inventory item'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to update inventory item'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
   async deleteInventoryItem(itemId: string): Promise<{ success: boolean }> {
-    this.validateHotelId();
-
     try {
-      await api.delete(`/inventory/items/${itemId}?hotelId=${this.hotelId}`);
-      return { success: true };
+      this.validateHotelId();
+
+      try {
+        await api.delete(`/inventory/items/${itemId}?hotelId=${this.hotelId}`);
+        return { success: true };
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to delete inventory item'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to delete inventory item'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -446,19 +470,23 @@ class UnifiedInventoryService {
     movements: StockMovement[];
     pagination: { page: number; limit: number; total: number; pages: number };
   }> {
-    this.validateHotelId();
-
     try {
-      const queryParams = new URLSearchParams({
-        hotelId: this.hotelId!,
-        ...Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
-      });
+      this.validateHotelId();
 
-      const response = await api.get(`/inventory/movements?${queryParams.toString()}`);
-      return response.data.data;
+      try {
+        const queryParams = new URLSearchParams({
+          hotelId: this.hotelId!,
+          ...Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
+        });
+
+        const response = await api.get(`/inventory/movements?${queryParams.toString()}`);
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch stock movements'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch stock movements'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -475,17 +503,21 @@ class UnifiedInventoryService {
     expiryDate?: string;
     notes?: string;
   }): Promise<StockMovement> {
-    this.validateHotelId();
-
     try {
-      const response = await api.post('/inventory/movements', {
-        ...movementData,
-        hotelId: this.hotelId
-      });
-      return response.data.data;
+      this.validateHotelId();
+
+      try {
+        const response = await api.post('/inventory/movements', {
+          ...movementData,
+          hotelId: this.hotelId
+        });
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to create stock movement'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to create stock movement'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -498,43 +530,55 @@ class UnifiedInventoryService {
     sortBy?: 'name' | 'rating' | 'orders' | 'value';
     sortOrder?: 'asc' | 'desc';
   }): Promise<Vendor[]> {
-    this.validateHotelId();
-
     try {
-      const queryParams = new URLSearchParams({
-        hotelId: this.hotelId!,
-        ...Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
-      });
+      this.validateHotelId();
 
-      const response = await api.get(`/vendors?${queryParams.toString()}`);
-      return response.data.data;
+      try {
+        const queryParams = new URLSearchParams({
+          hotelId: this.hotelId!,
+          ...Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
+        });
+
+        const response = await api.get(`/vendors?${queryParams.toString()}`);
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch vendors'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch vendors'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
   async getVendorsByCategory(category: string): Promise<Vendor[]> {
-    this.validateHotelId();
-
     try {
-      const response = await api.get(`/vendors/category/${category}?hotelId=${this.hotelId}`);
-      return response.data.data;
+      this.validateHotelId();
+
+      try {
+        const response = await api.get(`/vendors/category/${category}?hotelId=${this.hotelId}`);
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch vendors by category'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch vendors by category'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
   async getTopPerformingVendors(limit: number = 10): Promise<Vendor[]> {
-    this.validateHotelId();
-
     try {
-      const response = await api.get(`/vendors/top-performers?hotelId=${this.hotelId}&limit=${limit}`);
-      return response.data.data;
+      this.validateHotelId();
+
+      try {
+        const response = await api.get(`/vendors/top-performers?hotelId=${this.hotelId}&limit=${limit}`);
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch top performing vendors'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch top performing vendors'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -553,19 +597,23 @@ class UnifiedInventoryService {
     orders: PurchaseOrder[];
     pagination: { page: number; limit: number; total: number; pages: number };
   }> {
-    this.validateHotelId();
-
     try {
-      const queryParams = new URLSearchParams({
-        hotelId: this.hotelId!,
-        ...Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
-      });
+      this.validateHotelId();
 
-      const response = await api.get(`/purchase-orders?${queryParams.toString()}`);
-      return response.data.data;
+      try {
+        const queryParams = new URLSearchParams({
+          hotelId: this.hotelId!,
+          ...Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
+        });
+
+        const response = await api.get(`/purchase-orders?${queryParams.toString()}`);
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch purchase orders'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch purchase orders'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -600,18 +648,22 @@ class UnifiedInventoryService {
   }
 
   async updatePurchaseOrderStatus(orderId: string, status: string, notes?: string): Promise<PurchaseOrder> {
-    this.validateHotelId();
-
     try {
-      const response = await api.patch(`/purchase-orders/${orderId}/status`, {
-        status,
-        notes,
-        hotelId: this.hotelId
-      });
-      return response.data.data;
+      this.validateHotelId();
+
+      try {
+        const response = await api.patch(`/purchase-orders/${orderId}/status`, {
+          status,
+          notes,
+          hotelId: this.hotelId
+        });
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to update purchase order status'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to update purchase order status'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -628,49 +680,61 @@ class UnifiedInventoryService {
     alerts: InventoryAlert[];
     pagination: { page: number; limit: number; total: number; pages: number };
   }> {
-    this.validateHotelId();
-
     try {
-      const queryParams = new URLSearchParams({
-        hotelId: this.hotelId!,
-        ...Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
-      });
+      this.validateHotelId();
 
-      const response = await api.get(`/inventory/alerts?${queryParams.toString()}`);
-      return response.data.data;
+      try {
+        const queryParams = new URLSearchParams({
+          hotelId: this.hotelId!,
+          ...Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
+        });
+
+        const response = await api.get(`/inventory/alerts?${queryParams.toString()}`);
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch inventory alerts'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch inventory alerts'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
   async acknowledgeAlert(alertId: string, actionTaken?: string): Promise<InventoryAlert> {
-    this.validateHotelId();
-
     try {
-      const response = await api.patch(`/inventory/alerts/${alertId}/acknowledge`, {
-        actionTaken,
-        hotelId: this.hotelId
-      });
-      return response.data.data;
+      this.validateHotelId();
+
+      try {
+        const response = await api.patch(`/inventory/alerts/${alertId}/acknowledge`, {
+          actionTaken,
+          hotelId: this.hotelId
+        });
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to acknowledge alert'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to acknowledge alert'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
   async resolveAlert(alertId: string, resolution: string): Promise<InventoryAlert> {
-    this.validateHotelId();
-
     try {
-      const response = await api.patch(`/inventory/alerts/${alertId}/resolve`, {
-        resolution,
-        hotelId: this.hotelId
-      });
-      return response.data.data;
+      this.validateHotelId();
+
+      try {
+        const response = await api.patch(`/inventory/alerts/${alertId}/resolve`, {
+          resolution,
+          hotelId: this.hotelId
+        });
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to resolve alert'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to resolve alert'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -685,19 +749,23 @@ class UnifiedInventoryService {
     alerts: ReorderAlert[];
     pagination: { page: number; limit: number; total: number; pages: number };
   }> {
-    this.validateHotelId();
-
     try {
-      const queryParams = new URLSearchParams({
-        hotelId: this.hotelId!,
-        ...Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
-      });
+      this.validateHotelId();
 
-      const response = await api.get(`/inventory/reorder-alerts?${queryParams.toString()}`);
-      return response.data.data;
+      try {
+        const queryParams = new URLSearchParams({
+          hotelId: this.hotelId!,
+          ...Object.fromEntries(Object.entries(params || {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
+        });
+
+        const response = await api.get(`/inventory/reorder-alerts?${queryParams.toString()}`);
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch reorder alerts'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to fetch reorder alerts'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -706,18 +774,22 @@ class UnifiedInventoryService {
     purchaseOrderId?: string;
     message: string;
   }> {
-    this.validateHotelId();
-
     try {
-      const response = await api.post(`/inventory/reorder-alerts/${alertId}/process`, {
-        action,
-        data,
-        hotelId: this.hotelId
-      });
-      return response.data.data;
+      this.validateHotelId();
+
+      try {
+        const response = await api.post(`/inventory/reorder-alerts/${alertId}/process`, {
+          action,
+          data,
+          hotelId: this.hotelId
+        });
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to process reorder alert'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to process reorder alert'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -737,17 +809,21 @@ class UnifiedInventoryService {
       movementId?: string;
     }>;
   }> {
-    this.validateHotelId();
-
     try {
-      const response = await api.post('/inventory/bulk-update-stock', {
-        updates,
-        hotelId: this.hotelId
-      });
-      return response.data.data;
+      this.validateHotelId();
+
+      try {
+        const response = await api.post('/inventory/bulk-update-stock', {
+          updates,
+          hotelId: this.hotelId
+        });
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to bulk update stock'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to bulk update stock'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -755,17 +831,21 @@ class UnifiedInventoryService {
     downloadUrl: string;
     fileName: string;
   }> {
-    this.validateHotelId();
-
     try {
-      const response = await api.post('/inventory/reports/low-stock', {
-        format,
-        hotelId: this.hotelId
-      });
-      return response.data.data;
+      this.validateHotelId();
+
+      try {
+        const response = await api.post('/inventory/reports/low-stock', {
+          format,
+          hotelId: this.hotelId
+        });
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to generate low stock report'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to generate low stock report'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -777,18 +857,22 @@ class UnifiedInventoryService {
     success: boolean;
     movementsCreated: number;
   }> {
-    this.validateHotelId();
-
     try {
-      const response = await api.post('/inventory/sync/housekeeping', {
-        roomId,
-        consumedItems,
-        hotelId: this.hotelId
-      });
-      return response.data.data;
+      this.validateHotelId();
+
+      try {
+        const response = await api.post('/inventory/sync/housekeeping', {
+          roomId,
+          consumedItems,
+          hotelId: this.hotelId
+        });
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to sync with housekeeping'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to sync with housekeeping'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -799,18 +883,22 @@ class UnifiedInventoryService {
     success: boolean;
     movementsCreated: number;
   }> {
-    this.validateHotelId();
-
     try {
-      const response = await api.post('/inventory/sync/maintenance', {
-        taskId,
-        usedSupplies,
-        hotelId: this.hotelId
-      });
-      return response.data.data;
+      this.validateHotelId();
+
+      try {
+        const response = await api.post('/inventory/sync/maintenance', {
+          taskId,
+          usedSupplies,
+          hotelId: this.hotelId
+        });
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to sync with maintenance'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to sync with maintenance'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -821,20 +909,24 @@ class UnifiedInventoryService {
     maxStock?: number;
     priceRange?: { min: number; max: number };
   }): Promise<InventoryItem[]> {
-    this.validateHotelId();
-
     try {
-      const queryParams = new URLSearchParams({
-        hotelId: this.hotelId!,
-        searchTerm,
-        ...Object.fromEntries(Object.entries(filters || {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
-      });
+      this.validateHotelId();
 
-      const response = await api.get(`/inventory/search?${queryParams.toString()}`);
-      return response.data.data;
+      try {
+        const queryParams = new URLSearchParams({
+          hotelId: this.hotelId!,
+          searchTerm,
+          ...Object.fromEntries(Object.entries(filters || {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
+        });
+
+        const response = await api.get(`/inventory/search?${queryParams.toString()}`);
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to search inventory'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to search inventory'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -846,19 +938,23 @@ class UnifiedInventoryService {
     recentMovements: StockMovement[];
     lastUpdateTime: string;
   }> {
-    this.validateHotelId();
-
     try {
-      const queryParams = new URLSearchParams({
-        hotelId: this.hotelId!,
-        ...(lastUpdateTime && { lastUpdateTime })
-      });
+      this.validateHotelId();
 
-      const response = await api.get(`/inventory/poll-updates?${queryParams.toString()}`);
-      return response.data.data;
+      try {
+        const queryParams = new URLSearchParams({
+          hotelId: this.hotelId!,
+          ...(lastUpdateTime && { lastUpdateTime })
+        });
+
+        const response = await api.get(`/inventory/poll-updates?${queryParams.toString()}`);
+        return response.data.data;
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string } } };
+        throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to poll for updates'));
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string } } };
-      throw new Error(axiosErr.response?.data?.message || (error instanceof Error ? (error instanceof Error ? error.message : "Unknown error") : 'Failed to poll for updates'));
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 }

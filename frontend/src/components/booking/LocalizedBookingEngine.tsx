@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef} from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -42,6 +42,7 @@ import { roomTypeService } from '@/services/roomTypeService';
 import { inventoryService } from '@/services/inventoryService';
 import { roomTypeLocalizationService, type LocalizedRoomType } from '@/services/roomTypeLocalizationService';
 import { multiCurrencyRateService, type ConvertedRatePlan, type ConversionRatesResponse } from '@/services/multiCurrencyRateService';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 // Interfaces (keeping existing ones)
 interface RoomType extends Omit<LocalizedRoomType, 'specifications'> {
@@ -173,6 +174,12 @@ export const LocalizedBookingEngine: React.FC<LocalizedBookingEngineProps> = ({
   const [selectedCurrency, setSelectedCurrency] = useState('USD');
 
   // Load initial data
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   useEffect(() => {
     loadRoomTypes();
     loadConversionRates();
@@ -517,6 +524,7 @@ export const LocalizedBookingEngine: React.FC<LocalizedBookingEngineProps> = ({
 
       // Mock API call
       await new Promise(resolve => setTimeout(resolve, 2000));
+    if (!isMountedRef.current) return;
 
       toast.success(t('success.title'));
       setCurrentStep(5);
@@ -814,11 +822,11 @@ export const LocalizedBookingEngine: React.FC<LocalizedBookingEngineProps> = ({
             </CardHeader>
             <CardContent className="space-y-4">
               {roomTypes.filter(rt => rt.availableRooms && rt.availableRooms > 0).map(roomType => (
-                <div 
+                <div role="button" tabIndex={0} 
                   key={roomType._id} 
                   className="border rounded-lg p-6 cursor-pointer transition-all hover:shadow-md hover:border-blue-300"
                   onClick={() => selectRoomType(roomType)}
-                >
+                 onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => selectRoomType(roomType); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-3">
@@ -930,4 +938,4 @@ export const LocalizedBookingEngine: React.FC<LocalizedBookingEngineProps> = ({
   );
 };
 
-export default LocalizedBookingEngine;
+export default withErrorBoundary(LocalizedBookingEngine, { level: 'component' });

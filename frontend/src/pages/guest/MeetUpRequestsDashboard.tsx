@@ -119,7 +119,7 @@ export default function MeetUpRequestsDashboard() {
             { id: 'partners', label: 'Find Partners' },
             { id: 'stats', label: 'Statistics' }
           ].map((tab) => (
-            <button
+            <button aria-label="Close"
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${

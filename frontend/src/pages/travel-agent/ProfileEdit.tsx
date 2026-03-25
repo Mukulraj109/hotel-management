@@ -23,6 +23,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { travelAgentService, TravelAgent } from '../../services/travelAgentService';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface ProfileFormData {
   companyName: string;
@@ -223,7 +224,7 @@ const ProfileEdit: React.FC = () => {
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <button
+              <button aria-label="Previous"
                 onClick={() => navigate('/travel-agent')}
                 className="p-2 text-gray-600 hover:text-indigo-600 transition-colors"
               >
@@ -241,7 +242,7 @@ const ProfileEdit: React.FC = () => {
               >
                 Cancel
               </button>
-              <button
+              <button aria-label="Save"
                 onClick={handleSave}
                 disabled={saving}
                 className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors disabled:bg-indigo-400 disabled:cursor-not-allowed"
@@ -342,7 +343,7 @@ const ProfileEdit: React.FC = () => {
                     { key: 'payment', label: 'Payment Terms', icon: CreditCard },
                     { key: 'preferences', label: 'Preferences', icon: FileText }
                   ].map(({ key, label, icon: Icon }) => (
-                    <button
+                    <button aria-label="Close"
                       key={key}
                       onClick={() => setActiveTab(key as unknown)}
                       className={`flex items-center gap-2 px-6 py-3 text-sm font-medium ${
@@ -377,6 +378,7 @@ const ProfileEdit: React.FC = () => {
                       <Building className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                       <input
                         type="text"
+                        required
                         value={formData.companyName}
                         onChange={(e) => setFormData(prev => ({ ...prev, companyName: e.target.value }))}
                         className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-transparent ${
@@ -396,6 +398,7 @@ const ProfileEdit: React.FC = () => {
                       <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                       <input
                         type="text"
+                        required
                         value={formData.contactPerson}
                         onChange={(e) => setFormData(prev => ({ ...prev, contactPerson: e.target.value }))}
                         className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-transparent ${
@@ -415,6 +418,7 @@ const ProfileEdit: React.FC = () => {
                       <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                       <input
                         type="email"
+                        required
                         value={formData.email}
                         onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
                         className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-transparent ${
@@ -434,6 +438,7 @@ const ProfileEdit: React.FC = () => {
                       <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                       <input
                         type="tel"
+                        required
                         value={formData.phone}
                         onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
                         className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-transparent ${
@@ -721,4 +726,4 @@ const ProfileEdit: React.FC = () => {
   );
 };
 
-export default ProfileEdit;
+export default withErrorBoundary(ProfileEdit, { level: 'page' });

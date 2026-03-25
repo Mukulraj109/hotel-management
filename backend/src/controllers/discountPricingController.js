@@ -45,7 +45,7 @@ export const getSpecialDiscounts = catchAsync(async (req, res) => {
 
 export const getSpecialDiscount = catchAsync(async (req, res, next) => {
   const discount = await SpecialDiscount.findById(req.params.id)
-    .populate('createdBy updatedBy', 'name email');
+    .populate('createdBy updatedBy', 'name email').lean();
 
   if (!discount) {
     return next(new ApplicationError('Special discount not found', 404));
@@ -141,7 +141,7 @@ export const getDynamicPricingRules = catchAsync(async (req, res) => {
 
 export const getDynamicPricing = catchAsync(async (req, res, next) => {
   const pricing = await DynamicPricing.findById(req.params.id)
-    .populate('createdBy updatedBy', 'name email');
+    .populate('createdBy updatedBy', 'name email').lean();
 
   if (!pricing) {
     return next(new ApplicationError('Dynamic pricing rule not found', 404));
@@ -235,7 +235,7 @@ export const getMarketSegments = catchAsync(async (req, res) => {
 
 export const getMarketSegment = catchAsync(async (req, res, next) => {
   const segment = await MarketSegment.findById(req.params.id)
-    .populate('createdBy updatedBy', 'name email');
+    .populate('createdBy updatedBy', 'name email').lean();
 
   if (!segment) {
     return next(new ApplicationError('Market segment not found', 404));
@@ -333,7 +333,7 @@ export const getJobTypes = catchAsync(async (req, res) => {
 export const getJobType = catchAsync(async (req, res, next) => {
   const jobType = await JobType.findById(req.params.id)
     .populate('createdBy updatedBy', 'name email')
-    .populate('department', 'name code');
+    .populate('department', 'name code').lean();
 
   if (!jobType) {
     return next(new ApplicationError('Job type not found', 404));

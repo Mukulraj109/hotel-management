@@ -22,6 +22,7 @@ import { Badge } from '../ui/Badge';
 // import { Select } from '../ui/Select'; // Not compatible with our usage
 import { inventoryService, type CalendarData, type InventoryRecord } from '../../services/inventoryService';
 import { roomTypeService, type RoomTypeOption } from '../../services/roomTypeService';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface InventoryCalendarProps {
   hotelId: string;
@@ -579,7 +580,7 @@ const InventoryCalendar: React.FC<InventoryCalendarProps> = ({ hotelId }) => {
                 
                 {/* Enhanced Calendar cells */}
                 {days.map((cell, index) => (
-                  <div
+                  <div role="button" tabIndex={0}
                     key={`days-${index}-${cell.date}`}
                     className={`
                       relative h-24 border-2 border-gray-200/50 cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-105 rounded-xl overflow-hidden
@@ -588,7 +589,7 @@ const InventoryCalendar: React.FC<InventoryCalendarProps> = ({ hotelId }) => {
                       ${cell.isPast ? 'opacity-50' : 'hover:border-blue-300'}
                     `}
                     onClick={() => handleCellClick(cell)}
-                  >
+                   onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => handleCellClick(cell); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                     {cell.date && (
                       <>
                         <div className="p-2 h-full flex flex-col">
@@ -795,4 +796,4 @@ const InventoryCalendar: React.FC<InventoryCalendarProps> = ({ hotelId }) => {
   );
 };
 
-export default InventoryCalendar;
+export default withErrorBoundary(InventoryCalendar, { level: 'component' });

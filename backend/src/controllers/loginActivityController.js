@@ -477,7 +477,7 @@ export const getSecurityAlerts = catchAsync(async (req, res) => {
   const alerts = await AuditLog.find(matchStage)
     .populate('user', 'name email role')
     .sort({ timestamp: -1 })
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   res.json({
     status: 'success',

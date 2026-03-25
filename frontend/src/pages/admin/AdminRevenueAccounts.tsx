@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -15,6 +15,7 @@ import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '@/components
 import { useSettingsInheritance, useAffectedPropertiesCount } from '@/hooks/useSettingsInheritance';
 import { useProperty } from '@/context/PropertyContext';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface RevenueAccount {
   _id: string;
@@ -112,6 +113,15 @@ const AdminRevenueAccounts: React.FC = () => {
     applyToScope,
     inheritanceStatus?.groupPropertyCount || 0
   );
+
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     fetchAccounts();
@@ -225,7 +235,8 @@ const AdminRevenueAccounts: React.FC = () => {
         if (!result) return; // Confirmation dialog will show
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast({
           title: "Success",
           description: `Revenue account deleted successfully${
@@ -275,7 +286,8 @@ const AdminRevenueAccounts: React.FC = () => {
         if (!result) return; // Confirmation dialog will show
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast({
           title: "Success",
           description: `Accounts updated successfully${
@@ -312,7 +324,8 @@ const AdminRevenueAccounts: React.FC = () => {
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast({
           title: "Success",
           description: `Updated for ${result.propertiesUpdated} properties`,
@@ -833,4 +846,4 @@ const AdminRevenueAccounts: React.FC = () => {
   );
 };
 
-export default AdminRevenueAccounts;
+export default withErrorBoundary(AdminRevenueAccounts, { level: 'page' });

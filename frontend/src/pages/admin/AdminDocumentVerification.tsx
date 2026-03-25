@@ -40,6 +40,7 @@ import { Modal } from '@/components/ui/Modal';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { toast } from 'sonner';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface Document {
   _id: string;
@@ -122,7 +123,7 @@ const staffDocumentCategories = {
   bank_details: { icon: PiggyBank, label: 'Banking Information' }
 };
 
-export default function AdminDocumentVerification() {
+function AdminDocumentVerification() {
   const { user } = useAuth();
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [activeQueue, setActiveQueue] = useState<'guest' | 'staff'>('guest');
@@ -337,7 +338,7 @@ export default function AdminDocumentVerification() {
   };
 
   const QueueButton = ({ queue, label, count }: { queue: 'guest' | 'staff'; label: string; count: number }) => (
-    <button
+    <button aria-label="Close"
       onClick={() => setActiveQueue(queue)}
       className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
         activeQueue === queue
@@ -801,3 +802,5 @@ export default function AdminDocumentVerification() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminDocumentVerification, { level: 'page' });

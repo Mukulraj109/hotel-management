@@ -223,20 +223,28 @@ localAttractionSchema.methods.getWalkingTime = function() {
 
 // Static method to get attractions by category
 localAttractionSchema.statics.getByCategory = async function(hotelId, category) {
-  return await this.find({ 
-    hotelId, 
-    category, 
-    isActive: true 
-  }).sort({ distance: 1 });
+  try {
+    return await this.find({ 
+      hotelId, 
+      category, 
+      isActive: true 
+    }).sort({ distance: 1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get nearby attractions within distance
 localAttractionSchema.statics.getNearby = async function(hotelId, maxDistance = 5) {
-  return await this.find({
-    hotelId,
-    distance: { $lte: maxDistance },
-    isActive: true
-  }).sort({ distance: 1 });
+  try {
+    return await this.find({
+      hotelId,
+      distance: { $lte: maxDistance },
+      isActive: true
+    }).sort({ distance: 1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 export default mongoose.model('LocalAttraction', localAttractionSchema);

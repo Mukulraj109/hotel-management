@@ -519,7 +519,7 @@ const RoomBlockModal: React.FC<RoomBlockModalProps> = ({
             <div className="max-h-48 overflow-y-auto border rounded-lg p-3">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                 {availableRooms.slice(0, 20).map(room => (
-                  <div
+                  <div role="button" tabIndex={0}
                     key={room._id}
                     className={`p-3 border rounded-lg cursor-pointer transition-colors ${
                       selectedRooms.has(room._id)
@@ -527,7 +527,7 @@ const RoomBlockModal: React.FC<RoomBlockModalProps> = ({
                         : 'bg-gray-50 hover:bg-gray-100'
                     }`}
                     onClick={() => handleRoomSelection(room._id)}
-                  >
+                   onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => handleRoomSelection(room._id); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                     <div className="font-medium">{room.roomNumber}</div>
                     <div className="text-sm text-gray-600">{room.roomType}</div>
                     <div className="text-sm text-gray-500">Floor {room.floor}</div>

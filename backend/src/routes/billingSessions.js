@@ -2,10 +2,13 @@ import express from 'express';
 import billingSessionController from '../controllers/billingSessionController.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
+import financialRateLimiter from '../middleware/financialRateLimiter.js';
+import { validateFinancial, billingSessionSchema } from '../middleware/financialValidation.js';
 
 const router = express.Router();
 
-// All routes require authentication
+// All routes require rate limiting and authentication
+router.use(financialRateLimiter);
 router.use(authenticate);
 router.use(ensurePropertyAccess);
 
@@ -40,7 +43,7 @@ router.use(ensurePropertyAccess);
  *       201:
  *         description: Billing session created successfully
  */
-router.post('/', authorize('staff', 'admin'), billingSessionController.createBillingSession);
+router.post('/', authorize('staff', 'admin'), validateFinancial(billingSessionSchema), billingSessionController.createBillingSession);
 
 /**
  * @swagger

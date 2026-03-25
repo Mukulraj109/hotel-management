@@ -55,6 +55,7 @@ import {
 import { formatCurrency } from '@/utils/currencyUtils';
 import revenueManagementService from '@/services/revenueManagementService';
 import { toast } from 'react-hot-toast';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface CorporateRate {
   _id?: string;
@@ -772,4 +773,4 @@ const CorporateRatesManagement: React.FC = () => {
   );
 };
 
-export default CorporateRatesManagement;
+export default withErrorBoundary(CorporateRatesManagement, { level: 'component' });

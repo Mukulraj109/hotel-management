@@ -43,7 +43,7 @@ class WebOptimizationController {
       const { hotelId } = req.params;
       const { status, testType, page = 1, limit = 10 } = req.query;
       
-      const config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      const config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       if (!config) {
         return res.status(404).json({
           success: false,
@@ -92,7 +92,7 @@ class WebOptimizationController {
     try {
       const { hotelId, testId } = req.params;
       
-      const config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      const config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       if (!config) {
         return res.status(404).json({
           success: false,
@@ -381,7 +381,7 @@ class WebOptimizationController {
       const { hotelId } = req.params;
       const { page, device, startDate, endDate } = req.query;
       
-      const config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      const config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       if (!config) {
         return res.status(404).json({
           success: false,
@@ -444,7 +444,7 @@ class WebOptimizationController {
       const { hotelId } = req.params;
       const { metricType, startDate, endDate, device, page } = req.query;
       
-      const config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      const config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       if (!config) {
         return res.status(404).json({
           success: false,
@@ -631,7 +631,7 @@ class WebOptimizationController {
     try {
       const { hotelId } = req.params;
       
-      const config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      const config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       if (!config) {
         return res.status(404).json({
           success: false,
@@ -658,7 +658,7 @@ class WebOptimizationController {
       const { hotelId, funnelId } = req.params;
       const { timeframe = 30 } = req.query;
       
-      const config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      const config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       if (!config) {
         return res.status(404).json({
           success: false,
@@ -769,7 +769,7 @@ class WebOptimizationController {
       const { hotelId } = req.params;
       const { status } = req.query;
       
-      const config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      const config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       if (!config) {
         return res.status(404).json({
           success: false,
@@ -977,7 +977,7 @@ class WebOptimizationController {
       const { hotelId } = req.params;
       const { integrationType, status } = req.query;
       
-      const config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      const config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       if (!config) {
         return res.status(404).json({
           success: false,
@@ -1013,7 +1013,7 @@ class WebOptimizationController {
     try {
       const { hotelId } = req.params;
       
-      const config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      const config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       if (!config) {
         return res.status(404).json({
           success: false,
@@ -1106,7 +1106,7 @@ class WebOptimizationController {
     try {
       const { hotelId } = req.params;
       
-      const config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      const config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       if (!config) {
         return res.status(404).json({
           success: false,
@@ -1195,7 +1195,7 @@ class WebOptimizationController {
     try {
       const { hotelId } = req.params;
       
-      const config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      const config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       if (!config) {
         return res.status(404).json({
           success: false,

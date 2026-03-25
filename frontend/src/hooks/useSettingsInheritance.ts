@@ -114,10 +114,14 @@ export function useSettingsInheritance() {
       propertyId: string;
       inheritSettings: boolean;
     }) => {
-      const response = await api.put(`/settings/toggle-inheritance/${propertyId}`, {
-        inheritSettings,
-      });
-      return response.data.data;
+      try {
+        const response = await api.put(`/settings/toggle-inheritance/${propertyId}`, {
+          inheritSettings,
+        });
+        return response.data.data;
+      } catch (error: unknown) {
+        throw error instanceof Error ? error : new Error('Failed to toggle inheritance');
+      }
     },
     onSuccess: (_, variables) => {
       // Invalidate inheritance status
@@ -138,8 +142,12 @@ export function useSettingsInheritance() {
       endpoint: string;
       payload: Record<string, unknown>;
     }) => {
-      const response = await api.put(`/settings/${endpoint}`, payload);
-      return response.data.data as SettingsUpdateResult;
+      try {
+        const response = await api.put(`/settings/${endpoint}`, payload);
+        return response.data.data as SettingsUpdateResult;
+      } catch (error: unknown) {
+        throw error instanceof Error ? error : new Error('Failed to update settings');
+      }
     },
     onSuccess: () => {
       // Invalidate all settings queries

@@ -377,17 +377,21 @@ posItemVariantSchema.virtual('totalStock').get(function() {
 
 // Pre-save middleware to generate variantId if not provided
 posItemVariantSchema.pre('save', async function(next) {
-  if (!this.variantId) {
-    const menuItem = await this.constructor.db.model('POSMenu').findById(this.menuItemId);
-    if (menuItem) {
-      const prefix = menuItem.menuId.substring(0, 6).toUpperCase();
-      const count = await this.constructor.countDocuments({
-        variantId: new RegExp(`^${prefix}`)
-      });
-      this.variantId = `${prefix}_VAR${(count + 1).toString().padStart(3, '0')}`;
+  try {
+    if (!this.variantId) {
+      const menuItem = await this.constructor.db.model('POSMenu').findById(this.menuItemId);
+      if (menuItem) {
+        const prefix = menuItem.menuId.substring(0, 6).toUpperCase();
+        const count = await this.constructor.countDocuments({
+          variantId: new RegExp(`^${prefix}`)
+        });
+        this.variantId = `${prefix}_VAR${(count + 1).toString().padStart(3, '0')}`;
+      }
     }
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  next();
 });
 
 // Static method to get variants by menu item

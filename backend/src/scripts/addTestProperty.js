@@ -21,7 +21,7 @@ async function addTestProperty() {
     console.log('✅ Connected to MongoDB\n');
 
     // Check existing properties
-    const existingProperties = await Hotel.find();
+    const existingProperties = await Hotel.find().lean().limit(1000);
     console.log(`📊 Existing properties: ${existingProperties.length}`);
     existingProperties.forEach(p => console.log(`   - ${p.name} (ID: ${p._id})`));
     console.log('');
@@ -65,7 +65,7 @@ async function addTestProperty() {
     console.log(`   Location: ${newProperty.address.city}, ${newProperty.address.state}\n`);
 
     // Now get all properties
-    const allProperties = await Hotel.find();
+    const allProperties = await Hotel.find().lean().limit(1000);
     console.log(`\n📊 Total properties now: ${allProperties.length}`);
     console.log('─────────────────────────────────────────');
     allProperties.forEach((p, index) => {

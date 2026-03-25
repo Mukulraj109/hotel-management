@@ -272,112 +272,124 @@ customFieldSchema.virtual('updater', {
 
 // Static method to get fields by category
 customFieldSchema.statics.getFieldsByCategory = async function(hotelId, category) {
-  return await this.find({
-    hotelId: new mongoose.Types.ObjectId(hotelId),
-    category,
-    isActive: true
-  }).sort({ displayOrder: 1, name: 1 });
+  try {
+    return await this.find({
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      category,
+      isActive: true
+    }).sort({ displayOrder: 1, name: 1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get active fields for forms
 customFieldSchema.statics.getActiveFields = async function(hotelId, options = {}) {
-  const { category, type, isVisible, isEditable } = options;
+  try {
+    const { category, type, isVisible, isEditable } = options;
   
-  const query = {
-    hotelId: new mongoose.Types.ObjectId(hotelId),
-    isActive: true
-  };
+    const query = {
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      isActive: true
+    };
 
-  if (category) query.category = category;
-  if (type) query.type = type;
-  if (isVisible !== undefined) query.isVisible = isVisible;
-  if (isEditable !== undefined) query.isEditable = isEditable;
+    if (category) query.category = category;
+    if (type) query.type = type;
+    if (isVisible !== undefined) query.isVisible = isVisible;
+    if (isEditable !== undefined) query.isEditable = isEditable;
 
-  return await this.find(query).sort({ displayOrder: 1, name: 1 });
+    return await this.find(query).sort({ displayOrder: 1, name: 1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get field statistics
 customFieldSchema.statics.getFieldStatistics = async function(hotelId) {
-  const stats = await this.aggregate([
-    { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
-    {
-      $group: {
-        _id: null,
-        total: { $sum: 1 },
-        active: { $sum: { $cond: ['$isActive', 1, 0] } },
-        inactive: { $sum: { $cond: ['$isActive', 0, 1] } },
-        required: { $sum: { $cond: ['$isRequired', 1, 0] } },
-        visible: { $sum: { $cond: ['$isVisible', 1, 0] } },
-        editable: { $sum: { $cond: ['$isEditable', 1, 0] } },
-        byType: {
-          $push: {
-            type: '$type',
-            isActive: '$isActive'
-          }
-        },
-        byCategory: {
-          $push: {
-            category: '$category',
-            isActive: '$isActive'
+  try {
+    const stats = await this.aggregate([
+      { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          active: { $sum: { $cond: ['$isActive', 1, 0] } },
+          inactive: { $sum: { $cond: ['$isActive', 0, 1] } },
+          required: { $sum: { $cond: ['$isRequired', 1, 0] } },
+          visible: { $sum: { $cond: ['$isVisible', 1, 0] } },
+          editable: { $sum: { $cond: ['$isEditable', 1, 0] } },
+          byType: {
+            $push: {
+              type: '$type',
+              isActive: '$isActive'
+            }
+          },
+          byCategory: {
+            $push: {
+              category: '$category',
+              isActive: '$isActive'
+            }
           }
         }
       }
+    ]);
+
+    if (stats.length === 0) {
+      return {
+        total: 0,
+        active: 0,
+        inactive: 0,
+        required: 0,
+        visible: 0,
+        editable: 0,
+        byType: {},
+        byCategory: {}
+      };
     }
-  ]);
 
-  if (stats.length === 0) {
-    return {
-      total: 0,
-      active: 0,
-      inactive: 0,
-      required: 0,
-      visible: 0,
-      editable: 0,
-      byType: {},
-      byCategory: {}
-    };
-  }
-
-  const result = stats[0];
+    const result = stats[0];
   
-  // Calculate type breakdown
-  const typeStats = {};
-  result.byType.forEach(item => {
-    if (!typeStats[item.type]) {
-      typeStats[item.type] = { total: 0, active: 0, inactive: 0 };
-    }
-    typeStats[item.type].total++;
-    if (item.isActive) {
-      typeStats[item.type].active++;
-    } else {
-      typeStats[item.type].inactive++;
-    }
-  });
+    // Calculate type breakdown
+    const typeStats = {};
+    result.byType.forEach(item => {
+      if (!typeStats[item.type]) {
+        typeStats[item.type] = { total: 0, active: 0, inactive: 0 };
+      }
+      typeStats[item.type].total++;
+      if (item.isActive) {
+        typeStats[item.type].active++;
+      } else {
+        typeStats[item.type].inactive++;
+      }
+    });
 
-  // Calculate category breakdown
-  const categoryStats = {};
-  result.byCategory.forEach(item => {
-    if (!categoryStats[item.category]) {
-      categoryStats[item.category] = { total: 0, active: 0, inactive: 0 };
-    }
-    categoryStats[item.category].total++;
-    if (item.isActive) {
-      categoryStats[item.category].active++;
-    } else {
-      categoryStats[item.category].inactive++;
-    }
-  });
+    // Calculate category breakdown
+    const categoryStats = {};
+    result.byCategory.forEach(item => {
+      if (!categoryStats[item.category]) {
+        categoryStats[item.category] = { total: 0, active: 0, inactive: 0 };
+      }
+      categoryStats[item.category].total++;
+      if (item.isActive) {
+        categoryStats[item.category].active++;
+      } else {
+        categoryStats[item.category].inactive++;
+      }
+    });
 
-  return {
-    total: result.total,
-    active: result.active,
-    inactive: result.inactive,
-    required: result.required,
-    visible: result.visible,
-    editable: result.editable,
-    byType: typeStats,
-    byCategory: categoryStats
-  };
+    return {
+      total: result.total,
+      active: result.active,
+      inactive: result.inactive,
+      required: result.required,
+      visible: result.visible,
+      editable: result.editable,
+      byType: typeStats,
+      byCategory: categoryStats
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance method to validate field value

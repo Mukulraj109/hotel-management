@@ -323,79 +323,87 @@ laundryTransactionSchema.methods.markAsDamaged = function(processedBy, notes) {
 
 // Static methods
 laundryTransactionSchema.statics.getLaundryDashboard = async function(hotelId, filters = {}) {
-  const matchQuery = { hotelId };
+  try {
+    const matchQuery = { hotelId };
   
-  if (filters.status) {
-    matchQuery.status = filters.status;
-  }
-  
-  if (filters.dateRange) {
-    matchQuery.sentDate = {
-      $gte: new Date(filters.dateRange.start),
-      $lte: new Date(filters.dateRange.end)
-    };
-  }
-
-  const pipeline = [
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: '$status',
-        count: { $sum: 1 },
-        totalQuantity: { $sum: '$quantity' },
-        totalCost: { $sum: '$totalCost' }
-      }
+    if (filters.status) {
+      matchQuery.status = filters.status;
     }
-  ];
+  
+    if (filters.dateRange) {
+      matchQuery.sentDate = {
+        $gte: new Date(filters.dateRange.start),
+        $lte: new Date(filters.dateRange.end)
+      };
+    }
 
-  const statusSummary = await this.aggregate(pipeline);
+    const pipeline = [
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+          totalQuantity: { $sum: '$quantity' },
+          totalCost: { $sum: '$totalCost' }
+        }
+      }
+    ];
 
-  // Get overdue items
-  const overdueItems = await this.find({
-    hotelId,
-    status: { $in: ['pending', 'in_laundry', 'cleaning', 'ready'] },
-    expectedReturnDate: { $lt: new Date() }
-  }).populate('roomId', 'roomNumber').populate('itemId', 'name');
+    const statusSummary = await this.aggregate(pipeline);
 
-  // Get recent transactions
-  const recentTransactions = await this.find({
-    hotelId
-  })
-    .sort({ createdAt: -1 })
-    .limit(10)
-    .populate('roomId', 'roomNumber')
-    .populate('itemId', 'name')
-    .populate('processedBy', 'name');
+    // Get overdue items
+    const overdueItems = await this.find({
+      hotelId,
+      status: { $in: ['pending', 'in_laundry', 'cleaning', 'ready'] },
+      expectedReturnDate: { $lt: new Date() }
+    }).populate('roomId', 'roomNumber').populate('itemId', 'name').lean().limit(1000);
 
-  return {
-    statusSummary,
-    overdueItems,
-    recentTransactions,
-    totalOverdue: overdueItems.length
-  };
+    // Get recent transactions
+    const recentTransactions = await this.find({
+      hotelId
+    })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .populate('roomId', 'roomNumber')
+      .populate('itemId', 'name')
+      .populate('processedBy', 'name').lean();
+
+    return {
+      statusSummary,
+      overdueItems,
+      recentTransactions,
+      totalOverdue: overdueItems.length
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 laundryTransactionSchema.statics.getLaundryStatus = async function(hotelId, filters = {}) {
-  const query = { hotelId };
+  try {
+    const query = { hotelId };
   
-  if (filters.roomId) {
-    query.roomId = filters.roomId;
-  }
+    if (filters.roomId) {
+      query.roomId = filters.roomId;
+    }
   
-  if (filters.status) {
-    query.status = filters.status;
-  }
+    if (filters.status) {
+      query.status = filters.status;
+    }
   
-  if (filters.itemId) {
-    query.itemId = filters.itemId;
-  }
+    if (filters.itemId) {
+      query.itemId = filters.itemId;
+    }
 
-  return await this.find(query)
-    .populate('roomId', 'roomNumber type')
-    .populate('itemId', 'name category')
-    .populate('processedBy', 'name')
-    .populate('returnedBy', 'name')
-    .sort({ sentDate: -1 });
+    return await this.find(query)
+      .populate('roomId', 'roomNumber type')
+      .populate('itemId', 'name category')
+      .populate('processedBy', 'name')
+      .populate('returnedBy', 'name')
+      .sort({ sentDate: -1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 export default mongoose.model('LaundryTransaction', laundryTransactionSchema);

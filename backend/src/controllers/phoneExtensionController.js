@@ -326,7 +326,7 @@ class PhoneExtensionController {
     try {
       const { id } = req.params;
       
-      const extension = await PhoneExtension.findById(id);
+      const extension = await PhoneExtension.findById(id).lean();
       if (!extension) {
         return res.status(404).json({
           status: 'error',
@@ -522,7 +522,7 @@ class PhoneExtensionController {
       const { id } = req.params;
       const { callType = 'received' } = req.body;
 
-      const extension = await PhoneExtension.findById(id);
+      const extension = await PhoneExtension.findById(id).lean();
       if (!extension) {
         return res.status(404).json({
           status: 'error',
@@ -557,7 +557,7 @@ class PhoneExtensionController {
       const { id } = req.params;
       const { reason, scheduledUntil, technician } = req.body;
 
-      const extension = await PhoneExtension.findById(id);
+      const extension = await PhoneExtension.findById(id).lean();
       if (!extension) {
         return res.status(404).json({
           status: 'error',
@@ -587,7 +587,7 @@ class PhoneExtensionController {
     try {
       const { id } = req.params;
 
-      const extension = await PhoneExtension.findById(id);
+      const extension = await PhoneExtension.findById(id).lean();
       if (!extension) {
         return res.status(404).json({
           status: 'error',

@@ -13,6 +13,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { BookingEditModal } from '../../components/booking/BookingEditModal';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import {
   Calendar,
   Users,
@@ -38,7 +39,7 @@ interface UpcomingBookingsStats {
   totalUpcoming: number;
 }
 
-export default function AdminUpcomingBookings() {
+function AdminUpcomingBookings() {
   const { user } = useAuth();
   const [bookings, setBookings] = useState<AdminBooking[]>([]);
   const [stats, setStats] = useState<UpcomingBookingsStats>({
@@ -538,7 +539,7 @@ export default function AdminUpcomingBookings() {
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold">Booking Details</h2>
-                <button
+                <button aria-label="Close"
                   onClick={() => setShowDetailsModal(false)}
                   className="text-gray-400 hover:text-gray-600"
                 >
@@ -685,3 +686,5 @@ export default function AdminUpcomingBookings() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminUpcomingBookings, { level: 'page' });

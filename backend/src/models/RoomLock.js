@@ -48,10 +48,14 @@ roomLockSchema.index({ roomId: 1, expiresAt: 1 });
 
 // Pre-save middleware to generate lock ID
 roomLockSchema.pre('save', async function(next) {
-  if (!this.lockId) {
-    this.lockId = `LOCK-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  try {
+    if (!this.lockId) {
+      this.lockId = `LOCK-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    }
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  next();
 });
 
 // Static method to get active locks
@@ -69,67 +73,83 @@ roomLockSchema.statics.getActiveLocks = function(filters = {}) {
 
 // Static method to check if room is locked
 roomLockSchema.statics.isRoomLocked = async function(roomId, excludeUserId = null) {
-  const query = {
-    roomId: roomId,
-    expiresAt: { $gt: new Date() }
-  };
+  try {
+    const query = {
+      roomId: roomId,
+      expiresAt: { $gt: new Date() }
+    };
 
-  if (excludeUserId) {
-    query.userId = { $ne: excludeUserId };
+    if (excludeUserId) {
+      query.userId = { $ne: excludeUserId };
+    }
+
+    const lock = await this.findOne(query).populate('userId', 'name email role').lean();
+    return lock;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  const lock = await this.findOne(query).populate('userId', 'name email role');
-  return lock;
 };
 
 // Static method to create or update lock
 roomLockSchema.statics.createOrUpdateLock = async function(roomId, userId, action, duration = 300000) { // 5 minutes default
-  const existingLock = await this.findOne({
-    roomId: roomId,
-    userId: userId,
-    expiresAt: { $gt: new Date() }
-  });
-
-  const expiresAt = new Date(Date.now() + duration);
-
-  if (existingLock) {
-    // Update existing lock
-    existingLock.action = action;
-    existingLock.expiresAt = expiresAt;
-    existingLock.timestamp = new Date();
-    return await existingLock.save();
-  } else {
-    // Create new lock
-    return await this.create({
+  try {
+    const existingLock = await this.findOne({
       roomId: roomId,
       userId: userId,
-      action: action,
-      expiresAt: expiresAt
+      expiresAt: { $gt: new Date() }
     });
+
+    const expiresAt = new Date(Date.now() + duration);
+
+    if (existingLock) {
+      // Update existing lock
+      existingLock.action = action;
+      existingLock.expiresAt = expiresAt;
+      existingLock.timestamp = new Date();
+      return await existingLock.save();
+    } else {
+      // Create new lock
+      return await this.create({
+        roomId: roomId,
+        userId: userId,
+        action: action,
+        expiresAt: expiresAt
+      });
+    }
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
 };
 
 // Static method to release lock
 roomLockSchema.statics.releaseLock = async function(roomId, userId = null, force = false) {
-  const query = {
-    roomId: roomId,
-    expiresAt: { $gt: new Date() }
-  };
+  try {
+    const query = {
+      roomId: roomId,
+      expiresAt: { $gt: new Date() }
+    };
 
-  // If not force unlock, must be by same user
-  if (!force && userId) {
-    query.userId = userId;
+    // If not force unlock, must be by same user
+    if (!force && userId) {
+      query.userId = userId;
+    }
+
+    return await this.findOneAndDelete(query);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  return await this.findOneAndDelete(query);
 };
 
 // Static method to cleanup expired locks (for cron job)
 roomLockSchema.statics.cleanupExpiredLocks = async function() {
-  const result = await this.deleteMany({
-    expiresAt: { $lt: new Date() }
-  });
-  return result.deletedCount;
+  try {
+    const result = await this.deleteMany({
+      expiresAt: { $lt: new Date() }
+    });
+    return result.deletedCount;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance method to extend lock duration

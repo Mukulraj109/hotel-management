@@ -33,12 +33,18 @@ class BookingWorkflowEngine {
         booking.status === 'pending' && 
         context.newPaymentStatus === 'paid',
       action: async (booking, context) => {
-        await booking.changeStatus('confirmed', {
-          source: 'system',
-          reason: 'Auto-confirmed after payment received',
-          automatic: true
-        });
-        return { success: true, action: 'confirmed' };
+        try {
+          await booking.changeStatus('confirmed', {
+            source: 'system',
+            reason: 'Auto-confirmed after payment received',
+            automatic: true
+          });
+          return { success: true, action: 'confirmed' };
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
+        }
       }
     });
 
@@ -55,12 +61,18 @@ class BookingWorkflowEngine {
         return hoursAfterCheckIn > 6; // 6 hour grace period
       },
       action: async (booking, context) => {
-        await booking.changeStatus('no_show', {
-          source: 'system',
-          reason: 'Auto no-show after grace period expired',
-          automatic: true
-        });
-        return { success: true, action: 'no_show' };
+        try {
+          await booking.changeStatus('no_show', {
+            source: 'system',
+            reason: 'Auto no-show after grace period expired',
+            automatic: true
+          });
+          return { success: true, action: 'no_show' };
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
+        }
       }
     });
 
@@ -76,12 +88,18 @@ class BookingWorkflowEngine {
         return reservedUntil && now > reservedUntil;
       },
       action: async (booking, context) => {
-        await booking.changeStatus('cancelled', {
-          source: 'system',
-          reason: 'Auto-cancelled due to expired reservation',
-          automatic: true
-        });
-        return { success: true, action: 'cancelled' };
+        try {
+          await booking.changeStatus('cancelled', {
+            source: 'system',
+            reason: 'Auto-cancelled due to expired reservation',
+            automatic: true
+          });
+          return { success: true, action: 'cancelled' };
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
+        }
       }
     });
 
@@ -93,13 +111,19 @@ class BookingWorkflowEngine {
         !booking.amendmentFlags.hasActivePendingAmendments &&
         context.amendmentStatus === 'approved',
       action: async (booking, context) => {
-        await booking.changeStatus('confirmed', {
-          source: 'system',
-          reason: 'Auto-confirmed after amendment approval',
-          automatic: true,
-          bypassAmendmentCheck: true
-        });
-        return { success: true, action: 'confirmed' };
+        try {
+          await booking.changeStatus('confirmed', {
+            source: 'system',
+            reason: 'Auto-confirmed after amendment approval',
+            automatic: true,
+            bypassAmendmentCheck: true
+          });
+          return { success: true, action: 'confirmed' };
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
+        }
       }
     });
 
@@ -110,9 +134,15 @@ class BookingWorkflowEngine {
         booking.source !== 'direct' && 
         ['confirmed', 'cancelled', 'no_show'].includes(context.newStatus),
       action: async (booking, context) => {
-        booking.syncStatus.needsSync = true;
-        await this.scheduleOTASync(booking, context.newStatus);
-        return { success: true, action: 'ota_sync_scheduled' };
+        try {
+          booking.syncStatus.needsSync = true;
+          await this.scheduleOTASync(booking, context.newStatus);
+          return { success: true, action: 'ota_sync_scheduled' };
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
+        }
       }
     });
 
@@ -122,8 +152,14 @@ class BookingWorkflowEngine {
       condition: (booking, context) => 
         !context.skipNotifications,
       action: async (booking, context) => {
-        await this.sendStatusChangeNotifications(booking, context);
-        return { success: true, action: 'notifications_sent' };
+        try {
+          await this.sendStatusChangeNotifications(booking, context);
+          return { success: true, action: 'notifications_sent' };
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
+        }
       }
     });
   }
@@ -153,14 +189,18 @@ class BookingWorkflowEngine {
    * Start the workflow engine
    */
   async start() {
-    if (this.isRunning) return;
+    try {
+      if (this.isRunning) return;
     
-    this.isRunning = true;
+      this.isRunning = true;
     
-    // Start periodic checks for scheduled workflows
-    this.schedulePeriodicChecks();
+      // Start periodic checks for scheduled workflows
+      this.schedulePeriodicChecks();
     
-    logger.info('Booking workflow engine started');
+      logger.info('Booking workflow engine started');
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -276,32 +316,36 @@ class BookingWorkflowEngine {
    * Check for expired reservations that need to be cancelled
    */
   async checkExpiredReservations() {
-    // Skip if database is not connected
-    if (!this.isDbConnected()) {
-      logger.debug('Database not connected, skipping expired reservations check');
-      return;
-    }
-
-    const now = new Date();
-    
-    const expiredBookings = await Booking.find({
-      status: 'pending',
-      reservedUntil: { $lt: now }
-    }).limit(100);
-
-    for (const booking of expiredBookings) {
-      await this.processTrigger('scheduled_check', booking, {
-        checkType: 'expired_reservation',
-        timestamp: now
-      });
-      
-      if (booking.isModified()) {
-        await booking.save();
+    try {
+      // Skip if database is not connected
+      if (!this.isDbConnected()) {
+        logger.debug('Database not connected, skipping expired reservations check');
+        return;
       }
-    }
 
-    if (expiredBookings.length > 0) {
-      logger.info(`Processed ${expiredBookings.length} expired reservations`);
+      const now = new Date();
+    
+      const expiredBookings = await Booking.find({
+        status: 'pending',
+        reservedUntil: { $lt: now }
+      }).limit(100).lean();
+
+      for (const booking of expiredBookings) {
+        await this.processTrigger('scheduled_check', booking, {
+          checkType: 'expired_reservation',
+          timestamp: now
+        });
+      
+        if (booking.isModified()) {
+          await booking.save();
+        }
+      }
+
+      if (expiredBookings.length > 0) {
+        logger.info(`Processed ${expiredBookings.length} expired reservations`);
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -309,33 +353,37 @@ class BookingWorkflowEngine {
    * Check for bookings that should be marked as no-show
    */
   async checkForNoShows() {
-    // Skip if database is not connected
-    if (!this.isDbConnected()) {
-      logger.debug('Database not connected, skipping no-show check');
-      return;
-    }
-
-    const now = new Date();
-    const graceEndTime = new Date(now.getTime() - (6 * 60 * 60 * 1000)); // 6 hours ago
-
-    const potentialNoShows = await Booking.find({
-      status: 'confirmed',
-      checkIn: { $lt: graceEndTime }
-    }).limit(50);
-
-    for (const booking of potentialNoShows) {
-      await this.processTrigger('scheduled_check', booking, {
-        checkType: 'no_show',
-        timestamp: now
-      });
-      
-      if (booking.isModified()) {
-        await booking.save();
+    try {
+      // Skip if database is not connected
+      if (!this.isDbConnected()) {
+        logger.debug('Database not connected, skipping no-show check');
+        return;
       }
-    }
 
-    if (potentialNoShows.length > 0) {
-      logger.info(`Processed ${potentialNoShows.length} potential no-shows`);
+      const now = new Date();
+      const graceEndTime = new Date(now.getTime() - (6 * 60 * 60 * 1000)); // 6 hours ago
+
+      const potentialNoShows = await Booking.find({
+        status: 'confirmed',
+        checkIn: { $lt: graceEndTime }
+      }).limit(50).lean();
+
+      for (const booking of potentialNoShows) {
+        await this.processTrigger('scheduled_check', booking, {
+          checkType: 'no_show',
+          timestamp: now
+        });
+      
+        if (booking.isModified()) {
+          await booking.save();
+        }
+      }
+
+      if (potentialNoShows.length > 0) {
+        logger.info(`Processed ${potentialNoShows.length} potential no-shows`);
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -343,27 +391,31 @@ class BookingWorkflowEngine {
    * Check for overdue check-outs
    */
   async checkOverdueCheckouts() {
-    // Skip if database is not connected
-    if (!this.isDbConnected()) {
-      logger.debug('Database not connected, skipping overdue checkouts check');
-      return;
-    }
+    try {
+      // Skip if database is not connected
+      if (!this.isDbConnected()) {
+        logger.debug('Database not connected, skipping overdue checkouts check');
+        return;
+      }
 
-    const now = new Date();
-    const overdueTime = new Date(now.getTime() - (2 * 60 * 60 * 1000)); // 2 hours after checkout time
+      const now = new Date();
+      const overdueTime = new Date(now.getTime() - (2 * 60 * 60 * 1000)); // 2 hours after checkout time
 
-    const overdueBookings = await Booking.find({
-      status: 'checked_in',
-      checkOut: { $lt: overdueTime }
-    }).limit(50);
+      const overdueBookings = await Booking.find({
+        status: 'checked_in',
+        checkOut: { $lt: overdueTime }
+      }).limit(50).lean();
 
-    for (const booking of overdueBookings) {
-      // Don't auto-checkout, but send alerts
-      await this.sendOverdueCheckoutAlert(booking);
-    }
+      for (const booking of overdueBookings) {
+        // Don't auto-checkout, but send alerts
+        await this.sendOverdueCheckoutAlert(booking);
+      }
 
-    if (overdueBookings.length > 0) {
-      logger.info(`Found ${overdueBookings.length} overdue checkouts`);
+      if (overdueBookings.length > 0) {
+        logger.info(`Found ${overdueBookings.length} overdue checkouts`);
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -534,14 +586,18 @@ class BookingWorkflowEngine {
    * Get workflow statistics
    */
   async getWorkflowStats(period = '24h') {
-    // This would typically query execution logs
-    // For now, return basic stats
-    return {
-      activeRules: this.workflowRules.size,
-      isRunning: this.isRunning,
-      scheduledTasks: this.scheduledTasks.size,
-      period
-    };
+    try {
+      // This would typically query execution logs
+      // For now, return basic stats
+      return {
+        activeRules: this.workflowRules.size,
+        isRunning: this.isRunning,
+        scheduledTasks: this.scheduledTasks.size,
+        period
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

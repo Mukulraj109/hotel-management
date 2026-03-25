@@ -89,7 +89,7 @@ export function Calendar({ mode, selected, onSelect, className }: CalendarProps)
   return (
     <div className={cn('p-3', className)}>
       <div className="flex items-center justify-between mb-4">
-        <button
+        <button aria-label="Previous"
           onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
           className="p-1 hover:bg-gray-100 rounded"
         >
@@ -100,7 +100,7 @@ export function Calendar({ mode, selected, onSelect, className }: CalendarProps)
           {format(currentMonth, 'MMMM yyyy')}
         </h2>
         
-        <button
+        <button aria-label="Add"
           onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
           className="p-1 hover:bg-gray-100 rounded"
         >
@@ -125,7 +125,7 @@ export function Calendar({ mode, selected, onSelect, className }: CalendarProps)
           const today = isToday(date);
           
           return (
-            <button
+            <button aria-label="Favorite"
               key={date.toISOString()}
               onClick={() => handleDateClick(date)}
               className={cn(

@@ -366,301 +366,337 @@ class ComplianceService {
   // Helper methods for specific compliance reports
 
   static async createGeneralComplianceReport(hotelId) {
-    const complianceAreas = [
-      {
-        area: 'documentation',
-        description: 'Required documentation and record keeping',
-        score: 88,
-        status: 'compliant',
-        findings: []
-      },
-      {
-        area: 'staff_training',
-        description: 'Staff training and certification compliance',
-        score: 92,
-        status: 'compliant',
-        findings: []
-      },
-      {
-        area: 'equipment_maintenance',
-        description: 'Equipment maintenance and safety checks',
-        score: 85,
-        status: 'compliant',
-        findings: []
-      },
-      {
-        area: 'inventory_tracking',
-        description: 'Inventory management and tracking compliance',
-        score: 90,
-        status: 'compliant',
-        findings: []
-      }
-    ];
+    try {
+      const complianceAreas = [
+        {
+          area: 'documentation',
+          description: 'Required documentation and record keeping',
+          score: 88,
+          status: 'compliant',
+          findings: []
+        },
+        {
+          area: 'staff_training',
+          description: 'Staff training and certification compliance',
+          score: 92,
+          status: 'compliant',
+          findings: []
+        },
+        {
+          area: 'equipment_maintenance',
+          description: 'Equipment maintenance and safety checks',
+          score: 85,
+          status: 'compliant',
+          findings: []
+        },
+        {
+          area: 'inventory_tracking',
+          description: 'Inventory management and tracking compliance',
+          score: 90,
+          status: 'compliant',
+          findings: []
+        }
+      ];
 
-    return await ComplianceReport.create({
-      hotelId,
-      reportType: 'general',
-      reportPeriod: {
-        startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-        endDate: new Date(),
-        frequency: 'monthly'
-      },
-      complianceAreas,
-      followUp: {
-        nextInspectionDate: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000)
-      }
-    });
+      return await ComplianceReport.create({
+        hotelId,
+        reportType: 'general',
+        reportPeriod: {
+          startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          endDate: new Date(),
+          frequency: 'monthly'
+        },
+        complianceAreas,
+        followUp: {
+          nextInspectionDate: new Date(Date.now() + 120 * 24 * 60 * 60 * 1000)
+        }
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async createFireSafetyReport(hotelId) {
-    const complianceAreas = [
-      {
-        area: 'fire_safety',
-        description: 'Fire safety systems and equipment',
-        score: 94,
-        status: 'compliant',
-        findings: [],
-        requirements: [
-          {
-            code: 'NFPA-101',
-            description: 'Life Safety Code compliance',
-            mandatory: true,
-            frequency: 'annually'
-          }
-        ]
-      }
-    ];
+    try {
+      const complianceAreas = [
+        {
+          area: 'fire_safety',
+          description: 'Fire safety systems and equipment',
+          score: 94,
+          status: 'compliant',
+          findings: [],
+          requirements: [
+            {
+              code: 'NFPA-101',
+              description: 'Life Safety Code compliance',
+              mandatory: true,
+              frequency: 'annually'
+            }
+          ]
+        }
+      ];
 
-    return await ComplianceReport.create({
-      hotelId,
-      reportType: 'fire_safety',
-      reportPeriod: {
-        startDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
-        endDate: new Date(),
-        frequency: 'quarterly'
-      },
-      complianceAreas,
-      followUp: {
-        nextInspectionDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
-      }
-    });
+      return await ComplianceReport.create({
+        hotelId,
+        reportType: 'fire_safety',
+        reportPeriod: {
+          startDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+          endDate: new Date(),
+          frequency: 'quarterly'
+        },
+        complianceAreas,
+        followUp: {
+          nextInspectionDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
+        }
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async createEnvironmentalReport(hotelId) {
-    const complianceAreas = [
-      {
-        area: 'waste_management',
-        description: 'Waste disposal and recycling compliance',
-        score: 87,
-        status: 'compliant',
-        findings: []
-      },
-      {
-        area: 'water_quality',
-        description: 'Water quality monitoring and treatment',
-        score: 91,
-        status: 'compliant',
-        findings: []
-      }
-    ];
+    try {
+      const complianceAreas = [
+        {
+          area: 'waste_management',
+          description: 'Waste disposal and recycling compliance',
+          score: 87,
+          status: 'compliant',
+          findings: []
+        },
+        {
+          area: 'water_quality',
+          description: 'Water quality monitoring and treatment',
+          score: 91,
+          status: 'compliant',
+          findings: []
+        }
+      ];
 
-    return await ComplianceReport.create({
-      hotelId,
-      reportType: 'environmental',
-      reportPeriod: {
-        startDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
-        endDate: new Date(),
-        frequency: 'quarterly'
-      },
-      complianceAreas,
-      followUp: {
-        nextInspectionDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000)
-      }
-    });
+      return await ComplianceReport.create({
+        hotelId,
+        reportType: 'environmental',
+        reportPeriod: {
+          startDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+          endDate: new Date(),
+          frequency: 'quarterly'
+        },
+        complianceAreas,
+        followUp: {
+          nextInspectionDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000)
+        }
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async createOSHAReport(hotelId) {
-    const complianceAreas = [
-      {
-        area: 'staff_training',
-        description: 'OSHA-required staff safety training',
-        score: 89,
-        status: 'compliant',
-        findings: []
-      },
-      {
-        area: 'equipment_maintenance',
-        description: 'Equipment safety and maintenance',
-        score: 93,
-        status: 'compliant',
-        findings: []
-      }
-    ];
+    try {
+      const complianceAreas = [
+        {
+          area: 'staff_training',
+          description: 'OSHA-required staff safety training',
+          score: 89,
+          status: 'compliant',
+          findings: []
+        },
+        {
+          area: 'equipment_maintenance',
+          description: 'Equipment safety and maintenance',
+          score: 93,
+          status: 'compliant',
+          findings: []
+        }
+      ];
 
-    return await ComplianceReport.create({
-      hotelId,
-      reportType: 'osha',
-      reportPeriod: {
-        startDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
-        endDate: new Date(),
-        frequency: 'quarterly'
-      },
-      complianceAreas,
-      followUp: {
-        nextInspectionDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
-      }
-    });
+      return await ComplianceReport.create({
+        hotelId,
+        reportType: 'osha',
+        reportPeriod: {
+          startDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+          endDate: new Date(),
+          frequency: 'quarterly'
+        },
+        complianceAreas,
+        followUp: {
+          nextInspectionDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
+        }
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Helper methods for compliance monitoring
 
   static async checkExpiringCertifications(hotelId, daysAhead = 30) {
-    const cutoffDate = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000);
+    try {
+      const cutoffDate = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000);
 
-    const reports = await ComplianceReport.find({
-      hotelId,
-      'regulatoryFramework.certifications.expiryDate': { $lte: cutoffDate },
-      'regulatoryFramework.certifications.status': 'active'
-    }).select('regulatoryFramework.certifications reportType');
+      const reports = await ComplianceReport.find({
+        hotelId,
+        'regulatoryFramework.certifications.expiryDate': { $lte: cutoffDate },
+        'regulatoryFramework.certifications.status': 'active'
+      }).select('regulatoryFramework.certifications reportType').lean().limit(1000);
 
-    const expiring = [];
-    reports.forEach(report => {
-      report.regulatoryFramework.certifications.forEach(cert => {
-        if (cert.expiryDate <= cutoffDate && cert.status === 'active') {
-          expiring.push({
-            reportType: report.reportType,
-            certification: cert.name,
-            expiryDate: cert.expiryDate,
-            daysUntilExpiry: Math.ceil((cert.expiryDate - new Date()) / (1000 * 60 * 60 * 24))
-          });
-        }
-      });
-    });
-
-    return expiring;
-  }
-
-  static async checkOverdueCorrectiveActions(hotelId) {
-    const now = new Date();
-
-    const reports = await ComplianceReport.find({
-      hotelId,
-      'complianceAreas.findings.correctiveAction.deadline': { $lt: now },
-      'complianceAreas.findings.correctiveAction.status': { $in: ['pending', 'in_progress'] }
-    }).populate('complianceAreas.findings.correctiveAction.assignedTo', 'name email');
-
-    const overdue = [];
-    reports.forEach(report => {
-      report.complianceAreas.forEach(area => {
-        area.findings.forEach(finding => {
-          if (finding.correctiveAction &&
-              finding.correctiveAction.deadline < now &&
-              ['pending', 'in_progress'].includes(finding.correctiveAction.status)) {
-            overdue.push({
+      const expiring = [];
+      reports.forEach(report => {
+        report.regulatoryFramework.certifications.forEach(cert => {
+          if (cert.expiryDate <= cutoffDate && cert.status === 'active') {
+            expiring.push({
               reportType: report.reportType,
-              area: area.area,
-              description: finding.correctiveAction.description,
-              deadline: finding.correctiveAction.deadline,
-              assignedTo: finding.correctiveAction.assignedTo,
-              daysOverdue: Math.ceil((now - finding.correctiveAction.deadline) / (1000 * 60 * 60 * 24))
+              certification: cert.name,
+              expiryDate: cert.expiryDate,
+              daysUntilExpiry: Math.ceil((cert.expiryDate - new Date()) / (1000 * 60 * 60 * 24))
             });
           }
         });
       });
-    });
 
-    return overdue;
+      return expiring;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
+  }
+
+  static async checkOverdueCorrectiveActions(hotelId) {
+    try {
+      const now = new Date();
+
+      const reports = await ComplianceReport.find({
+        hotelId,
+        'complianceAreas.findings.correctiveAction.deadline': { $lt: now },
+        'complianceAreas.findings.correctiveAction.status': { $in: ['pending', 'in_progress'] }
+      }).populate('complianceAreas.findings.correctiveAction.assignedTo', 'name email').lean().limit(1000);
+
+      const overdue = [];
+      reports.forEach(report => {
+        report.complianceAreas.forEach(area => {
+          area.findings.forEach(finding => {
+            if (finding.correctiveAction &&
+                finding.correctiveAction.deadline < now &&
+                ['pending', 'in_progress'].includes(finding.correctiveAction.status)) {
+              overdue.push({
+                reportType: report.reportType,
+                area: area.area,
+                description: finding.correctiveAction.description,
+                deadline: finding.correctiveAction.deadline,
+                assignedTo: finding.correctiveAction.assignedTo,
+                daysOverdue: Math.ceil((now - finding.correctiveAction.deadline) / (1000 * 60 * 60 * 24))
+              });
+            }
+          });
+        });
+      });
+
+      return overdue;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async checkInventoryCompliance(hotelId) {
-    const items = await InventoryItem.find({ hotelId, isActive: true });
-    const violations = [];
+    try {
+      const items = await InventoryItem.find({ hotelId, isActive: true }).lean().limit(1000);
+      const violations = [];
 
-    // Check for items without proper documentation
-    items.forEach(item => {
-      if (!item.supplier?.name) {
-        violations.push({
-          type: 'missing_supplier_info',
-          itemId: item._id,
-          itemName: item.name,
-          issue: 'Missing supplier information'
-        });
-      }
+      // Check for items without proper documentation
+      items.forEach(item => {
+        if (!item.supplier?.name) {
+          violations.push({
+            type: 'missing_supplier_info',
+            itemId: item._id,
+            itemName: item.name,
+            issue: 'Missing supplier information'
+          });
+        }
 
-      if (item.category === 'minibar' && !item.specifications) {
-        violations.push({
-          type: 'missing_specifications',
-          itemId: item._id,
-          itemName: item.name,
-          issue: 'Food items missing required specifications'
-        });
-      }
-    });
+        if (item.category === 'minibar' && !item.specifications) {
+          violations.push({
+            type: 'missing_specifications',
+            itemId: item._id,
+            itemName: item.name,
+            issue: 'Food items missing required specifications'
+          });
+        }
+      });
 
-    return {
-      totalItems: items.length,
-      compliantItems: items.length - violations.length,
-      violations,
-      complianceRate: ((items.length - violations.length) / items.length) * 100
-    };
+      return {
+        totalItems: items.length,
+        compliantItems: items.length - violations.length,
+        violations,
+        complianceRate: ((items.length - violations.length) / items.length) * 100
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async checkTrainingCompliance(hotelId) {
-    // This would typically integrate with an HR/training system
-    // For demonstration, we'll simulate training compliance data
-    const requiredTraining = [
-      'Food Safety Certification',
-      'Fire Safety Training',
-      'Chemical Handling Training',
-      'Emergency Procedures Training'
-    ];
+    try {
+      // This would typically integrate with an HR/training system
+      // For demonstration, we'll simulate training compliance data
+      const requiredTraining = [
+        'Food Safety Certification',
+        'Fire Safety Training',
+        'Chemical Handling Training',
+        'Emergency Procedures Training'
+      ];
 
-    const expired = [];
-    const upcoming = [];
+      const expired = [];
+      const upcoming = [];
 
-    // Simulate some expired training
-    if (Math.random() > 0.7) {
-      expired.push({
-        training: 'Food Safety Certification',
-        staffMember: 'John Smith',
-        expiryDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
-        daysExpired: 10
-      });
+      // Simulate some expired training
+      if (Math.random() > 0.7) {
+        expired.push({
+          training: 'Food Safety Certification',
+          staffMember: 'John Smith',
+          expiryDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+          daysExpired: 10
+        });
+      }
+
+      return {
+        requiredTraining,
+        expired,
+        upcoming,
+        complianceRate: ((requiredTraining.length - expired.length) / requiredTraining.length) * 100
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return {
-      requiredTraining,
-      expired,
-      upcoming,
-      complianceRate: ((requiredTraining.length - expired.length) / requiredTraining.length) * 100
-    };
   }
 
   static async generatePreventiveActions(hotelId, alerts) {
-    const preventiveActions = [];
+    try {
+      const preventiveActions = [];
 
-    alerts.forEach(alert => {
-      switch (alert.type) {
-        case 'certification_expiry':
-          preventiveActions.push({
-            type: 'preventive',
-            action: 'Schedule certification renewal meetings',
-            deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            priority: 'high'
-          });
-          break;
-        case 'training_compliance':
-          preventiveActions.push({
-            type: 'preventive',
-            action: 'Schedule mandatory training sessions',
-            deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-            priority: 'medium'
-          });
-          break;
-      }
-    });
+      alerts.forEach(alert => {
+        switch (alert.type) {
+          case 'certification_expiry':
+            preventiveActions.push({
+              type: 'preventive',
+              action: 'Schedule certification renewal meetings',
+              deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+              priority: 'high'
+            });
+            break;
+          case 'training_compliance':
+            preventiveActions.push({
+              type: 'preventive',
+              action: 'Schedule mandatory training sessions',
+              deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+              priority: 'medium'
+            });
+            break;
+        }
+      });
 
-    return preventiveActions;
+      return preventiveActions;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static generateMonitoringSummary(monitoring) {
@@ -685,43 +721,51 @@ class ComplianceService {
   // Additional helper methods for audit functionality
 
   static async defineAuditScope(auditType) {
-    const scopes = {
-      comprehensive: [
-        'food_safety', 'fire_safety', 'chemical_storage', 'documentation',
-        'staff_training', 'equipment_maintenance', 'waste_management'
-      ],
-      food_safety: ['food_safety', 'temperature_control', 'allergen_control'],
-      safety: ['fire_safety', 'electrical_safety', 'chemical_storage'],
-      operational: ['documentation', 'staff_training', 'equipment_maintenance'],
-      environmental: ['waste_management', 'water_quality', 'chemical_storage']
-    };
+    try {
+      const scopes = {
+        comprehensive: [
+          'food_safety', 'fire_safety', 'chemical_storage', 'documentation',
+          'staff_training', 'equipment_maintenance', 'waste_management'
+        ],
+        food_safety: ['food_safety', 'temperature_control', 'allergen_control'],
+        safety: ['fire_safety', 'electrical_safety', 'chemical_storage'],
+        operational: ['documentation', 'staff_training', 'equipment_maintenance'],
+        environmental: ['waste_management', 'water_quality', 'chemical_storage']
+      };
 
-    return scopes[auditType] || scopes.comprehensive;
+      return scopes[auditType] || scopes.comprehensive;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async auditComplianceArea(hotelId, area, includeEvidence) {
-    // This would perform actual compliance checks
-    // For demonstration, we'll return simulated audit findings
-    const findings = [];
+    try {
+      // This would perform actual compliance checks
+      // For demonstration, we'll return simulated audit findings
+      const findings = [];
 
-    // Simulate some random findings
-    if (Math.random() > 0.8) {
-      findings.push({
-        area,
-        type: 'observation',
-        severity: 'minor',
-        description: `Minor observation in ${area} area`,
-        location: 'Main kitchen',
-        correctiveAction: {
-          required: true,
-          description: `Address ${area} observation`,
-          deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
-          status: 'pending'
-        }
-      });
+      // Simulate some random findings
+      if (Math.random() > 0.8) {
+        findings.push({
+          area,
+          type: 'observation',
+          severity: 'minor',
+          description: `Minor observation in ${area} area`,
+          location: 'Main kitchen',
+          correctiveAction: {
+            required: true,
+            description: `Address ${area} observation`,
+            deadline: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+            status: 'pending'
+          }
+        });
+      }
+
+      return findings;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return findings;
   }
 
   static categorizeFindingsBySeverity(findings) {
@@ -734,19 +778,23 @@ class ComplianceService {
   }
 
   static async assessComplianceRisks(findings) {
-    const criticalFindings = findings.filter(f => f.severity === 'critical').length;
-    const majorFindings = findings.filter(f => f.severity === 'major').length;
+    try {
+      const criticalFindings = findings.filter(f => f.severity === 'critical').length;
+      const majorFindings = findings.filter(f => f.severity === 'major').length;
 
-    let riskLevel = 'low';
-    if (criticalFindings > 0) riskLevel = 'high';
-    else if (majorFindings > 2) riskLevel = 'medium';
+      let riskLevel = 'low';
+      if (criticalFindings > 0) riskLevel = 'high';
+      else if (majorFindings > 2) riskLevel = 'medium';
 
-    return {
-      overallRiskLevel: riskLevel,
-      criticalRisks: criticalFindings,
-      majorRisks: majorFindings,
-      riskFactors: findings.map(f => f.description)
-    };
+      return {
+        overallRiskLevel: riskLevel,
+        criticalRisks: criticalFindings,
+        majorRisks: majorFindings,
+        riskFactors: findings.map(f => f.description)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static categorizeCorrectiveActions(actions) {
@@ -763,172 +811,240 @@ class ComplianceService {
   // Additional methods for dashboard functionality
 
   static async getComplianceSummaryMetrics(hotelId, period) {
-    const startDate = new Date(Date.now() - period * 24 * 60 * 60 * 1000);
+    try {
+      const startDate = new Date(Date.now() - period * 24 * 60 * 60 * 1000);
 
-    const recentReports = await ComplianceReport.find({
-      hotelId,
-      reportDate: { $gte: startDate }
-    });
+      const recentReports = await ComplianceReport.find({
+        hotelId,
+        reportDate: { $gte: startDate }
+      }).lean().limit(1000);
 
-    const totalReports = recentReports.length;
-    const averageScore = totalReports > 0 ?
-      recentReports.reduce((sum, r) => sum + (r.overallScore || 0), 0) / totalReports : 0;
+      const totalReports = recentReports.length;
+      const averageScore = totalReports > 0 ?
+        recentReports.reduce((sum, r) => sum + (r.overallScore || 0), 0) / totalReports : 0;
 
-    const compliantReports = recentReports.filter(r => r.status === 'compliant').length;
-    const nonCompliantReports = recentReports.filter(r => r.status === 'non_compliant').length;
+      const compliantReports = recentReports.filter(r => r.status === 'compliant').length;
+      const nonCompliantReports = recentReports.filter(r => r.status === 'non_compliant').length;
 
-    return {
-      totalReports,
-      averageScore: parseFloat(averageScore.toFixed(1)),
-      compliantReports,
-      nonCompliantReports,
-      complianceRate: totalReports > 0 ? parseFloat(((compliantReports / totalReports) * 100).toFixed(1)) : 0
-    };
+      return {
+        totalReports,
+        averageScore: parseFloat(averageScore.toFixed(1)),
+        compliantReports,
+        nonCompliantReports,
+        complianceRate: totalReports > 0 ? parseFloat(((compliantReports / totalReports) * 100).toFixed(1)) : 0
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async getRecentComplianceReports(hotelId, limit = 5) {
-    return await ComplianceReport.find({ hotelId })
-      .sort({ reportDate: -1 })
-      .limit(limit)
-      .select('reportType reportDate status overallScore')
-      .lean();
+    try {
+      return await ComplianceReport.find({ hotelId })
+        .sort({ reportDate: -1 })
+        .limit(limit)
+        .select('reportType reportDate status overallScore')
+        .lean();
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async getUpcomingComplianceDeadlines(hotelId, daysAhead = 60) {
-    const cutoffDate = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000);
+    try {
+      const cutoffDate = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000);
 
-    const reports = await ComplianceReport.find({
-      hotelId,
-      $or: [
-        { 'followUp.nextInspectionDate': { $lte: cutoffDate } },
-        { 'regulatoryFramework.certifications.expiryDate': { $lte: cutoffDate } }
-      ]
-    }).select('reportType followUp.nextInspectionDate regulatoryFramework.certifications');
+      const reports = await ComplianceReport.find({
+        hotelId,
+        $or: [
+          { 'followUp.nextInspectionDate': { $lte: cutoffDate } },
+          { 'regulatoryFramework.certifications.expiryDate': { $lte: cutoffDate } }
+        ]
+      }).select('reportType followUp.nextInspectionDate regulatoryFramework.certifications').lean().limit(1000);
 
-    const deadlines = [];
+      const deadlines = [];
 
-    reports.forEach(report => {
-      if (report.followUp?.nextInspectionDate && report.followUp.nextInspectionDate <= cutoffDate) {
-        deadlines.push({
-          type: 'inspection',
-          reportType: report.reportType,
-          date: report.followUp.nextInspectionDate,
-          description: `${report.reportType} inspection due`
-        });
-      }
-
-      report.regulatoryFramework?.certifications?.forEach(cert => {
-        if (cert.expiryDate && cert.expiryDate <= cutoffDate) {
+      reports.forEach(report => {
+        if (report.followUp?.nextInspectionDate && report.followUp.nextInspectionDate <= cutoffDate) {
           deadlines.push({
-            type: 'certification',
+            type: 'inspection',
             reportType: report.reportType,
-            date: cert.expiryDate,
-            description: `${cert.name} certification expires`
+            date: report.followUp.nextInspectionDate,
+            description: `${report.reportType} inspection due`
           });
         }
-      });
-    });
 
-    return deadlines.sort((a, b) => a.date - b.date);
+        report.regulatoryFramework?.certifications?.forEach(cert => {
+          if (cert.expiryDate && cert.expiryDate <= cutoffDate) {
+            deadlines.push({
+              type: 'certification',
+              reportType: report.reportType,
+              date: cert.expiryDate,
+              description: `${cert.name} certification expires`
+            });
+          }
+        });
+      });
+
+      return deadlines.sort((a, b) => a.date - b.date);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Placeholder methods for additional functionality
   static async addPreviousPeriodComparison(report) {
-    // Add comparison with previous period
+    try {
+      // Add comparison with previous period
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async enhanceWithRecommendations(report) {
-    // Add AI-generated recommendations
+    try {
+      // Add AI-generated recommendations
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async scheduleFollowUpActivities(report) {
-    // Schedule automatic follow-up activities
+    try {
+      // Schedule automatic follow-up activities
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async generateComplianceActionPlan(findings) {
-    // Generate detailed action plan from findings
-    return [];
+    try {
+      // Generate detailed action plan from findings
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async saveAuditResults(hotelId, audit) {
-    // Save audit results to database
-    return audit;
+    try {
+      // Save audit results to database
+      return audit;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async uploadRegulatoryDocument(hotelId, documentData) {
-    // Handle document upload
-    return { success: true };
+    try {
+      // Handle document upload
+      return { success: true };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async renewCertification(hotelId, documentData) {
-    // Handle certification renewal
-    return { success: true };
+    try {
+      // Handle certification renewal
+      return { success: true };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async verifyDocumentValidity(hotelId, documentData) {
-    // Verify document validity
-    return { valid: true };
+    try {
+      // Verify document validity
+      return { valid: true };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async archiveDocument(hotelId, documentData) {
-    // Archive old document
-    return { success: true };
+    try {
+      // Archive old document
+      return { success: true };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async listRegulatoryDocuments(hotelId, filters) {
-    // List regulatory documents
-    return [];
+    try {
+      // List regulatory documents
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async getComplianceTrends(hotelId, period) {
-    // Get compliance trends over time
-    return {
-      trend: 'improving',
-      changePercent: 5.2
-    };
+    try {
+      // Get compliance trends over time
+      return {
+        trend: 'improving',
+        changePercent: 5.2
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async generateComplianceForecasting(hotelId) {
-    // Generate compliance forecasting
-    return {
-      nextPeriodScore: 92,
-      riskAreas: ['training_compliance']
-    };
+    try {
+      // Generate compliance forecasting
+      return {
+        nextPeriodScore: 92,
+        riskAreas: ['training_compliance']
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async getComplianceBenchmarking(hotelId) {
-    // Get industry benchmarking data
-    return {
-      industryAverage: 87,
-      percentile: 75
-    };
+    try {
+      // Get industry benchmarking data
+      return {
+        industryAverage: 87,
+        percentile: 75
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async generateComplianceRecommendations(dashboard) {
-    const recommendations = [];
+    try {
+      const recommendations = [];
 
-    if (dashboard.alerts.length > 0) {
-      const criticalAlerts = dashboard.alerts.filter(a => a.severity === 'critical');
-      if (criticalAlerts.length > 0) {
+      if (dashboard.alerts.length > 0) {
+        const criticalAlerts = dashboard.alerts.filter(a => a.severity === 'critical');
+        if (criticalAlerts.length > 0) {
+          recommendations.push({
+            type: 'critical_alerts',
+            priority: 'critical',
+            description: `${criticalAlerts.length} critical compliance alerts require immediate attention`,
+            action: 'Address critical compliance issues immediately'
+          });
+        }
+      }
+
+      if (dashboard.summary.complianceRate < 85) {
         recommendations.push({
-          type: 'critical_alerts',
-          priority: 'critical',
-          description: `${criticalAlerts.length} critical compliance alerts require immediate attention`,
-          action: 'Address critical compliance issues immediately'
+          type: 'compliance_improvement',
+          priority: 'high',
+          description: 'Overall compliance rate below target',
+          action: 'Implement compliance improvement program'
         });
       }
-    }
 
-    if (dashboard.summary.complianceRate < 85) {
-      recommendations.push({
-        type: 'compliance_improvement',
-        priority: 'high',
-        description: 'Overall compliance rate below target',
-        action: 'Implement compliance improvement program'
-      });
+      return recommendations;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return recommendations;
   }
 }
 

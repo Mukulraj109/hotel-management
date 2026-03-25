@@ -94,9 +94,9 @@ class HousekeepingAutomationService {
       };
 
       // Get booking and room details
-      const booking = await Booking.findById(bookingId).populate('rooms.roomId');
-      const room = await Room.findById(roomId);
-      const roomInventory = await RoomInventory.findOne({ roomId });
+      const booking = await Booking.findById(bookingId).populate('rooms.roomId').lean();
+      const room = await Room.findById(roomId).lean();
+      const roomInventory = await RoomInventory.findOne({ roomId }).lean();
 
       if (!booking || !room) {
         throw new Error('Booking or room not found');
@@ -179,57 +179,61 @@ class HousekeepingAutomationService {
    * @param {Object} options - Processing options
    */
   async determineRequiredTasks(booking, room, roomInventory, options = {}) {
-    const tasks = [];
-    const stayLength = this.calculateStayLength(booking);
-    const roomCondition = this.assessRoomCondition(roomInventory, options);
+    try {
+      const tasks = [];
+      const stayLength = this.calculateStayLength(booking);
+      const roomCondition = this.assessRoomCondition(roomInventory, options);
 
-    // Always create checkout cleaning task
-    tasks.push({
-      type: 'checkout_clean',
-      priority: 'high',
-      estimatedDuration: this.taskTypes.checkout_clean.baseDuration,
-      required: true
-    });
-
-    // Determine if deep cleaning is needed
-    if (this.needsDeepCleaning(stayLength, roomCondition, booking, options)) {
+      // Always create checkout cleaning task
       tasks.push({
-        type: 'deep_clean',
+        type: 'checkout_clean',
         priority: 'high',
-        estimatedDuration: this.taskTypes.deep_clean.baseDuration,
+        estimatedDuration: this.taskTypes.checkout_clean.baseDuration,
         required: true
       });
-    }
 
-    // Check if maintenance is needed
-    if (this.needsMaintenance(roomInventory, options)) {
+      // Determine if deep cleaning is needed
+      if (this.needsDeepCleaning(stayLength, roomCondition, booking, options)) {
+        tasks.push({
+          type: 'deep_clean',
+          priority: 'high',
+          estimatedDuration: this.taskTypes.deep_clean.baseDuration,
+          required: true
+        });
+      }
+
+      // Check if maintenance is needed
+      if (this.needsMaintenance(roomInventory, options)) {
+        tasks.push({
+          type: 'maintenance',
+          priority: 'medium',
+          estimatedDuration: this.taskTypes.maintenance.baseDuration,
+          required: true
+        });
+      }
+
+      // Always create inspection task
       tasks.push({
-        type: 'maintenance',
+        type: 'inspection',
         priority: 'medium',
-        estimatedDuration: this.taskTypes.maintenance.baseDuration,
+        estimatedDuration: this.taskTypes.inspection.baseDuration,
         required: true
       });
+
+      // Create setup task if room will be occupied soon
+      if (this.needsSetup(booking, options)) {
+        tasks.push({
+          type: 'setup',
+          priority: 'medium',
+          estimatedDuration: this.taskTypes.setup.baseDuration,
+          required: false
+        });
+      }
+
+      return tasks;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Always create inspection task
-    tasks.push({
-      type: 'inspection',
-      priority: 'medium',
-      estimatedDuration: this.taskTypes.inspection.baseDuration,
-      required: true
-    });
-
-    // Create setup task if room will be occupied soon
-    if (this.needsSetup(booking, options)) {
-      tasks.push({
-        type: 'setup',
-        priority: 'medium',
-        estimatedDuration: this.taskTypes.setup.baseDuration,
-        required: false
-      });
-    }
-
-    return tasks;
   }
 
   /**
@@ -638,7 +642,7 @@ class HousekeepingAutomationService {
         hotelId,
         role: { $in: ['housekeeping', 'staff'] },
         isActive: true
-      }).select('_id name email role');
+      }).select('_id name email role').lean().limit(1000);
 
       // For now, return all active staff
       // In a more sophisticated system, this would check current workload

@@ -15,7 +15,7 @@ class ReasonService {
       const existingReason = await Reason.findOne({ 
         code: reasonData.code,
         hotelId: reasonData.hotelId 
-      });
+      }).lean();
 
       if (existingReason) {
         throw new Error('Reason code already exists for this hotel');
@@ -158,7 +158,7 @@ class ReasonService {
   // Delete reason
   async deleteReason(reasonId, userId) {
     try {
-      const reason = await Reason.findById(reasonId);
+      const reason = await Reason.findById(reasonId).lean();
 
       if (!reason) {
         throw new Error('Reason not found');
@@ -215,7 +215,7 @@ class ReasonService {
   // Log reason usage
   async logReasonUsage(reasonId, userId, context, entityId, entityType, options = {}) {
     try {
-      const reason = await Reason.findById(reasonId);
+      const reason = await Reason.findById(reasonId).lean();
 
       if (!reason) {
         throw new Error('Reason not found');
@@ -265,7 +265,7 @@ class ReasonService {
       const reasons = await Reason.find(filter)
         .populate('applicableDepartments', 'name code')
         .limit(limit)
-        .sort({ 'usage.totalUsed': -1, name: 1 });
+        .sort({ 'usage.totalUsed': -1, name: 1 }).lean();
 
       return reasons;
     } catch (error) {
@@ -326,7 +326,7 @@ class ReasonService {
       const reasons = await Reason.find({ hotelId })
         .populate('applicableDepartments', 'name code')
         .populate('createdBy', 'name email')
-        .sort({ category: 1, name: 1 });
+        .sort({ category: 1, name: 1 }).lean().limit(1000);
 
       if (format === 'csv') {
         return this.convertToCSV(reasons);
@@ -362,7 +362,7 @@ class ReasonService {
       const days = this.getPeriodInDays(period);
       const fromDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-      const reasons = await Reason.find({ hotelId });
+      const reasons = await Reason.find({ hotelId }).lean().limit(1000);
       
       const analytics = {
         period,
@@ -406,20 +406,24 @@ class ReasonService {
 
   // Helper methods
   async getOverallStats(hotelId) {
-    const reasons = await Reason.find({ hotelId });
+    try {
+      const reasons = await Reason.find({ hotelId }).lean().limit(1000);
     
-    return {
-      total: reasons.length,
-      active: reasons.filter(r => r.isActive).length,
-      inactive: reasons.filter(r => !r.isActive).length,
-      systemReasons: reasons.filter(r => r.isSystemReason).length,
-      totalUsage: reasons.reduce((sum, r) => sum + r.usage.totalUsed, 0),
-      avgUsagePerReason: reasons.length > 0 
-        ? (reasons.reduce((sum, r) => sum + r.usage.totalUsed, 0) / reasons.length).toFixed(2)
-        : 0,
-      categoriesUsed: [...new Set(reasons.map(r => r.category))].length,
-      lastActivity: Math.max(...reasons.map(r => r.usage.lastUsed || r.createdAt).map(d => new Date(d)))
-    };
+      return {
+        total: reasons.length,
+        active: reasons.filter(r => r.isActive).length,
+        inactive: reasons.filter(r => !r.isActive).length,
+        systemReasons: reasons.filter(r => r.isSystemReason).length,
+        totalUsage: reasons.reduce((sum, r) => sum + r.usage.totalUsed, 0),
+        avgUsagePerReason: reasons.length > 0 
+          ? (reasons.reduce((sum, r) => sum + r.usage.totalUsed, 0) / reasons.length).toFixed(2)
+          : 0,
+        categoriesUsed: [...new Set(reasons.map(r => r.category))].length,
+        lastActivity: Math.max(...reasons.map(r => r.usage.lastUsed || r.createdAt).map(d => new Date(d)))
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   getPeriodInDays(period) {

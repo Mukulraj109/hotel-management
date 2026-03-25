@@ -29,6 +29,7 @@ import { useRealTime } from '../../services/realTimeService';
 import { formatDate, formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { CheckoutInventoryDetails } from '../../components/staff/CheckoutInventoryDetails';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface Staff {
   _id: string;
@@ -56,7 +57,7 @@ interface AdminOverview {
   }>;
 }
 
-export default function AdminCheckoutInventoryManagement() {
+function AdminCheckoutInventoryManagement() {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [allChecks, setAllChecks] = useState<CheckoutInventory[]>([]);
@@ -313,7 +314,7 @@ export default function AdminCheckoutInventoryManagement() {
                 { id: 'checks', label: 'All Checks', icon: Package },
                 { id: 'analytics', label: 'Analytics', icon: TrendingUp }
               ].map(({ id, label, icon: Icon }) => (
-                <button
+                <button aria-label="Close"
                   key={id}
                   onClick={() => setActiveTab(id as unknown)}
                   className={`flex-1 py-2 sm:py-3 px-2 sm:px-4 rounded-xl font-semibold text-xs sm:text-sm flex items-center justify-center space-x-1 sm:space-x-2 transition-all duration-200 ${
@@ -723,3 +724,5 @@ export default function AdminCheckoutInventoryManagement() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminCheckoutInventoryManagement, { level: 'page' });

@@ -41,8 +41,14 @@ class GuestSegmentationService {
   }
 
   async initializeSegmentationModels() {
-    const initTasks = Object.values(this.segmentationModels).map(model => model.initialize());
-    await Promise.allSettled(initTasks);
+    try {
+      const initTasks = Object.values(this.segmentationModels).map(model => model.initialize());
+      await Promise.allSettled(initTasks);
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
+    }
   }
 
   scheduleSegmentationUpdates() {
@@ -100,52 +106,62 @@ class GuestSegmentationService {
   }
 
   async getGuestBookingData(hotelId, days) {
-    const endDate = new Date();
-    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    try {
+      const endDate = new Date();
+      const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    const guestBookings = await FactBookings.aggregate([
-      {
-        $match: {
-          hotel_key: hotelId,
-          created_at: { $gte: startDate, $lte: endDate },
-          booking_status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-        }
-      },
-      {
-        $group: {
-          _id: '$guest_key',
-          // Recency: Days since last booking
-          lastBookingDate: { $max: '$check_in_date' },
-          // Frequency: Number of bookings
-          totalBookings: { $sum: 1 },
-          // Monetary: Total spent
-          totalRevenue: { $sum: '$revenue_amount' },
-          avgBookingValue: { $avg: '$revenue_amount' },
-          totalNights: { $sum: '$nights_stayed' },
-          bookingChannels: { $addToSet: '$booking_channel' },
-          guestSegments: { $addToSet: '$guest_segment' },
-          seasonalBookings: {
-            $push: {
-              season: '$season',
-              revenue: '$revenue_amount',
-              date: '$check_in_date'
+      // Consider caching this aggregation result for 5 minutes
+
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+
+      const guestBookings = await FactBookings.aggregate([
+        {
+          $match: {
+            hotel_key: hotelId,
+            created_at: { $gte: startDate, $lte: endDate },
+            booking_status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+          }
+        },
+        {
+          $group: {
+            _id: '$guest_key',
+            // Recency: Days since last booking
+            lastBookingDate: { $max: '$check_in_date' },
+            // Frequency: Number of bookings
+            totalBookings: { $sum: 1 },
+            // Monetary: Total spent
+            totalRevenue: { $sum: '$revenue_amount' },
+            avgBookingValue: { $avg: '$revenue_amount' },
+            totalNights: { $sum: '$nights_stayed' },
+            bookingChannels: { $addToSet: '$booking_channel' },
+            guestSegments: { $addToSet: '$guest_segment' },
+            seasonalBookings: {
+              $push: {
+                season: '$season',
+                revenue: '$revenue_amount',
+                date: '$check_in_date'
+              }
+            }
+          }
+        },
+        {
+          $addFields: {
+            daysSinceLastBooking: {
+              $divide: [
+                { $subtract: [new Date(), '$lastBookingDate'] },
+                1000 * 60 * 60 * 24
+              ]
             }
           }
         }
-      },
-      {
-        $addFields: {
-          daysSinceLastBooking: {
-            $divide: [
-              { $subtract: [new Date(), '$lastBookingDate'] },
-              1000 * 60 * 60 * 24
-            ]
-          }
-        }
-      }
-    ]);
+      ]);
 
-    return guestBookings;
+      return guestBookings;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // BEHAVIORAL SEGMENTATION
@@ -174,56 +190,64 @@ class GuestSegmentationService {
   }
 
   async getBehavioralData(hotelId) {
-    const behavioralMetrics = await FactBookings.aggregate([
-      {
-        $match: {
-          hotel_key: hotelId,
-          created_at: { $gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) }
-        }
-      },
-      {
-        $group: {
-          _id: '$guest_key',
-          // Booking behavior
-          avgBookingLeadTime: { $avg: '$booking_lead_days' },
-          preferredChannels: { $addToSet: '$booking_channel' },
-          bookingPatterns: {
-            $push: {
-              leadDays: '$booking_lead_days',
-              season: '$season',
-              isWeekend: '$is_weekend',
-              guestType: '$guest_type'
+    try {
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const behavioralMetrics = await FactBookings.aggregate([
+        {
+          $match: {
+            hotel_key: hotelId,
+            created_at: { $gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) }
+          }
+        },
+        {
+          $group: {
+            _id: '$guest_key',
+            // Booking behavior
+            avgBookingLeadTime: { $avg: '$booking_lead_days' },
+            preferredChannels: { $addToSet: '$booking_channel' },
+            bookingPatterns: {
+              $push: {
+                leadDays: '$booking_lead_days',
+                season: '$season',
+                isWeekend: '$is_weekend',
+                guestType: '$guest_type'
+              }
+            },
+            // Stay behavior
+            avgLengthOfStay: { $avg: '$nights_stayed' },
+            totalNights: { $sum: '$nights_stayed' },
+            seasonalPreferences: { $addToSet: '$season' },
+            weekendStays: { 
+              $sum: { $cond: ['$is_weekend', 1, 0] } 
+            },
+            weekdayStays: { 
+              $sum: { $cond: ['$is_weekend', 0, 1] } 
+            },
+            // Spending behavior
+            totalSpent: { $sum: '$revenue_amount' },
+            avgSpendPerNight: { $avg: { $divide: ['$revenue_amount', '$nights_stayed'] } },
+            priceElasticity: { $stdDevPop: '$adr' }, // Simplified price sensitivity metric
+            // Guest characteristics
+            guestTypes: { $addToSet: '$guest_type' },
+            segments: { $addToSet: '$guest_segment' }
+          }
+        },
+        {
+          $addFields: {
+            weekendPreference: {
+              $divide: ['$weekendStays', { $add: ['$weekendStays', '$weekdayStays'] }]
             }
-          },
-          // Stay behavior
-          avgLengthOfStay: { $avg: '$nights_stayed' },
-          totalNights: { $sum: '$nights_stayed' },
-          seasonalPreferences: { $addToSet: '$season' },
-          weekendStays: { 
-            $sum: { $cond: ['$is_weekend', 1, 0] } 
-          },
-          weekdayStays: { 
-            $sum: { $cond: ['$is_weekend', 0, 1] } 
-          },
-          // Spending behavior
-          totalSpent: { $sum: '$revenue_amount' },
-          avgSpendPerNight: { $avg: { $divide: ['$revenue_amount', '$nights_stayed'] } },
-          priceElasticity: { $stdDevPop: '$adr' }, // Simplified price sensitivity metric
-          // Guest characteristics
-          guestTypes: { $addToSet: '$guest_type' },
-          segments: { $addToSet: '$guest_segment' }
-        }
-      },
-      {
-        $addFields: {
-          weekendPreference: {
-            $divide: ['$weekendStays', { $add: ['$weekendStays', '$weekdayStays'] }]
           }
         }
-      }
-    ]);
+      ]);
 
-    return behavioralMetrics;
+      return behavioralMetrics;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // DEMOGRAPHIC SEGMENTATION
@@ -252,54 +276,62 @@ class GuestSegmentationService {
   }
 
   async getDemographicData(hotelId) {
-    // Get demographic information from guest dimension table
-    const demographics = await DimGuest.aggregate([
-      {
-        $match: {
-          is_current: true
-        }
-      },
-      {
-        $lookup: {
-          from: 'factbookings',
-          localField: 'guest_key',
-          foreignField: 'guest_key',
-          as: 'bookings'
-        }
-      },
-      {
-        $match: {
-          'bookings.hotel_key': hotelId
-        }
-      },
-      {
-        $group: {
-          _id: '$guest_key',
-          ageGroup: { $first: '$age_group' },
-          country: { $first: '$country' },
-          city: { $first: '$city' },
-          loyaltyTier: { $first: '$loyalty_tier' },
-          guestType: { $first: '$guest_type' },
-          guestSegment: { $first: '$guest_segment' },
-          bookingFrequency: { $first: '$booking_frequency' },
-          avgBookingValue: { $first: '$avg_booking_value' },
-          preferredRoomType: { $first: '$preferred_room_type' },
-          preferredAmenities: { $first: '$preferred_amenities' },
-          totalBookings: { $size: '$bookings' },
-          totalRevenue: { 
-            $sum: { 
-              $map: { 
-                input: '$bookings', 
-                as: 'booking', 
-                in: '$$booking.revenue_amount' 
+    try {
+      // Get demographic information from guest dimension table
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const demographics = await DimGuest.aggregate([
+        {
+          $match: {
+            is_current: true
+          }
+        },
+        {
+          $lookup: {
+            from: 'factbookings',
+            localField: 'guest_key',
+            foreignField: 'guest_key',
+            as: 'bookings'
+          }
+        },
+        {
+          $match: {
+            'bookings.hotel_key': hotelId
+          }
+        },
+        {
+          $group: {
+            _id: '$guest_key',
+            ageGroup: { $first: '$age_group' },
+            country: { $first: '$country' },
+            city: { $first: '$city' },
+            loyaltyTier: { $first: '$loyalty_tier' },
+            guestType: { $first: '$guest_type' },
+            guestSegment: { $first: '$guest_segment' },
+            bookingFrequency: { $first: '$booking_frequency' },
+            avgBookingValue: { $first: '$avg_booking_value' },
+            preferredRoomType: { $first: '$preferred_room_type' },
+            preferredAmenities: { $first: '$preferred_amenities' },
+            totalBookings: { $size: '$bookings' },
+            totalRevenue: { 
+              $sum: { 
+                $map: { 
+                  input: '$bookings', 
+                  as: 'booking', 
+                  in: '$$booking.revenue_amount' 
+                } 
               } 
-            } 
+            }
           }
         }
-      }
-    ]);
+      ]);
 
-    return demographics;
+      return demographics;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // PREDICTIVE SEGMENTATION
@@ -329,60 +361,68 @@ class GuestSegmentationService {
   }
 
   async getPredictiveSegmentationData(hotelId) {
-    // Combine behavioral and transactional data for predictive modeling
-    const data = await FactBookings.aggregate([
-      {
-        $match: {
-          hotel_key: hotelId,
-          created_at: { $gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) }
-        }
-      },
-      {
-        $group: {
-          _id: '$guest_key',
-          bookingHistory: {
-            $push: {
-              date: '$check_in_date',
-              revenue: '$revenue_amount',
-              nights: '$nights_stayed',
-              leadDays: '$booking_lead_days',
-              channel: '$booking_channel',
-              season: '$season',
-              adr: '$adr'
-            }
-          },
-          totalBookings: { $sum: 1 },
-          totalRevenue: { $sum: '$revenue_amount' },
-          lastBookingDate: { $max: '$check_in_date' },
-          firstBookingDate: { $min: '$check_in_date' }
-        }
-      },
-      {
-        $addFields: {
-          customerLifetimeValue: '$totalRevenue',
-          customerTenure: {
-            $divide: [
-              { $subtract: ['$lastBookingDate', '$firstBookingDate'] },
-              1000 * 60 * 60 * 24
-            ]
-          },
-          avgBookingInterval: {
-            $cond: {
-              if: { $gt: ['$totalBookings', 1] },
-              then: {
-                $divide: [
-                  { $subtract: ['$lastBookingDate', '$firstBookingDate'] },
-                  { $multiply: [{ $subtract: ['$totalBookings', 1] }, 1000 * 60 * 60 * 24] }
-                ]
-              },
-              else: null
+    try {
+      // Combine behavioral and transactional data for predictive modeling
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const data = await FactBookings.aggregate([
+        {
+          $match: {
+            hotel_key: hotelId,
+            created_at: { $gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) }
+          }
+        },
+        {
+          $group: {
+            _id: '$guest_key',
+            bookingHistory: {
+              $push: {
+                date: '$check_in_date',
+                revenue: '$revenue_amount',
+                nights: '$nights_stayed',
+                leadDays: '$booking_lead_days',
+                channel: '$booking_channel',
+                season: '$season',
+                adr: '$adr'
+              }
+            },
+            totalBookings: { $sum: 1 },
+            totalRevenue: { $sum: '$revenue_amount' },
+            lastBookingDate: { $max: '$check_in_date' },
+            firstBookingDate: { $min: '$check_in_date' }
+          }
+        },
+        {
+          $addFields: {
+            customerLifetimeValue: '$totalRevenue',
+            customerTenure: {
+              $divide: [
+                { $subtract: ['$lastBookingDate', '$firstBookingDate'] },
+                1000 * 60 * 60 * 24
+              ]
+            },
+            avgBookingInterval: {
+              $cond: {
+                if: { $gt: ['$totalBookings', 1] },
+                then: {
+                  $divide: [
+                    { $subtract: ['$lastBookingDate', '$firstBookingDate'] },
+                    { $multiply: [{ $subtract: ['$totalBookings', 1] }, 1000 * 60 * 60 * 24] }
+                  ]
+                },
+                else: null
+              }
             }
           }
         }
-      }
-    ]);
+      ]);
 
-    return data;
+      return data;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // COMPREHENSIVE GUEST ANALYSIS
@@ -491,22 +531,30 @@ class GuestSegmentationService {
   }
 
   async updateAllSegmentations() {
-    // Update all hotel segmentations
-    // In a real implementation, you'd get all hotel IDs and update them
-    this.logger.info('Updating all guest segmentations');
+    try {
+      // Update all hotel segmentations
+      // In a real implementation, you'd get all hotel IDs and update them
+      this.logger.info('Updating all guest segmentations');
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async shutdown() {
-    this.logger.info('Shutting down Guest Segmentation Service');
+    try {
+      this.logger.info('Shutting down Guest Segmentation Service');
     
-    // Stop all scheduled jobs
-    this.scheduledJobs.forEach((job, name) => {
-      job.destroy();
-      this.logger.info(`Stopped scheduled job: ${name}`);
-    });
+      // Stop all scheduled jobs
+      this.scheduledJobs.forEach((job, name) => {
+        job.destroy();
+        this.logger.info(`Stopped scheduled job: ${name}`);
+      });
     
-    this.scheduledJobs.clear();
-    this.isInitialized = false;
+      this.scheduledJobs.clear();
+      this.isInitialized = false;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 
@@ -529,25 +577,33 @@ class RFMSegmentationModel {
   }
 
   async initialize() {
-    // Initialize RFM model parameters
+    try {
+      // Initialize RFM model parameters
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async analyze(guestData) {
-    // Calculate RFM scores
-    const scoredData = this.calculateRFMScores(guestData);
+    try {
+      // Calculate RFM scores
+      const scoredData = this.calculateRFMScores(guestData);
     
-    // Segment guests based on RFM scores
-    const segments = this.segmentGuests(scoredData);
+      // Segment guests based on RFM scores
+      const segments = this.segmentGuests(scoredData);
     
-    // Generate insights and recommendations
-    const insights = this.generateRFMInsights(segments);
+      // Generate insights and recommendations
+      const insights = this.generateRFMInsights(segments);
     
-    return {
-      segments: this.formatSegments(segments),
-      metrics: this.calculateMetrics(segments),
-      recommendations: this.generateRecommendations(segments),
-      distribution: this.calculateDistribution(segments)
-    };
+      return {
+        segments: this.formatSegments(segments),
+        metrics: this.calculateMetrics(segments),
+        recommendations: this.generateRecommendations(segments),
+        distribution: this.calculateDistribution(segments)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   calculateRFMScores(guestData) {
@@ -717,20 +773,28 @@ class RFMSegmentationModel {
 // BEHAVIORAL SEGMENTATION MODEL
 class BehaviorSegmentationModel {
   async initialize() {
-    // Initialize behavioral model parameters
+    try {
+      // Initialize behavioral model parameters
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async segment(behavioralData) {
-    const segments = this.identifyBehavioralSegments(behavioralData);
-    const patterns = this.analyzeBehavioralPatterns(behavioralData);
-    const insights = this.generateBehavioralInsights(segments, patterns);
+    try {
+      const segments = this.identifyBehavioralSegments(behavioralData);
+      const patterns = this.analyzeBehavioralPatterns(behavioralData);
+      const insights = this.generateBehavioralInsights(segments, patterns);
     
-    return {
-      segments,
-      patterns,
-      insights,
-      recommendations: this.generateBehavioralRecommendations(segments)
-    };
+      return {
+        segments,
+        patterns,
+        insights,
+        recommendations: this.generateBehavioralRecommendations(segments)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   identifyBehavioralSegments(data) {
@@ -877,21 +941,29 @@ class BehaviorSegmentationModel {
 // DEMOGRAPHIC SEGMENTATION MODEL
 class DemographicSegmentationModel {
   async initialize() {
-    // Initialize demographic model parameters
+    try {
+      // Initialize demographic model parameters
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async segment(demographicData) {
-    const segments = this.createDemographicSegments(demographicData);
-    const distribution = this.calculateDemographicDistribution(segments);
-    const insights = this.generateDemographicInsights(distribution);
-    const marketing = this.generateMarketingRecommendations(segments);
+    try {
+      const segments = this.createDemographicSegments(demographicData);
+      const distribution = this.calculateDemographicDistribution(segments);
+      const insights = this.generateDemographicInsights(distribution);
+      const marketing = this.generateMarketingRecommendations(segments);
     
-    return {
-      segments,
-      distribution,
-      insights,
-      marketing
-    };
+      return {
+        segments,
+        distribution,
+        insights,
+        marketing
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   createDemographicSegments(data) {
@@ -984,21 +1056,29 @@ class DemographicSegmentationModel {
 // PREDICTIVE SEGMENTATION MODEL
 class PredictiveSegmentationModel {
   async initialize() {
-    // Initialize predictive model parameters
+    try {
+      // Initialize predictive model parameters
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async predict(historicalData) {
-    const churnRisk = this.predictChurnRisk(historicalData);
-    const valueSegments = this.predictCustomerValue(historicalData);
-    const recommendations = this.generatePredictiveRecommendations(churnRisk, valueSegments);
+    try {
+      const churnRisk = this.predictChurnRisk(historicalData);
+      const valueSegments = this.predictCustomerValue(historicalData);
+      const recommendations = this.generatePredictiveRecommendations(churnRisk, valueSegments);
     
-    return {
-      segments: this.combinePredictiveSegments(churnRisk, valueSegments),
-      churnRisk,
-      valueSegments,
-      recommendations,
-      accuracy: 0.75 // Placeholder accuracy score
-    };
+      return {
+        segments: this.combinePredictiveSegments(churnRisk, valueSegments),
+        churnRisk,
+        valueSegments,
+        recommendations,
+        accuracy: 0.75 // Placeholder accuracy score
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   predictChurnRisk(data) {

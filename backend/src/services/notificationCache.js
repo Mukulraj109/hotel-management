@@ -146,116 +146,156 @@ class NotificationCache {
 
   // Template caching methods
   async getTemplate(hotelId, templateId) {
-    const cacheKey = CACHE_KEYS.TEMPLATE(hotelId, templateId);
-    let template = await this.get(cacheKey);
+    try {
+      const cacheKey = CACHE_KEYS.TEMPLATE(hotelId, templateId);
+      let template = await this.get(cacheKey);
 
-    if (!template) {
-      template = await NotificationTemplate.findOne({
-        _id: templateId,
-        hotelId,
-        'metadata.isActive': true
-      }).lean();
+      if (!template) {
+        template = await NotificationTemplate.findOne({
+          _id: templateId,
+          hotelId,
+          'metadata.isActive': true
+        }).lean();
 
-      if (template) {
-        await this.set(cacheKey, template, CACHE_TTL.LONG);
+        if (template) {
+          await this.set(cacheKey, template, CACHE_TTL.LONG);
+        }
       }
-    }
 
-    return template;
+      return template;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getTemplateByType(hotelId, type) {
-    const cacheKey = CACHE_KEYS.TEMPLATE_BY_TYPE(hotelId, type);
-    let template = await this.get(cacheKey);
+    try {
+      const cacheKey = CACHE_KEYS.TEMPLATE_BY_TYPE(hotelId, type);
+      let template = await this.get(cacheKey);
 
-    if (!template) {
-      template = await NotificationTemplate.getByType(hotelId, type);
+      if (!template) {
+        template = await NotificationTemplate.getByType(hotelId, type);
 
-      if (template) {
-        await this.set(cacheKey, template, CACHE_TTL.LONG);
+        if (template) {
+          await this.set(cacheKey, template, CACHE_TTL.LONG);
+        }
       }
-    }
 
-    return template;
+      return template;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getTemplatesByCategory(hotelId, category) {
-    const cacheKey = CACHE_KEYS.TEMPLATES_BY_CATEGORY(hotelId, category);
-    let templates = await this.get(cacheKey);
+    try {
+      const cacheKey = CACHE_KEYS.TEMPLATES_BY_CATEGORY(hotelId, category);
+      let templates = await this.get(cacheKey);
 
-    if (!templates) {
-      templates = await NotificationTemplate.getByCategory(hotelId, category);
+      if (!templates) {
+        templates = await NotificationTemplate.getByCategory(hotelId, category);
 
-      if (templates) {
-        await this.set(cacheKey, templates, CACHE_TTL.MEDIUM);
+        if (templates) {
+          await this.set(cacheKey, templates, CACHE_TTL.MEDIUM);
+        }
       }
-    }
 
-    return templates || [];
+      return templates || [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async invalidateTemplateCache(hotelId, templateId = null) {
-    if (templateId) {
-      await this.del(CACHE_KEYS.TEMPLATE(hotelId, templateId));
-    }
+    try {
+      if (templateId) {
+        await this.del(CACHE_KEYS.TEMPLATE(hotelId, templateId));
+      }
 
-    // Invalidate all template-related caches for the hotel
-    await this.invalidatePattern(`template:${hotelId}:*`);
-    await this.invalidatePattern(`templates:${hotelId}:*`);
-    await this.del(CACHE_KEYS.TEMPLATE_STATS(hotelId));
+      // Invalidate all template-related caches for the hotel
+      await this.invalidatePattern(`template:${hotelId}:*`);
+      await this.invalidatePattern(`templates:${hotelId}:*`);
+      await this.del(CACHE_KEYS.TEMPLATE_STATS(hotelId));
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // User preference caching
   async getUserPreferences(userId) {
-    const cacheKey = CACHE_KEYS.USER_PREFERENCES(userId);
-    let preferences = await this.get(cacheKey);
+    try {
+      const cacheKey = CACHE_KEYS.USER_PREFERENCES(userId);
+      let preferences = await this.get(cacheKey);
 
-    if (!preferences) {
-      preferences = await NotificationPreference.findOne({ userId }).lean();
+      if (!preferences) {
+        preferences = await NotificationPreference.findOne({ userId }).lean();
 
-      if (preferences) {
-        await this.set(cacheKey, preferences, CACHE_TTL.MEDIUM);
+        if (preferences) {
+          await this.set(cacheKey, preferences, CACHE_TTL.MEDIUM);
+        }
       }
-    }
 
-    return preferences;
+      return preferences;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async invalidateUserPreferences(userId) {
-    await this.del(CACHE_KEYS.USER_PREFERENCES(userId));
+    try {
+      await this.del(CACHE_KEYS.USER_PREFERENCES(userId));
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // User profile caching
   async getUserProfile(userId) {
-    const cacheKey = CACHE_KEYS.USER_PROFILE(userId);
-    let user = await this.get(cacheKey);
+    try {
+      const cacheKey = CACHE_KEYS.USER_PROFILE(userId);
+      let user = await this.get(cacheKey);
 
-    if (!user) {
-      user = await User.findById(userId)
-        .select('firstName lastName email role hotelId department isActive')
-        .lean();
+      if (!user) {
+        user = await User.findById(userId)
+          .select('firstName lastName email role hotelId department isActive')
+          .lean();
 
-      if (user) {
-        await this.set(cacheKey, user, CACHE_TTL.LONG);
+        if (user) {
+          await this.set(cacheKey, user, CACHE_TTL.LONG);
+        }
       }
-    }
 
-    return user;
+      return user;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async invalidateUserProfile(userId) {
-    await this.del(CACHE_KEYS.USER_PROFILE(userId));
+    try {
+      await this.del(CACHE_KEYS.USER_PROFILE(userId));
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Notification count caching
   async getNotificationCount(userId) {
-    const cacheKey = CACHE_KEYS.NOTIFICATION_COUNT(userId);
-    return await this.get(cacheKey);
+    try {
+      const cacheKey = CACHE_KEYS.NOTIFICATION_COUNT(userId);
+      return await this.get(cacheKey);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async setNotificationCount(userId, count) {
-    const cacheKey = CACHE_KEYS.NOTIFICATION_COUNT(userId);
-    await this.set(cacheKey, count, CACHE_TTL.SHORT);
+    try {
+      const cacheKey = CACHE_KEYS.NOTIFICATION_COUNT(userId);
+      await this.set(cacheKey, count, CACHE_TTL.SHORT);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async incrementNotificationCount(userId) {
@@ -272,107 +312,143 @@ class NotificationCache {
   }
 
   async invalidateNotificationCount(userId) {
-    await this.del(CACHE_KEYS.NOTIFICATION_COUNT(userId));
+    try {
+      await this.del(CACHE_KEYS.NOTIFICATION_COUNT(userId));
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Hotel settings caching
   async getHotelSettings(hotelId) {
-    const cacheKey = CACHE_KEYS.HOTEL_SETTINGS(hotelId);
-    let settings = await this.get(cacheKey);
+    try {
+      const cacheKey = CACHE_KEYS.HOTEL_SETTINGS(hotelId);
+      let settings = await this.get(cacheKey);
 
-    if (!settings) {
-      // Fetch from database - this would be your hotel settings model
-      // For now, return default settings
-      settings = {
-        timezone: 'UTC',
-        quietHours: { start: 22, end: 7 },
-        defaultLanguage: 'en',
-        maxNotificationsPerHour: 50
-      };
+      if (!settings) {
+        // Fetch from database - this would be your hotel settings model
+        // For now, return default settings
+        settings = {
+          timezone: 'UTC',
+          quietHours: { start: 22, end: 7 },
+          defaultLanguage: 'en',
+          maxNotificationsPerHour: 50
+        };
 
-      await this.set(cacheKey, settings, CACHE_TTL.VERY_LONG);
+        await this.set(cacheKey, settings, CACHE_TTL.VERY_LONG);
+      }
+
+      return settings;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return settings;
   }
 
   async invalidateHotelSettings(hotelId) {
-    await this.del(CACHE_KEYS.HOTEL_SETTINGS(hotelId));
+    try {
+      await this.del(CACHE_KEYS.HOTEL_SETTINGS(hotelId));
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Routing rules caching
   async getRoutingRules(hotelId) {
-    const cacheKey = CACHE_KEYS.ROUTING_RULES(hotelId);
-    return await this.get(cacheKey);
+    try {
+      const cacheKey = CACHE_KEYS.ROUTING_RULES(hotelId);
+      return await this.get(cacheKey);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async setRoutingRules(hotelId, rules) {
-    const cacheKey = CACHE_KEYS.ROUTING_RULES(hotelId);
-    await this.set(cacheKey, rules, CACHE_TTL.LONG);
+    try {
+      const cacheKey = CACHE_KEYS.ROUTING_RULES(hotelId);
+      await this.set(cacheKey, rules, CACHE_TTL.LONG);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async invalidateRoutingRules(hotelId) {
-    await this.del(CACHE_KEYS.ROUTING_RULES(hotelId));
+    try {
+      await this.del(CACHE_KEYS.ROUTING_RULES(hotelId));
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Template statistics caching
   async getTemplateStats(hotelId) {
-    const cacheKey = CACHE_KEYS.TEMPLATE_STATS(hotelId);
-    let stats = await this.get(cacheKey);
+    try {
+      const cacheKey = CACHE_KEYS.TEMPLATE_STATS(hotelId);
+      let stats = await this.get(cacheKey);
 
-    if (!stats) {
-      stats = await NotificationTemplate.getPerformanceStats(hotelId);
+      if (!stats) {
+        stats = await NotificationTemplate.getPerformanceStats(hotelId);
 
-      if (stats) {
-        await this.set(cacheKey, stats, CACHE_TTL.MEDIUM);
+        if (stats) {
+          await this.set(cacheKey, stats, CACHE_TTL.MEDIUM);
+        }
       }
-    }
 
-    return stats || [];
+      return stats || [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async invalidateTemplateStats(hotelId) {
-    await this.del(CACHE_KEYS.TEMPLATE_STATS(hotelId));
+    try {
+      await this.del(CACHE_KEYS.TEMPLATE_STATS(hotelId));
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Batch operations for better performance
   async getMultipleTemplates(hotelId, templateIds) {
-    const keys = templateIds.map(id => CACHE_KEYS.TEMPLATE(hotelId, id));
-    const cached = await this.getMultiple(keys);
+    try {
+      const keys = templateIds.map(id => CACHE_KEYS.TEMPLATE(hotelId, id));
+      const cached = await this.getMultiple(keys);
 
-    const missing = [];
-    const results = {};
+      const missing = [];
+      const results = {};
 
-    templateIds.forEach((id, index) => {
-      if (cached[index]) {
-        results[id] = cached[index];
-      } else {
-        missing.push(id);
-      }
-    });
-
-    // Fetch missing templates from database
-    if (missing.length > 0) {
-      const templates = await NotificationTemplate.find({
-        _id: { $in: missing },
-        hotelId,
-        'metadata.isActive': true
-      }).lean();
-
-      // Cache the fetched templates
-      const cachePromises = templates.map(template => {
-        results[template._id.toString()] = template;
-        return this.set(
-          CACHE_KEYS.TEMPLATE(hotelId, template._id),
-          template,
-          CACHE_TTL.LONG
-        );
+      templateIds.forEach((id, index) => {
+        if (cached[index]) {
+          results[id] = cached[index];
+        } else {
+          missing.push(id);
+        }
       });
 
-      await Promise.all(cachePromises);
-    }
+      // Fetch missing templates from database
+      if (missing.length > 0) {
+        const templates = await NotificationTemplate.find({
+          _id: { $in: missing },
+          hotelId,
+          'metadata.isActive': true
+        }).lean().limit(1000);
 
-    return results;
+        // Cache the fetched templates
+        const cachePromises = templates.map(template => {
+          results[template._id.toString()] = template;
+          return this.set(
+            CACHE_KEYS.TEMPLATE(hotelId, template._id),
+            template,
+            CACHE_TTL.LONG
+          );
+        });
+
+        await Promise.all(cachePromises);
+      }
+
+      return results;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getMultiple(keys) {
@@ -455,9 +531,13 @@ class NotificationCache {
 
   // Graceful shutdown
   async disconnect() {
-    if (this.redis) {
-      await this.redis.disconnect();
-      logger.debug('Redis cache disconnected');
+    try {
+      if (this.redis) {
+        await this.redis.disconnect();
+        logger.debug('Redis cache disconnected');
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 }

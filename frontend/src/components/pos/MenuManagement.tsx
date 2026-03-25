@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Edit, Trash2, UtensilsCrossed, Coffee, Pizza, Cake } from 'lucide-react';
+import { Plus, Edit, Trash2, UtensilsCrossed, Coffee, Pizza, Cake, Loader2 } from 'lucide-react';
 import { api } from '../../services/api';
 
 interface MenuItem {
@@ -42,6 +42,7 @@ const MenuManagement: React.FC = () => {
   const [selectedMenu, setSelectedMenu] = useState<Menu | null>(null);
   const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false);
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
   const [menuForm, setMenuForm] = useState({
     name: '',
@@ -70,6 +71,7 @@ const MenuManagement: React.FC = () => {
 
   const fetchOutlets = async () => {
     try {
+      setIsLoading(true);
       const response = await api.get('/pos/outlets');
       if (response.data.success) {
         setOutlets(response.data.data);
@@ -79,6 +81,8 @@ const MenuManagement: React.FC = () => {
       }
     } catch {
       // Error handled silently
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -169,6 +173,15 @@ const MenuManagement: React.FC = () => {
     };
     return colors[category.toLowerCase() as keyof typeof colors] || 'bg-gray-100 text-gray-800';
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        <span className="ml-2 text-gray-600">Loading menus...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">

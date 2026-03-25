@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import {
   IndianRupee,
   FileText,
@@ -92,6 +92,12 @@ export function InventoryBillingIntegration({
   const [processing, setProcessing] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'cash' | 'room_charge'>('card');
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     fetchBillingSummary();
@@ -220,6 +226,7 @@ export function InventoryBillingIntegration({
       
       // Simulate payment processing
       await new Promise(resolve => setTimeout(resolve, 2000));
+    if (!isMountedRef.current) return;
       
       // Update invoice status
       if (billingSummary) {

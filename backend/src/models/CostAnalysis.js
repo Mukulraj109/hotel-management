@@ -611,171 +611,179 @@ costAnalysisSchema.pre('save', function(next) {
 
 // Static method to perform price comparison analysis
 costAnalysisSchema.statics.performPriceComparison = async function(hotelId, itemIds = []) {
-  const InventoryItem = mongoose.model('InventoryItem');
-  const InventoryTransaction = mongoose.model('InventoryTransaction');
+  try {
+    const InventoryItem = mongoose.model('InventoryItem');
+    const InventoryTransaction = mongoose.model('InventoryTransaction');
 
-  const query = { hotelId, isActive: true };
-  if (itemIds.length > 0) {
-    query._id = { $in: itemIds };
-  }
-
-  const items = await InventoryItem.find(query);
-  const analysisItems = [];
-
-  for (const item of items) {
-    // Get consumption data from transactions
-    const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
-    const transactions = await InventoryTransaction.find({
-      hotelId,
-      'items.itemId': item._id,
-      processedAt: { $gte: sixMonthsAgo },
-      status: 'completed'
-    });
-
-    const totalConsumed = transactions.reduce((sum, transaction) => {
-      const itemTransaction = transaction.items.find(i => i.itemId.toString() === item._id.toString());
-      return sum + Math.abs(itemTransaction?.quantityChanged || 0);
-    }, 0);
-
-    const monthlyAverage = totalConsumed / 6;
-    const yearlyProjection = monthlyAverage * 12;
-
-    // Generate mock alternative suppliers for demonstration
-    const alternativeSuppliers = generateMockSuppliers(item);
-
-    const currentAnnualCost = item.unitPrice * yearlyProjection;
-    const bestAlternative = alternativeSuppliers.reduce((best, supplier) =>
-      supplier.unitPrice < best.unitPrice ? supplier : best
-    );
-    const optimizedAnnualCost = bestAlternative.unitPrice * yearlyProjection;
-
-    analysisItems.push({
-      itemId: item._id,
-      name: item.name,
-      category: item.category,
-      currentSupplier: {
-        name: item.supplier?.name || 'Current Supplier',
-        unitPrice: item.unitPrice,
-        leadTime: item.reorderSettings?.preferredSupplier?.leadTime || 7,
-        reliability: 85
-      },
-      alternativeSuppliers,
-      consumptionData: {
-        monthlyAverage,
-        quarterlyAverage: monthlyAverage * 3,
-        yearlyProjection,
-        seasonalityFactor: 1.0,
-        volatility: 0.1,
-        trendDirection: 'stable'
-      },
-      costAnalysis: {
-        currentAnnualCost,
-        optimizedAnnualCost,
-        potentialSavings: currentAnnualCost - optimizedAnnualCost,
-        savingsPercentage: currentAnnualCost > 0 ? ((currentAnnualCost - optimizedAnnualCost) / currentAnnualCost) * 100 : 0,
-        riskScore: calculateRiskScore(item, bestAlternative)
-      },
-      recommendations: generateRecommendations(item, bestAlternative, currentAnnualCost - optimizedAnnualCost)
-    });
-  }
-
-  return await this.create({
-    hotelId,
-    analysisType: 'price_comparison',
-    period: {
-      startDate: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000),
-      endDate: new Date()
-    },
-    items: analysisItems,
-    metadata: {
-      analysisMethod: 'automated',
-      confidence: 85,
-      reviewFrequency: 'monthly'
+    const query = { hotelId, isActive: true };
+    if (itemIds.length > 0) {
+      query._id = { $in: itemIds };
     }
-  });
+
+    const items = await InventoryItem.find(query).lean().limit(1000);
+    const analysisItems = [];
+
+    for (const item of items) {
+      // Get consumption data from transactions
+      const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
+      const transactions = await InventoryTransaction.find({
+        hotelId,
+        'items.itemId': item._id,
+        processedAt: { $gte: sixMonthsAgo },
+        status: 'completed'
+      }).lean().limit(1000);
+
+      const totalConsumed = transactions.reduce((sum, transaction) => {
+        const itemTransaction = transaction.items.find(i => i.itemId.toString() === item._id.toString());
+        return sum + Math.abs(itemTransaction?.quantityChanged || 0);
+      }, 0);
+
+      const monthlyAverage = totalConsumed / 6;
+      const yearlyProjection = monthlyAverage * 12;
+
+      // Generate mock alternative suppliers for demonstration
+      const alternativeSuppliers = generateMockSuppliers(item);
+
+      const currentAnnualCost = item.unitPrice * yearlyProjection;
+      const bestAlternative = alternativeSuppliers.reduce((best, supplier) =>
+        supplier.unitPrice < best.unitPrice ? supplier : best
+      );
+      const optimizedAnnualCost = bestAlternative.unitPrice * yearlyProjection;
+
+      analysisItems.push({
+        itemId: item._id,
+        name: item.name,
+        category: item.category,
+        currentSupplier: {
+          name: item.supplier?.name || 'Current Supplier',
+          unitPrice: item.unitPrice,
+          leadTime: item.reorderSettings?.preferredSupplier?.leadTime || 7,
+          reliability: 85
+        },
+        alternativeSuppliers,
+        consumptionData: {
+          monthlyAverage,
+          quarterlyAverage: monthlyAverage * 3,
+          yearlyProjection,
+          seasonalityFactor: 1.0,
+          volatility: 0.1,
+          trendDirection: 'stable'
+        },
+        costAnalysis: {
+          currentAnnualCost,
+          optimizedAnnualCost,
+          potentialSavings: currentAnnualCost - optimizedAnnualCost,
+          savingsPercentage: currentAnnualCost > 0 ? ((currentAnnualCost - optimizedAnnualCost) / currentAnnualCost) * 100 : 0,
+          riskScore: calculateRiskScore(item, bestAlternative)
+        },
+        recommendations: generateRecommendations(item, bestAlternative, currentAnnualCost - optimizedAnnualCost)
+      });
+    }
+
+    return await this.create({
+      hotelId,
+      analysisType: 'price_comparison',
+      period: {
+        startDate: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000),
+        endDate: new Date()
+      },
+      items: analysisItems,
+      metadata: {
+        analysisMethod: 'automated',
+        confidence: 85,
+        reviewFrequency: 'monthly'
+      }
+    });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to perform bulk optimization analysis
 costAnalysisSchema.statics.performBulkOptimization = async function(hotelId, itemIds = []) {
-  const InventoryItem = mongoose.model('InventoryItem');
+  try {
+    const InventoryItem = mongoose.model('InventoryItem');
 
-  const query = { hotelId, isActive: true };
-  if (itemIds.length > 0) {
-    query._id = { $in: itemIds };
-  }
-
-  const items = await InventoryItem.find(query);
-  const analysisItems = [];
-
-  for (const item of items) {
-    // Calculate Economic Order Quantity (EOQ)
-    const annualDemand = item.currentStock * 12; // Simplified assumption
-    const orderingCost = 50; // Default ordering cost
-    const carryingCostRate = 0.2; // 20% carrying cost
-    const carryingCost = item.unitPrice * carryingCostRate;
-
-    const eoq = Math.sqrt((2 * annualDemand * orderingCost) / carryingCost);
-    const optimalOrderQuantity = Math.max(eoq, item.reorderSettings?.reorderQuantity || 1);
-
-    const currentOrderQuantity = item.reorderSettings?.reorderQuantity || item.stockThreshold * 2;
-    const currentOrderFrequency = annualDemand / currentOrderQuantity;
-    const optimalOrderFrequency = annualDemand / optimalOrderQuantity;
-
-    const currentTotalCost = (annualDemand / currentOrderQuantity) * orderingCost +
-                           (currentOrderQuantity / 2) * carryingCost;
-    const optimalTotalCost = (annualDemand / optimalOrderQuantity) * orderingCost +
-                           (optimalOrderQuantity / 2) * carryingCost;
-
-    analysisItems.push({
-      itemId: item._id,
-      name: item.name,
-      category: item.category,
-      bulkOptimization: {
-        currentOrderQuantity,
-        optimalOrderQuantity: Math.round(optimalOrderQuantity),
-        orderFrequency: {
-          current: Math.round(currentOrderFrequency),
-          optimal: Math.round(optimalOrderFrequency)
-        },
-        storageRequirement: {
-          current: currentOrderQuantity,
-          optimal: optimalOrderQuantity
-        },
-        storageCost: carryingCost,
-        carryingCost: carryingCost,
-        orderingCost: orderingCost,
-        eoqSavings: currentTotalCost - optimalTotalCost
-      },
-      costAnalysis: {
-        currentAnnualCost: currentTotalCost,
-        optimizedAnnualCost: optimalTotalCost,
-        potentialSavings: currentTotalCost - optimalTotalCost,
-        savingsPercentage: currentTotalCost > 0 ? ((currentTotalCost - optimalTotalCost) / currentTotalCost) * 100 : 0
-      },
-      recommendations: [{
-        type: 'bulk_purchase',
-        description: `Optimize order quantity to ${Math.round(optimalOrderQuantity)} units`,
-        estimatedSavings: currentTotalCost - optimalTotalCost,
-        priority: currentTotalCost - optimalTotalCost > 100 ? 'high' : 'medium',
-        confidence: 80
-      }]
-    });
-  }
-
-  return await this.create({
-    hotelId,
-    analysisType: 'bulk_optimization',
-    period: {
-      startDate: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
-      endDate: new Date()
-    },
-    items: analysisItems,
-    metadata: {
-      analysisMethod: 'automated',
-      confidence: 80,
-      reviewFrequency: 'quarterly'
+    const query = { hotelId, isActive: true };
+    if (itemIds.length > 0) {
+      query._id = { $in: itemIds };
     }
-  });
+
+    const items = await InventoryItem.find(query).lean().limit(1000);
+    const analysisItems = [];
+
+    for (const item of items) {
+      // Calculate Economic Order Quantity (EOQ)
+      const annualDemand = item.currentStock * 12; // Simplified assumption
+      const orderingCost = 50; // Default ordering cost
+      const carryingCostRate = 0.2; // 20% carrying cost
+      const carryingCost = item.unitPrice * carryingCostRate;
+
+      const eoq = Math.sqrt((2 * annualDemand * orderingCost) / carryingCost);
+      const optimalOrderQuantity = Math.max(eoq, item.reorderSettings?.reorderQuantity || 1);
+
+      const currentOrderQuantity = item.reorderSettings?.reorderQuantity || item.stockThreshold * 2;
+      const currentOrderFrequency = annualDemand / currentOrderQuantity;
+      const optimalOrderFrequency = annualDemand / optimalOrderQuantity;
+
+      const currentTotalCost = (annualDemand / currentOrderQuantity) * orderingCost +
+                             (currentOrderQuantity / 2) * carryingCost;
+      const optimalTotalCost = (annualDemand / optimalOrderQuantity) * orderingCost +
+                             (optimalOrderQuantity / 2) * carryingCost;
+
+      analysisItems.push({
+        itemId: item._id,
+        name: item.name,
+        category: item.category,
+        bulkOptimization: {
+          currentOrderQuantity,
+          optimalOrderQuantity: Math.round(optimalOrderQuantity),
+          orderFrequency: {
+            current: Math.round(currentOrderFrequency),
+            optimal: Math.round(optimalOrderFrequency)
+          },
+          storageRequirement: {
+            current: currentOrderQuantity,
+            optimal: optimalOrderQuantity
+          },
+          storageCost: carryingCost,
+          carryingCost: carryingCost,
+          orderingCost: orderingCost,
+          eoqSavings: currentTotalCost - optimalTotalCost
+        },
+        costAnalysis: {
+          currentAnnualCost: currentTotalCost,
+          optimizedAnnualCost: optimalTotalCost,
+          potentialSavings: currentTotalCost - optimalTotalCost,
+          savingsPercentage: currentTotalCost > 0 ? ((currentTotalCost - optimalTotalCost) / currentTotalCost) * 100 : 0
+        },
+        recommendations: [{
+          type: 'bulk_purchase',
+          description: `Optimize order quantity to ${Math.round(optimalOrderQuantity)} units`,
+          estimatedSavings: currentTotalCost - optimalTotalCost,
+          priority: currentTotalCost - optimalTotalCost > 100 ? 'high' : 'medium',
+          confidence: 80
+        }]
+      });
+    }
+
+    return await this.create({
+      hotelId,
+      analysisType: 'bulk_optimization',
+      period: {
+        startDate: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
+        endDate: new Date()
+      },
+      items: analysisItems,
+      metadata: {
+        analysisMethod: 'automated',
+        confidence: 80,
+        reviewFrequency: 'quarterly'
+      }
+    });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Helper functions

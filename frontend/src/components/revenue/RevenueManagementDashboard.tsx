@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { api } from '../../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
 import revenueManagementService, { RevenueMetrics, RateShopping, DemandForecast, PerformanceMetrics } from '@/services/revenueManagementService';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 const getProgressBarWidth = (percentage: number) => {
   const clampedPercentage = Math.max(0, Math.min(100, percentage));
@@ -109,6 +110,15 @@ const RevenueManagementDashboard: React.FC = () => {
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
   // Mock data initialization
+  const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     fetchRevenueData();
   }, [dateRange]);
@@ -137,15 +147,16 @@ const RevenueManagementDashboard: React.FC = () => {
       }
 
       // Fetch real data from API with timeout
+      let raceTimeoutTimer: ReturnType<typeof setTimeout>;
       const dashboardData = await Promise.race([
         revenueManagementService.getDashboardMetrics({
           startDate: startDate.toISOString().split('T')[0],
           endDate: endDate.toISOString().split('T')[0]
         }),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Request timeout')), 30000)
-        )
-      ]) as unknown;
+        new Promise((_, reject) => {
+          raceTimeoutTimer = setTimeout(() => reject(new Error('Request timeout')), 30000);
+        })
+      ]).finally(() => clearTimeout(raceTimeoutTimer)) as unknown;
 
       // Fetch real room types from the system
       try {
@@ -313,7 +324,8 @@ const RevenueManagementDashboard: React.FC = () => {
       setError(`Error updating ${currentRate.roomType}: ${errorMessage}`);
 
       // Clear error after 7 seconds
-      setTimeout(() => setError(null), 7000);
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = setTimeout(() => setError(null), 7000);
     }
   };
 
@@ -340,7 +352,8 @@ const RevenueManagementDashboard: React.FC = () => {
     if (hasAnyValidationErrors) {
       setValidationErrors(newValidationErrors);
       setError('Please fix validation errors before saving all changes.');
-      setTimeout(() => setError(null), 5000);
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = setTimeout(() => setError(null), 5000);
       return;
     }
 
@@ -384,7 +397,8 @@ const RevenueManagementDashboard: React.FC = () => {
         setError(`Failed to save changes: ${errorMessage}`);
       }
 
-      setTimeout(() => setError(null), 7000);
+      if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
+      errorTimerRef.current = setTimeout(() => setError(null), 7000);
     } finally {
       setIsLoading(false);
     }
@@ -977,4 +991,4 @@ const RevenueManagementDashboard: React.FC = () => {
   );
 };
 
-export default RevenueManagementDashboard;
+export default withErrorBoundary(RevenueManagementDashboard, { level: 'component' });

@@ -157,7 +157,7 @@ export const getAllServices = catchAsync(async (req, res) => {
  */
 export const getServiceById = catchAsync(async (req, res) => {
   const service = await HotelService.findById(req.params.id)
-    .populate('hotelId', 'name address contact');
+    .populate('hotelId', 'name address contact').lean();
 
   if (!service) {
     throw new ApplicationError('Service not found', 404);
@@ -434,7 +434,7 @@ export const updateService = catchAsync(async (req, res) => {
  *         description: Service deleted successfully
  */
 export const deleteService = catchAsync(async (req, res) => {
-  const service = await HotelService.findById(req.params.id);
+  const service = await HotelService.findById(req.params.id).lean();
 
   if (!service) {
     throw new ApplicationError('Service not found', 404);
@@ -484,7 +484,7 @@ export const deleteService = catchAsync(async (req, res) => {
  */
 export const toggleServiceStatus = catchAsync(async (req, res) => {
   // First read to check access and get current status
-  const existing = await HotelService.findById(req.params.id);
+  const existing = await HotelService.findById(req.params.id).lean();
 
   if (!existing) {
     throw new ApplicationError('Service not found', 404);
@@ -609,7 +609,7 @@ export const bulkOperations = catchAsync(async (req, res) => {
   const services = await HotelService.find({
     _id: { $in: serviceIds },
     ...(req.user.hotelId && { hotelId: req.user.hotelId })
-  });
+  }).lean().limit(1000);
 
   if (services.length !== serviceIds.length) {
     throw new ApplicationError('Some services not found or access denied', 404);
@@ -689,7 +689,7 @@ export const bulkOperations = catchAsync(async (req, res) => {
  */
 export const getServiceStaff = catchAsync(async (req, res) => {
   const service = await HotelService.findById(req.params.id)
-    .populate('assignedStaff.staffId', 'name email phone department');
+    .populate('assignedStaff.staffId', 'name email phone department').lean();
 
   if (!service) {
     throw new ApplicationError('Service not found', 404);
@@ -773,7 +773,7 @@ export const assignStaffToService = catchAsync(async (req, res) => {
     hotelId: service.hotelId,
     role: 'staff',
     isActive: true
-  });
+  }).lean();
 
   if (!staffMember) {
     throw new ApplicationError('Staff member not found or not active', 404);
@@ -877,7 +877,7 @@ export const getAvailableStaff = catchAsync(async (req, res) => {
     role: 'staff',
     isActive: true
   }).select('_id name email phone department specializations')
-    .sort({ name: 1 });
+    .sort({ name: 1 }).lean().limit(1000);
 
   res.json({
     status: 'success',

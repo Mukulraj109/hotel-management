@@ -116,7 +116,7 @@ class LanguageController {
     }
 
     // Check if language already exists
-    const existingLanguage = await Language.findOne({ code: code.toUpperCase() });
+    const existingLanguage = await Language.findOne({ code: code.toUpperCase() }).lean();
     if (existingLanguage) {
       return next(new ApplicationError('Language already exists', 409));
     }
@@ -221,17 +221,20 @@ class LanguageController {
   deleteLanguage = catchAsync(async (req, res, next) => {
     const { code } = req.params;
 
-    const language = await Language.findOne({ code: code.toUpperCase() });
-    if (!language) {
-      return next(new ApplicationError('Language not found', 404));
-    }
+    // Atomically deactivate only if not default
+    const language = await Language.findOneAndUpdate(
+      { code: code.toUpperCase(), isDefault: { $ne: true } },
+      { $set: { isActive: false } },
+      { new: true }
+    );
 
-    if (language.isDefault) {
+    if (!language) {
+      const existing = await Language.findOne({ code: code.toUpperCase() }).lean();
+      if (!existing) {
+        return next(new ApplicationError('Language not found', 404));
+      }
       return next(new ApplicationError('Cannot delete default language', 400));
     }
-
-    language.isActive = false;
-    await language.save();
 
     logger.info('Language deactivated', {
       code: language.code,
@@ -276,7 +279,7 @@ class LanguageController {
           targetLanguage: translation.targetLanguage
         })
         .sort({ version: -1 })
-        .populate('createdBy updatedBy quality.reviewedBy', 'name email');
+        .populate('createdBy updatedBy quality.reviewedBy', 'name email').lean().limit(1000);
         
         translation.history = history;
       }
@@ -353,7 +356,7 @@ class LanguageController {
     const { translationId } = req.params;
     const { notes = '' } = req.body;
 
-    const translation = await Translation.findById(translationId);
+    const translation = await Translation.findById(translationId).lean();
     if (!translation) {
       return next(new ApplicationError('Translation not found', 404));
     }
@@ -382,7 +385,7 @@ class LanguageController {
     const { translationId } = req.params;
     const { notes = '' } = req.body;
 
-    const translation = await Translation.findById(translationId);
+    const translation = await Translation.findById(translationId).lean();
     if (!translation) {
       return next(new ApplicationError('Translation not found', 404));
     }
@@ -523,7 +526,7 @@ class LanguageController {
       return next(new ApplicationError('Channel is required', 400));
     }
 
-    const language = await Language.findOne({ code: code.toUpperCase() });
+    const language = await Language.findOne({ code: code.toUpperCase() }).lean();
     if (!language) {
       return next(new ApplicationError('Language not found', 404));
     }
@@ -576,8 +579,14 @@ class LanguageController {
     // Get language details for each supported code
     const languageDetails = await Promise.all(
       supportedLanguages.map(async (code) => {
-        const language = await Language.getLanguageByCode(code.toUpperCase());
-        return language || { code: code.toUpperCase(), name: code, supported: true };
+        try {
+          const language = await Language.getLanguageByCode(code.toUpperCase());
+          return language || { code: code.toUpperCase(), name: code, supported: true };
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
+        }
       })
     );
 

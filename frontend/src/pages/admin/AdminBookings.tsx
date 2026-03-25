@@ -23,6 +23,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import {
   Calendar,
   Coins,
@@ -50,7 +51,7 @@ import {
   Loader2
 } from 'lucide-react';
 
-export default function AdminBookings() {
+function AdminBookings() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { selectedPropertyId } = useProperty();
@@ -1602,13 +1603,13 @@ export default function AdminBookings() {
                   </label>
                   <div className="max-h-40 overflow-y-auto border border-gray-300 rounded-md">
                     {users.map((user) => (
-                      <div
+                      <div role="button" tabIndex={0}
                         key={user._id}
                         className={`p-3 cursor-pointer border-b border-gray-200 last:border-b-0 hover:bg-gray-50 ${
                           createForm.userId === user._id ? 'bg-blue-50 border-blue-200' : ''
                         }`}
                         onClick={() => setCreateForm(prev => ({ ...prev, userId: user._id }))}
-                      >
+                       onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => setCreateForm(prev => ({ ...prev, userId: user._id })); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                         <div className="flex items-center">
                           <User className="h-4 w-4 text-gray-400 mr-2" />
                           <div>
@@ -1662,7 +1663,7 @@ export default function AdminBookings() {
               <h3 className="text-lg font-medium text-gray-900 mb-3">Available Rooms</h3>
               <div className="space-y-2 max-h-60 overflow-y-auto">
                 {availableRooms.map((room) => (
-                  <div
+                  <div role="button" tabIndex={0}
                     key={room._id}
                     className={`p-3 border rounded-lg cursor-pointer ${
                       createForm.roomIds.includes(room._id)
@@ -1677,7 +1678,14 @@ export default function AdminBookings() {
                           : [...prev.roomIds, room._id]
                       }));
                     }}
-                  >
+                   onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => {
+                      setCreateForm(prev => ({
+                        ...prev,
+                        roomIds: prev.roomIds.includes(room._id)
+                          ? prev.roomIds.filter(id => id !== room._id)
+                          : [...prev.roomIds, room._id]
+                      }));
+                    }; if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                     <div className="flex justify-between items-center">
                       <div>
                         <div className="flex items-center">
@@ -2157,7 +2165,7 @@ export default function AdminBookings() {
                   </Label>
                   <div className="grid grid-cols-2 gap-3">
                     {reasonTemplates.map((template) => (
-                      <button
+                      <button aria-label="Close"
                         key={template}
                         onClick={() => setBypassReason(template)}
                         className={`px-4 py-3 text-sm border-2 rounded-lg text-left transition-all duration-200 ${
@@ -2427,3 +2435,5 @@ Reason: ${bypassReason.substring(0, 80)}${bypassReason.length > 80 ? '...' : ''}
     </div>
   );
 }
+
+export default withErrorBoundary(AdminBookings, { level: 'page' });

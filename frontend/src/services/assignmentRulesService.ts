@@ -151,58 +151,90 @@ class AssignmentRulesService {
       total: number;
     };
   }> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    if (filters?.isActive !== undefined) params.append('isActive', filters.isActive.toString());
-    if (filters?.priority) params.append('priority', filters.priority.toString());
-    if (filters?.page) params.append('page', filters.page.toString());
-    if (filters?.limit) params.append('limit', filters.limit.toString());
-    if (filters?.sortBy) params.append('sortBy', filters.sortBy);
-    if (filters?.sortOrder) params.append('sortOrder', filters.sortOrder);
+      if (filters?.isActive !== undefined) params.append('isActive', filters.isActive.toString());
+      if (filters?.priority) params.append('priority', filters.priority.toString());
+      if (filters?.page) params.append('page', filters.page.toString());
+      if (filters?.limit) params.append('limit', filters.limit.toString());
+      if (filters?.sortBy) params.append('sortBy', filters.sortBy);
+      if (filters?.sortOrder) params.append('sortOrder', filters.sortOrder);
 
-    const response = await api.get(`${this.baseURL}?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseURL}?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get assignment rule by ID
   async getAssignmentRule(id: string): Promise<AssignmentRule> {
-    const response = await api.get(`${this.baseURL}/${id}`);
-    return response.data.data;
+    try {
+      const response = await api.get(`${this.baseURL}/${id}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Create new assignment rule
   async createAssignmentRule(data: CreateAssignmentRuleData): Promise<AssignmentRule> {
-    const response = await api.post(this.baseURL, data);
-    return response.data.data;
+    try {
+      const response = await api.post(this.baseURL, data);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Update assignment rule
   async updateAssignmentRule(id: string, data: Partial<CreateAssignmentRuleData>): Promise<AssignmentRule> {
-    const response = await api.put(`${this.baseURL}/${id}`, data);
-    return response.data.data;
+    try {
+      const response = await api.put(`${this.baseURL}/${id}`, data);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Delete assignment rule
   async deleteAssignmentRule(id: string): Promise<void> {
-    await api.delete(`${this.baseURL}/${id}`);
+    try {
+      await api.delete(`${this.baseURL}/${id}`);
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get assignment rules statistics
   async getAssignmentRulesStats(): Promise<AssignmentRulesStats> {
-    const response = await api.get(`${this.baseURL}/stats`);
-    return response.data.data;
+    try {
+      const response = await api.get(`${this.baseURL}/stats`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Test assignment rule
   async testAssignmentRule(id: string, testCriteria: TestCriteria): Promise<TestResult> {
-    const response = await api.post(`${this.baseURL}/${id}/test`, { testCriteria });
-    return response.data.data;
+    try {
+      const response = await api.post(`${this.baseURL}/${id}/test`, { testCriteria });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Auto-assign rooms based on assignment rules
   async autoAssignRooms(criteria?: AutoAssignCriteria): Promise<AutoAssignResult> {
-    const response = await api.post(`${this.baseURL}/auto-assign`, { criteria });
-    return response.data.data;
+    try {
+      const response = await api.post(`${this.baseURL}/auto-assign`, { criteria });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get available guest types

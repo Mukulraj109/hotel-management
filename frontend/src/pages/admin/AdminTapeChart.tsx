@@ -238,7 +238,7 @@ const AdminTapeChart: React.FC = () => {
                 const isActive = activeTab === tab.value;
 
                 return (
-                  <button
+                  <button aria-label="Notifications"
                     key={tab.value}
                     onClick={() => setActiveTab(tab.value)}
                     className={`

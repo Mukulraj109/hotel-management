@@ -24,6 +24,7 @@ import { formatDate, formatCurrency } from '../../utils/formatters';
 import { SERVICE_VARIATIONS } from '../../utils/currencyUtils';
 import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface Booking {
   _id: string;
@@ -68,7 +69,7 @@ const getPriorityColor = (priority: string) => {
 };
 
 
-export default function GuestRequests() {
+function GuestRequests() {
   const { user } = useAuth();
   const [requests, setRequests] = useState<GuestServiceRequest[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -705,3 +706,5 @@ export default function GuestRequests() {
     </div>
   );
 }
+
+export default withErrorBoundary(GuestRequests, { level: 'page' });

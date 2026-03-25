@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
+import { withErrorBoundary } from '../ErrorBoundary';
 import {
   FileText,
   Download,
@@ -87,6 +88,14 @@ const InventoryReports: React.FC = () => {
   const [reportParameters, setReportParameters] = useState<Record<string, unknown>>({});
 
   // Mock data - Replace with actual API calls
+  const generateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (generateTimerRef.current) clearTimeout(generateTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     fetchReportTemplates();
     fetchGeneratedReports();
@@ -342,7 +351,8 @@ const InventoryReports: React.FC = () => {
       // Mock API call
 
       // Simulate report generation
-      setTimeout(() => {
+      if (generateTimerRef.current) clearTimeout(generateTimerRef.current);
+      generateTimerRef.current = setTimeout(() => {
         const newReport: GeneratedReport = {
           id: `report_${Date.now()}`,
           templateId: template.id,
@@ -612,7 +622,7 @@ const InventoryReports: React.FC = () => {
                       <Calendar className="w-4 h-4 mr-1" />
                       Schedule
                     </button>
-                    <button className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors">
+                    <button aria-label="View" className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors">
                       <Eye className="w-4 h-4" />
                     </button>
                   </div>
@@ -672,10 +682,10 @@ const InventoryReports: React.FC = () => {
                           <Download className="w-4 h-4 mr-1" />
                           Download
                         </button>
-                        <button className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors">
+                        <button aria-label="Close" className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors">
                           <Mail className="w-4 h-4" />
                         </button>
-                        <button className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors">
+                        <button aria-label="Close" className="p-2 text-gray-600 hover:bg-gray-100 rounded transition-colors">
                           <Share2 className="w-4 h-4" />
                         </button>
                       </>
@@ -748,7 +758,7 @@ const InventoryReports: React.FC = () => {
             <div className="border-b border-gray-200 px-6 py-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-gray-900">Generate Report</h2>
-                <button
+                <button aria-label="Close"
                   onClick={() => {
                     setShowGenerateModal(false);
                     setSelectedTemplate(null);
@@ -854,4 +864,4 @@ const InventoryReports: React.FC = () => {
   );
 };
 
-export default InventoryReports;
+export default withErrorBoundary(InventoryReports, { level: 'component' });

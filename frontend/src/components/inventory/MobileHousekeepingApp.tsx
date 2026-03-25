@@ -402,7 +402,7 @@ export function MobileHousekeepingApp({ userId, userRole = 'housekeeping' }: Mob
 
         {/* Overlay */}
         {sidebarOpen && (
-          <div
+          <div aria-hidden="true"
             className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"
             onClick={() => setSidebarOpen(false)}
           />

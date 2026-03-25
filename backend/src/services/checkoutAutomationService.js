@@ -38,7 +38,7 @@ class CheckoutAutomationService {
       logger.info('Starting checkout automation', { bookingId, processedBy });
       
       // Get booking details
-      const booking = await Booking.findById(bookingId).populate('rooms.roomId');
+      const booking = await Booking.findById(bookingId).populate('rooms.roomId').lean();
       if (!booking) {
         throw new Error('Booking not found');
       }
@@ -168,29 +168,33 @@ class CheckoutAutomationService {
    * @param {string} hotelId - Hotel ID
    */
   async getAutomationConfig(hotelId) {
-    let config = await CheckoutAutomationConfig.findOne({ hotelId });
+    try {
+      let config = await CheckoutAutomationConfig.findOne({ hotelId }).lean();
     
-    if (!config) {
-      // Create default configuration
-      config = await CheckoutAutomationConfig.create({
-        hotelId,
-        isEnabled: true,
-        isLaundryAutomationEnabled: true,
-        isInventoryAutomationEnabled: true,
-        isHousekeepingAutomationEnabled: true,
-        defaultLaundryReturnDays: 1,
-        automaticTaskAssignment: true,
-        settings: {
-          laundryCategories: ['bedding', 'towels', 'bathrobes', 'curtains'],
-          inventoryCheckCategories: ['toiletries', 'amenities', 'electronics'],
-          housekeepingTaskTypes: ['checkout_clean', 'deep_clean']
-        }
-      });
+      if (!config) {
+        // Create default configuration
+        config = await CheckoutAutomationConfig.create({
+          hotelId,
+          isEnabled: true,
+          isLaundryAutomationEnabled: true,
+          isInventoryAutomationEnabled: true,
+          isHousekeepingAutomationEnabled: true,
+          defaultLaundryReturnDays: 1,
+          automaticTaskAssignment: true,
+          settings: {
+            laundryCategories: ['bedding', 'towels', 'bathrobes', 'curtains'],
+            inventoryCheckCategories: ['toiletries', 'amenities', 'electronics'],
+            housekeepingTaskTypes: ['checkout_clean', 'deep_clean']
+          }
+        });
       
-      logger.info('Created default automation config', { hotelId });
-    }
+        logger.info('Created default automation config', { hotelId });
+      }
 
-    return config;
+      return config;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -284,41 +288,45 @@ class CheckoutAutomationService {
    * @param {string} processedBy - User ID
    */
   async processBasicLaundry(roomId, booking, config, processedBy) {
-    // Import laundry service
-    const { default: laundryService } = await import('./laundryService.js');
+    try {
+      // Import laundry service
+      const { default: laundryService } = await import('./laundryService.js');
     
-    // Get basic laundry items for this room
-    const laundryItems = await this.getLaundryItemsForRoom(roomId, booking, config);
+      // Get basic laundry items for this room
+      const laundryItems = await this.getLaundryItemsForRoom(roomId, booking, config);
     
-    if (laundryItems.length > 0) {
-      // Calculate expected return date
-      const expectedReturnDate = new Date();
-      expectedReturnDate.setDate(expectedReturnDate.getDate() + config.defaultLaundryReturnDays);
+      if (laundryItems.length > 0) {
+        // Calculate expected return date
+        const expectedReturnDate = new Date();
+        expectedReturnDate.setDate(expectedReturnDate.getDate() + config.defaultLaundryReturnDays);
       
-      // Send items to laundry
-      const result = await laundryService.sendItemsToLaundry({
-        hotelId: booking.hotelId,
-        roomId,
-        items: laundryItems,
-        processedBy,
-        expectedReturnDate,
-        notes: `Basic laundry processing for checkout - Booking ${booking.bookingNumber}`,
-        source: 'checkout_automation_fallback'
-      });
+        // Send items to laundry
+        const result = await laundryService.sendItemsToLaundry({
+          hotelId: booking.hotelId,
+          roomId,
+          items: laundryItems,
+          processedBy,
+          expectedReturnDate,
+          notes: `Basic laundry processing for checkout - Booking ${booking.bookingNumber}`,
+          source: 'checkout_automation_fallback'
+        });
       
-      return {
-        transactions: result.transactions,
-        totalItems: result.totalItems,
-        totalCost: result.totalCost,
-        expectedReturnDate
-      };
-    } else {
-      return {
-        transactions: [],
-        totalItems: 0,
-        totalCost: 0,
-        message: 'No laundry items found'
-      };
+        return {
+          transactions: result.transactions,
+          totalItems: result.totalItems,
+          totalCost: result.totalCost,
+          expectedReturnDate
+        };
+      } else {
+        return {
+          transactions: [],
+          totalItems: 0,
+          totalCost: 0,
+          message: 'No laundry items found'
+        };
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -357,40 +365,44 @@ class CheckoutAutomationService {
    * @param {Object} config - Automation configuration
    */
   async getLaundryItemsForRoom(roomId, booking, config) {
-    // Import room inventory service
-    const { default: roomInventoryService } = await import('./roomInventoryService.js');
+    try {
+      // Import room inventory service
+      const { default: roomInventoryService } = await import('./roomInventoryService.js');
     
-    // Get room inventory
-    const roomInventory = await roomInventoryService.getRoomInventory(roomId);
-    if (!roomInventory) {
-      return [];
-    }
+      // Get room inventory
+      const roomInventory = await roomInventoryService.getRoomInventory(roomId);
+      if (!roomInventory) {
+        return [];
+      }
 
-    const laundryItems = [];
+      const laundryItems = [];
     
-    // Check each item in room inventory
-    for (const item of roomInventory.items) {
-      // Check if item category requires laundry
-      if (config.settings.laundryCategories.includes(item.itemId.category)) {
-        // Determine quantity based on room type and guest count
-        const quantity = this.calculateLaundryQuantity(
-          item.itemId.category,
-          booking.rooms.find(r => r.roomId._id.toString() === roomId.toString()).roomId.type,
-          booking.guestDetails.adults + booking.guestDetails.children
-        );
+      // Check each item in room inventory
+      for (const item of roomInventory.items) {
+        // Check if item category requires laundry
+        if (config.settings.laundryCategories.includes(item.itemId.category)) {
+          // Determine quantity based on room type and guest count
+          const quantity = this.calculateLaundryQuantity(
+            item.itemId.category,
+            booking.rooms.find(r => r.roomId._id.toString() === roomId.toString()).roomId.type,
+            booking.guestDetails.adults + booking.guestDetails.children
+          );
         
-        if (quantity > 0) {
-          laundryItems.push({
-            itemId: item.itemId._id,
-            quantity,
-            notes: `Automatic checkout laundry - ${item.itemId.name}`,
-            specialInstructions: 'Standard cleaning'
-          });
+          if (quantity > 0) {
+            laundryItems.push({
+              itemId: item.itemId._id,
+              quantity,
+              notes: `Automatic checkout laundry - ${item.itemId.name}`,
+              specialInstructions: 'Standard cleaning'
+            });
+          }
         }
       }
-    }
     
-    return laundryItems;
+      return laundryItems;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -784,17 +796,19 @@ class CheckoutAutomationService {
   async updateRoomStatus(booking, processedBy) {
     const results = [];
     
+    // Batch: update all rooms to 'dirty' status with a single updateMany
+    const roomIdsToUpdate = booking.rooms.map(r => r.roomId._id);
+    if (roomIdsToUpdate.length > 0) {
+      await Room.updateMany(
+        { _id: { $in: roomIdsToUpdate } },
+        { $set: { status: 'dirty', lastUpdated: new Date(), lastUpdatedBy: processedBy } }
+      );
+    }
+
     for (const roomBooking of booking.rooms) {
       const roomId = roomBooking.roomId._id;
-      
+
       try {
-        // Update room status to dirty (needs cleaning)
-        await Room.findByIdAndUpdate(roomId, {
-          status: 'dirty',
-          lastUpdated: new Date(),
-          lastUpdatedBy: processedBy
-        });
-        
         results.push({
           roomId,
           success: true,
@@ -827,13 +841,17 @@ class CheckoutAutomationService {
    * @param {Object} details - Log details
    */
   async createLogEntry(bookingId, status, details) {
-    return await CheckoutAutomationLog.create({
-      bookingId,
-      automationType: 'checkout_processing',
-      status,
-      details,
-      processedAt: new Date()
-    });
+    try {
+      return await CheckoutAutomationLog.create({
+        bookingId,
+        automationType: 'checkout_processing',
+        status,
+        details,
+        processedAt: new Date()
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -843,11 +861,17 @@ class CheckoutAutomationService {
    * @param {Object} details - Additional details
    */
   async updateLogEntry(logId, status, details) {
-    return await CheckoutAutomationLog.findByIdAndUpdate(logId, {
-      status,
-      $push: { details: details },
-      completedAt: new Date()
-    });
+    try {
+      return await CheckoutAutomationLog.findByIdAndUpdate(logId, {
+        status,
+        $push: { details: details },
+        completedAt: new Date()
+      },
+        { new: true }
+      );
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -857,11 +881,17 @@ class CheckoutAutomationService {
    * @param {Object} results - Automation results
    */
   async updateBookingAutomationStatus(bookingId, status, results) {
-    return await Booking.findByIdAndUpdate(bookingId, {
-      automationStatus: status,
-      automationResults: results,
-      automationCompletedAt: new Date()
-    });
+    try {
+      return await Booking.findByIdAndUpdate(bookingId, {
+        automationStatus: status,
+        automationResults: results,
+        automationCompletedAt: new Date()
+      },
+        { new: true }
+      );
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -869,13 +899,17 @@ class CheckoutAutomationService {
    * @param {string} bookingId - Booking ID
    */
   async getAutomationStatus(bookingId) {
-    const booking = await Booking.findById(bookingId).select('automationStatus automationResults automationCompletedAt');
-    const logs = await CheckoutAutomationLog.find({ bookingId }).sort({ processedAt: -1 });
+    try {
+      const booking = await Booking.findById(bookingId).select('automationStatus automationResults automationCompletedAt').lean();
+      const logs = await CheckoutAutomationLog.find({ bookingId }).sort({ processedAt: -1 }).lean().limit(1000);
     
-    return {
-      booking: booking,
-      logs: logs
-    };
+      return {
+        booking: booking,
+        logs: logs
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -884,8 +918,12 @@ class CheckoutAutomationService {
    * @param {Object} context - Retry context
    */
   async retryAutomation(bookingId, context = {}) {
-    logger.info('Retrying checkout automation', { bookingId });
-    return await this.processCheckout(bookingId, { ...context, forceProcessing: true });
+    try {
+      logger.info('Retrying checkout automation', { bookingId });
+      return await this.processCheckout(bookingId, { ...context, forceProcessing: true });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 

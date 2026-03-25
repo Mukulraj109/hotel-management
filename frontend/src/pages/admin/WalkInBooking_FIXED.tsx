@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import toast from 'react-hot-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { adminService } from '../../services/adminService';
 import { formatCurrency } from '../../utils/dashboardUtils';
 import { useAuth } from '../../context/AuthContext';
 import PaymentCollectionModal from '../../components/admin/PaymentCollectionModal';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import {
   User,
   Home,
@@ -66,7 +67,7 @@ interface BookingForm {
   status: 'checked_in';
 }
 
-export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledData }: WalkInBookingProps) {
+function WalkInBooking({ isOpen, onClose, onSuccess, prefilledData }: WalkInBookingProps) {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [step, setStep] = useState(1);
@@ -117,6 +118,14 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Fetch hotels on component mount
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (isOpen) {
       fetchHotels();
@@ -461,13 +470,15 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
 
         // Refresh available rooms
         if (bookingForm.hotelId && bookingForm.checkIn && bookingForm.checkOut) {
-          setTimeout(() => {
+          if (timerRef.current) clearTimeout(timerRef.current);
+          timerRef.current = setTimeout(() => {
             fetchAvailableRooms();
           }, 500);
         }
 
         // Close modal
-        setTimeout(() => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
           handleClose();
         }, 1500);
       } catch (bookingError: unknown) {
@@ -644,7 +655,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                     <div className="border border-gray-300 rounded-lg max-h-60 overflow-y-auto">
                       {searchResults.length > 0 ? (
                         searchResults.map((guest) => (
-                          <div
+                          <div role="button" tabIndex={0}
                             key={guest._id}
                             onClick={() => {
                               setSelectedExistingUser(guest);
@@ -653,7 +664,11 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                             }}
                             className={`p-3 cursor-pointer hover:bg-gray-50 border-b last:border-b-0 ${selectedExistingUser?._id === guest._id ? 'bg-blue-50' : ''
                               }`}
-                          >
+                           onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => {
+                              setSelectedExistingUser(guest);
+                              setUserSearch(guest.name);
+                              setSearchResults([]);
+                            }; if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                             <div className="font-medium">{guest.name}</div>
                             <div className="text-sm text-gray-600">{guest.email}</div>
                             {guest.phone && (
@@ -955,7 +970,7 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                 {availableRooms.filter(room => room.isAvailable).length > 0 ? (
                   <div className="space-y-2 max-h-80 overflow-y-auto border border-gray-200 rounded-lg p-2">
                     {availableRooms.filter(room => room.isAvailable).map((room) => (
-                      <div
+                      <div role="button" tabIndex={0}
                         key={room._id}
                         className={`p-3 border rounded-lg cursor-pointer transition-colors ${bookingForm.roomIds.includes(room._id)
                             ? 'border-blue-500 bg-blue-50'
@@ -969,7 +984,14 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
                               : [...prev.roomIds, room._id]
                           }));
                         }}
-                      >
+                       onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => {
+                          setBookingForm(prev => ({
+                            ...prev,
+                            roomIds: prev.roomIds.includes(room._id)
+                              ? prev.roomIds.filter(id => id !== room._id)
+                              : [...prev.roomIds, room._id]
+                          }));
+                        }; if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                         <div className="flex justify-between items-center">
                           <div>
                             <div className="flex items-center">
@@ -1180,3 +1202,6 @@ export default function WalkInBooking({ isOpen, onClose, onSuccess, prefilledDat
     </>
   );
 }
+
+
+export default withErrorBoundary(WalkInBooking, { level: 'page' });

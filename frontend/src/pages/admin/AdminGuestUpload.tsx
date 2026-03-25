@@ -416,7 +416,7 @@ const AdminGuestUpload: React.FC = () => {
           <div className="relative top-10 mx-auto p-5 border w-11/12 md:w-4/5 lg:w-3/4 shadow-lg rounded-md bg-white">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-medium text-gray-900">Data Preview</h3>
-              <button
+              <button aria-label="Previous"
                 onClick={() => setShowPreview(false)}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -458,7 +458,7 @@ const AdminGuestUpload: React.FC = () => {
           <div className="relative top-10 mx-auto p-5 border w-11/12 md:w-4/5 lg:w-3/4 shadow-lg rounded-md bg-white">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-medium text-gray-900">Import Statistics</h3>
-              <button
+              <button aria-label="Close"
                 onClick={() => setShowStatistics(false)}
                 className="text-gray-400 hover:text-gray-600"
               >

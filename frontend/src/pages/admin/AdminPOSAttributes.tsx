@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ import { api } from '../../services/api';
 import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '@/components/settings/ApplyToSelector';
 import { useSettingsInheritance, useAffectedPropertiesCount } from '@/hooks/useSettingsInheritance';
 import { useProperty } from '@/context/PropertyContext';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface POSAttribute {
   _id: string;
@@ -142,6 +143,15 @@ const AdminPOSAttributes: React.FC = () => {
     { value: 'GENERAL', label: 'General' }
   ];
 
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     fetchAttributes();
   }, []);
@@ -173,7 +183,8 @@ const AdminPOSAttributes: React.FC = () => {
         if (!result) return; // Confirmation dialog will show
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`POS attribute created successfully${
           applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
         }`);
@@ -208,7 +219,8 @@ const AdminPOSAttributes: React.FC = () => {
         if (!result) return; // Confirmation dialog will show
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`POS attribute updated successfully${
           applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
         }`);
@@ -246,7 +258,8 @@ const AdminPOSAttributes: React.FC = () => {
         if (!result) return; // Confirmation dialog will show
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Attribute deleted successfully${
           applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
         }`);
@@ -269,7 +282,8 @@ const AdminPOSAttributes: React.FC = () => {
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Updated for ${result.propertiesUpdated} properties`);
         setApplyToScope('single');
         fetchAttributes();
@@ -924,4 +938,4 @@ const AttributeForm: React.FC<{
   );
 };
 
-export default AdminPOSAttributes;
+export default withErrorBoundary(AdminPOSAttributes, { level: 'page' });

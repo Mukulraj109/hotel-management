@@ -18,6 +18,10 @@ class EnhancedAnalyticsService {
       const dateFormat = this.getDateFormat(period);
 
       // Get revenue trends from bookings
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
       const revenueTrends = await Booking.aggregate([
         {
           $match: {
@@ -212,6 +216,10 @@ class EnhancedAnalyticsService {
       const { startDate, endDate } = this.calculateDateRange(period);
 
       // Get vendor performance data
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
       const vendorPerformance = await Vendor.aggregate([
         {
           $match: {
@@ -344,90 +352,108 @@ class EnhancedAnalyticsService {
   }
 
   async calculateExpenseTrends(hotelId, startDate, endDate, dateFormat) {
-    // Calculate expenses from supply requests
-    const supplyExpenses = await SupplyRequest.aggregate([
-      {
-        $match: {
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          createdAt: { $gte: startDate, $lte: endDate },
-          status: { $in: ['approved', 'ordered', 'received'] }
+    try {
+      // Calculate expenses from supply requests
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const supplyExpenses = await SupplyRequest.aggregate([
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            createdAt: { $gte: startDate, $lte: endDate },
+            status: { $in: ['approved', 'ordered', 'received'] }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              date: { $dateToString: { format: dateFormat, date: '$createdAt' } }
+            },
+            supplyExpenses: { $sum: '$totalActualCost' }
+          }
         }
-      },
-      {
-        $group: {
-          _id: {
-            date: { $dateToString: { format: dateFormat, date: '$createdAt' } }
-          },
-          supplyExpenses: { $sum: '$totalActualCost' }
+      ]);
+
+      // Calculate maintenance expenses
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const maintenanceExpenses = await MaintenanceTask.aggregate([
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            createdAt: { $gte: startDate, $lte: endDate },
+            status: 'completed'
+          }
+        },
+        {
+          $group: {
+            _id: {
+              date: { $dateToString: { format: dateFormat, date: '$createdAt' } }
+            },
+            maintenanceExpenses: { $sum: '$cost' }
+          }
         }
-      }
-    ]);
+      ]);
 
-    // Calculate maintenance expenses
-    const maintenanceExpenses = await MaintenanceTask.aggregate([
-      {
-        $match: {
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          createdAt: { $gte: startDate, $lte: endDate },
-          status: 'completed'
-        }
-      },
-      {
-        $group: {
-          _id: {
-            date: { $dateToString: { format: dateFormat, date: '$createdAt' } }
-          },
-          maintenanceExpenses: { $sum: '$cost' }
-        }
-      }
-    ]);
+      // Combine expense data
+      const expenseMap = new Map();
 
-    // Combine expense data
-    const expenseMap = new Map();
+      supplyExpenses.forEach(item => {
+        expenseMap.set(item._id.date, (expenseMap.get(item._id.date) || 0) + item.supplyExpenses);
+      });
 
-    supplyExpenses.forEach(item => {
-      expenseMap.set(item._id.date, (expenseMap.get(item._id.date) || 0) + item.supplyExpenses);
-    });
+      maintenanceExpenses.forEach(item => {
+        expenseMap.set(item._id.date, (expenseMap.get(item._id.date) || 0) + item.maintenanceExpenses);
+      });
 
-    maintenanceExpenses.forEach(item => {
-      expenseMap.set(item._id.date, (expenseMap.get(item._id.date) || 0) + item.maintenanceExpenses);
-    });
-
-    return Array.from(expenseMap.entries()).map(([date, expenses]) => ({
-      _id: { date },
-      expenses
-    })).sort((a, b) => a._id.date.localeCompare(b._id.date));
+      return Array.from(expenseMap.entries()).map(([date, expenses]) => ({
+        _id: { date },
+        expenses
+      })).sort((a, b) => a._id.date.localeCompare(b._id.date));
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async calculateOccupancyTrends(hotelId, startDate, endDate, dateFormat) {
-    const totalRooms = await Room.countDocuments({
-      hotelId: new mongoose.Types.ObjectId(hotelId),
-      isActive: true
-    });
+    try {
+      const totalRooms = await Room.countDocuments({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        isActive: true
+      });
 
-    return await Booking.aggregate([
-      {
-        $match: {
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          checkIn: { $gte: startDate, $lte: endDate },
-          status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            date: { $dateToString: { format: dateFormat, date: '$checkIn' } }
-          },
-          occupiedRooms: { $sum: { $size: '$rooms' } }
-        }
-      },
-      {
-        $addFields: {
-          occupancyRate: { $multiply: [{ $divide: ['$occupiedRooms', totalRooms] }, 100] }
-        }
-      },
-      { $sort: { '_id.date': 1 } }
-    ]);
+      // Consider caching this aggregation result for 5 minutes
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+      return await Booking.aggregate([
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            checkIn: { $gte: startDate, $lte: endDate },
+            status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              date: { $dateToString: { format: dateFormat, date: '$checkIn' } }
+            },
+            occupiedRooms: { $sum: { $size: '$rooms' } }
+          }
+        },
+        {
+          $addFields: {
+            occupancyRate: { $multiply: [{ $divide: ['$occupiedRooms', totalRooms] }, 100] }
+          }
+        },
+        { $sort: { '_id.date': 1 } }
+      ]);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   combineTrendData(revenueTrends, expenseTrends, occupancyTrends) {
@@ -472,166 +498,194 @@ class EnhancedAnalyticsService {
   }
 
   async calculateRevenueMetrics(hotelId, startDate, endDate) {
-    const metrics = await Booking.aggregate([
-      {
-        $match: {
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          checkIn: { $gte: startDate, $lte: endDate },
-          status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: '$totalAmount' },
-          totalBookings: { $sum: 1 },
-          averageBookingValue: { $avg: '$totalAmount' },
-          totalNights: { $sum: '$nights' }
-        }
-      }
-    ]);
+    try {
+      // Consider caching this aggregation result for 5 minutes
 
-    return metrics[0] || { totalRevenue: 0, totalBookings: 0, averageBookingValue: 0, totalNights: 0 };
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const metrics = await Booking.aggregate([
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            checkIn: { $gte: startDate, $lte: endDate },
+            status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: '$totalAmount' },
+            totalBookings: { $sum: 1 },
+            averageBookingValue: { $avg: '$totalAmount' },
+            totalNights: { $sum: '$nights' }
+          }
+        }
+      ]);
+
+      return metrics[0] || { totalRevenue: 0, totalBookings: 0, averageBookingValue: 0, totalNights: 0 };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async calculateOperationalMetrics(hotelId, startDate, endDate) {
-    const [maintenanceMetrics, supplyMetrics, staffMetrics] = await Promise.all([
-      // Maintenance metrics
-      MaintenanceTask.aggregate([
-        {
-          $match: {
-            hotelId: new mongoose.Types.ObjectId(hotelId),
-            createdAt: { $gte: startDate, $lte: endDate }
+    try {
+      const [maintenanceMetrics, supplyMetrics, staffMetrics] = await Promise.all([
+        // Maintenance metrics
+        MaintenanceTask.aggregate([
+          {
+            $match: {
+              hotelId: new mongoose.Types.ObjectId(hotelId),
+              createdAt: { $gte: startDate, $lte: endDate }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              totalTasks: { $sum: 1 },
+              completedTasks: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+              totalMaintenanceCost: { $sum: '$cost' },
+              averageCompletionTime: { $avg: '$estimatedDuration' }
+            }
           }
-        },
-        {
-          $group: {
-            _id: null,
-            totalTasks: { $sum: 1 },
-            completedTasks: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
-            totalMaintenanceCost: { $sum: '$cost' },
-            averageCompletionTime: { $avg: '$estimatedDuration' }
-          }
-        }
-      ]),
+        ]),
 
-      // Supply request metrics
-      SupplyRequest.aggregate([
-        {
-          $match: {
-            hotelId: new mongoose.Types.ObjectId(hotelId),
-            createdAt: { $gte: startDate, $lte: endDate }
+        // Supply request metrics
+        SupplyRequest.aggregate([
+          {
+            $match: {
+              hotelId: new mongoose.Types.ObjectId(hotelId),
+              createdAt: { $gte: startDate, $lte: endDate }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              totalRequests: { $sum: 1 },
+              approvedRequests: { $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] } },
+              totalSupplyCost: { $sum: '$totalActualCost' }
+            }
           }
-        },
-        {
-          $group: {
-            _id: null,
-            totalRequests: { $sum: 1 },
-            approvedRequests: { $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] } },
-            totalSupplyCost: { $sum: '$totalActualCost' }
-          }
-        }
-      ]),
+        ]),
 
-      // Staff metrics (simplified)
-      User.aggregate([
-        {
-          $match: {
-            hotelId: new mongoose.Types.ObjectId(hotelId),
-            role: 'staff',
-            isActive: true
+        // Staff metrics (simplified)
+        User.aggregate([
+          {
+            $match: {
+              hotelId: new mongoose.Types.ObjectId(hotelId),
+              role: 'staff',
+              isActive: true
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              totalStaff: { $sum: 1 },
+              activeDepartments: { $addToSet: '$department' }
+            }
           }
-        },
-        {
-          $group: {
-            _id: null,
-            totalStaff: { $sum: 1 },
-            activeDepartments: { $addToSet: '$department' }
-          }
-        }
-      ])
-    ]);
+        ])
+      ]);
 
-    return {
-      maintenance: maintenanceMetrics[0] || {},
-      supply: supplyMetrics[0] || {},
-      staff: staffMetrics[0] || {}
-    };
+      return {
+        maintenance: maintenanceMetrics[0] || {},
+        supply: supplyMetrics[0] || {},
+        staff: staffMetrics[0] || {}
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async calculateCustomerMetrics(hotelId, startDate, endDate) {
-    return await Booking.aggregate([
-      {
-        $match: {
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          checkIn: { $gte: startDate, $lte: endDate }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          uniqueGuests: { $addToSet: '$userId' },
-          totalBookings: { $sum: 1 },
-          averageStayDuration: { $avg: '$nights' },
-          repeatGuests: {
-            $sum: {
-              $cond: [
-                { $gt: [{ $size: { $filter: { input: '$rooms', cond: { $gt: ['$$this.rate', 5000] } } } }, 0] },
-                1,
-                0
+    try {
+      // Consider caching this aggregation result for 5 minutes
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+      return await Booking.aggregate([
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            checkIn: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            uniqueGuests: { $addToSet: '$userId' },
+            totalBookings: { $sum: 1 },
+            averageStayDuration: { $avg: '$nights' },
+            repeatGuests: {
+              $sum: {
+                $cond: [
+                  { $gt: [{ $size: { $filter: { input: '$rooms', cond: { $gt: ['$$this.rate', 5000] } } } }, 0] },
+                  1,
+                  0
+                ]
+              }
+            }
+          }
+        },
+        {
+          $addFields: {
+            uniqueGuestCount: { $size: '$uniqueGuests' },
+            customerRetentionRate: {
+              $multiply: [
+                { $divide: ['$repeatGuests', '$totalBookings'] },
+                100
               ]
             }
           }
         }
-      },
-      {
-        $addFields: {
-          uniqueGuestCount: { $size: '$uniqueGuests' },
-          customerRetentionRate: {
-            $multiply: [
-              { $divide: ['$repeatGuests', '$totalBookings'] },
-              100
-            ]
-          }
-        }
-      }
-    ]).then(result => result[0] || {});
+      ]).then(result => result[0] || {});
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async calculatePerformanceMetrics(hotelId, startDate, endDate) {
-    const totalRooms = await Room.countDocuments({
-      hotelId: new mongoose.Types.ObjectId(hotelId),
-      isActive: true
-    });
+    try {
+      const totalRooms = await Room.countDocuments({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        isActive: true
+      });
 
-    const bookingMetrics = await Booking.aggregate([
-      {
-        $match: {
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          checkIn: { $gte: startDate, $lte: endDate }
+      // Consider caching this aggregation result for 5 minutes
+
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+
+      const bookingMetrics = await Booking.aggregate([
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            checkIn: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: '$totalAmount' },
+            totalRoomNights: { $sum: '$nights' },
+            totalBookings: { $sum: 1 }
+          }
         }
-      },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: '$totalAmount' },
-          totalRoomNights: { $sum: '$nights' },
-          totalBookings: { $sum: 1 }
-        }
-      }
-    ]);
+      ]);
 
-    const metrics = bookingMetrics[0] || {};
-    const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
-    const totalPossibleRoomNights = totalRooms * days;
+      const metrics = bookingMetrics[0] || {};
+      const days = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+      const totalPossibleRoomNights = totalRooms * days;
 
-    return {
-      occupancyRate: totalPossibleRoomNights > 0 ? (metrics.totalRoomNights / totalPossibleRoomNights) * 100 : 0,
-      averageDailyRate: metrics.totalRoomNights > 0 ? metrics.totalRevenue / metrics.totalRoomNights : 0,
-      revenuePAR: totalPossibleRoomNights > 0 ? metrics.totalRevenue / totalRooms / days : 0,
-      totalRooms,
-      totalPossibleRoomNights
-    };
+      return {
+        occupancyRate: totalPossibleRoomNights > 0 ? (metrics.totalRoomNights / totalPossibleRoomNights) * 100 : 0,
+        averageDailyRate: metrics.totalRoomNights > 0 ? metrics.totalRevenue / metrics.totalRoomNights : 0,
+        revenuePAR: totalPossibleRoomNights > 0 ? metrics.totalRevenue / totalRooms / days : 0,
+        totalRooms,
+        totalPossibleRoomNights
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   generateBusinessInsights(data) {
@@ -682,14 +736,18 @@ class EnhancedAnalyticsService {
   }
 
   async getHistoricalBookingPatterns(hotelId, days) {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
+    try {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - days);
 
-    return await Booking.find({
-      hotelId: new mongoose.Types.ObjectId(hotelId),
-      createdAt: { $gte: startDate },
-      status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-    }).select('createdAt checkIn totalAmount nights');
+      return await Booking.find({
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        createdAt: { $gte: startDate },
+        status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+      }).select('createdAt checkIn totalAmount nights').lean().limit(1000);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   analyzeSeasonalPatterns(historicalData) {
@@ -774,88 +832,96 @@ class EnhancedAnalyticsService {
   }
 
   async calculateCostBaseline(hotelId, startDate, endDate) {
-    const historicalStartDate = new Date(startDate);
-    historicalStartDate.setDate(historicalStartDate.getDate() - 90); // 90 days historical
+    try {
+      const historicalStartDate = new Date(startDate);
+      historicalStartDate.setDate(historicalStartDate.getDate() - 90); // 90 days historical
 
-    const [supplyBaseline, maintenanceBaseline] = await Promise.all([
-      SupplyRequest.aggregate([
-        {
-          $match: {
-            hotelId: new mongoose.Types.ObjectId(hotelId),
-            createdAt: { $gte: historicalStartDate, $lt: startDate },
-            status: { $in: ['approved', 'ordered', 'received'] }
+      const [supplyBaseline, maintenanceBaseline] = await Promise.all([
+        SupplyRequest.aggregate([
+          {
+            $match: {
+              hotelId: new mongoose.Types.ObjectId(hotelId),
+              createdAt: { $gte: historicalStartDate, $lt: startDate },
+              status: { $in: ['approved', 'ordered', 'received'] }
+            }
+          },
+          {
+            $group: {
+              _id: '$department',
+              avgCost: { $avg: '$totalActualCost' },
+              count: { $sum: 1 }
+            }
           }
-        },
-        {
-          $group: {
-            _id: '$department',
-            avgCost: { $avg: '$totalActualCost' },
-            count: { $sum: 1 }
-          }
-        }
-      ]),
+        ]),
 
-      MaintenanceTask.aggregate([
-        {
-          $match: {
-            hotelId: new mongoose.Types.ObjectId(hotelId),
-            createdAt: { $gte: historicalStartDate, $lt: startDate },
-            status: 'completed'
+        MaintenanceTask.aggregate([
+          {
+            $match: {
+              hotelId: new mongoose.Types.ObjectId(hotelId),
+              createdAt: { $gte: historicalStartDate, $lt: startDate },
+              status: 'completed'
+            }
+          },
+          {
+            $group: {
+              _id: '$category',
+              avgCost: { $avg: '$cost' },
+              count: { $sum: 1 }
+            }
           }
-        },
-        {
-          $group: {
-            _id: '$category',
-            avgCost: { $avg: '$cost' },
-            count: { $sum: 1 }
-          }
-        }
-      ])
-    ]);
+        ])
+      ]);
 
-    return { supply: supplyBaseline, maintenance: maintenanceBaseline };
+      return { supply: supplyBaseline, maintenance: maintenanceBaseline };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getCurrentPeriodCosts(hotelId, startDate, endDate) {
-    const [currentSupply, currentMaintenance] = await Promise.all([
-      SupplyRequest.aggregate([
-        {
-          $match: {
-            hotelId: new mongoose.Types.ObjectId(hotelId),
-            createdAt: { $gte: startDate, $lte: endDate },
-            status: { $in: ['approved', 'ordered', 'received'] }
+    try {
+      const [currentSupply, currentMaintenance] = await Promise.all([
+        SupplyRequest.aggregate([
+          {
+            $match: {
+              hotelId: new mongoose.Types.ObjectId(hotelId),
+              createdAt: { $gte: startDate, $lte: endDate },
+              status: { $in: ['approved', 'ordered', 'received'] }
+            }
+          },
+          {
+            $group: {
+              _id: '$department',
+              totalCost: { $sum: '$totalActualCost' },
+              avgCost: { $avg: '$totalActualCost' },
+              count: { $sum: 1 }
+            }
           }
-        },
-        {
-          $group: {
-            _id: '$department',
-            totalCost: { $sum: '$totalActualCost' },
-            avgCost: { $avg: '$totalActualCost' },
-            count: { $sum: 1 }
-          }
-        }
-      ]),
+        ]),
 
-      MaintenanceTask.aggregate([
-        {
-          $match: {
-            hotelId: new mongoose.Types.ObjectId(hotelId),
-            createdAt: { $gte: startDate, $lte: endDate },
-            status: 'completed'
+        MaintenanceTask.aggregate([
+          {
+            $match: {
+              hotelId: new mongoose.Types.ObjectId(hotelId),
+              createdAt: { $gte: startDate, $lte: endDate },
+              status: 'completed'
+            }
+          },
+          {
+            $group: {
+              _id: '$category',
+              totalCost: { $sum: '$cost' },
+              avgCost: { $avg: '$cost' },
+              count: { $sum: 1 }
+            }
           }
-        },
-        {
-          $group: {
-            _id: '$category',
-            totalCost: { $sum: '$cost' },
-            avgCost: { $avg: '$cost' },
-            count: { $sum: 1 }
-          }
-        }
-      ])
-    ]);
+        ])
+      ]);
 
-    return { supply: currentSupply, maintenance: currentMaintenance };
+      return { supply: currentSupply, maintenance: currentMaintenance };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   detectCostAnomalies(baseline, current) {
@@ -936,24 +1002,30 @@ class EnhancedAnalyticsService {
   }
 
   async calculateVendorCategoryPerformance(hotelId, startDate, endDate) {
-    return await Vendor.aggregate([
-      {
-        $match: {
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          isActive: true
-        }
-      },
-      {
-        $group: {
-          _id: '$category',
-          averageRating: { $avg: '$rating' },
-          averageReliability: { $avg: '$performance.onTimeDelivery' },
-          vendorCount: { $sum: 1 },
-          totalOrderValue: { $sum: '$totalOrderValue' }
-        }
-      },
-      { $sort: { averageRating: -1 } }
-    ]);
+    try {
+      // Consider caching this aggregation result for 5 minutes
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+      return await Vendor.aggregate([
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            isActive: true
+          }
+        },
+        {
+          $group: {
+            _id: '$category',
+            averageRating: { $avg: '$rating' },
+            averageReliability: { $avg: '$performance.onTimeDelivery' },
+            vendorCount: { $sum: 1 },
+            totalOrderValue: { $sum: '$totalOrderValue' }
+          }
+        },
+        { $sort: { averageRating: -1 } }
+      ]);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   generateVendorInsights(vendorPerformance, categoryPerformance) {

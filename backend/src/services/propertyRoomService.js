@@ -124,58 +124,62 @@ class PropertyRoomService {
    * Generate room records based on configuration
    */
   async generateRooms(propertyId, roomsConfig) {
-    const {
-      roomTypes = {},
-      numberingPattern = 'sequential',
-      startingNumber = 100,
-      floorPlan = null
-    } = roomsConfig;
+    try {
+      const {
+        roomTypes = {},
+        numberingPattern = 'sequential',
+        startingNumber = 100,
+        floorPlan = null
+      } = roomsConfig;
 
-    const rooms = [];
-    let currentNumber = startingNumber;
+      const rooms = [];
+      let currentNumber = startingNumber;
 
-    // Get room type templates for default configurations
-    const roomTypeTemplates = await this.getRoomTypeTemplates();
+      // Get room type templates for default configurations
+      const roomTypeTemplates = await this.getRoomTypeTemplates();
 
-    for (const [typeName, typeConfig] of Object.entries(roomTypes)) {
-      const { count, basePrice, amenities = [], size = 0 } = typeConfig;
+      for (const [typeName, typeConfig] of Object.entries(roomTypes)) {
+        const { count, basePrice, amenities = [], size = 0 } = typeConfig;
 
-      // Get or create room type
-      const roomType = await this.getOrCreateRoomType(propertyId, typeName, {
-        basePrice,
-        amenities,
-        size
-      });
-
-      // Generate individual rooms
-      for (let i = 0; i < count; i++) {
-        const roomNumber = this.generateRoomNumber(
-          currentNumber,
-          numberingPattern,
-          floorPlan,
-          typeName
-        );
-
-        rooms.push({
-          hotelId: propertyId,
-          roomNumber: roomNumber,
-          roomTypeId: roomType._id,
-          type: this.mapRoomTypeToEnum(typeName),
-          status: 'vacant',
-          baseRate: basePrice || 0,
-          currentRate: basePrice || 0,
-          amenities: amenities || [],
-          capacity: this.getDefaultCapacity(typeName),
-          floor: this.extractFloor(roomNumber, numberingPattern),
-          isActive: true,
-          description: `${typeName} room ${roomNumber}`
+        // Get or create room type
+        const roomType = await this.getOrCreateRoomType(propertyId, typeName, {
+          basePrice,
+          amenities,
+          size
         });
 
-        currentNumber++;
-      }
-    }
+        // Generate individual rooms
+        for (let i = 0; i < count; i++) {
+          const roomNumber = this.generateRoomNumber(
+            currentNumber,
+            numberingPattern,
+            floorPlan,
+            typeName
+          );
 
-    return rooms;
+          rooms.push({
+            hotelId: propertyId,
+            roomNumber: roomNumber,
+            roomTypeId: roomType._id,
+            type: this.mapRoomTypeToEnum(typeName),
+            status: 'vacant',
+            baseRate: basePrice || 0,
+            currentRate: basePrice || 0,
+            amenities: amenities || [],
+            capacity: this.getDefaultCapacity(typeName),
+            floor: this.extractFloor(roomNumber, numberingPattern),
+            isActive: true,
+            description: `${typeName} room ${roomNumber}`
+          });
+
+          currentNumber++;
+        }
+      }
+
+      return rooms;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -186,7 +190,7 @@ class PropertyRoomService {
       logger.info('Creating bulk rooms for property', { propertyId, roomsConfig });
 
       // Validate property exists
-      const property = await Hotel.findById(propertyId);
+      const property = await Hotel.findById(propertyId).lean();
       if (!property) {
         throw new Error('Property not found');
       }
@@ -204,7 +208,9 @@ class PropertyRoomService {
       // Update property room count
       await Hotel.findByIdAndUpdate(propertyId, {
         $inc: { roomCount: rooms.length }
-      });
+      },
+        { new: true }
+      );
 
       logger.info('Bulk rooms created successfully', {
         propertyId,
@@ -399,7 +405,7 @@ class PropertyRoomService {
           { 'permissions.allowNewProperties': true }
         ],
         status: 'active'
-      }).select('name description groupType settings.brandGuidelines').lean();
+      }).select('name description groupType settings.brandGuidelines').lean().limit(1000);
 
       logger.info('Retrieved property groups for user', {
         userId,
@@ -514,7 +520,7 @@ class PropertyRoomService {
       let roomType = await RoomType.findOne({
         hotelId,
         name: { $regex: new RegExp(`^${typeName}$`, 'i') }
-      });
+      }).lean();
 
       if (!roomType) {
         // Create room type code - make it unique by including hotel prefix
@@ -570,29 +576,33 @@ class PropertyRoomService {
   }
 
   async getRoomTypeTemplates() {
-    // Default room type templates
-    return {
-      single: {
-        capacity: 1,
-        size: 25,
-        amenities: ['WiFi', 'AC', 'TV', 'Desk']
-      },
-      double: {
-        capacity: 2,
-        size: 35,
-        amenities: ['WiFi', 'AC', 'TV', 'Desk', 'Mini Fridge']
-      },
-      suite: {
-        capacity: 4,
-        size: 65,
-        amenities: ['WiFi', 'AC', 'TV', 'Desk', 'Mini Fridge', 'Sofa', 'Balcony']
-      },
-      deluxe: {
-        capacity: 2,
-        size: 45,
-        amenities: ['WiFi', 'AC', 'TV', 'Desk', 'Mini Fridge', 'Premium Bedding']
-      }
-    };
+    try {
+      // Default room type templates
+      return {
+        single: {
+          capacity: 1,
+          size: 25,
+          amenities: ['WiFi', 'AC', 'TV', 'Desk']
+        },
+        double: {
+          capacity: 2,
+          size: 35,
+          amenities: ['WiFi', 'AC', 'TV', 'Desk', 'Mini Fridge']
+        },
+        suite: {
+          capacity: 4,
+          size: 65,
+          amenities: ['WiFi', 'AC', 'TV', 'Desk', 'Mini Fridge', 'Sofa', 'Balcony']
+        },
+        deluxe: {
+          capacity: 2,
+          size: 45,
+          amenities: ['WiFi', 'AC', 'TV', 'Desk', 'Mini Fridge', 'Premium Bedding']
+        }
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 

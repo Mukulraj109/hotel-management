@@ -157,7 +157,7 @@ class SeasonalPricingController {
       const seasons = await Season.find(filter)
         .populate('createdBy', 'firstName lastName')
         .populate('updatedBy', 'firstName lastName')
-        .sort({ startDate: 1 });
+        .sort({ startDate: 1 }).lean().limit(1000);
       
       res.json({
         success: true,
@@ -182,7 +182,7 @@ class SeasonalPricingController {
       
       const season = await Season.findById(id)
         .populate('createdBy', 'firstName lastName')
-        .populate('updatedBy', 'firstName lastName');
+        .populate('updatedBy', 'firstName lastName').lean();
       
       if (!season) {
         return res.status(404).json({
@@ -329,7 +329,7 @@ class SeasonalPricingController {
       const periods = await SpecialPeriod.find(filter)
         .populate('createdBy', 'firstName lastName')
         .populate('updatedBy', 'firstName lastName')
-        .sort({ startDate: 1 });
+        .sort({ startDate: 1 }).lean().limit(1000);
       
       res.json({
         success: true,
@@ -354,7 +354,7 @@ class SeasonalPricingController {
       
       const period = await SpecialPeriod.findById(id)
         .populate('createdBy', 'firstName lastName')
-        .populate('updatedBy', 'firstName lastName');
+        .populate('updatedBy', 'firstName lastName').lean();
       
       if (!period) {
         return res.status(404).json({
@@ -607,7 +607,7 @@ class SeasonalPricingController {
         isActive: true,
         startDate: { $gte: new Date(), $lte: futureDate },
         'alerts.emailNotification': true
-      }).sort({ startDate: 1 });
+      }).sort({ startDate: 1 }).lean().limit(1000);
       
       const alerts = periods.filter(period => period.shouldTriggerAlert());
       

@@ -257,7 +257,7 @@ router.get('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
     .populate('reportedBy', 'name email role')
     .populate('assignedTo', 'name email role')
     .populate('actionsTaken.takenBy', 'name role')
-    .populate('documents.uploadedBy', 'name');
+    .populate('documents.uploadedBy', 'name').lean();
 
   if (!incident) {
     throw new ApplicationError('Incident report not found', 404);
@@ -400,7 +400,7 @@ router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =>
 router.post('/:id/assign', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   const { assignedTo, notes } = req.body;
   
-  const incident = await IncidentReport.findById(req.params.id);
+  const incident = await IncidentReport.findById(req.params.id).lean();
   
   if (!incident) {
     throw new ApplicationError('Incident report not found', 404);
@@ -464,7 +464,7 @@ router.post('/:id/assign', authorize('staff', 'admin'), catchAsync(async (req, r
 router.post('/:id/actions', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   const { action, notes, cost } = req.body;
   
-  const incident = await IncidentReport.findById(req.params.id);
+  const incident = await IncidentReport.findById(req.params.id).lean();
   
   if (!incident) {
     throw new ApplicationError('Incident report not found', 404);

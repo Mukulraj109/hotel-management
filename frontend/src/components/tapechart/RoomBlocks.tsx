@@ -399,11 +399,11 @@ const RoomBlocks: React.FC = () => {
           ) : (
             <div className="space-y-4">
               {roomBlocks.map((block) => (
-                <div
+                <div role="button" tabIndex={0}
                   key={block._id}
                   className="border rounded-lg p-4 hover:shadow-md transition-all duration-200 cursor-pointer bg-white hover:bg-gray-50"
                   onClick={() => setSelectedBlock(block)}
-                >
+                 onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => setSelectedBlock(block); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                   <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">

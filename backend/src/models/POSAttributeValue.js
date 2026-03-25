@@ -283,17 +283,21 @@ posAttributeValueSchema.virtual('isCurrentlyAvailable').get(function() {
 
 // Pre-save middleware to generate valueId if not provided
 posAttributeValueSchema.pre('save', async function(next) {
-  if (!this.valueId) {
-    const attribute = await this.constructor.db.model('POSAttribute').findById(this.attributeId);
-    if (attribute) {
-      const prefix = attribute.attributeId;
-      const count = await this.constructor.countDocuments({
-        valueId: new RegExp(`^${prefix}`)
-      });
-      this.valueId = `${prefix}_${(count + 1).toString().padStart(3, '0')}`;
+  try {
+    if (!this.valueId) {
+      const attribute = await this.constructor.db.model('POSAttribute').findById(this.attributeId);
+      if (attribute) {
+        const prefix = attribute.attributeId;
+        const count = await this.constructor.countDocuments({
+          valueId: new RegExp(`^${prefix}`)
+        });
+        this.valueId = `${prefix}_${(count + 1).toString().padStart(3, '0')}`;
+      }
     }
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  next();
 });
 
 // Static method to get values by attribute

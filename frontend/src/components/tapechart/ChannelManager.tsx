@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import { format, subDays, addDays } from 'date-fns';
 import { api } from '@/services/api';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface OTAChannel {
   id: string;
@@ -135,6 +136,12 @@ export const ChannelManager: React.FC = () => {
     syncHealth: 0,
     avgCommission: 0
   });
+
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     initializeChannelManager();
@@ -418,6 +425,7 @@ export const ChannelManager: React.FC = () => {
 
       // Simulate API calls
       await new Promise(resolve => setTimeout(resolve, 2000));
+    if (!isMountedRef.current) return;
 
       // Update channel status to connected
       setChannels(prev => prev.map(c =>
@@ -807,3 +815,5 @@ export const ChannelManager: React.FC = () => {
     </Dialog>
   );
 };
+
+export default withErrorBoundary(ChannelManager, { level: 'component' });

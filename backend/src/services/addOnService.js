@@ -92,7 +92,7 @@ class AddOnServiceManager {
       const services = await AddOnService.find(query)
         .sort(sortOptions)
         .populate('upselling.complementaryServices', 'name pricing.basePrice category')
-        .lean();
+        .lean().limit(1000);
       
       return services;
       
@@ -113,7 +113,7 @@ class AddOnServiceManager {
       const upsellServices = await AddOnService.find({
         isActive: true,
         'upselling.isUpsellItem': true
-      }).lean();
+      }).lean().limit(1000);
       
       const recommendations = [];
       
@@ -138,7 +138,7 @@ class AddOnServiceManager {
           const complementary = await AddOnService.find({
             _id: { $in: rec.service.upselling.complementaryServices },
             isActive: true
-          }).select('name pricing.basePrice category').lean();
+          }).select('name pricing.basePrice category').lean().limit(1000);
           
           rec.complementaryServices = complementary;
         }
@@ -255,7 +255,7 @@ class AddOnServiceManager {
       const services = await AddOnService.find({
         serviceId: { $in: bundleOffer.serviceIds },
         isActive: true
-      }).lean();
+      }).lean().limit(1000);
       
       if (services.length !== bundleOffer.serviceIds.length) {
         return null;
@@ -287,7 +287,7 @@ class AddOnServiceManager {
    */
   async checkServiceAvailability(serviceId, requestedDate, requestedTime = null, quantity = 1) {
     try {
-      const service = await AddOnService.findOne({ serviceId, isActive: true });
+      const service = await AddOnService.findOne({ serviceId, isActive: true }).lean();
       
       if (!service) {
         return { available: false, reason: 'Service not found or inactive' };
@@ -306,7 +306,7 @@ class AddOnServiceManager {
    */
   async bookService(serviceId, bookingDetails) {
     try {
-      const service = await AddOnService.findOne({ serviceId, isActive: true });
+      const service = await AddOnService.findOne({ serviceId, isActive: true }).lean();
       
       if (!service) {
         throw new Error('Service not found or inactive');
@@ -382,7 +382,7 @@ class AddOnServiceManager {
       const inclusions = await ServiceInclusion.find({
         'eligibility.packageTypes': packageId,
         'availability.isActive': true
-      }).lean();
+      }).lean().limit(1000);
       
       const eligibleInclusions = [];
       

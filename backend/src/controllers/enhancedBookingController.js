@@ -50,7 +50,7 @@ class EnhancedBookingController {
         selectedRoomType = await RoomType.findByLegacyType(hotelId, roomType);
         finalRoomTypeId = selectedRoomType?._id;
       } else if (finalRoomTypeId) {
-        selectedRoomType = await RoomType.findById(finalRoomTypeId);
+        selectedRoomType = await RoomType.findById(finalRoomTypeId).lean();
       }
 
       if (!selectedRoomType) {
@@ -64,145 +64,151 @@ class EnhancedBookingController {
       // single transaction so that a concurrent request cannot grab the same
       // rooms between the availability check and the reservation write.
       const { booking, selectedRooms } = await withTransaction(async (session) => {
-        // Check availability using V2 system if room type ID is available
-        let availabilityResult;
-        if (finalRoomTypeId) {
-          availabilityResult = await availabilityService.checkAvailabilityV2({
-            hotelId,
-            roomTypeId: finalRoomTypeId,
-            checkIn,
-            checkOut,
-            roomsRequested: roomRequests,
-            session
-          });
-        } else {
-          // Fallback to legacy system
-          availabilityResult = await availabilityService.checkAvailability(
-            checkIn,
-            checkOut,
-            roomType,
-            roomRequests,
-            hotelId,
-            session
-          );
-        }
-
-        if (!availabilityResult.available || availabilityResult.availableRooms.length < roomRequests) {
-          throw Object.assign(
-            new Error('Insufficient room availability for selected dates'),
-            { statusCode: 409, availableRooms: availabilityResult.availableRooms.length }
-          );
-        }
-
-        // Calculate rates using rate management system
-        let finalRate;
-        if (totalAmount) {
-          // Use provided total amount
-          finalRate = totalAmount / roomRequests;
-        } else if (ratePlanId) {
-          // Calculate from rate plan
-          const rateResult = await rateManagementService.calculateRateFromPlan(
-            ratePlanId,
-            checkIn,
-            checkOut,
-            roomRequests
-          );
-          finalRate = rateResult.finalRate;
-        } else {
-          // Calculate best available rate
-          const bestRate = await rateManagementService.calculateBestRate(
-            roomType || selectedRoomType.legacyType,
-            checkIn,
-            checkOut,
-            roomRequests
-          );
-          finalRate = bestRate ? bestRate.finalRate : selectedRoomType.basePrice;
-        }
-
-        // Select specific rooms
-        const txSelectedRooms = availabilityResult.availableRooms.slice(0, roomRequests);
-        const bookingRooms = txSelectedRooms.map(room => ({
-          roomId: room._id,
-          rate: finalRate
-        }));
-
-        // Create booking
-        const bookingData = {
-          hotelId,
-          userId: req.user._id,
-          rooms: bookingRooms,
-          checkIn: new Date(checkIn),
-          checkOut: new Date(checkOut),
-          guestDetails: {
-            adults: guestDetails.adults || 1,
-            children: guestDetails.children || 0,
-            specialRequests: specialRequests || guestDetails.specialRequests
-          },
-          totalAmount: finalRate * roomRequests,
-          currency,
-          source,
-          idempotencyKey: req.headers['idempotency-key'] || uuidv4()
-        };
-
-        // Add legacy room type for backward compatibility
-        if (selectedRoomType.legacyType) {
-          bookingData.roomType = selectedRoomType.legacyType;
-        }
-
-        // Add OTA-specific data if applicable
-        if (channel) {
-          bookingData.channel = channel;
-          bookingData.channelBookingId = channelBookingId;
-          bookingData.channelReservationId = channelReservationId;
-
-          if (req.body.channelData) {
-            bookingData.channelData = req.body.channelData;
+        try {
+          // Check availability using V2 system if room type ID is available
+          let availabilityResult;
+          if (finalRoomTypeId) {
+            availabilityResult = await availabilityService.checkAvailabilityV2({
+              hotelId,
+              roomTypeId: finalRoomTypeId,
+              checkIn,
+              checkOut,
+              roomsRequested: roomRequests,
+              session
+            });
+          } else {
+            // Fallback to legacy system
+            availabilityResult = await availabilityService.checkAvailability(
+              checkIn,
+              checkOut,
+              roomType,
+              roomRequests,
+              hotelId,
+              session
+            );
           }
-        }
 
-        const [txBooking] = await Booking.create([bookingData], { session });
+          if (!availabilityResult.available || availabilityResult.availableRooms.length < roomRequests) {
+            throw Object.assign(
+              new Error('Insufficient room availability for selected dates'),
+              { statusCode: 409, availableRooms: availabilityResult.availableRooms.length }
+            );
+          }
 
-        // Reserve the rooms in inventory system
-        if (finalRoomTypeId) {
-          await availabilityService.reserveRoomsV2({
+          // Calculate rates using rate management system
+          let finalRate;
+          if (totalAmount) {
+            // Use provided total amount
+            finalRate = totalAmount / roomRequests;
+          } else if (ratePlanId) {
+            // Calculate from rate plan
+            const rateResult = await rateManagementService.calculateRateFromPlan(
+              ratePlanId,
+              checkIn,
+              checkOut,
+              roomRequests
+            );
+            finalRate = rateResult.finalRate;
+          } else {
+            // Calculate best available rate
+            const bestRate = await rateManagementService.calculateBestRate(
+              roomType || selectedRoomType.legacyType,
+              checkIn,
+              checkOut,
+              roomRequests
+            );
+            finalRate = bestRate ? bestRate.finalRate : selectedRoomType.basePrice;
+          }
+
+          // Select specific rooms
+          const txSelectedRooms = availabilityResult.availableRooms.slice(0, roomRequests);
+          const bookingRooms = txSelectedRooms.map(room => ({
+            roomId: room._id,
+            rate: finalRate
+          }));
+
+          // Create booking
+          const bookingData = {
             hotelId,
-            roomTypeId: finalRoomTypeId,
-            checkIn,
-            checkOut,
-            roomsToReserve: roomRequests,
-            bookingId: txBooking._id,
+            userId: req.user._id,
+            rooms: bookingRooms,
+            checkIn: new Date(checkIn),
+            checkOut: new Date(checkOut),
+            guestDetails: {
+              adults: guestDetails.adults || 1,
+              children: guestDetails.children || 0,
+              specialRequests: specialRequests || guestDetails.specialRequests
+            },
+            totalAmount: finalRate * roomRequests,
+            currency,
+            source,
+            idempotencyKey: req.headers['idempotency-key'] || uuidv4()
+          };
+
+          // Add legacy room type for backward compatibility
+          if (selectedRoomType.legacyType) {
+            bookingData.roomType = selectedRoomType.legacyType;
+          }
+
+          // Add OTA-specific data if applicable
+          if (channel) {
+            bookingData.channel = channel;
+            bookingData.channelBookingId = channelBookingId;
+            bookingData.channelReservationId = channelReservationId;
+
+            if (req.body.channelData) {
+              bookingData.channelData = req.body.channelData;
+            }
+          }
+
+          const [txBooking] = await Booking.create([bookingData], { session });
+
+          // Reserve the rooms in inventory system
+          if (finalRoomTypeId) {
+            await availabilityService.reserveRoomsV2({
+              hotelId,
+              roomTypeId: finalRoomTypeId,
+              checkIn,
+              checkOut,
+              roomsToReserve: roomRequests,
+              bookingId: txBooking._id,
+              session
+            });
+          } else {
+            // Fallback to legacy reservation
+            await availabilityService.reserveRooms(
+              txSelectedRooms.map(r => r._id),
+              checkIn,
+              checkOut,
+              txBooking._id,
+              session
+            );
+          }
+
+          // Log the booking creation
+          await AuditLog.logChange({
+            hotelId,
+            tableName: 'Booking',
+            recordId: txBooking._id,
+            changeType: 'create',
+            newValues: txBooking.toObject(),
+            userId: req.user._id,
+            userEmail: req.user.email,
+            source: source,
+            metadata: {
+              roomTypeId: finalRoomTypeId,
+              channel: channel || 'direct',
+              tags: ['booking_creation', 'ota_ready']
+            },
             session
           });
-        } else {
-          // Fallback to legacy reservation
-          await availabilityService.reserveRooms(
-            txSelectedRooms.map(r => r._id),
-            checkIn,
-            checkOut,
-            txBooking._id,
-            session
-          );
+
+          return { booking: txBooking, selectedRooms: txSelectedRooms };
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
         }
-
-        // Log the booking creation
-        await AuditLog.logChange({
-          hotelId,
-          tableName: 'Booking',
-          recordId: txBooking._id,
-          changeType: 'create',
-          newValues: txBooking.toObject(),
-          userId: req.user._id,
-          userEmail: req.user.email,
-          source: source,
-          metadata: {
-            roomTypeId: finalRoomTypeId,
-            channel: channel || 'direct',
-            tags: ['booking_creation', 'ota_ready']
-          },
-          session
-        });
-
-        return { booking: txBooking, selectedRooms: txSelectedRooms };
       });
 
       // Populate booking for response
@@ -280,7 +286,7 @@ class EnhancedBookingController {
         const roomsInType = await Room.find({ 
           roomTypeId, 
           isActive: true 
-        }).select('_id');
+        }).select('_id').lean().limit(1000);
         
         query['rooms.roomId'] = { 
           $in: roomsInType.map(r => r._id) 
@@ -296,25 +302,35 @@ class EnhancedBookingController {
         .populate('channel', 'name category')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit));
+        .limit(parseInt(limit)).lean();
 
-      // Enhance bookings with room type information
-      const enhancedBookings = await Promise.all(
-        bookings.map(async (booking) => {
-          const bookingObj = booking.toObject();
-          
-          // Get room type information for each room
-          for (let room of bookingObj.rooms) {
-            if (room.roomId.roomTypeId) {
-              const roomType = await RoomType.findById(room.roomId.roomTypeId)
-                .select('name code basePrice maxOccupancy');
-              room.roomType = roomType;
-            }
+      // Batch-fetch all room types to avoid N+1 queries
+      const roomTypeIds = [...new Set(
+        bookings.flatMap(b =>
+          (b.rooms || [])
+            .map(r => r.roomId?.roomTypeId)
+            .filter(Boolean)
+            .map(id => id.toString())
+        )
+      )];
+      const roomTypesMap = {};
+      if (roomTypeIds.length > 0) {
+        const roomTypes = await RoomType.find({ _id: { $in: roomTypeIds } })
+          .select('name code basePrice maxOccupancy').lean().limit(1000);
+        for (const rt of roomTypes) {
+          roomTypesMap[rt._id.toString()] = rt;
+        }
+      }
+
+      const enhancedBookings = bookings.map((booking) => {
+        const bookingObj = typeof booking.toObject === 'function' ? booking.toObject() : { ...booking };
+        for (let room of bookingObj.rooms || []) {
+          if (room.roomId?.roomTypeId) {
+            room.roomType = roomTypesMap[room.roomId.roomTypeId.toString()] || null;
           }
-          
-          return bookingObj;
-        })
-      );
+        }
+        return bookingObj;
+      });
 
       const total = await Booking.countDocuments(query);
 
@@ -346,7 +362,7 @@ class EnhancedBookingController {
       const { id } = req.params;
       const updateData = req.body;
 
-      const existingBooking = await Booking.findById(id);
+      const existingBooking = await Booking.findById(id).lean();
       if (!existingBooking) {
         return res.status(404).json({
           success: false,
@@ -534,7 +550,7 @@ class EnhancedBookingController {
       const { id } = req.params;
       const { reason, refundAmount, source = 'manual' } = req.body;
 
-      const booking = await Booking.findById(id);
+      const booking = await Booking.findById(id).lean();
       if (!booking) {
         return res.status(404).json({
           success: false,
@@ -766,8 +782,14 @@ class EnhancedBookingController {
 
   // Helper method to get room type from room IDs
   async getRoomTypeFromRooms(roomIds) {
-    const room = await Room.findById(roomIds[0]).select('roomTypeId');
-    return room?.roomTypeId;
+    try {
+      const room = await Room.findById(roomIds[0]).select('roomTypeId').lean();
+      return room?.roomTypeId;
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
+    }
   }
 
   /**
@@ -779,7 +801,7 @@ class EnhancedBookingController {
       const booking = await Booking.findById(id)
         .populate('userId', 'name email phone')
         .populate('rooms.roomId', 'roomNumber type roomTypeId floor')
-        .populate('hotelId', 'name address contact');
+        .populate('hotelId', 'name address contact').lean();
 
       if (!booking) {
         return res.status(404).json({
@@ -922,7 +944,7 @@ class EnhancedBookingController {
         .populate('hotelId', 'name address contact')
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit));
+        .limit(parseInt(limit)).lean();
 
       const total = await Booking.countDocuments(query);
 
@@ -1209,7 +1231,7 @@ class EnhancedBookingController {
         .populate('userId', 'name email')
         .populate('rooms.roomId', 'roomNumber type')
         .sort({ createdAt: -1 })
-        .limit(5);
+        .limit(5).lean();
 
       // Calculate pending modifications
       const pendingModifications = await Booking.countDocuments({
@@ -1485,7 +1507,7 @@ class EnhancedBookingController {
       const booking = await Booking.findById(id)
         .populate('priceAdjustments.adjustedBy.userId', 'name email')
         .populate('priceAdjustments.authorizedBy.userId', 'name email')
-        .populate('priceAdjustments.reversedBy.userId', 'name email');
+        .populate('priceAdjustments.reversedBy.userId', 'name email').lean();
 
       if (!booking) {
         return res.status(404).json({

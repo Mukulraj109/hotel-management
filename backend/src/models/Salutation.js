@@ -181,52 +181,56 @@ salutationSchema.statics.getByGender = function(gender, hotelId = null) {
 
 // Static method to seed default salutations
 salutationSchema.statics.seedDefaultSalutations = async function(createdBy) {
-  const defaultSalutations = [
-    // Personal
-    { title: 'Mr', fullForm: 'Mister', category: 'personal', gender: 'male', sortOrder: 1 },
-    { title: 'Mrs', fullForm: 'Mistress', category: 'personal', gender: 'female', sortOrder: 2 },
-    { title: 'Miss', fullForm: 'Miss', category: 'personal', gender: 'female', sortOrder: 3 },
-    { title: 'Ms', fullForm: 'Ms', category: 'personal', gender: 'female', sortOrder: 4 },
+  try {
+    const defaultSalutations = [
+      // Personal
+      { title: 'Mr', fullForm: 'Mister', category: 'personal', gender: 'male', sortOrder: 1 },
+      { title: 'Mrs', fullForm: 'Mistress', category: 'personal', gender: 'female', sortOrder: 2 },
+      { title: 'Miss', fullForm: 'Miss', category: 'personal', gender: 'female', sortOrder: 3 },
+      { title: 'Ms', fullForm: 'Ms', category: 'personal', gender: 'female', sortOrder: 4 },
     
-    // Professional
-    { title: 'Dr', fullForm: 'Doctor', category: 'professional', gender: 'any', sortOrder: 5 },
-    { title: 'Prof', fullForm: 'Professor', category: 'professional', gender: 'any', sortOrder: 6 },
-    { title: 'Capt', fullForm: 'Captain', category: 'professional', gender: 'any', sortOrder: 7 },
-    { title: 'Col', fullForm: 'Colonel', category: 'professional', gender: 'any', sortOrder: 8 },
-    { title: 'Maj', fullForm: 'Major', category: 'professional', gender: 'any', sortOrder: 9 },
-    { title: 'Lt', fullForm: 'Lieutenant', category: 'professional', gender: 'any', sortOrder: 10 },
+      // Professional
+      { title: 'Dr', fullForm: 'Doctor', category: 'professional', gender: 'any', sortOrder: 5 },
+      { title: 'Prof', fullForm: 'Professor', category: 'professional', gender: 'any', sortOrder: 6 },
+      { title: 'Capt', fullForm: 'Captain', category: 'professional', gender: 'any', sortOrder: 7 },
+      { title: 'Col', fullForm: 'Colonel', category: 'professional', gender: 'any', sortOrder: 8 },
+      { title: 'Maj', fullForm: 'Major', category: 'professional', gender: 'any', sortOrder: 9 },
+      { title: 'Lt', fullForm: 'Lieutenant', category: 'professional', gender: 'any', sortOrder: 10 },
     
-    // Religious
-    { title: 'Rev', fullForm: 'Reverend', category: 'religious', gender: 'any', sortOrder: 11 },
-    { title: 'Fr', fullForm: 'Father', category: 'religious', gender: 'male', sortOrder: 12 },
-    { title: 'Sr', fullForm: 'Sister', category: 'religious', gender: 'female', sortOrder: 13 },
+      // Religious
+      { title: 'Rev', fullForm: 'Reverend', category: 'religious', gender: 'any', sortOrder: 11 },
+      { title: 'Fr', fullForm: 'Father', category: 'religious', gender: 'male', sortOrder: 12 },
+      { title: 'Sr', fullForm: 'Sister', category: 'religious', gender: 'female', sortOrder: 13 },
     
-    // Academic
-    { title: 'Sir', fullForm: 'Sir', category: 'academic', gender: 'male', sortOrder: 14 },
-    { title: 'Dame', fullForm: 'Dame', category: 'academic', gender: 'female', sortOrder: 15 },
+      // Academic
+      { title: 'Sir', fullForm: 'Sir', category: 'academic', gender: 'male', sortOrder: 14 },
+      { title: 'Dame', fullForm: 'Dame', category: 'academic', gender: 'female', sortOrder: 15 },
     
-    // Cultural (Indian)
-    { title: 'Shri', fullForm: 'Shri', category: 'cultural', gender: 'male', region: 'IN', sortOrder: 16 },
-    { title: 'Smt', fullForm: 'Smt', category: 'cultural', gender: 'female', region: 'IN', sortOrder: 17 },
-    { title: 'Kumari', fullForm: 'Kumari', category: 'cultural', gender: 'female', region: 'IN', sortOrder: 18 },
-    { title: 'Sri', fullForm: 'Sri', category: 'cultural', gender: 'male', region: 'IN', sortOrder: 19 }
-  ];
+      // Cultural (Indian)
+      { title: 'Shri', fullForm: 'Shri', category: 'cultural', gender: 'male', region: 'IN', sortOrder: 16 },
+      { title: 'Smt', fullForm: 'Smt', category: 'cultural', gender: 'female', region: 'IN', sortOrder: 17 },
+      { title: 'Kumari', fullForm: 'Kumari', category: 'cultural', gender: 'female', region: 'IN', sortOrder: 18 },
+      { title: 'Sri', fullForm: 'Sri', category: 'cultural', gender: 'male', region: 'IN', sortOrder: 19 }
+    ];
 
-  // Check if salutations already exist
-  const existingCount = await this.countDocuments({ hotelId: null });
-  if (existingCount > 0) {
-    return { message: 'Default salutations already exist', count: existingCount };
+    // Check if salutations already exist
+    const existingCount = await this.countDocuments({ hotelId: null });
+    if (existingCount > 0) {
+      return { message: 'Default salutations already exist', count: existingCount };
+    }
+
+    // Add createdBy to all salutations
+    const salutationsToCreate = defaultSalutations.map(sal => ({
+      ...sal,
+      createdBy,
+      hotelId: null // Global salutations
+    }));
+
+    const createdSalutations = await this.insertMany(salutationsToCreate);
+    return { message: 'Default salutations created successfully', count: createdSalutations.length };
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  // Add createdBy to all salutations
-  const salutationsToCreate = defaultSalutations.map(sal => ({
-    ...sal,
-    createdBy,
-    hotelId: null // Global salutations
-  }));
-
-  const createdSalutations = await this.insertMany(salutationsToCreate);
-  return { message: 'Default salutations created successfully', count: createdSalutations.length };
 };
 
 export default mongoose.model('Salutation', salutationSchema);

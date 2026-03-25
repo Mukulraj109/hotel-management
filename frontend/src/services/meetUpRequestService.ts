@@ -282,86 +282,134 @@ class MeetUpRequestService {
     type?: string;
     filter?: string;
   }): Promise<MeetUpRequestsResponse> {
-    const response = await api.get('/meet-up-requests', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/meet-up-requests', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getPendingRequests(params?: {
     page?: number;
     limit?: number;
   }): Promise<MeetUpRequestsResponse> {
-    const response = await api.get('/meet-up-requests/pending', { params });
-    const data = response.data.data;
-    return {
-      meetUps: data.pendingRequests || [],
-      pagination: data.pagination
-    };
+    try {
+      const response = await api.get('/meet-up-requests/pending', { params });
+      const data = response.data.data;
+      return {
+        meetUps: data.pendingRequests || [],
+        pagination: data.pagination
+      };
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getUpcomingMeetUps(params?: {
     page?: number;
     limit?: number;
   }): Promise<MeetUpRequestsResponse> {
-    const response = await api.get('/meet-up-requests/upcoming', { params });
-    const data = response.data.data;
-    return {
-      meetUps: data.upcomingMeetUps || [],
-      pagination: data.pagination
-    };
+    try {
+      const response = await api.get('/meet-up-requests/upcoming', { params });
+      const data = response.data.data;
+      return {
+        meetUps: data.upcomingMeetUps || [],
+        pagination: data.pagination
+      };
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async createMeetUpRequest(request: CreateMeetUpRequest): Promise<{
     message: string;
     data: MeetUpRequest;
   }> {
-    const response = await api.post('/meet-up-requests', request);
-    return response.data;
+    try {
+      const response = await api.post('/meet-up-requests', request);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getMeetUpRequest(requestId: string): Promise<MeetUpRequest> {
-    const response = await api.get(`/meet-up-requests/${requestId}`);
-    return response.data.data;
+    try {
+      const response = await api.get(`/meet-up-requests/${requestId}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async acceptMeetUpRequest(requestId: string, data: RespondToMeetUpRequest): Promise<{
     message: string;
     data: MeetUpRequest;
   }> {
-    const response = await api.post(`/meet-up-requests/${requestId}/accept`, data);
-    return response.data;
+    try {
+      const response = await api.post(`/meet-up-requests/${requestId}/accept`, data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async declineMeetUpRequest(requestId: string, data: RespondToMeetUpRequest): Promise<{
     message: string;
     data: MeetUpRequest;
   }> {
-    const response = await api.post(`/meet-up-requests/${requestId}/decline`, data);
-    return response.data;
+    try {
+      const response = await api.post(`/meet-up-requests/${requestId}/decline`, data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async cancelMeetUpRequest(requestId: string): Promise<{ message: string }> {
-    const response = await api.post(`/meet-up-requests/${requestId}/cancel`);
-    return response.data;
+    try {
+      const response = await api.post(`/meet-up-requests/${requestId}/cancel`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async completeMeetUpRequest(requestId: string): Promise<{ message: string }> {
-    const response = await api.post(`/meet-up-requests/${requestId}/complete`);
-    return response.data;
+    try {
+      const response = await api.post(`/meet-up-requests/${requestId}/complete`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async addParticipant(requestId: string, data: AddParticipant): Promise<{ message: string }> {
-    const response = await api.post(`/meet-up-requests/${requestId}/participants`, data);
-    return response.data;
+    try {
+      const response = await api.post(`/meet-up-requests/${requestId}/participants`, data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async removeParticipant(requestId: string, userId: string): Promise<{ message: string }> {
-    const response = await api.delete(`/meet-up-requests/${requestId}/participants/${userId}`);
-    return response.data;
+    try {
+      const response = await api.delete(`/meet-up-requests/${requestId}/participants/${userId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async suggestAlternative(requestId: string, data: SuggestAlternative): Promise<{ message: string }> {
-    const response = await api.post(`/meet-up-requests/${requestId}/suggest-alternative`, data);
-    return response.data;
+    try {
+      const response = await api.post(`/meet-up-requests/${requestId}/suggest-alternative`, data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async searchPartners(params?: {
@@ -382,13 +430,21 @@ class MeetUpRequestService {
       hasPrev: boolean;
     };
   }> {
-    const response = await api.get('/meet-up-requests/search/partners', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/meet-up-requests/search/partners', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getStats(): Promise<MeetUpStats> {
-    const response = await api.get('/meet-up-requests/stats/overview');
-    return response.data.data;
+    try {
+      const response = await api.get('/meet-up-requests/stats/overview');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Admin-specific methods
@@ -402,31 +458,47 @@ class MeetUpRequestService {
     dateTo?: string;
     search?: string;
   }): Promise<MeetUpRequestsResponse> {
-    const response = await api.get('/meet-up-requests/admin/all', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/meet-up-requests/admin/all', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getAdminAnalytics(params?: {
     period?: string;
     hotelId?: string;
   }): Promise<AdminAnalytics> {
-    const response = await api.get('/meet-up-requests/admin/analytics', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/meet-up-requests/admin/analytics', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async adminForceCancel(requestId: string, reason?: string): Promise<{
     message: string;
     data: MeetUpRequest;
   }> {
-    const response = await api.post(`/meet-up-requests/admin/${requestId}/force-cancel`, { reason });
-    return response.data;
+    try {
+      const response = await api.post(`/meet-up-requests/admin/${requestId}/force-cancel`, { reason });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getAdminInsights(params?: {
     hotelId?: string;
   }): Promise<AdminInsights> {
-    const response = await api.get('/meet-up-requests/admin/insights', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/meet-up-requests/admin/insights', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Utility functions

@@ -39,7 +39,7 @@ class InventoryController {
 
       let inventory = await RoomAvailability.find(filter)
         .populate('roomTypeId', 'name code basePrice')
-        .sort({ date: 1, 'roomTypeId.name': 1 });
+        .sort({ date: 1, 'roomTypeId.name': 1 }).lean().limit(1000);
 
       if (channel) {
         inventory = inventory.map(item => {
@@ -128,7 +128,7 @@ class InventoryController {
 
         await inventory.save();
       } else {
-        const roomType = await RoomType.findById(roomTypeId);
+        const roomType = await RoomType.findById(roomTypeId).lean();
         if (!roomType) {
           return res.status(404).json({
             success: false,
@@ -229,14 +229,14 @@ class InventoryController {
         hotelId,
         roomTypeId,
         date: { $in: updateDates }
-      });
+      }).lean().limit(1000);
       const inventoryByDate = new Map();
       existingInventory.forEach(inv => {
         inventoryByDate.set(inv.date.toISOString().split('T')[0], inv);
       });
 
       // Pre-fetch room type and room count once (not inside loop)
-      const roomType = await RoomType.findById(roomTypeId);
+      const roomType = await RoomType.findById(roomTypeId).lean();
       const totalRooms = await Room.countDocuments({
         hotelId,
         roomTypeId,
@@ -416,7 +416,7 @@ class InventoryController {
       };
 
       if (channel) {
-        const inventories = await RoomAvailability.find(filter);
+        const inventories = await RoomAvailability.find(filter).lean().limit(1000);
         
         for (const inventory of inventories) {
           const channelIndex = inventory.channelInventory.findIndex(
@@ -514,7 +514,7 @@ class InventoryController {
 
       const inventory = await RoomAvailability.find(filter)
         .populate('roomTypeId', 'name code')
-        .sort({ date: 1 });
+        .sort({ date: 1 }).lean().limit(1000);
 
       const calendar = {};
       
@@ -659,7 +659,7 @@ class InventoryController {
         });
       }
 
-      const roomType = await RoomType.findById(roomTypeId);
+      const roomType = await RoomType.findById(roomTypeId).lean();
       if (!roomType) {
         return res.status(404).json({
           success: false,
@@ -689,7 +689,7 @@ class InventoryController {
         hotelId,
         roomTypeId,
         date: { $gte: new Date(startDate), $lte: new Date(endDate) }
-      }).lean();
+      }).lean().limit(1000);
 
       const existingByDate = new Map();
       existingRecords.forEach(rec => {

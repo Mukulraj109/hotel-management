@@ -29,7 +29,7 @@ class PushNotificationDeliveryService {
   async sendPushNotification(userId, notification) {
     try {
       // Get user's push preferences
-      const preferences = await NotificationPreference.findOne({ userId });
+      const preferences = await NotificationPreference.findOne({ userId }).lean();
       if (!preferences || !preferences.push.enabled) {
         return {
           success: false,
@@ -253,35 +253,39 @@ class PushNotificationDeliveryService {
    * @returns {Promise<Array>} Array of results
    */
   async sendBulkPushNotifications(notifications) {
-    const results = [];
-    const batchSize = 10; // Process in batches to avoid overwhelming the service
+    try {
+      const results = [];
+      const batchSize = 10; // Process in batches to avoid overwhelming the service
 
-    for (let i = 0; i < notifications.length; i += batchSize) {
-      const batch = notifications.slice(i, i + batchSize);
-      const batchPromises = batch.map(({ userId, notification }) =>
-        this.sendPushNotification(userId, notification)
-      );
+      for (let i = 0; i < notifications.length; i += batchSize) {
+        const batch = notifications.slice(i, i + batchSize);
+        const batchPromises = batch.map(({ userId, notification }) =>
+          this.sendPushNotification(userId, notification)
+        );
 
-      const batchResults = await Promise.allSettled(batchPromises);
-      results.push(...batchResults.map((result, index) => ({
-        userId: batch[index].userId,
-        notificationId: batch[index].notification._id,
-        result: result.status === 'fulfilled' ? result.value : { success: false, error: result.reason }
-      })));
+        const batchResults = await Promise.allSettled(batchPromises);
+        results.push(...batchResults.map((result, index) => ({
+          userId: batch[index].userId,
+          notificationId: batch[index].notification._id,
+          result: result.status === 'fulfilled' ? result.value : { success: false, error: result.reason }
+        })));
 
-      // Small delay between batches
-      if (i + batchSize < notifications.length) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Small delay between batches
+        if (i + batchSize < notifications.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       }
+
+      logger.info('Bulk push notifications completed', {
+        total: notifications.length,
+        successful: results.filter(r => r.result.success).length,
+        failed: results.filter(r => !r.result.success).length
+      });
+
+      return results;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    logger.info('Bulk push notifications completed', {
-      total: notifications.length,
-      successful: results.filter(r => r.result.success).length,
-      failed: results.filter(r => !r.result.success).length
-    });
-
-    return results;
   }
 
   /**
@@ -290,19 +294,23 @@ class PushNotificationDeliveryService {
    * @returns {Promise<Object>} Test result
    */
   async testPushNotification(userId) {
-    const testNotification = {
-      _id: 'test-' + Date.now(),
-      type: 'system_alert',
-      title: 'Test Notification',
-      message: 'This is a test push notification from PENTOUZ Hotel.',
-      priority: 'medium',
-      metadata: {
-        category: 'system',
-        tags: ['test']
-      }
-    };
+    try {
+      const testNotification = {
+        _id: 'test-' + Date.now(),
+        type: 'system_alert',
+        title: 'Test Notification',
+        message: 'This is a test push notification from PENTOUZ Hotel.',
+        priority: 'medium',
+        metadata: {
+          category: 'system',
+          tags: ['test']
+        }
+      };
 
-    return await this.sendPushNotification(userId, testNotification);
+      return await this.sendPushNotification(userId, testNotification);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

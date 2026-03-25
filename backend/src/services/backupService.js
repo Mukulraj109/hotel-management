@@ -252,43 +252,47 @@ class BackupService {
    * Backup database using mongodump
    */
   async backupDatabase(backupPath, type = 'full') {
-    const dbBackupPath = path.join(backupPath, 'database');
-    await fs.mkdir(dbBackupPath, { recursive: true });
+    try {
+      const dbBackupPath = path.join(backupPath, 'database');
+      await fs.mkdir(dbBackupPath, { recursive: true });
 
-    return new Promise((resolve, reject) => {
-      const mongoUri = process.env.MONGO_URI;
-      const args = [
-        '--uri', mongoUri,
-        '--out', dbBackupPath
-      ];
+      return new Promise((resolve, reject) => {
+        const mongoUri = process.env.MONGO_URI;
+        const args = [
+          '--uri', mongoUri,
+          '--out', dbBackupPath
+        ];
 
-      // Add compression for full backups
-      if (type === 'full') {
-        args.push('--gzip');
-      }
-
-      const mongodump = spawn('mongodump', args);
-      let errorOutput = '';
-
-      mongodump.stderr.on('data', (data) => {
-        errorOutput += data.toString();
-      });
-
-      mongodump.on('close', (code) => {
-        if (code === 0) {
-          logger.info('Database backup completed', { path: dbBackupPath });
-          resolve(dbBackupPath);
-        } else {
-          logger.error('Database backup failed', { code, error: errorOutput });
-          reject(new Error(`mongodump failed with code ${code}: ${errorOutput}`));
+        // Add compression for full backups
+        if (type === 'full') {
+          args.push('--gzip');
         }
-      });
 
-      mongodump.on('error', (error) => {
-        logger.error('Failed to start mongodump:', error);
-        reject(error);
+        const mongodump = spawn('mongodump', args);
+        let errorOutput = '';
+
+        mongodump.stderr.on('data', (data) => {
+          errorOutput += data.toString();
+        });
+
+        mongodump.on('close', (code) => {
+          if (code === 0) {
+            logger.info('Database backup completed', { path: dbBackupPath });
+            resolve(dbBackupPath);
+          } else {
+            logger.error('Database backup failed', { code, error: errorOutput });
+            reject(new Error(`mongodump failed with code ${code}: ${errorOutput}`));
+          }
+        });
+
+        mongodump.on('error', (error) => {
+          logger.error('Failed to start mongodump:', error);
+          reject(error);
+        });
       });
-    });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -406,48 +410,56 @@ class BackupService {
    * Create backup manifest with metadata
    */
   async createBackupManifest(backupPath, metadata) {
-    const manifest = {
-      ...metadata,
-      version: '1.0',
-      hostname: process.env.HOSTNAME || 'unknown',
-      environment: process.env.NODE_ENV || 'unknown',
-      checksum: await this.calculateChecksum(backupPath)
-    };
+    try {
+      const manifest = {
+        ...metadata,
+        version: '1.0',
+        hostname: process.env.HOSTNAME || 'unknown',
+        environment: process.env.NODE_ENV || 'unknown',
+        checksum: await this.calculateChecksum(backupPath)
+      };
 
-    const manifestPath = path.join(backupPath, 'manifest.json');
-    await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2));
+      const manifestPath = path.join(backupPath, 'manifest.json');
+      await fs.writeFile(manifestPath, JSON.stringify(manifest, null, 2));
 
-    return manifest;
+      return manifest;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Compress backup directory
    */
   async compressBackup(backupPath) {
-    const compressedPath = `${backupPath}.tar.gz`;
+    try {
+      const compressedPath = `${backupPath}.tar.gz`;
 
-    return new Promise((resolve, reject) => {
-      const tar = spawn('tar', [
-        '-czf',
-        compressedPath,
-        '-C',
-        path.dirname(backupPath),
-        path.basename(backupPath)
-      ]);
+      return new Promise((resolve, reject) => {
+        const tar = spawn('tar', [
+          '-czf',
+          compressedPath,
+          '-C',
+          path.dirname(backupPath),
+          path.basename(backupPath)
+        ]);
 
-      tar.on('close', (code) => {
-        if (code === 0) {
-          // Remove uncompressed directory
-          fs.rm(backupPath, { recursive: true, force: true }).then(() => {
-            resolve(compressedPath);
-          });
-        } else {
-          reject(new Error(`tar failed with code ${code}`));
-        }
+        tar.on('close', (code) => {
+          if (code === 0) {
+            // Remove uncompressed directory
+            fs.rm(backupPath, { recursive: true, force: true }).then(() => {
+              resolve(compressedPath);
+            });
+          } else {
+            reject(new Error(`tar failed with code ${code}`));
+          }
+        });
+
+        tar.on('error', reject);
       });
-
-      tar.on('error', reject);
-    });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -659,44 +671,52 @@ class BackupService {
   }
 
   async backupCollection(collectionName, backupPath, since) {
-    const query = since ? JSON.stringify({ updatedAt: { $gte: since } }) : '{}';
+    try {
+      const query = since ? JSON.stringify({ updatedAt: { $gte: since } }) : '{}';
     
-    return new Promise((resolve, reject) => {
-      const args = [
-        '--uri', process.env.MONGO_URI,
-        '--collection', collectionName,
-        '--query', query,
-        '--out', backupPath
-      ];
+      return new Promise((resolve, reject) => {
+        const args = [
+          '--uri', process.env.MONGO_URI,
+          '--collection', collectionName,
+          '--query', query,
+          '--out', backupPath
+        ];
 
-      const mongodump = spawn('mongodump', args);
+        const mongodump = spawn('mongodump', args);
 
-      mongodump.on('close', (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`Collection backup failed with code ${code}`));
-        }
+        mongodump.on('close', (code) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(new Error(`Collection backup failed with code ${code}`));
+          }
+        });
+
+        mongodump.on('error', reject);
       });
-
-      mongodump.on('error', reject);
-    });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async copyDirectory(source, target) {
-    await fs.mkdir(target, { recursive: true });
+    try {
+      await fs.mkdir(target, { recursive: true });
     
-    const entries = await fs.readdir(source, { withFileTypes: true });
+      const entries = await fs.readdir(source, { withFileTypes: true });
 
-    for (const entry of entries) {
-      const sourcePath = path.join(source, entry.name);
-      const targetPath = path.join(target, entry.name);
+      for (const entry of entries) {
+        const sourcePath = path.join(source, entry.name);
+        const targetPath = path.join(target, entry.name);
 
-      if (entry.isDirectory()) {
-        await this.copyDirectory(sourcePath, targetPath);
-      } else {
-        await fs.copyFile(sourcePath, targetPath);
+        if (entry.isDirectory()) {
+          await this.copyDirectory(sourcePath, targetPath);
+        } else {
+          await fs.copyFile(sourcePath, targetPath);
+        }
       }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -721,9 +741,13 @@ class BackupService {
   }
 
   async calculateChecksum(dirPath) {
-    // Simple checksum calculation - in production, use proper hashing
-    const stats = await fs.stat(dirPath);
-    return `${stats.size}-${stats.mtime.getTime()}`;
+    try {
+      // Simple checksum calculation - in production, use proper hashing
+      const stats = await fs.stat(dirPath);
+      return `${stats.size}-${stats.mtime.getTime()}`;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getFileSize(filePath) {

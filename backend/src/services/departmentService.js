@@ -16,7 +16,7 @@ class DepartmentService {
       const existingDepartment = await Department.findOne({ 
         code: departmentData.code,
         hotelId: departmentData.hotelId 
-      });
+      }).lean();
 
       if (existingDepartment) {
         throw new Error('Department code already exists for this hotel');
@@ -24,7 +24,7 @@ class DepartmentService {
 
       // Validate parent department if specified
       if (departmentData.parentDepartment) {
-        const parentDept = await Department.findById(departmentData.parentDepartment);
+        const parentDept = await Department.findById(departmentData.parentDepartment).lean();
         if (!parentDept || parentDept.hotelId.toString() !== departmentData.hotelId) {
           throw new Error('Invalid parent department');
         }
@@ -184,14 +184,14 @@ class DepartmentService {
   // Delete department
   async deleteDepartment(departmentId, userId) {
     try {
-      const department = await Department.findById(departmentId);
+      const department = await Department.findById(departmentId).lean();
 
       if (!department) {
         throw new Error('Department not found');
       }
 
       // Check for subdepartments
-      const subdepartments = await Department.find({ parentDepartment: departmentId });
+      const subdepartments = await Department.find({ parentDepartment: departmentId }).lean().limit(1000);
       if (subdepartments.length > 0) {
         throw new Error('Cannot delete department with subdepartments');
       }
@@ -303,7 +303,7 @@ class DepartmentService {
   // Get department performance metrics
   async getDepartmentMetrics(departmentId, period = '30d') {
     try {
-      const department = await Department.findById(departmentId);
+      const department = await Department.findById(departmentId).lean();
       
       if (!department) {
         throw new Error('Department not found');
@@ -377,7 +377,7 @@ class DepartmentService {
       })
       .populate('parentDepartment', 'name code')
       .limit(limit)
-      .sort({ name: 1 });
+      .sort({ name: 1 }).lean();
 
       return departments;
     } catch (error) {
@@ -391,7 +391,7 @@ class DepartmentService {
       const departments = await Department.find({ hotelId })
         .populate('parentDepartment', 'name code')
         .populate('staffing.headOfDepartment', 'name email')
-        .sort({ level: 1, name: 1 });
+        .sort({ level: 1, name: 1 }).lean().limit(1000);
 
       if (format === 'csv') {
         return this.convertToCSV(departments);
@@ -405,12 +405,16 @@ class DepartmentService {
 
   // Helper methods
   async wouldCreateCircularDependency(parentId, childId) {
-    if (parentId === childId) return true;
+    try {
+      if (parentId === childId) return true;
 
-    const parent = await Department.findById(parentId);
-    if (!parent || !parent.parentDepartment) return false;
+      const parent = await Department.findById(parentId).lean();
+      if (!parent || !parent.parentDepartment) return false;
 
-    return await this.wouldCreateCircularDependency(parent.parentDepartment, childId);
+      return await this.wouldCreateCircularDependency(parent.parentDepartment, childId);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   convertToCSV(departments) {

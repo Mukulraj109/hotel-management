@@ -18,6 +18,7 @@ import { Textarea } from '@/components/ui/textarea';
 import financialService from '@/services/financialService';
 import { formatCurrency } from '@/utils/currencyUtils';
 import { toast } from 'sonner';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface Payment {
   _id: string;
@@ -1097,4 +1098,4 @@ const PaymentManagement: React.FC = () => {
   );
 };
 
-export default PaymentManagement;
+export default withErrorBoundary(PaymentManagement, { level: 'component' });

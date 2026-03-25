@@ -43,6 +43,7 @@ import PredictiveDemandChart from '../../components/admin/PredictiveDemandChart'
 import { adminService } from '../../services/adminService';
 import { InventoryItem } from '../../types/admin';
 import { formatNumber, formatCurrency } from '../../utils/dashboardUtils';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface InventoryFilters {
   category?: string;
@@ -61,7 +62,7 @@ interface InventoryStats {
   };
 }
 
-export default function AdminInventory() {
+function AdminInventory() {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
 
   // State
@@ -1118,7 +1119,7 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
                 ].map((tab) => {
                   const Icon = tab.icon;
                   return (
-                    <button
+                    <button aria-label="Close"
                       key={tab.id}
                       onClick={() => setActiveAnalyticsTab(tab.id as typeof activeAnalyticsTab)}
                       className={`flex-1 flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -1342,6 +1343,7 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
                 <label className="block text-sm font-medium text-gray-700 mb-2">Item Name *</label>
                 <Input
                   type="text"
+                  required
                   placeholder="Enter item name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
@@ -1352,6 +1354,7 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
                 <label className="block text-sm font-medium text-gray-700 mb-2">SKU *</label>
                 <Input
                   type="text"
+                  required
                   placeholder="Enter SKU"
                   value={formData.sku}
                   onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
@@ -1442,6 +1445,7 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
                   <label className="block text-sm font-medium text-gray-700 mb-1">Supplier Name</label>
                   <Input
                     type="text"
+                    required
                     placeholder="Enter supplier name"
                     value={formData.supplier.name}
                     onChange={(e) => setFormData({ 
@@ -1466,6 +1470,7 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
                   <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
                   <Input
                     type="email"
+                    required
                     placeholder="Enter email address"
                     value={formData.supplier.email}
                     onChange={(e) => setFormData({ 
@@ -1888,3 +1893,6 @@ ${reportData.topSuppliers.map(supplier => `- ${supplier.supplier}: ${supplier.it
     </div>
   );
 }
+
+
+export default withErrorBoundary(AdminInventory, { level: 'page' });

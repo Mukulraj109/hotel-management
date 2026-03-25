@@ -136,59 +136,63 @@ class OTAContentTranslationService extends EventEmitter {
    * Translate content for a specific OTA channel
    */
   async translateContentForChannel(hotelId, contentData, channelConfig, options = {}) {
-    const channelId = channelConfig.channelId;
-    const requirements = this.channelRequirements[channelId] || this.channelRequirements.booking_com;
+    try {
+      const channelId = channelConfig.channelId;
+      const requirements = this.channelRequirements[channelId] || this.channelRequirements.booking_com;
 
-    logger.info(`Translating content for ${channelId}`, {
-      hotelId,
-      supportedLanguages: channelConfig.activeSupportedLanguages.length
-    });
+      logger.info(`Translating content for ${channelId}`, {
+        hotelId,
+        supportedLanguages: channelConfig.activeSupportedLanguages.length
+      });
 
-    const translatedContent = [];
-    const errors = [];
+      const translatedContent = [];
+      const errors = [];
 
-    // Process each supported language
-    for (const languageConfig of channelConfig.activeSupportedLanguages) {
-      const targetLanguage = languageConfig.languageCode;
+      // Process each supported language
+      for (const languageConfig of channelConfig.activeSupportedLanguages) {
+        const targetLanguage = languageConfig.languageCode;
       
-      // Skip if this is the base language
-      if (targetLanguage === channelConfig.languageSettings.primaryLanguage) {
-        continue;
+        // Skip if this is the base language
+        if (targetLanguage === channelConfig.languageSettings.primaryLanguage) {
+          continue;
+        }
+
+        try {
+          const languageContent = await this.translateContentToLanguage(
+            contentData,
+            targetLanguage,
+            channelConfig,
+            requirements,
+            options
+          );
+
+          translatedContent.push({
+            language: targetLanguage,
+            channelLanguageCode: languageConfig.channelLanguageCode || targetLanguage,
+            content: languageContent,
+            translationQuality: languageConfig.translationQuality,
+            optimized: true
+          });
+
+        } catch (error) {
+          logger.error(`Failed to translate to ${targetLanguage} for ${channelId}:`, error);
+          errors.push({
+            language: targetLanguage,
+            error: error.message
+          });
+        }
       }
 
-      try {
-        const languageContent = await this.translateContentToLanguage(
-          contentData,
-          targetLanguage,
-          channelConfig,
-          requirements,
-          options
-        );
-
-        translatedContent.push({
-          language: targetLanguage,
-          channelLanguageCode: languageConfig.channelLanguageCode || targetLanguage,
-          content: languageContent,
-          translationQuality: languageConfig.translationQuality,
-          optimized: true
-        });
-
-      } catch (error) {
-        logger.error(`Failed to translate to ${targetLanguage} for ${channelId}:`, error);
-        errors.push({
-          language: targetLanguage,
-          error: error.message
-        });
-      }
+      return {
+        channelId,
+        success: errors.length === 0,
+        translatedContent,
+        errors: errors.length > 0 ? errors : undefined,
+        processedAt: new Date()
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return {
-      channelId,
-      success: errors.length === 0,
-      translatedContent,
-      errors: errors.length > 0 ? errors : undefined,
-      processedAt: new Date()
-    };
   }
 
   /**
@@ -251,33 +255,37 @@ class OTAContentTranslationService extends EventEmitter {
    * Optimize content for specific OTA channel before translation
    */
   async optimizeContentForChannel(content, fieldName, channelId, requirements) {
-    let optimized = content;
+    try {
+      let optimized = content;
 
-    // Apply channel-specific optimizations
-    const optimization = requirements.contentOptimization || {};
+      // Apply channel-specific optimizations
+      const optimization = requirements.contentOptimization || {};
 
-    // Trim to maximum length
-    const maxLength = this.getMaxLengthForField(fieldName, requirements);
-    if (maxLength && optimized.length > maxLength) {
-      optimized = this.intelligentTrim(optimized, maxLength);
+      // Trim to maximum length
+      const maxLength = this.getMaxLengthForField(fieldName, requirements);
+      if (maxLength && optimized.length > maxLength) {
+        optimized = this.intelligentTrim(optimized, maxLength);
+      }
+
+      // Include SEO keywords if required
+      if (optimization.includeKeywords && fieldName === 'hotel_description') {
+        optimized = await this.addSEOKeywords(optimized, channelId);
+      }
+
+      // Emphasize unique features
+      if (optimization.emphasizeUniqueFeatures) {
+        optimized = await this.emphasizeUniqueFeatures(optimized, channelId);
+      }
+
+      // Apply channel-specific tone
+      if (optimization.personalizedTone && channelId === 'airbnb') {
+        optimized = await this.applyPersonalizedTone(optimized);
+      }
+
+      return optimized;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Include SEO keywords if required
-    if (optimization.includeKeywords && fieldName === 'hotel_description') {
-      optimized = await this.addSEOKeywords(optimized, channelId);
-    }
-
-    // Emphasize unique features
-    if (optimization.emphasizeUniqueFeatures) {
-      optimized = await this.emphasizeUniqueFeatures(optimized, channelId);
-    }
-
-    // Apply channel-specific tone
-    if (optimization.personalizedTone && channelId === 'airbnb') {
-      optimized = await this.applyPersonalizedTone(optimized);
-    }
-
-    return optimized;
   }
 
   /**
@@ -343,26 +351,30 @@ class OTAContentTranslationService extends EventEmitter {
    * Post-process translated content
    */
   async postProcessTranslation(translatedText, fieldName, targetLanguage, requirements) {
-    let processed = translatedText;
+    try {
+      let processed = translatedText;
 
-    // Apply language-specific formatting
-    processed = await this.applyLanguageFormatting(processed, targetLanguage);
+      // Apply language-specific formatting
+      processed = await this.applyLanguageFormatting(processed, targetLanguage);
 
-    // Apply cultural adaptations
-    if (requirements.contentOptimization?.culturalAdaptation) {
-      processed = await this.applyCulturalAdaptations(processed, targetLanguage);
-    }
+      // Apply cultural adaptations
+      if (requirements.contentOptimization?.culturalAdaptation) {
+        processed = await this.applyCulturalAdaptations(processed, targetLanguage);
+      }
 
-    // Final length check
-    const maxLength = this.getMaxLengthForField(fieldName, requirements);
-    if (maxLength && processed.length > maxLength) {
-      processed = this.intelligentTrim(processed, maxLength);
-    }
+      // Final length check
+      const maxLength = this.getMaxLengthForField(fieldName, requirements);
+      if (maxLength && processed.length > maxLength) {
+        processed = this.intelligentTrim(processed, maxLength);
+      }
 
-    // Clean up and validate
-    processed = this.cleanupText(processed);
+      // Clean up and validate
+      processed = this.cleanupText(processed);
     
-    return processed;
+      return processed;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -412,148 +424,172 @@ class OTAContentTranslationService extends EventEmitter {
    * Add SEO keywords for channel optimization
    */
   async addSEOKeywords(content, channelId) {
-    const keywords = {
-      booking_com: ['hotel', 'accommodation', 'booking', 'reserve'],
-      expedia: ['travel', 'vacation', 'stay', 'hotel'],
-      airbnb: ['home', 'unique', 'local', 'experience'],
-      agoda: ['hotel', 'resort', 'accommodation', 'stay']
-    };
+    try {
+      const keywords = {
+        booking_com: ['hotel', 'accommodation', 'booking', 'reserve'],
+        expedia: ['travel', 'vacation', 'stay', 'hotel'],
+        airbnb: ['home', 'unique', 'local', 'experience'],
+        agoda: ['hotel', 'resort', 'accommodation', 'stay']
+      };
 
-    const channelKeywords = keywords[channelId] || keywords.booking_com;
+      const channelKeywords = keywords[channelId] || keywords.booking_com;
     
-    // Intelligently integrate keywords without making content awkward
-    let enhanced = content;
+      // Intelligently integrate keywords without making content awkward
+      let enhanced = content;
     
-    // Add keywords naturally in the first paragraph if possible
-    const sentences = content.split('. ');
-    if (sentences.length > 0) {
-      const firstSentence = sentences[0];
-      const hasKeyword = channelKeywords.some(keyword => 
-        firstSentence.toLowerCase().includes(keyword.toLowerCase())
-      );
+      // Add keywords naturally in the first paragraph if possible
+      const sentences = content.split('. ');
+      if (sentences.length > 0) {
+        const firstSentence = sentences[0];
+        const hasKeyword = channelKeywords.some(keyword => 
+          firstSentence.toLowerCase().includes(keyword.toLowerCase())
+        );
       
-      if (!hasKeyword) {
-        const keyword = channelKeywords[0];
-        enhanced = `${firstSentence.replace(/^This/, `This ${keyword}`)}. ${sentences.slice(1).join('. ')}`;
+        if (!hasKeyword) {
+          const keyword = channelKeywords[0];
+          enhanced = `${firstSentence.replace(/^This/, `This ${keyword}`)}. ${sentences.slice(1).join('. ')}`;
+        }
       }
-    }
     
-    return enhanced;
+      return enhanced;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Emphasize unique features in content
    */
   async emphasizeUniqueFeatures(content, channelId) {
-    // Look for feature keywords and emphasize them
-    const featureKeywords = [
-      'unique', 'exclusive', 'luxury', 'premium', 'boutique',
-      'historic', 'modern', 'contemporary', 'traditional',
-      'oceanfront', 'mountain', 'downtown', 'beachfront'
-    ];
+    try {
+      // Look for feature keywords and emphasize them
+      const featureKeywords = [
+        'unique', 'exclusive', 'luxury', 'premium', 'boutique',
+        'historic', 'modern', 'contemporary', 'traditional',
+        'oceanfront', 'mountain', 'downtown', 'beachfront'
+      ];
 
-    let enhanced = content;
+      let enhanced = content;
     
-    // Add emphasis to feature words (but don't overdo it)
-    featureKeywords.forEach(keyword => {
-      const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
-      if (enhanced.match(regex) && enhanced.match(regex).length === 1) {
-        enhanced = enhanced.replace(regex, match => match);
-      }
-    });
+      // Add emphasis to feature words (but don't overdo it)
+      featureKeywords.forEach(keyword => {
+        const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
+        if (enhanced.match(regex) && enhanced.match(regex).length === 1) {
+          enhanced = enhanced.replace(regex, match => match);
+        }
+      });
 
-    return enhanced;
+      return enhanced;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Apply personalized tone for platforms like Airbnb
    */
   async applyPersonalizedTone(content) {
-    // Make content more personal and welcoming
-    let personalized = content;
+    try {
+      // Make content more personal and welcoming
+      let personalized = content;
     
-    // Replace formal language with more personal language
-    const replacements = {
-      'The hotel': 'Our place',
-      'Guests will': 'You\'ll',
-      'The property': 'This home',
-      'Facilities include': 'You\'ll have access to',
-      'The accommodation': 'Your stay'
-    };
+      // Replace formal language with more personal language
+      const replacements = {
+        'The hotel': 'Our place',
+        'Guests will': 'You\'ll',
+        'The property': 'This home',
+        'Facilities include': 'You\'ll have access to',
+        'The accommodation': 'Your stay'
+      };
 
-    Object.entries(replacements).forEach(([formal, personal]) => {
-      personalized = personalized.replace(new RegExp(formal, 'g'), personal);
-    });
+      Object.entries(replacements).forEach(([formal, personal]) => {
+        personalized = personalized.replace(new RegExp(formal, 'g'), personal);
+      });
 
-    return personalized;
+      return personalized;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Apply cultural adaptations for specific languages/regions
    */
   async applyCulturalAdaptations(content, targetLanguage) {
-    let adapted = content;
+    try {
+      let adapted = content;
 
-    // Language-specific cultural adaptations
-    switch (targetLanguage) {
-      case 'JA': // Japanese
-        // Be more formal and detailed
-        adapted = adapted.replace(/\./g, '。').replace(/,/g, '、');
-        break;
-      case 'ZH': // Chinese
-        // Emphasize harmony and balance
-        break;
-      case 'AR': // Arabic
-        // Consider right-to-left reading patterns
-        break;
-      case 'DE': // German
-        // Germans appreciate detailed information
-        break;
+      // Language-specific cultural adaptations
+      switch (targetLanguage) {
+        case 'JA': // Japanese
+          // Be more formal and detailed
+          adapted = adapted.replace(/\./g, '。').replace(/,/g, '、');
+          break;
+        case 'ZH': // Chinese
+          // Emphasize harmony and balance
+          break;
+        case 'AR': // Arabic
+          // Consider right-to-left reading patterns
+          break;
+        case 'DE': // German
+          // Germans appreciate detailed information
+          break;
+      }
+
+      return adapted;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return adapted;
   }
 
   /**
    * Apply language-specific formatting
    */
   async applyLanguageFormatting(content, targetLanguage) {
-    let formatted = content;
+    try {
+      let formatted = content;
 
-    // Apply language-specific punctuation and formatting rules
-    switch (targetLanguage) {
-      case 'FR': // French
-        // Add non-breaking spaces before colons, semicolons, etc.
-        formatted = formatted.replace(/\s*:/g, ' :');
-        formatted = formatted.replace(/\s*;/g, ' ;');
-        break;
-      case 'ES': // Spanish
-        // Add inverted question/exclamation marks
-        formatted = formatted.replace(/(\w+\?)/g, '¿$1');
-        formatted = formatted.replace(/(\w+!)/g, '¡$1');
-        break;
+      // Apply language-specific punctuation and formatting rules
+      switch (targetLanguage) {
+        case 'FR': // French
+          // Add non-breaking spaces before colons, semicolons, etc.
+          formatted = formatted.replace(/\s*:/g, ' :');
+          formatted = formatted.replace(/\s*;/g, ' ;');
+          break;
+        case 'ES': // Spanish
+          // Add inverted question/exclamation marks
+          formatted = formatted.replace(/(\w+\?)/g, '¿$1');
+          formatted = formatted.replace(/(\w+!)/g, '¡$1');
+          break;
+      }
+
+      return formatted;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return formatted;
   }
 
   /**
    * Perform language-specific quality checks
    */
   async performLanguageSpecificChecks(text, language) {
-    let bonus = 0;
+    try {
+      let bonus = 0;
 
-    // Check for proper character encoding
-    if (/[\u00C0-\u017F]/.test(text) && ['FR', 'ES', 'DE'].includes(language)) {
-      bonus += 0.05; // Proper accents for European languages
+      // Check for proper character encoding
+      if (/[\u00C0-\u017F]/.test(text) && ['FR', 'ES', 'DE'].includes(language)) {
+        bonus += 0.05; // Proper accents for European languages
+      }
+
+      // Check for proper CJK characters
+      if (/[\u4E00-\u9FFF]/.test(text) && ['ZH', 'JA'].includes(language)) {
+        bonus += 0.05; // Contains CJK characters
+      }
+
+      return bonus;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Check for proper CJK characters
-    if (/[\u4E00-\u9FFF]/.test(text) && ['ZH', 'JA'].includes(language)) {
-      bonus += 0.05; // Contains CJK characters
-    }
-
-    return bonus;
   }
 
   /**
@@ -625,8 +661,13 @@ class OTAContentTranslationService extends EventEmitter {
    */
   startQueueProcessor() {
     setInterval(async () => {
-      if (!this.processingQueue && this.translationQueue.size > 0) {
-        await this.processTranslationQueue();
+      try {
+        if (!this.processingQueue && this.translationQueue.size > 0) {
+          await this.processTranslationQueue();
+        }
+    
+      } catch (error) {
+        console.error('Translation queue processing failed:', error.message);
       }
     }, 5000); // Process queue every 5 seconds
   }

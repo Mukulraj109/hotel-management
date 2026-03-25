@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useToast } from '@/hooks/use-toast';
 import { Phone, Plus, Trash2, Save, X } from 'lucide-react';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface PhoneExtension {
   _id?: string;
@@ -937,4 +938,4 @@ const PhoneExtensionForm: React.FC<PhoneExtensionFormProps> = ({
   );
 };
 
-export default PhoneExtensionForm;
+export default withErrorBoundary(PhoneExtensionForm, { level: 'component' });

@@ -134,7 +134,14 @@ class DashboardController {
   // Get room status summary
   async getRoomStatusSummary(req, res) {
     try {
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const hotelId = req.user?.hotelId;
+      const roomMatchStage = hotelId ? { $match: { hotelId } } : { $match: { isActive: true } };
       const roomSummary = await Room.aggregate([
+        roomMatchStage,
         {
           $group: {
             _id: '$status',
@@ -187,7 +194,7 @@ class DashboardController {
       .populate('userId', 'name email')
       .populate('rooms.roomId', 'roomNumber')
       .sort({ createdAt: -1 })
-      .limit(limit / 2);
+      .limit(limit / 2).lean();
 
       // Get recent guest services
       const recentServices = await GuestService.find({
@@ -196,7 +203,7 @@ class DashboardController {
       .populate('guestId', 'name')
       .populate('roomId', 'roomNumber')
       .sort({ updatedAt: -1 })
-      .limit(limit / 2);
+      .limit(limit / 2).lean();
 
       const activities = [
         ...recentBookings.map(booking => ({

@@ -71,7 +71,7 @@ export const vendorController = {
 
   // GET /vendors/:id - Get specific vendor
   getVendor: catchAsync(async (req, res) => {
-    const vendor = await Vendor.findById(req.params.id);
+    const vendor = await Vendor.findById(req.params.id).lean();
 
     if (!vendor) {
       throw new ApplicationError('Vendor not found', 404);
@@ -107,7 +107,7 @@ export const vendorController = {
     const existingVendor = await Vendor.findOne({
       hotelId,
       email: vendorData.email
-    });
+    }).lean();
 
     if (existingVendor) {
       throw new ApplicationError('Vendor with this email already exists for this hotel', 400);
@@ -124,17 +124,7 @@ export const vendorController = {
 
   // PUT /vendors/:id - Update vendor
   updateVendor: catchAsync(async (req, res) => {
-    const vendor = await Vendor.findById(req.params.id);
-
-    if (!vendor) {
-      throw new ApplicationError('Vendor not found', 404);
-    }
-
-    // Check access permissions
     const hotelId = req.user.role === 'manager' ? req.user.hotelId : req.body.hotelId;
-    if (vendor.hotelId.toString() !== hotelId.toString()) {
-      throw new ApplicationError('You can only update vendors for your hotel', 403);
-    }
 
     // Update fields
     const allowedUpdates = [
@@ -152,8 +142,20 @@ export const vendorController = {
 
     updates.updatedBy = req.user._id;
 
-    Object.assign(vendor, updates);
-    await vendor.save();
+    const vendor = await Vendor.findOneAndUpdate(
+      { _id: req.params.id, hotelId },
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+
+    if (!vendor) {
+      // Distinguish between not found and wrong hotel
+      const exists = await Vendor.findById(req.params.id).lean();
+      if (!exists) {
+        throw new ApplicationError('Vendor not found', 404);
+      }
+      throw new ApplicationError('You can only update vendors for your hotel', 403);
+    }
 
     res.json({
       status: 'success',
@@ -164,22 +166,22 @@ export const vendorController = {
 
   // DELETE /vendors/:id - Delete vendor (soft delete)
   deleteVendor: catchAsync(async (req, res) => {
-    const vendor = await Vendor.findById(req.params.id);
+    const hotelId = req.user.role === 'manager' ? req.user.hotelId : req.body.hotelId;
+
+    const vendor = await Vendor.findOneAndUpdate(
+      { _id: req.params.id, hotelId },
+      { $set: { isActive: false, updatedBy: req.user._id } },
+      { new: true }
+    );
 
     if (!vendor) {
-      throw new ApplicationError('Vendor not found', 404);
-    }
-
-    // Check access permissions
-    const hotelId = req.user.role === 'manager' ? req.user.hotelId : req.body.hotelId;
-    if (vendor.hotelId.toString() !== hotelId.toString()) {
+      // Distinguish between not found and wrong hotel
+      const exists = await Vendor.findById(req.params.id).lean();
+      if (!exists) {
+        throw new ApplicationError('Vendor not found', 404);
+      }
       throw new ApplicationError('You can only delete vendors for your hotel', 403);
     }
-
-    // Soft delete by setting isActive to false
-    vendor.isActive = false;
-    vendor.updatedBy = req.user._id;
-    await vendor.save();
 
     res.json({
       status: 'success',
@@ -313,7 +315,7 @@ export const vendorController = {
 
   // POST /vendors/:id/performance - Update vendor performance
   updateVendorPerformance: catchAsync(async (req, res) => {
-    const vendor = await Vendor.findById(req.params.id);
+    const vendor = await Vendor.findById(req.params.id).lean();
 
     if (!vendor) {
       throw new ApplicationError('Vendor not found', 404);
@@ -343,7 +345,7 @@ export const vendorController = {
 
   // POST /vendors/:id/payment - Add payment record
   addPaymentRecord: catchAsync(async (req, res) => {
-    const vendor = await Vendor.findById(req.params.id);
+    const vendor = await Vendor.findById(req.params.id).lean();
 
     if (!vendor) {
       throw new ApplicationError('Vendor not found', 404);

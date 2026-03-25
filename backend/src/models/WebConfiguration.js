@@ -806,29 +806,37 @@ webConfigurationSchema.virtual('connectedIntegrations').get(function() {
 
 // Instance methods
 webConfigurationSchema.methods.startABTest = async function(testId) {
-  const test = this.abTesting.tests.find(t => t.testId === testId);
-  if (!test) {
-    throw new Error('Test not found');
+  try {
+    const test = this.abTesting.tests.find(t => t.testId === testId);
+    if (!test) {
+      throw new Error('Test not found');
+    }
+  
+    test.status = 'running';
+    test.testSettings.schedule.startDate = new Date();
+  
+    await this.save();
+    return test;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  test.status = 'running';
-  test.testSettings.schedule.startDate = new Date();
-  
-  await this.save();
-  return test;
 };
 
 webConfigurationSchema.methods.stopABTest = async function(testId) {
-  const test = this.abTesting.tests.find(t => t.testId === testId);
-  if (!test) {
-    throw new Error('Test not found');
+  try {
+    const test = this.abTesting.tests.find(t => t.testId === testId);
+    if (!test) {
+      throw new Error('Test not found');
+    }
+  
+    test.status = 'completed';
+    test.testSettings.schedule.endDate = new Date();
+  
+    await this.save();
+    return test;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  test.status = 'completed';
-  test.testSettings.schedule.endDate = new Date();
-  
-  await this.save();
-  return test;
 };
 
 webConfigurationSchema.methods.calculateTestResults = function(testId) {
@@ -884,27 +892,31 @@ webConfigurationSchema.methods.getPerformanceReport = function(timeframe = 30) {
 
 // Static methods
 webConfigurationSchema.statics.getOptimizationReport = async function(hotelId) {
-  const config = await this.findOne({ hotelId, status: 'active' });
-  if (!config) return null;
+  try {
+    const config = await this.findOne({ hotelId, status: 'active' }).lean();
+    if (!config) return null;
   
-  const report = {
-    abTests: {
-      total: config.abTesting.tests.length,
-      running: config.abTesting.tests.filter(t => t.status === 'running').length,
-      completed: config.abTesting.tests.filter(t => t.status === 'completed').length
-    },
-    performance: config.getPerformanceReport(),
-    personalization: {
-      total: config.personalization.rules.length,
-      active: config.personalization.rules.filter(r => r.status === 'active').length
-    },
-    integrations: {
-      total: config.integrations.length,
-      connected: config.integrations.filter(i => i.status === 'connected').length
-    }
-  };
+    const report = {
+      abTests: {
+        total: config.abTesting.tests.length,
+        running: config.abTesting.tests.filter(t => t.status === 'running').length,
+        completed: config.abTesting.tests.filter(t => t.status === 'completed').length
+      },
+      performance: config.getPerformanceReport(),
+      personalization: {
+        total: config.personalization.rules.length,
+        active: config.personalization.rules.filter(r => r.status === 'active').length
+      },
+      integrations: {
+        total: config.integrations.length,
+        connected: config.integrations.filter(i => i.status === 'connected').length
+      }
+    };
   
-  return report;
+    return report;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 const WebConfiguration = mongoose.model('WebConfiguration', webConfigurationSchema);

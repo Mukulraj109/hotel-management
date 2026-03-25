@@ -837,116 +837,132 @@ roomUpgradeSchema.methods.decline = function(declinedBy, reason = '') {
 
 // Instance method to check availability
 roomUpgradeSchema.methods.checkAvailability = async function() {
-  // This would integrate with room availability system
-  // For now, simulate availability check
-  this.availability.availabilityCheckedAt = new Date();
+  try {
+    // This would integrate with room availability system
+    // For now, simulate availability check
+    this.availability.availabilityCheckedAt = new Date();
 
-  // Placeholder logic - in real implementation, this would query room availability
-  const availabilityProbability = Math.random();
-  this.availability.isAvailable = availabilityProbability > 0.3; // 70% chance of availability
+    // Placeholder logic - in real implementation, this would query room availability
+    const availabilityProbability = Math.random();
+    this.availability.isAvailable = availabilityProbability > 0.3; // 70% chance of availability
 
-  return this.save();
+    return this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get upgrade statistics
 roomUpgradeSchema.statics.getUpgradeStats = async function(hotelId, dateRange = {}) {
-  const matchStage = { hotelId: new mongoose.Types.ObjectId(hotelId) };
+  try {
+    const matchStage = { hotelId: new mongoose.Types.ObjectId(hotelId) };
 
-  if (dateRange.start && dateRange.end) {
-    matchStage.createdAt = {
-      $gte: new Date(dateRange.start),
-      $lte: new Date(dateRange.end)
-    };
-  }
-
-  const stats = await this.aggregate([
-    { $match: matchStage },
-    {
-      $group: {
-        _id: null,
-        totalUpgrades: { $sum: 1 },
-        approvedUpgrades: {
-          $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] }
-        },
-        appliedUpgrades: {
-          $sum: { $cond: [{ $eq: ['$status', 'applied'] }, 1, 0] }
-        },
-        totalRevenue: { $sum: '$analytics.revenueImpact' },
-        avgEligibilityScore: { $avg: '$eligibilityScore' },
-        avgSatisfactionScore: { $avg: '$analytics.customerSatisfactionScore' },
-        byType: { $push: '$upgradeType' },
-        byStatus: { $push: '$status' }
-      }
+    if (dateRange.start && dateRange.end) {
+      matchStage.createdAt = {
+        $gte: new Date(dateRange.start),
+        $lte: new Date(dateRange.end)
+      };
     }
-  ]);
 
-  if (stats.length === 0) {
+    const stats = await this.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: null,
+          totalUpgrades: { $sum: 1 },
+          approvedUpgrades: {
+            $sum: { $cond: [{ $eq: ['$status', 'approved'] }, 1, 0] }
+          },
+          appliedUpgrades: {
+            $sum: { $cond: [{ $eq: ['$status', 'applied'] }, 1, 0] }
+          },
+          totalRevenue: { $sum: '$analytics.revenueImpact' },
+          avgEligibilityScore: { $avg: '$eligibilityScore' },
+          avgSatisfactionScore: { $avg: '$analytics.customerSatisfactionScore' },
+          byType: { $push: '$upgradeType' },
+          byStatus: { $push: '$status' }
+        }
+      }
+    ]);
+
+    if (stats.length === 0) {
+      return {
+        totalUpgrades: 0,
+        approvedUpgrades: 0,
+        appliedUpgrades: 0,
+        conversionRate: 0,
+        totalRevenue: 0,
+        avgEligibilityScore: 0,
+        avgSatisfactionScore: 0,
+        byType: {},
+        byStatus: {}
+      };
+    }
+
+    const result = stats[0];
+
+    // Calculate type distribution
+    const typeDistribution = {};
+    result.byType.forEach(type => {
+      typeDistribution[type] = (typeDistribution[type] || 0) + 1;
+    });
+
+    // Calculate status distribution
+    const statusDistribution = {};
+    result.byStatus.forEach(status => {
+      statusDistribution[status] = (statusDistribution[status] || 0) + 1;
+    });
+
     return {
-      totalUpgrades: 0,
-      approvedUpgrades: 0,
-      appliedUpgrades: 0,
-      conversionRate: 0,
-      totalRevenue: 0,
-      avgEligibilityScore: 0,
-      avgSatisfactionScore: 0,
-      byType: {},
-      byStatus: {}
+      totalUpgrades: result.totalUpgrades,
+      approvedUpgrades: result.approvedUpgrades,
+      appliedUpgrades: result.appliedUpgrades,
+      conversionRate: result.totalUpgrades > 0 ? Math.round((result.appliedUpgrades / result.totalUpgrades) * 100) : 0,
+      totalRevenue: Math.round(result.totalRevenue || 0),
+      avgEligibilityScore: Math.round(result.avgEligibilityScore || 0),
+      avgSatisfactionScore: Math.round(result.avgSatisfactionScore || 0),
+      byType: typeDistribution,
+      byStatus: statusDistribution
     };
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  const result = stats[0];
-
-  // Calculate type distribution
-  const typeDistribution = {};
-  result.byType.forEach(type => {
-    typeDistribution[type] = (typeDistribution[type] || 0) + 1;
-  });
-
-  // Calculate status distribution
-  const statusDistribution = {};
-  result.byStatus.forEach(status => {
-    statusDistribution[status] = (statusDistribution[status] || 0) + 1;
-  });
-
-  return {
-    totalUpgrades: result.totalUpgrades,
-    approvedUpgrades: result.approvedUpgrades,
-    appliedUpgrades: result.appliedUpgrades,
-    conversionRate: result.totalUpgrades > 0 ? Math.round((result.appliedUpgrades / result.totalUpgrades) * 100) : 0,
-    totalRevenue: Math.round(result.totalRevenue || 0),
-    avgEligibilityScore: Math.round(result.avgEligibilityScore || 0),
-    avgSatisfactionScore: Math.round(result.avgSatisfactionScore || 0),
-    byType: typeDistribution,
-    byStatus: statusDistribution
-  };
 };
 
 // Static method to get pending approvals
 roomUpgradeSchema.statics.getPendingApprovals = async function(hotelId, approvalLevel = null) {
-  const query = {
-    hotelId: new mongoose.Types.ObjectId(hotelId),
-    'approvalWorkflow.requiresApproval': true,
-    'approvalWorkflow.currentStage': { $nin: ['completed'] }
-  };
+  try {
+    const query = {
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      'approvalWorkflow.requiresApproval': true,
+      'approvalWorkflow.currentStage': { $nin: ['completed'] }
+    };
 
-  if (approvalLevel) {
-    query['approvalWorkflow.approvalLevel'] = approvalLevel;
+    if (approvalLevel) {
+      query['approvalWorkflow.approvalLevel'] = approvalLevel;
+    }
+
+    return await this.find(query)
+      .populate('bookingId', 'bookingNumber guestDetails checkIn checkOut')
+      .populate('createdBy', 'name email')
+      .sort({ 'analytics.revenueImpact': -1, createdAt: 1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  return await this.find(query)
-    .populate('bookingId', 'bookingNumber guestDetails checkIn checkOut')
-    .populate('createdBy', 'name email')
-    .sort({ 'analytics.revenueImpact': -1, createdAt: 1 });
 };
 
 // Static method to get eligible upgrades for a booking
 roomUpgradeSchema.statics.getEligibleUpgrades = async function(hotelId, bookingId) {
-  return await this.find({
-    hotelId: new mongoose.Types.ObjectId(hotelId),
-    bookingId: new mongoose.Types.ObjectId(bookingId),
-    status: { $in: ['pending', 'approved'] },
-    expiresAt: { $gt: new Date() }
-  }).sort({ eligibilityScore: -1 });
+  try {
+    return await this.find({
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      bookingId: new mongoose.Types.ObjectId(bookingId),
+      status: { $in: ['pending', 'approved'] },
+      expiresAt: { $gt: new Date() }
+    }).sort({ eligibilityScore: -1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 export default mongoose.model('RoomUpgrade', roomUpgradeSchema);

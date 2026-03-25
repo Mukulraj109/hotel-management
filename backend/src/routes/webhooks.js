@@ -94,9 +94,16 @@ async function handlePaymentSuccess(paymentIntent) {
         { new: true }
       );
 
+      if (!booking) {
+        logger.warn('Booking not found for payment update', {
+          paymentId: payment._id,
+          bookingId: payment.bookingId
+        });
+      }
+
       logger.info('Payment and booking updated successfully', {
         paymentId: payment._id,
-        bookingId: booking._id,
+        bookingId: booking?._id,
         amount: paymentIntent.amount / 100
       });
     } else {
@@ -125,7 +132,9 @@ async function handlePaymentFailed(paymentIntent) {
       // Update booking status
       await Booking.findByIdAndUpdate(payment.bookingId, {
         paymentStatus: 'failed'
-      });
+      },
+        { new: true }
+      );
 
       logger.info('Payment failure processed', {
         paymentId: payment._id,
@@ -157,7 +166,9 @@ async function handleRefund(charge) {
       // Update booking status
       await Booking.findByIdAndUpdate(payment.bookingId, {
         paymentStatus: payment.status
-      });
+      },
+        { new: true }
+      );
 
       logger.info('Refund processed', {
         paymentId: payment._id,

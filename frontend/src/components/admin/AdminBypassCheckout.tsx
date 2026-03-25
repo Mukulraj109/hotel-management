@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -39,6 +39,15 @@ const AdminBypassCheckout: React.FC = () => {
   const [estimatedLoss, setEstimatedLoss] = useState<number>(0);
   const [sensitiveNotes, setSensitiveNotes] = useState('');
   const [useEnhancedBypass, setUseEnhancedBypass] = useState(true);
+
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     fetchBookings();
@@ -88,7 +97,8 @@ const AdminBypassCheckout: React.FC = () => {
       fetchBookings();
       
       // Clear success message after 5 seconds
-      setTimeout(() => setSuccess(null), 5000);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => setSuccess(null), 5000);
       
     } catch (err: unknown) {
       setError('Failed to process bypass checkout: ' + err.message);
@@ -140,7 +150,8 @@ const AdminBypassCheckout: React.FC = () => {
       resetForm();
       
       // Clear success message after 8 seconds for approval cases
-      setTimeout(() => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => {
         setSuccess(null);
         setPendingApproval(null);
       }, 8000);

@@ -455,7 +455,7 @@ async function getRealDashboardData(startDate, endDate, hotelId, userRole = 'adm
       .populate('hotelId', 'name')
       .populate('userId', 'name email')
       .populate('rooms.roomId', 'roomNumber type currentRate')
-      .lean(); // Use lean() for better performance when not modifying documents
+      .lean().limit(1000); // Use lean() for better performance when not modifying documents
 
     logger.info('Bookings retrieved for analytics', {
       totalBookings: bookings.length,
@@ -536,7 +536,7 @@ async function getRealDashboardData(startDate, endDate, hotelId, userRole = 'adm
     const occupiedBookings = await Booking.find({
       ...filter,
       status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-    }).select('checkIn checkOut roomId');
+    }).select('checkIn checkOut roomId').lean().limit(1000);
 
     // Calculate total booked room nights
     const totalBookedNights = occupiedBookings.reduce((sum, booking) => {
@@ -579,6 +579,8 @@ async function getRealDashboardData(startDate, endDate, hotelId, userRole = 'adm
     // Revenue by channel (using source field or default to 'direct')
     let revenueByChannel = [];
     try {
+      // Consider caching this aggregation result for 5 minutes
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
       revenueByChannel = await Booking.aggregate([
         { $match: filter },
         {
@@ -600,6 +602,8 @@ async function getRealDashboardData(startDate, endDate, hotelId, userRole = 'adm
     // Guest segmentation (by guest type or booking characteristics)
     let guestSegmentation = [];
     try {
+      // Consider caching this aggregation result for 5 minutes
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
       guestSegmentation = await Booking.aggregate([
         { $match: filter },
         {
@@ -635,6 +639,8 @@ async function getRealDashboardData(startDate, endDate, hotelId, userRole = 'adm
     // Top performing room types
     let topPerformingRoomTypes = [];
     try {
+      // Consider caching this aggregation result for 5 minutes
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
       topPerformingRoomTypes = await Booking.aggregate([
         { $match: filter },
         { $unwind: '$rooms' },
@@ -671,7 +677,7 @@ async function getRealDashboardData(startDate, endDate, hotelId, userRole = 'adm
     const previousBookings = await Booking.find({
       ...filter,
       checkIn: { $gte: previousPeriodStart, $lt: previousPeriodEnd }
-    });
+    }).lean().limit(1000);
 
     const previousRevenue = previousBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
     const previousBookingsCount = previousBookings.length;
@@ -680,7 +686,7 @@ async function getRealDashboardData(startDate, endDate, hotelId, userRole = 'adm
     const previousOccupiedBookings = await Booking.find({
       checkIn: { $gte: previousPeriodStart, $lt: previousPeriodEnd },
       status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-    }).select('checkIn checkOut roomId');
+    }).select('checkIn checkOut roomId').lean().limit(1000);
 
     const previousTotalBookedNights = previousOccupiedBookings.reduce((sum, booking) => {
       const nights = Math.ceil((booking.checkOut - booking.checkIn) / (1000 * 60 * 60 * 24));
@@ -700,7 +706,7 @@ async function getRealDashboardData(startDate, endDate, hotelId, userRole = 'adm
     const yearAgoBookings = await Booking.find({
       checkIn: { $gte: yearAgoStart, $lt: yearAgoEnd },
       ...(hotelId && { hotelId })
-    });
+    }).lean().limit(1000);
     
     const yearAgoRevenue = yearAgoBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
     const yearAgoBookingsCount = yearAgoBookings.length;
@@ -870,7 +876,7 @@ export const getRealtimeKPIs = async (req, res) => {
     // Get today's bookings
     const todayBookings = await Booking.find({
       checkIn: { $gte: startOfDay, $lt: endOfDay }
-    });
+    }).lean().limit(1000);
 
     const todayRevenue = todayBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
     const todayBookingsCount = todayBookings.length;
@@ -936,13 +942,13 @@ export const getStaffOperationalMetrics = async (req, res) => {
       checkIn: { $gte: today, $lt: tomorrow },
       status: { $in: ['confirmed', 'checked_in'] },
       ...(hotel_id && { hotelId: hotel_id })
-    }).populate('userId', 'name email').populate('rooms.roomId', 'roomNumber type');
+    }).populate('userId', 'name email').populate('rooms.roomId', 'roomNumber type').lean().limit(1000);
     
     const todaysCheckouts = await Booking.find({
       checkOut: { $gte: today, $lt: tomorrow },
       status: { $in: ['checked_in', 'checked_out'] },
       ...(hotel_id && { hotelId: hotel_id })
-    }).populate('userId', 'name email').populate('rooms.roomId', 'roomNumber type');
+    }).populate('userId', 'name email').populate('rooms.roomId', 'roomNumber type').lean().limit(1000);
     
     const currentOccupancy = await Booking.countDocuments({
       status: 'checked_in',
@@ -1317,7 +1323,7 @@ async function calculateRoomTypeProfitability(startDate, endDate, hotelId) {
 
     // Get all bookings with room details
     const bookings = await Booking.find(filter)
-      .populate('rooms.roomId', 'type roomNumber currentRate baseRate');
+      .populate('rooms.roomId', 'type roomNumber currentRate baseRate').lean().limit(1000);
 
     // Group by room type and calculate metrics
     const roomTypeStats = {};
@@ -1344,7 +1350,7 @@ async function calculateRoomTypeProfitability(startDate, endDate, hotelId) {
     });
 
     // Get total rooms by type for occupancy calculation
-    const allRooms = await Room.find({ hotelId: hotelId, isActive: true });
+    const allRooms = await Room.find({ hotelId: hotelId, isActive: true }).lean().limit(1000);
     const roomCounts = {};
     allRooms.forEach(room => {
       roomCounts[room.type] = (roomCounts[room.type] || 0) + 1;
@@ -1405,7 +1411,7 @@ async function generateRevenueForecast(days, hotelId) {
         $gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
         $lte: new Date()
       }
-    }).populate('rooms.roomId', 'type');
+    }).populate('rooms.roomId', 'type').lean().limit(1000);
 
     // Analyze patterns by day of week
     const dayPatterns = {};
@@ -1594,10 +1600,10 @@ export const getProfitabilityMetrics = async (req, res) => {
         { createdAt: { $gte: recentCreationDate } } // Include recently created bookings
       ],
       status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-    }).populate('rooms.roomId');
+    }).populate('rooms.roomId').lean().limit(1000);
 
     // Get all rooms
-    const rooms = await Room.find({ hotelId, isActive: true });
+    const rooms = await Room.find({ hotelId, isActive: true }).lean().limit(1000);
     const totalRooms = rooms.length;
 
     // Calculate basic metrics
@@ -1643,7 +1649,7 @@ export const getProfitabilityMetrics = async (req, res) => {
       hotelId,
       checkIn: { $gte: prevStartDate, $lte: prevEndDate },
       status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-    });
+    }).lean().limit(1000);
 
     const prevRevenue = prevBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
 
@@ -1828,7 +1834,7 @@ async function generateTrendData(startDate, endDate, hotelId) {
       const dayBookings = await Booking.find({
         checkIn: { $gte: dayStart, $lt: dayEnd },
         ...(hotelId && { hotelId })
-      }).lean();
+      }).lean().limit(1000);
 
       const dayRevenue = dayBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
       const dayOccupancy = dayBookings.length;
@@ -1905,7 +1911,7 @@ export const getHotelMetrics = async (req, res) => {
     console.log(`🏨 HOTEL METRICS - Date range: ${defaultStartDate.toISOString()} to ${defaultEndDate.toISOString()}`);
 
     // Get hotel information
-    const hotel = await Hotel.findById(hotelId);
+    const hotel = await Hotel.findById(hotelId).lean();
     if (!hotel) {
       return res.status(404).json({
         success: false,
@@ -1927,7 +1933,7 @@ export const getHotelMetrics = async (req, res) => {
       checkIn: { $lte: today },
       checkOut: { $gt: today },
       status: { $in: ['confirmed', 'checked_in'] }
-    });
+    }).lean().limit(1000);
 
     const occupiedRooms = currentBookings.length;
     const availableRooms = totalRooms - occupiedRooms;
@@ -1954,7 +1960,7 @@ export const getHotelMetrics = async (req, res) => {
         }
       ],
       status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-    });
+    }).lean().limit(1000);
 
     // Calculate revenue metrics
     const totalRevenue = periodBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
@@ -1985,7 +1991,7 @@ export const getHotelMetrics = async (req, res) => {
         }
       ],
       status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-    });
+    }).lean().limit(1000);
 
     const lastMonthRevenue = lastMonthBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
     const lastMonthRoomNights = lastMonthBookings.reduce((sum, booking) => {

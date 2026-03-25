@@ -581,102 +581,110 @@ checkoutInspectionSchema.statics.getPendingInspections = function(hotelId) {
 
 // Static method to get inspection summary
 checkoutInspectionSchema.statics.getInspectionSummary = async function(hotelId, startDate, endDate) {
-  const matchQuery = { hotelId: new mongoose.Types.ObjectId(hotelId) };
+  try {
+    const matchQuery = { hotelId: new mongoose.Types.ObjectId(hotelId) };
   
-  if (startDate || endDate) {
-    matchQuery.inspectionDate = {};
-    if (startDate) matchQuery.inspectionDate.$gte = new Date(startDate);
-    if (endDate) matchQuery.inspectionDate.$lte = new Date(endDate);
+    if (startDate || endDate) {
+      matchQuery.inspectionDate = {};
+      if (startDate) matchQuery.inspectionDate.$gte = new Date(startDate);
+      if (endDate) matchQuery.inspectionDate.$lte = new Date(endDate);
+    }
+  
+    const summary = await this.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: '$inspectionStatus',
+          count: { $sum: 1 },
+          totalCharges: { $sum: '$totalCharges' },
+          avgRoomScore: { $avg: '$roomConditionScore' }
+        }
+      }
+    ]);
+  
+    const damagesSummary = await this.aggregate([
+      { $match: matchQuery },
+      { $unwind: '$damagesFound' },
+      { $match: { 'damagesFound.chargeGuest': true } },
+      {
+        $group: {
+          _id: '$damagesFound.type',
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$damagesFound.chargeAmount' }
+        }
+      }
+    ]);
+  
+    return {
+      statusSummary: summary,
+      damagesSummary: damagesSummary
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  const summary = await this.aggregate([
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: '$inspectionStatus',
-        count: { $sum: 1 },
-        totalCharges: { $sum: '$totalCharges' },
-        avgRoomScore: { $avg: '$roomConditionScore' }
-      }
-    }
-  ]);
-  
-  const damagesSummary = await this.aggregate([
-    { $match: matchQuery },
-    { $unwind: '$damagesFound' },
-    { $match: { 'damagesFound.chargeGuest': true } },
-    {
-      $group: {
-        _id: '$damagesFound.type',
-        count: { $sum: 1 },
-        totalAmount: { $sum: '$damagesFound.chargeAmount' }
-      }
-    }
-  ]);
-  
-  return {
-    statusSummary: summary,
-    damagesSummary: damagesSummary
-  };
 };
 
 // Static method to create inspection from template
 checkoutInspectionSchema.statics.createFromTemplate = async function(bookingData) {
-  const { hotelId, roomId, bookingId, guestId, inspectedBy } = bookingData;
+  try {
+    const { hotelId, roomId, bookingId, guestId, inspectedBy } = bookingData;
   
-  // Get room inventory to create checklist
-  const RoomInventory = mongoose.model('RoomInventory');
-  const roomInventory = await RoomInventory.findOne({ roomId }).populate('items.itemId');
+    // Get room inventory to create checklist
+    const RoomInventory = mongoose.model('RoomInventory');
+    const roomInventory = await RoomInventory.findOne({ roomId }).populate('items.itemId').lean();
   
-  const checklistItems = [
-    // Electronics
-    { category: 'electronics', item: 'TV', description: 'Check if TV is working and all channels accessible' },
-    { category: 'electronics', item: 'Remote Control', description: 'Verify all buttons function properly' },
-    { category: 'electronics', item: 'Air Conditioning', description: 'Check heating and cooling functions' },
-    { category: 'electronics', item: 'Lights', description: 'Test all light switches and bulbs' },
+    const checklistItems = [
+      // Electronics
+      { category: 'electronics', item: 'TV', description: 'Check if TV is working and all channels accessible' },
+      { category: 'electronics', item: 'Remote Control', description: 'Verify all buttons function properly' },
+      { category: 'electronics', item: 'Air Conditioning', description: 'Check heating and cooling functions' },
+      { category: 'electronics', item: 'Lights', description: 'Test all light switches and bulbs' },
     
-    // Plumbing
-    { category: 'plumbing', item: 'Bathroom Tap', description: 'Check water pressure and temperature' },
-    { category: 'plumbing', item: 'Shower', description: 'Test shower functionality and drainage' },
-    { category: 'plumbing', item: 'Toilet', description: 'Verify flushing mechanism works' },
+      // Plumbing
+      { category: 'plumbing', item: 'Bathroom Tap', description: 'Check water pressure and temperature' },
+      { category: 'plumbing', item: 'Shower', description: 'Test shower functionality and drainage' },
+      { category: 'plumbing', item: 'Toilet', description: 'Verify flushing mechanism works' },
     
-    // Furniture
-    { category: 'furniture', item: 'Bed', description: 'Check bed frame stability and mattress condition' },
-    { category: 'furniture', item: 'Chairs', description: 'Verify structural integrity' },
-    { category: 'furniture', item: 'Desk', description: 'Check drawers and surface condition' },
+      // Furniture
+      { category: 'furniture', item: 'Bed', description: 'Check bed frame stability and mattress condition' },
+      { category: 'furniture', item: 'Chairs', description: 'Verify structural integrity' },
+      { category: 'furniture', item: 'Desk', description: 'Check drawers and surface condition' },
     
-    // Amenities
-    { category: 'amenities', item: 'Safe', description: 'Test locking mechanism' },
-    { category: 'amenities', item: 'Minibar', description: 'Check temperature and contents' },
+      // Amenities
+      { category: 'amenities', item: 'Safe', description: 'Test locking mechanism' },
+      { category: 'amenities', item: 'Minibar', description: 'Check temperature and contents' },
     
-    // Cleanliness
-    { category: 'cleanliness', item: 'Overall Cleanliness', description: 'Assess general cleanliness of room' },
-    { category: 'cleanliness', item: 'Bathroom Cleanliness', description: 'Check bathroom sanitation' }
-  ];
+      // Cleanliness
+      { category: 'cleanliness', item: 'Overall Cleanliness', description: 'Assess general cleanliness of room' },
+      { category: 'cleanliness', item: 'Bathroom Cleanliness', description: 'Check bathroom sanitation' }
+    ];
   
-  const inventoryVerification = roomInventory ? roomInventory.items.map(item => ({
-    itemId: item.itemId._id,
-    itemName: item.itemId.name,
-    category: item.itemId.category,
-    expectedQuantity: item.expectedQuantity,
-    actualQuantity: item.currentQuantity,
-    condition: item.condition,
-    verified: item.currentQuantity === item.expectedQuantity && item.condition !== 'damaged'
-  })) : [];
+    const inventoryVerification = roomInventory ? roomInventory.items.map(item => ({
+      itemId: item.itemId._id,
+      itemName: item.itemId.name,
+      category: item.itemId.category,
+      expectedQuantity: item.expectedQuantity,
+      actualQuantity: item.currentQuantity,
+      condition: item.condition,
+      verified: item.currentQuantity === item.expectedQuantity && item.condition !== 'damaged'
+    })) : [];
   
-  return await this.create({
-    hotelId,
-    roomId,
-    bookingId,
-    guestId,
-    inspectedBy,
-    checklistItems: checklistItems.map(item => ({
-      ...item,
-      status: 'working' // Default status, will be updated during inspection
-    })),
-    inventoryVerification,
-    inspectionStatus: 'in_progress'
-  });
+    return await this.create({
+      hotelId,
+      roomId,
+      bookingId,
+      guestId,
+      inspectedBy,
+      checklistItems: checklistItems.map(item => ({
+        ...item,
+        status: 'working' // Default status, will be updated during inspection
+      })),
+      inventoryVerification,
+      inspectionStatus: 'in_progress'
+    });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 export default mongoose.model('CheckoutInspection', checkoutInspectionSchema);

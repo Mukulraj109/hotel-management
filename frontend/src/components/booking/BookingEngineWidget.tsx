@@ -51,6 +51,7 @@ import { format, addDays, differenceInDays } from 'date-fns';
 import { formatCurrency } from '@/utils/currencyUtils';
 import { bookingService } from '@/services/bookingService';
 import { bookingEngineService } from '@/services/bookingEngineService';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface Room {
   _id: string;
@@ -526,8 +527,8 @@ const BookingEngineWidget: React.FC = () => {
             {/* Show available promos */}
             <div className="mt-2 space-y-1">
               {promoCodes.filter(promo => promo.isActive).slice(0, 2).map(promo => (
-                <div key={promo._id} className="text-xs text-blue-600 cursor-pointer hover:underline" 
-                     onClick={() => applyPromoCode(promo)}>
+                <div role="button" tabIndex={0} key={promo._id} className="text-xs text-blue-600 cursor-pointer hover:underline" 
+                     onClick={() => applyPromoCode(promo)} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => applyPromoCode(promo); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                   <Tag className="w-3 h-3 inline mr-1" />
                   {promo.code} - {promo.description}
                 </div>
@@ -572,7 +573,7 @@ const BookingEngineWidget: React.FC = () => {
         </CardHeader>
         <CardContent className="space-y-4">
           {availableRooms.map(room => (
-            <div 
+            <div role="button" tabIndex={0} 
               key={room._id} 
               className={`border rounded-lg p-4 cursor-pointer transition-all ${
                 bookingData.selectedRoom?._id === room._id 
@@ -580,7 +581,7 @@ const BookingEngineWidget: React.FC = () => {
                   : 'border-gray-200 hover:border-gray-300'
               }`}
               onClick={() => setBookingData(prev => ({ ...prev, selectedRoom: room }))}
-            >
+             onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => setBookingData(prev => ({ ...prev, selectedRoom: room })); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
@@ -1033,4 +1034,4 @@ const BookingEngineWidget: React.FC = () => {
   );
 };
 
-export default BookingEngineWidget;
+export default withErrorBoundary(BookingEngineWidget, { level: 'component' });

@@ -184,7 +184,7 @@ const UserSegmentation: React.FC<UserSegmentationProps> = ({
               <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </button>
-            <button
+            <button aria-label="Close"
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600"
             >
@@ -204,7 +204,7 @@ const UserSegmentation: React.FC<UserSegmentationProps> = ({
               ].map((tab) => {
                 const Icon = tab.icon;
                 return (
-                  <button
+                  <button aria-label="Close"
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as unknown)}
                     className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm ${
@@ -406,14 +406,14 @@ const UserSegmentation: React.FC<UserSegmentationProps> = ({
                             </span>
                           </div>
                           <div className="flex items-center space-x-2">
-                            <button
+                            <button aria-label="View"
                               onClick={() => setSelectedSegment(segment._id)}
                               className="text-blue-600 hover:text-blue-900"
                               title="View Details"
                             >
                               <Eye className="w-4 h-4" />
                             </button>
-                            <button
+                            <button aria-label="Delete"
                               onClick={() => handleDeleteSegment(segment._id)}
                               className="text-red-600 hover:text-red-900"
                               title="Delete Segment"

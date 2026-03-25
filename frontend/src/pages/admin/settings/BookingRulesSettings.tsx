@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -121,6 +121,15 @@ export default function BookingRulesSettings({ onSettingsChange }: BookingRulesS
   });
 
   // Watch for form changes
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (onSettingsChange) {
       onSettingsChange(isDirty);
@@ -164,7 +173,8 @@ export default function BookingRulesSettings({ onSettingsChange }: BookingRulesS
         if (!result) return; // Confirmation dialog shown
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Booking rules updated successfully${
           applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
         }`);
@@ -177,7 +187,8 @@ export default function BookingRulesSettings({ onSettingsChange }: BookingRulesS
         });
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success('Booking rules updated successfully');
       }
 
@@ -203,7 +214,8 @@ export default function BookingRulesSettings({ onSettingsChange }: BookingRulesS
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Settings updated for ${result.propertiesUpdated} properties`);
         setApplyToScope('single');
         queryClient.invalidateQueries({ queryKey: ['booking-rules-settings'] });

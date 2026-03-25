@@ -291,58 +291,66 @@ class InventoryScheduler {
    * Get weekly inventory statistics
    */
   async getWeeklyInventoryStats(hotelId) {
-    // Skip if database is not connected
-    if (!this.isDbConnected()) {
-      return {
+    try {
+      // Skip if database is not connected
+      if (!this.isDbConnected()) {
+        return {
+          totalItems: 0,
+          totalStock: 0,
+          totalValue: 0,
+          lowStockItems: 0,
+          categories: []
+        };
+      }
+
+      // This would typically compare current stock levels with previous week
+      // For now, return current stats
+      const stats = await InventoryItem.aggregate([
+        { $match: { hotelId, isActive: true } },
+        {
+          $group: {
+            _id: null,
+            totalItems: { $sum: 1 },
+            totalStock: { $sum: '$currentStock' },
+            totalValue: { $sum: { $multiply: ['$currentStock', '$unitPrice'] } },
+            lowStockItems: {
+              $sum: {
+                $cond: [{ $lte: ['$currentStock', '$stockThreshold'] }, 1, 0]
+              }
+            },
+            categories: {
+              $push: {
+                category: '$category',
+                count: 1,
+                stock: '$currentStock'
+              }
+            }
+          }
+        }
+      ]);
+
+      return stats[0] || {
         totalItems: 0,
         totalStock: 0,
         totalValue: 0,
         lowStockItems: 0,
         categories: []
       };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // This would typically compare current stock levels with previous week
-    // For now, return current stats
-    const stats = await InventoryItem.aggregate([
-      { $match: { hotelId, isActive: true } },
-      {
-        $group: {
-          _id: null,
-          totalItems: { $sum: 1 },
-          totalStock: { $sum: '$currentStock' },
-          totalValue: { $sum: { $multiply: ['$currentStock', '$unitPrice'] } },
-          lowStockItems: {
-            $sum: {
-              $cond: [{ $lte: ['$currentStock', '$stockThreshold'] }, 1, 0]
-            }
-          },
-          categories: {
-            $push: {
-              category: '$category',
-              count: 1,
-              stock: '$currentStock'
-            }
-          }
-        }
-      }
-    ]);
-
-    return stats[0] || {
-      totalItems: 0,
-      totalStock: 0,
-      totalValue: 0,
-      lowStockItems: 0,
-      categories: []
-    };
   }
 
   /**
    * Manually trigger low stock check (for testing)
    */
   async triggerLowStockCheck() {
-    logger.info('Manually triggering low stock check');
-    return await this.checkLowStockItems();
+    try {
+      logger.info('Manually triggering low stock check');
+      return await this.checkLowStockItems();
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

@@ -79,6 +79,7 @@ const processQueue = (error: unknown) => {
 
 // Prevent infinite redirect loops
 let isRedirecting = false;
+let redirectResetTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Response interceptor with automatic token refresh
 api.interceptors.response.use(
@@ -95,7 +96,8 @@ api.interceptors.response.use(
           isRedirecting = true;
           localStorage.removeItem('selectedPropertyId');
           window.location.href = '/login';
-          setTimeout(() => { isRedirecting = false; }, 2000);
+          if (redirectResetTimer) clearTimeout(redirectResetTimer);
+          redirectResetTimer = setTimeout(() => { isRedirecting = false; redirectResetTimer = null; }, 2000);
         }
         return Promise.reject(error);
       }
@@ -122,7 +124,8 @@ api.interceptors.response.use(
           isRedirecting = true;
           localStorage.removeItem('selectedPropertyId');
           window.location.href = '/login';
-          setTimeout(() => { isRedirecting = false; }, 2000);
+          if (redirectResetTimer) clearTimeout(redirectResetTimer);
+          redirectResetTimer = setTimeout(() => { isRedirecting = false; redirectResetTimer = null; }, 2000);
         }
         return Promise.reject(refreshError);
       }

@@ -82,7 +82,7 @@ class ReorderJob {
       logger.info('Starting scheduled reorder check cycle');
 
       // Get all active hotels
-      const hotels = await Hotel.find({ isActive: true }).select('_id name');
+      const hotels = await Hotel.find({ isActive: true }).select('_id name').lean().limit(1000);
 
       if (hotels.length === 0) {
         logger.warn('No active hotels found for reorder check');
@@ -240,7 +240,7 @@ class ReorderJob {
     try {
       logger.info('Generating weekly reorder summary');
 
-      const hotels = await Hotel.find({ isActive: true }).select('_id name');
+      const hotels = await Hotel.find({ isActive: true }).select('_id name').lean().limit(1000);
 
       for (const hotel of hotels) {
         try {
@@ -254,7 +254,7 @@ class ReorderJob {
               role: { $in: ['admin', 'manager'] },
               isActive: true,
               email: { $exists: true, $ne: '' }
-            }).select('email');
+            }).select('email').lean().limit(1000);
 
             if (managers.length > 0) {
               const recipients = managers.map(m => m.email);

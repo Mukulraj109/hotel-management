@@ -11,10 +11,12 @@ import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validate } from '../middleware/validation.js';
 import { param, body, query } from 'express-validator';
 import logger from '../utils/logger.js';
+import financialRateLimiter from '../middleware/financialRateLimiter.js';
 
 const router = express.Router();
 
-// Apply auth middleware to all routes
+// Apply rate limiting and auth middleware to all routes
+router.use(financialRateLimiter);
 router.use(authenticate);
 router.use(ensurePropertyAccess);
 
@@ -288,7 +290,7 @@ router.get('/strategies', async (req, res) => {
 
     const strategies = await PricingStrategy.find({ hotelId })
       .populate('roomTypes.roomTypeId')
-      .sort({ priority: -1, createdAt: -1 });
+      .sort({ priority: -1, createdAt: -1 }).lean().limit(1000);
 
     res.json({
       success: true,
@@ -444,7 +446,7 @@ router.get('/forecasts', async (req, res) => {
 
     const forecasts = await DemandForecast.find(query)
       .populate('roomTypeId')
-      .sort({ date: 1 });
+      .sort({ date: 1 }).lean().limit(1000);
 
     res.json({
       success: true,
@@ -499,7 +501,7 @@ router.post('/forecasts/generate', async (req, res) => {
     const roomTypeQuery = { hotelId, isActive: true };
     if (roomTypeId) roomTypeQuery._id = roomTypeId;
     
-    const roomTypes = await RoomType.find(roomTypeQuery);
+    const roomTypes = await RoomType.find(roomTypeQuery).lean().limit(1000);
     const generatedForecasts = [];
 
     // Generate forecasts for each room type and date
@@ -548,7 +550,7 @@ router.get('/competitors', async (req, res) => {
     const hotelId = req.user.hotelId;
 
     const competitors = await Competitor.find({ hotelId })
-      .sort({ 'monitoring.priority': -1 });
+      .sort({ 'monitoring.priority': -1 }).lean().limit(1000);
 
     res.json({
       success: true,
@@ -665,7 +667,7 @@ router.get('/competitors/:competitorId/rates', async (req, res) => {
     const rates = await CompetitorRate.find(query)
       .populate('competitorId')
       .sort({ date: -1 })
-      .limit(100);
+      .limit(100).lean();
 
     res.json({
       success: true,

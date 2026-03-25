@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import {
   Box,
   Card,
@@ -48,6 +48,7 @@ import { reasonService, Reason } from '../../services/reasonService';
 import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../components/settings/ApplyToSelector';
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -160,6 +161,15 @@ const AdminReasons: React.FC = () => {
 
   const priorities = ['low', 'medium', 'high', 'urgent'];
 
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     loadReasons();
   }, []);
@@ -217,7 +227,8 @@ const AdminReasons: React.FC = () => {
         if (!result) return;
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         setCreateDialogOpen(false);
         resetForm();
         setApplyToScope('single');
@@ -248,7 +259,8 @@ const AdminReasons: React.FC = () => {
         if (!result) return;
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         setEditDialogOpen(false);
         resetForm();
         setApplyToScope('single');
@@ -269,7 +281,8 @@ const AdminReasons: React.FC = () => {
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         setApplyToScope('single');
         loadReasons();
       }
@@ -857,4 +870,4 @@ const AdminReasons: React.FC = () => {
   );
 };
 
-export default AdminReasons;
+export default withErrorBoundary(AdminReasons, { level: 'page' });

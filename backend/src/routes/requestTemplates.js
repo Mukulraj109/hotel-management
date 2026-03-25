@@ -47,7 +47,7 @@ router.get('/', catchAsync(async (req, res) => {
     .populate('createdBy', 'username email')
     .sort({ useCount: -1, createdAt: -1 })
     .limit(limit * 1)
-    .skip((page - 1) * limit);
+    .skip((page - 1) * limit).lean();
 
   const total = await RequestTemplate.countDocuments(filter);
 
@@ -79,7 +79,7 @@ router.get('/:id', catchAsync(async (req, res) => {
     _id: req.params.id,
     hotelId,
     isActive: true
-  }).populate('createdBy', 'username email');
+  }).populate('createdBy', 'username email').lean();
 
   if (!template) {
     throw new ApplicationError('Template not found', 404);

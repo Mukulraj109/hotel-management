@@ -179,14 +179,14 @@ const UserBillingForm: React.FC<UserBillingFormProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose} />
+        <div aria-hidden="true" className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose} />
 
         <div className="inline-block w-full max-w-2xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-medium text-gray-900">
               Update Billing Details - {user?.name}
             </h3>
-            <button
+            <button aria-label="Close"
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600"
             >
@@ -238,6 +238,7 @@ const UserBillingForm: React.FC<UserBillingFormProps> = ({
                 onChange={(e) => handleInputChange('companyName', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 placeholder="Enter company name"
+                required
               />
             </div>
 
@@ -359,6 +360,7 @@ const UserBillingForm: React.FC<UserBillingFormProps> = ({
                     onChange={(e) => handleInputChange('billingEmail', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Enter billing email"
+                    required
                   />
                 </div>
 
@@ -386,7 +388,7 @@ const UserBillingForm: React.FC<UserBillingFormProps> = ({
               >
                 Cancel
               </button>
-              <button
+              <button aria-label="Close"
                 type="submit"
                 disabled={loading || (formData.gstNumber && !gstValid)}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"

@@ -201,13 +201,13 @@ export const TemplateEditModal: React.FC<TemplateEditModalProps> = ({
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <button
+                  <button aria-label="Edit"
                     onClick={() => handleEditItem(type, item, index)}
                     className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md"
                   >
                     <Edit className="w-4 h-4" />
                   </button>
-                  <button
+                  <button aria-label="Delete"
                     onClick={() => handleDeleteItem(type, index)}
                     className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md"
                   >
@@ -227,7 +227,7 @@ export const TemplateEditModal: React.FC<TemplateEditModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose} />
+        <div aria-hidden="true" className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose} />
 
         <div className="inline-block w-full max-w-4xl my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg">
           {/* Header */}
@@ -240,7 +240,7 @@ export const TemplateEditModal: React.FC<TemplateEditModalProps> = ({
                 Manage inventory items and check duration for {roomType} rooms
               </p>
             </div>
-            <button
+            <button aria-label="Close"
               onClick={onClose}
               className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md"
             >
@@ -320,7 +320,7 @@ export const TemplateEditModal: React.FC<TemplateEditModalProps> = ({
               >
                 Cancel
               </button>
-              <button
+              <button aria-label="Save"
                 onClick={handleSaveTemplate}
                 disabled={saving || activeForm !== null}
                 className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center"

@@ -16,7 +16,7 @@ class InventoryVendorIntegrationService {
         hotelId,
         status: 'active',
         acknowledged: false
-      }).populate('inventoryItemId');
+      }).populate('inventoryItemId').lean().limit(1000);
 
       if (reorderAlerts.length === 0) {
         return { message: 'No reorder alerts found', orders: [] };
@@ -115,7 +115,7 @@ class InventoryVendorIntegrationService {
         hotelId,
         status: 'preferred',
         categories: category
-      }).sort({ 'performance.overallRating': -1 });
+      }).sort({ 'performance.overallRating': -1 }).lean();
 
       // If no preferred vendor, find active vendor with best performance
       if (!vendor) {
@@ -123,7 +123,7 @@ class InventoryVendorIntegrationService {
           hotelId,
           status: 'active',
           categories: category
-        }).sort({ 'performance.overallRating': -1 });
+        }).sort({ 'performance.overallRating': -1 }).lean();
       }
 
       return vendor;
@@ -138,7 +138,7 @@ class InventoryVendorIntegrationService {
   async updateInventoryFromPO(purchaseOrderId) {
     try {
       const purchaseOrder = await PurchaseOrder.findById(purchaseOrderId)
-        .populate('items.inventoryItemId');
+        .populate('items.inventoryItemId').lean();
 
       if (!purchaseOrder) {
         throw new Error('Purchase order not found');
@@ -146,33 +146,50 @@ class InventoryVendorIntegrationService {
 
       const updates = [];
 
-      for (const poItem of purchaseOrder.items) {
-        if (poItem.quantityReceived > 0) {
-          const inventoryItem = await InventoryItem.findById(poItem.inventoryItemId);
+      // Batch: fetch all inventory items referenced by the PO in a single query
+      const receivedItems = purchaseOrder.items.filter(i => i.quantityReceived > 0);
+      const itemIds = receivedItems.map(i => i.inventoryItemId._id || i.inventoryItemId);
+      const inventoryItems = await InventoryItem.find({ _id: { $in: itemIds } }).limit(1000).lean();
+      const itemMap = new Map(inventoryItems.map(it => [it._id.toString(), it]));
 
-          if (inventoryItem) {
-            // Update stock levels
-            inventoryItem.currentStock += poItem.quantityReceived;
-            inventoryItem.totalReceived = (inventoryItem.totalReceived || 0) + poItem.quantityReceived;
-            inventoryItem.lastRestockDate = new Date();
+      const bulkOps = [];
+      for (const poItem of receivedItems) {
+        const itemId = (poItem.inventoryItemId._id || poItem.inventoryItemId).toString();
+        const inventoryItem = itemMap.get(itemId);
+        if (!inventoryItem) continue;
 
-            // Update average cost (weighted average)
-            if (poItem.unitPrice > 0) {
-              const totalValue = (inventoryItem.averageCost * inventoryItem.currentStock) +
-                               (poItem.unitPrice * poItem.quantityReceived);
-              const totalQuantity = inventoryItem.currentStock + poItem.quantityReceived;
-              inventoryItem.averageCost = totalValue / totalQuantity;
-            }
+        const newStock = inventoryItem.currentStock + poItem.quantityReceived;
+        const totalReceived = (inventoryItem.totalReceived || 0) + poItem.quantityReceived;
+        const updateFields = {
+          currentStock: newStock,
+          totalReceived,
+          lastRestockDate: new Date()
+        };
 
-            await inventoryItem.save();
-            updates.push({
-              itemId: inventoryItem._id,
-              itemName: inventoryItem.name,
-              quantityAdded: poItem.quantityReceived,
-              newStock: inventoryItem.currentStock
-            });
-          }
+        if (poItem.unitPrice > 0) {
+          const totalValue = (inventoryItem.averageCost * inventoryItem.currentStock) +
+                           (poItem.unitPrice * poItem.quantityReceived);
+          const totalQuantity = inventoryItem.currentStock + poItem.quantityReceived;
+          updateFields.averageCost = totalValue / totalQuantity;
         }
+
+        bulkOps.push({
+          updateOne: {
+            filter: { _id: inventoryItem._id },
+            update: { $set: updateFields }
+          }
+        });
+
+        updates.push({
+          itemId: inventoryItem._id,
+          itemName: inventoryItem.name,
+          quantityAdded: poItem.quantityReceived,
+          newStock
+        });
+      }
+
+      if (bulkOps.length > 0) {
+        await InventoryItem.bulkWrite(bulkOps);
       }
 
       return updates;
@@ -188,8 +205,12 @@ class InventoryVendorIntegrationService {
     try {
       const recommendations = [];
 
+      // Batch: fetch all inventory items in a single query
+      const allItems = await InventoryItem.find({ _id: { $in: inventoryItemIds } }).limit(1000).lean();
+      const itemMap = new Map(allItems.map(it => [it._id.toString(), it]));
+
       for (const itemId of inventoryItemIds) {
-        const item = await InventoryItem.findById(itemId);
+        const item = itemMap.get(itemId.toString());
         if (!item) continue;
 
         // Find vendors for this item's category
@@ -197,17 +218,23 @@ class InventoryVendorIntegrationService {
           hotelId,
           categories: item.category,
           status: { $in: ['active', 'preferred'] }
-        }).sort({ 'performance.overallRating': -1 });
+        }).sort({ 'performance.overallRating': -1 }).lean().limit(1000);
 
         // Calculate recommendation scores
         const vendorScores = await Promise.all(
           vendors.map(async (vendor) => {
-            const score = await this.calculateVendorScore(vendor, item);
-            return {
-              vendor: vendor,
-              score: score,
-              reasons: this.getRecommendationReasons(vendor, item)
-            };
+            try {
+              const score = await this.calculateVendorScore(vendor, item);
+              return {
+                vendor: vendor,
+                score: score,
+                reasons: this.getRecommendationReasons(vendor, item)
+              };
+          
+            } catch (error) {
+              console.error('Operation failed:', error.message);
+              throw error;
+            }
           })
         );
 
@@ -254,28 +281,34 @@ class InventoryVendorIntegrationService {
       // Get vendor performance for each category
       const categoryPerformance = await Promise.all(
         analysis.map(async (category) => {
-          const vendors = await Vendor.find({
-            hotelId,
-            categories: category._id,
-            status: { $in: ['active', 'preferred'] }
-          });
+          try {
+            const vendors = await Vendor.find({
+              hotelId,
+              categories: category._id,
+              status: { $in: ['active', 'preferred'] }
+            }).lean().limit(1000);
 
-          const vendorPerformance = vendors.map(vendor => ({
-            vendorId: vendor._id,
-            vendorName: vendor.name,
-            overallRating: vendor.performance.overallRating,
-            onTimeDeliveryPercentage: vendor.performance.totalOrders > 0
-              ? (vendor.performance.onTimeDeliveries / vendor.performance.totalOrders) * 100
-              : 0,
-            totalOrders: vendor.performance.totalOrders,
-            totalOrderValue: vendor.performance.totalOrderValue
-          }));
+            const vendorPerformance = vendors.map(vendor => ({
+              vendorId: vendor._id,
+              vendorName: vendor.name,
+              overallRating: vendor.performance.overallRating,
+              onTimeDeliveryPercentage: vendor.performance.totalOrders > 0
+                ? (vendor.performance.onTimeDeliveries / vendor.performance.totalOrders) * 100
+                : 0,
+              totalOrders: vendor.performance.totalOrders,
+              totalOrderValue: vendor.performance.totalOrderValue
+            }));
 
-          return {
-            category: category._id,
-            inventory: category,
-            vendors: vendorPerformance.sort((a, b) => b.overallRating - a.overallRating)
-          };
+            return {
+              category: category._id,
+              inventory: category,
+              vendors: vendorPerformance.sort((a, b) => b.overallRating - a.overallRating)
+            };
+        
+          } catch (error) {
+            console.error('Operation failed:', error.message);
+            throw error;
+          }
         })
       );
 
@@ -290,33 +323,32 @@ class InventoryVendorIntegrationService {
    */
   async setPreferredVendorsForCategories(hotelId, categoryVendorMappings) {
     try {
-      const results = [];
+      // Batch: use bulkWrite to update all vendor preferences at once
+      const bulkOps = categoryVendorMappings.map(mapping => ({
+        updateOne: {
+          filter: { _id: mapping.vendorId, hotelId },
+          update: {
+            $set: { status: 'preferred' },
+            $addToSet: { preferredCategories: mapping.category }
+          }
+        }
+      }));
 
+      if (bulkOps.length > 0) {
+        await Vendor.bulkWrite(bulkOps);
+      }
+
+      // Batch: fetch all vendors in a single query for results
+      const vendorIds = categoryVendorMappings.map(m => m.vendorId);
+      const vendors = await Vendor.find({ _id: { $in: vendorIds }, hotelId }).limit(1000).lean();
+      const vendorMap = new Map(vendors.map(v => [v._id.toString(), v]));
+
+      const results = [];
       for (const mapping of categoryVendorMappings) {
         const { category, vendorId, reason } = mapping;
-
-        // Update vendor status to preferred for this category
-        const vendor = await Vendor.findOneAndUpdate(
-          { _id: vendorId, hotelId },
-          {
-            status: 'preferred',
-            $addToSet: { categories: category },
-            preferredFor: category,
-            preferredReason: reason,
-            preferredDate: new Date()
-          },
-          { new: true }
-        );
-
+        const vendor = vendorMap.get(vendorId.toString());
         if (vendor) {
-          results.push({
-            category,
-            vendor: {
-              id: vendor._id,
-              name: vendor.name,
-              status: vendor.status
-            }
-          });
+          results.push({ category, vendorId, vendorName: vendor.name, status: 'preferred', reason });
         }
       }
 
@@ -335,7 +367,7 @@ class InventoryVendorIntegrationService {
       const lowStockItems = await InventoryItem.find({
         hotelId,
         $expr: { $lte: ['$currentStock', '$reorderLevel'] }
-      });
+      }).lean().limit(1000);
 
       // Get vendor recommendations for each item
       const recommendations = await this.getVendorRecommendations(

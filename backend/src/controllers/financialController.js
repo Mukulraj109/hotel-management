@@ -32,7 +32,7 @@ class FinancialController {
 
       const accounts = await ChartOfAccounts.find(filter)
         .populate('parentAccount', 'accountName accountCode')
-        .sort({ accountCode: 1 });
+        .sort({ accountCode: 1 }).lean().limit(1000);
       
       res.json({ success: true, data: accounts });
     } catch (error) {
@@ -58,7 +58,7 @@ class FinancialController {
 
   async deleteAccount(req, res) {
     try {
-      await ChartOfAccounts.findByIdAndUpdate(req.params.id, { isActive: false });
+      await ChartOfAccounts.findByIdAndUpdate(req.params.id, { isActive: false }, { new: true });
       res.json({ success: true, message: 'Account deactivated successfully' });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -69,14 +69,20 @@ class FinancialController {
   async createJournalEntry(req, res) {
     try {
       const entry = await withTransaction(async (session) => {
-        const newEntry = new GeneralLedger(req.body);
-        newEntry.postedBy = req.user.id;
-        await newEntry.save({ session });
+        try {
+          const newEntry = new GeneralLedger(req.body);
+          newEntry.postedBy = req.user.id;
+          await newEntry.save({ session });
 
-        // Update account balances within the same transaction
-        await financialService.updateAccountBalances(newEntry.entries, session);
+          // Update account balances within the same transaction
+          await financialService.updateAccountBalances(newEntry.entries, session);
 
-        return newEntry;
+          return newEntry;
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
+        }
       });
 
       res.status(201).json({ success: true, data: entry });
@@ -100,7 +106,7 @@ class FinancialController {
       const entries = await GeneralLedger.find(filter)
         .populate('entries.account', 'accountName accountCode')
         .populate('postedBy', 'name email')
-        .sort({ date: -1 });
+        .sort({ date: -1 }).lean().limit(1000);
 
       res.json({ success: true, data: entries });
     } catch (error) {
@@ -110,7 +116,7 @@ class FinancialController {
 
   async reverseJournalEntry(req, res) {
     try {
-      const originalEntry = await GeneralLedger.findById(req.params.id);
+      const originalEntry = await GeneralLedger.findById(req.params.id).lean();
       if (!originalEntry) {
         return res.status(404).json({ success: false, message: 'Journal entry not found' });
       }
@@ -150,7 +156,7 @@ class FinancialController {
       //   filter.issueDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
       // }
 
-      // const invoices = await FinancialInvoice.find(filter)
+      // const invoices = await FinancialInvoice.find(filter).limit(1000).lean()
       //   .populate('bookingReference', 'bookingNumber guestName')
       //   .sort({ issueDate: -1 });
 
@@ -207,7 +213,7 @@ class FinancialController {
       //   filter.date = { $gte: new Date(startDate), $lte: new Date(endDate) };
       // }
 
-      // const payments = await FinancialPayment.find(filter)
+      // const payments = await FinancialPayment.find(filter).limit(1000).lean()
       //   .populate('invoice', 'invoice', 'invoiceNumber totalAmount')
       //   .populate('bankAccount', 'accountName bankName')
       //   .sort({ date: -1 });
@@ -237,7 +243,7 @@ class FinancialController {
       if (isActive !== undefined) filter.isActive = isActive === 'true';
       if (isPrimary !== undefined) filter.isPrimary = isPrimary === 'true';
 
-      const accounts = await BankAccount.find(filter).sort({ isPrimary: -1, accountName: 1 });
+      const accounts = await BankAccount.find(filter).sort({ isPrimary: -1, accountName: 1 }).lean().limit(1000);
       res.json({ success: true, data: accounts });
     } catch (error) {
       res.status(500).json({ success: false, message: error.message });
@@ -280,7 +286,7 @@ class FinancialController {
 
       const configs = await TaxConfiguration.find(filter)
         .populate('reportingAccount payableAccount', 'accountName accountCode')
-        .sort({ taxCode: 1 });
+        .sort({ taxCode: 1 }).lean().limit(1000);
 
       res.json({ success: true, data: configs });
     } catch (error) {
@@ -310,7 +316,7 @@ class FinancialController {
       const budgets = await Budget.find(filter)
         .populate('budgetItems.account', 'accountName accountCode')
         .populate('approvedBy', 'name email')
-        .sort({ fiscalYear: -1, name: 1 });
+        .sort({ fiscalYear: -1, name: 1 }).lean().limit(1000);
 
       res.json({ success: true, data: budgets });
     } catch (error) {
@@ -383,7 +389,7 @@ class FinancialController {
         filter.generatedDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
       }
 
-      // const reports = await FinancialReport.find(filter)
+      // const reports = await FinancialReport.find(filter).limit(1000).lean()
       //   .populate('generatedBy', 'name email')
       //   .sort({ generatedDate: -1 });
       
@@ -418,7 +424,7 @@ class FinancialController {
         .populate('parentCostCenter', 'name code')
         .populate('manager', 'name email')
         .populate('accounts', 'accountName accountCode')
-        .sort({ code: 1 });
+        .sort({ code: 1 }).lean().limit(1000);
 
       res.json({ success: true, data: costCenters });
     } catch (error) {

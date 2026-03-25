@@ -46,7 +46,7 @@ class OptimizedNotificationService {
       // Get or create user profile from cache
       let user = await notificationCache.getUserProfile(userId);
       if (!user) {
-        user = await User.findById(userId);
+        user = await User.findById(userId).lean();
         if (!user) {
           throw new Error('User not found');
         }
@@ -175,30 +175,34 @@ class OptimizedNotificationService {
    * Send bulk notifications with optimization
    */
   async sendBulkNotifications(notifications) {
-    const results = [];
-    const batchSize = 10; // Process bulk in smaller chunks
+    try {
+      const results = [];
+      const batchSize = 10; // Process bulk in smaller chunks
 
-    for (let i = 0; i < notifications.length; i += batchSize) {
-      const batch = notifications.slice(i, i + batchSize);
-      const batchPromises = batch.map(notification => this.sendNotification(notification));
-      const batchResults = await Promise.allSettled(batchPromises);
+      for (let i = 0; i < notifications.length; i += batchSize) {
+        const batch = notifications.slice(i, i + batchSize);
+        const batchPromises = batch.map(notification => this.sendNotification(notification));
+        const batchResults = await Promise.allSettled(batchPromises);
 
-      results.push(...batchResults.map(result =>
-        result.status === 'fulfilled' ? result.value : { success: false, error: result.reason }
-      ));
+        results.push(...batchResults.map(result =>
+          result.status === 'fulfilled' ? result.value : { success: false, error: result.reason }
+        ));
 
-      // Small delay between batches to prevent overwhelming the system
-      if (i + batchSize < notifications.length) {
-        await this.delay(100);
+        // Small delay between batches to prevent overwhelming the system
+        if (i + batchSize < notifications.length) {
+          await this.delay(100);
+        }
       }
-    }
 
-    return {
-      total: notifications.length,
-      successful: results.filter(r => r.success).length,
-      failed: results.filter(r => !r.success).length,
-      results
-    };
+      return {
+        total: notifications.length,
+        successful: results.filter(r => r.success).length,
+        failed: results.filter(r => !r.success).length,
+        results
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -316,81 +320,93 @@ class OptimizedNotificationService {
    * Get optimized notification count for user
    */
   async getNotificationCount(userId, useCache = true) {
-    if (useCache) {
-      const cachedCount = await notificationCache.getNotificationCount(userId);
-      if (cachedCount !== null) {
-        this.statistics.cached++;
-        return cachedCount;
+    try {
+      if (useCache) {
+        const cachedCount = await notificationCache.getNotificationCount(userId);
+        if (cachedCount !== null) {
+          this.statistics.cached++;
+          return cachedCount;
+        }
       }
+
+      const count = await Notification.countDocuments({
+        userId,
+        status: { $in: ['sent', 'delivered'] },
+        readAt: { $exists: false }
+      });
+
+      // Cache the count
+      await notificationCache.setNotificationCount(userId, count);
+
+      return count;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    const count = await Notification.countDocuments({
-      userId,
-      status: { $in: ['sent', 'delivered'] },
-      readAt: { $exists: false }
-    });
-
-    // Cache the count
-    await notificationCache.setNotificationCount(userId, count);
-
-    return count;
   }
 
   /**
    * Get paginated notifications with caching
    */
   async getNotifications(userId, { page = 1, limit = 20, status, type, unreadOnly = false }) {
-    const skip = (page - 1) * limit;
-    const query = { userId };
+    try {
+      const skip = (page - 1) * limit;
+      const query = { userId };
 
-    if (status) query.status = status;
-    if (type) query.type = type;
-    if (unreadOnly) {
-      query.status = { $in: ['sent', 'delivered'] };
-      query.readAt = { $exists: false };
-    }
-
-    // Use database aggregation for better performance
-    const [notifications, total] = await Promise.all([
-      Notification.find(query)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .populate('metadata.bookingId', 'bookingNumber')
-        .lean(), // Use lean() for better performance
-      Notification.countDocuments(query)
-    ]);
-
-    return {
-      notifications,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
+      if (status) query.status = status;
+      if (type) query.type = type;
+      if (unreadOnly) {
+        query.status = { $in: ['sent', 'delivered'] };
+        query.readAt = { $exists: false };
       }
-    };
+
+      // Use database aggregation for better performance
+      const [notifications, total] = await Promise.all([
+        Notification.find(query)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .populate('metadata.bookingId', 'bookingNumber')
+          .lean(), // Use lean() for better performance
+        Notification.countDocuments(query)
+      ]);
+
+      return {
+        notifications,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit)
+        }
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Mark notifications as read with cache invalidation
    */
   async markAsRead(userId, notificationIds) {
-    const result = await Notification.updateMany(
-      {
-        _id: { $in: notificationIds },
-        userId,
-        readAt: { $exists: false }
-      },
-      {
-        $set: { readAt: new Date(), status: 'read' }
-      }
-    );
+    try {
+      const result = await Notification.updateMany(
+        {
+          _id: { $in: notificationIds },
+          userId,
+          readAt: { $exists: false }
+        },
+        {
+          $set: { readAt: new Date(), status: 'read' }
+        }
+      );
 
-    // Invalidate notification count cache
-    await notificationCache.invalidateNotificationCount(userId);
+      // Invalidate notification count cache
+      await notificationCache.invalidateNotificationCount(userId);
 
-    return result;
+      return result;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -408,8 +424,12 @@ class OptimizedNotificationService {
    * Flush pending notifications (force process current batch)
    */
   async flushQueue() {
-    if (this.notificationQueue.length > 0) {
-      await this.processBatch();
+    try {
+      if (this.notificationQueue.length > 0) {
+        await this.processBatch();
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -513,35 +533,43 @@ class OptimizedNotificationService {
    * Health check
    */
   async getHealthStatus() {
-    return {
-      service: 'OptimizedNotificationService',
-      status: 'healthy',
-      statistics: this.getStatistics(),
-      queue: {
-        size: this.notificationQueue.length,
-        processing: this.processingBatch
-      },
-      cache: await notificationCache.getHealthStatus(),
-      rateLimiter: await rateLimiter.getMetrics()
-    };
+    try {
+      return {
+        service: 'OptimizedNotificationService',
+        status: 'healthy',
+        statistics: this.getStatistics(),
+        queue: {
+          size: this.notificationQueue.length,
+          processing: this.processingBatch
+        },
+        cache: await notificationCache.getHealthStatus(),
+        rateLimiter: await rateLimiter.getMetrics()
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Graceful shutdown
    */
   async shutdown() {
-    logger.debug('Shutting down notification service...');
+    try {
+      logger.debug('Shutting down notification service...');
 
-    // Process remaining notifications
-    await this.flushQueue();
+      // Process remaining notifications
+      await this.flushQueue();
 
-    // Clear timer
-    if (this.batchTimer) {
-      clearTimeout(this.batchTimer);
-      this.batchTimer = null;
+      // Clear timer
+      if (this.batchTimer) {
+        clearTimeout(this.batchTimer);
+        this.batchTimer = null;
+      }
+
+      logger.debug('Notification service shutdown completed');
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    logger.debug('Notification service shutdown completed');
   }
 }
 

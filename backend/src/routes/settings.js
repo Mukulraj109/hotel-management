@@ -66,7 +66,7 @@ router.put('/check-in-out',
         throw new ApplicationError('propertyId is required when applyToGroup is true', 400);
       }
 
-      const property = await Hotel.findById(propertyId);
+      const property = await Hotel.findById(propertyId).lean();
       if (!property) {
         throw new ApplicationError('Property not found', 404);
       }
@@ -85,7 +85,7 @@ router.put('/check-in-out',
         throw new ApplicationError('propertyId is required', 400);
       }
 
-      const property = await Hotel.findById(propertyId);
+      const property = await Hotel.findById(propertyId).lean();
       if (!property) {
         throw new ApplicationError('Property not found', 404);
       }
@@ -161,7 +161,7 @@ router.put('/currency',
         throw new ApplicationError('propertyId is required when applyToGroup is true', 400);
       }
 
-      const property = await Hotel.findById(propertyId);
+      const property = await Hotel.findById(propertyId).lean();
       if (!property || !property.propertyGroupId) {
         throw new ApplicationError('Property not found or not part of a group', 400);
       }
@@ -175,7 +175,7 @@ router.put('/currency',
         throw new ApplicationError('propertyId is required', 400);
       }
 
-      const property = await Hotel.findById(propertyId);
+      const property = await Hotel.findById(propertyId).lean();
       if (!property) {
         throw new ApplicationError('Property not found', 404);
       }
@@ -245,7 +245,7 @@ router.put('/timezone',
         throw new ApplicationError('propertyId is required when applyToGroup is true', 400);
       }
 
-      const property = await Hotel.findById(propertyId);
+      const property = await Hotel.findById(propertyId).lean();
       if (!property || !property.propertyGroupId) {
         throw new ApplicationError('Property not found or not part of a group', 400);
       }
@@ -259,7 +259,7 @@ router.put('/timezone',
         throw new ApplicationError('propertyId is required', 400);
       }
 
-      const property = await Hotel.findById(propertyId);
+      const property = await Hotel.findById(propertyId).lean();
       if (!property) {
         throw new ApplicationError('Property not found', 404);
       }
@@ -323,7 +323,7 @@ router.put('/cancellation-policy',
         throw new ApplicationError('propertyId is required when applyToGroup is true', 400);
       }
 
-      const property = await Hotel.findById(propertyId);
+      const property = await Hotel.findById(propertyId).lean();
       if (!property || !property.propertyGroupId) {
         throw new ApplicationError('Property not found or not part of a group', 400);
       }
@@ -337,7 +337,7 @@ router.put('/cancellation-policy',
         throw new ApplicationError('propertyId is required', 400);
       }
 
-      const property = await Hotel.findById(propertyId);
+      const property = await Hotel.findById(propertyId).lean();
       if (!property) {
         throw new ApplicationError('Property not found', 404);
       }
@@ -409,7 +409,7 @@ router.put('/general',
         throw new ApplicationError('propertyId is required when applyToGroup is true', 400);
       }
 
-      const property = await Hotel.findById(propertyId);
+      const property = await Hotel.findById(propertyId).lean();
       if (!property || !property.propertyGroupId) {
         throw new ApplicationError('Property not found or not part of a group', 400);
       }
@@ -423,7 +423,7 @@ router.put('/general',
         throw new ApplicationError('propertyId is required', 400);
       }
 
-      const property = await Hotel.findById(propertyId);
+      const property = await Hotel.findById(propertyId).lean();
       if (!property) {
         throw new ApplicationError('Property not found', 404);
       }
@@ -511,7 +511,7 @@ router.post('/apply-group-settings',
 
     // If groupId not provided, get it from the property
     if (!finalGroupId) {
-      const property = await Hotel.findById(propertyId);
+      const property = await Hotel.findById(propertyId).lean();
       if (!property) {
         throw new ApplicationError('Property not found', 404);
       }
@@ -598,7 +598,7 @@ router.get('/group/:groupId',
   catchAsync(async (req, res) => {
     const { groupId } = req.params;
 
-    const group = await PropertyGroup.findById(groupId);
+    const group = await PropertyGroup.findById(groupId).lean();
     if (!group) {
       throw new ApplicationError('Property group not found', 404);
     }

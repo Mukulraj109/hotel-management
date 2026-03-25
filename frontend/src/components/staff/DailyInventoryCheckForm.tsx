@@ -215,7 +215,7 @@ export function DailyInventoryCheckForm({
             </h2>
             <p className="text-gray-600 mt-1">Record condition and replacements for all inventory items</p>
           </div>
-          <button
+          <button aria-label="Close"
             type="button"
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
@@ -288,7 +288,7 @@ export function DailyInventoryCheckForm({
                 <div className="flex items-center space-x-2">
                   <label className="text-sm text-gray-600">Qty:</label>
                   <div className="flex items-center space-x-1">
-                    <button
+                    <button aria-label="Close"
                       type="button"
                       onClick={() => updateItem(index, 'actualQuantity', Math.max(0, item.actualQuantity - 1))}
                       className="p-1 text-gray-600 hover:text-gray-800"
@@ -296,7 +296,7 @@ export function DailyInventoryCheckForm({
                       <Minus className="h-4 w-4" />
                     </button>
                     <span className="w-8 text-center font-medium">{item.actualQuantity}</span>
-                    <button
+                    <button aria-label="Add"
                       type="button"
                       onClick={() => updateItem(index, 'actualQuantity', item.actualQuantity + 1)}
                       className="p-1 text-gray-600 hover:text-gray-800"

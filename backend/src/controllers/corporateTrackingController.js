@@ -55,6 +55,10 @@ export const getCorporateDashboardOverview = catchAsync(async (req, res, next) =
   });
 
   // Revenue metrics - using checkIn dates for actual revenue realization
+  // Consider caching this aggregation result for 5 minutes
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
   const monthlyRevenue = await Booking.aggregate([
     {
       $match: {
@@ -72,6 +76,12 @@ export const getCorporateDashboardOverview = catchAsync(async (req, res, next) =
       }
     }
   ]);
+
+  // Consider caching this aggregation result for 5 minutes
+
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
 
   const yearlyRevenue = await Booking.aggregate([
     {
@@ -103,6 +113,10 @@ export const getCorporateDashboardOverview = catchAsync(async (req, res, next) =
   });
 
   // Credit metrics
+  // Consider caching this aggregation result for 5 minutes
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
   const totalCreditExposure = await CorporateCredit.aggregate([
     {
       $match: {
@@ -118,6 +132,12 @@ export const getCorporateDashboardOverview = catchAsync(async (req, res, next) =
       }
     }
   ]);
+
+  // Consider caching this aggregation result for 5 minutes
+
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
 
   const overdueAmount = await CorporateCredit.aggregate([
     {
@@ -137,6 +157,10 @@ export const getCorporateDashboardOverview = catchAsync(async (req, res, next) =
   ]);
 
   // Top performing companies - using checkIn dates for actual performance
+  // Consider caching this aggregation result for 5 minutes
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
   const topCompanies = await Booking.aggregate([
     {
       $match: {
@@ -236,6 +260,12 @@ export const getMonthlyTrends = catchAsync(async (req, res, next) => {
   const currentDate = new Date();
   const startDate = new Date(currentDate);
   startDate.setMonth(startDate.getMonth() - months);
+
+  // Consider caching this aggregation result for 5 minutes
+
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
 
   const monthlyTrends = await Booking.aggregate([
     {
@@ -348,6 +378,12 @@ export const getCompanyPerformance = catchAsync(async (req, res, next) => {
 
   const currentYear = new Date().getFullYear();
   const startOfYear = new Date(currentYear, 0, 1);
+
+  // Consider caching this aggregation result for 5 minutes
+
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
 
   const companies = await CorporateCompany.aggregate([
     {
@@ -508,6 +544,10 @@ export const getBookingAnalytics = catchAsync(async (req, res, next) => {
   }
 
   // Booking status distribution
+  // Consider caching this aggregation result for 5 minutes
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
   const statusDistribution = await Booking.aggregate([
     {
       $match: {
@@ -525,6 +565,10 @@ export const getBookingAnalytics = catchAsync(async (req, res, next) => {
   ]);
 
   // Payment method analysis
+  // Consider caching this aggregation result for 5 minutes
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
   const paymentMethodAnalysis = await Booking.aggregate([
     {
       $match: {
@@ -542,6 +586,10 @@ export const getBookingAnalytics = catchAsync(async (req, res, next) => {
   ]);
 
   // Advance booking analysis (how far in advance bookings are made)
+  // Consider caching this aggregation result for 5 minutes
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
   const advanceBookingAnalysis = await Booking.aggregate([
     {
       $match: {
@@ -573,6 +621,10 @@ export const getBookingAnalytics = catchAsync(async (req, res, next) => {
   ]);
 
   // Room type preferences
+  // Consider caching this aggregation result for 5 minutes
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
   const roomTypePreferences = await Booking.aggregate([
     {
       $match: {
@@ -607,6 +659,10 @@ export const getBookingAnalytics = catchAsync(async (req, res, next) => {
   ]);
 
   // Average stay duration
+  // Consider caching this aggregation result for 5 minutes
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
   const avgStayDuration = await Booking.aggregate([
     {
       $match: {
@@ -669,6 +725,10 @@ export const getCreditAnalysis = catchAsync(async (req, res, next) => {
   const currentDate = new Date();
 
   // Credit utilization by company
+  // Consider caching this aggregation result for 5 minutes
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
   const creditUtilization = await CorporateCompany.aggregate([
     {
       $match: { isActive: true }
@@ -752,6 +812,10 @@ export const getCreditAnalysis = catchAsync(async (req, res, next) => {
   ]);
 
   // Overdue analysis
+  // Consider caching this aggregation result for 5 minutes
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
   const overdueAnalysis = await CorporateCredit.aggregate([
     {
       $match: {
@@ -799,6 +863,10 @@ export const getCreditAnalysis = catchAsync(async (req, res, next) => {
   ]);
 
   // Payment trends
+  // Consider caching this aggregation result for 5 minutes
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
   const paymentTrends = await CorporateCredit.aggregate([
     {
       $match: {
@@ -823,6 +891,10 @@ export const getCreditAnalysis = catchAsync(async (req, res, next) => {
   ]);
 
   // Credit limit distribution
+  // Consider caching this aggregation result for 5 minutes
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
   const creditLimitDistribution = await CorporateCompany.aggregate([
     {
       $match: { isActive: true }

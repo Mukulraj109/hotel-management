@@ -263,27 +263,39 @@ export function PaymentIntegrationWidget({
   };
 
   const processRoomChargePayment = async (paymentData: Record<string, unknown>) => {
-    // Process room charge payment
-    const response = await api.post('/payments/room-charge', paymentData);
-    return response.data;
+    try {
+      const response = await api.post('/payments/room-charge', paymentData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Room charge payment failed');
+    }
   };
 
   const processCardPayment = async (paymentData: Record<string, unknown>) => {
-    // Integrate with payment gateway (Stripe, Razorpay, etc.)
-    const response = await api.post('/payments/card', paymentData);
-    return response.data;
+    try {
+      const response = await api.post('/payments/card', paymentData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Card payment failed');
+    }
   };
 
   const processDigitalWalletPayment = async (paymentData: Record<string, unknown>) => {
-    // Process UPI/digital wallet payment
-    const response = await api.post('/payments/digital-wallet', paymentData);
-    return response.data;
+    try {
+      const response = await api.post('/payments/digital-wallet', paymentData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Digital wallet payment failed');
+    }
   };
 
   const processCashPayment = async (paymentData: Record<string, unknown>) => {
-    // Mark order as cash on delivery
-    const response = await api.post('/payments/cash-on-delivery', paymentData);
-    return response.data;
+    try {
+      const response = await api.post('/payments/cash-on-delivery', paymentData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Cash payment processing failed');
+    }
   };
 
   const renderPaymentMethodDetails = () => {
@@ -442,7 +454,7 @@ export function PaymentIntegrationWidget({
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Payment Method</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {paymentMethods.map(method => (
-            <div
+            <div role="button" tabIndex={0}
               key={method.id}
               className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
                 paymentState.selectedMethod === method.id
@@ -450,7 +462,7 @@ export function PaymentIntegrationWidget({
                   : 'border-gray-200 hover:border-gray-300'
               } ${!method.available ? 'opacity-50 cursor-not-allowed' : ''}`}
               onClick={() => method.available && setPaymentState(prev => ({ ...prev, selectedMethod: method.id }))}
-            >
+             onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => method.available && setPaymentState(prev => ({ ...prev, selectedMethod: method.id })); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center">
                   {method.icon}

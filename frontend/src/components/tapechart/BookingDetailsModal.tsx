@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { api } from '@/services/api';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface BookingDetailsModalProps {
   isOpen: boolean;
@@ -983,4 +984,4 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
   );
 };
 
-export default BookingDetailsModal;
+export default withErrorBoundary(BookingDetailsModal, { level: 'component' });

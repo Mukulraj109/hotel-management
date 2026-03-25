@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocalization } from '../context/LocalizationContext';
 import languageDetectionService from '../services/languageDetectionService';
 
@@ -48,7 +48,14 @@ export const useLanguageDetection = (
     supportedLanguages: []
   });
 
-  const [detectionTimeout, setDetectionTimeout] = useState<NodeJS.Timeout | null>(null);
+  const detectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup detection timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (detectionTimeoutRef.current) clearTimeout(detectionTimeoutRef.current);
+    };
+  }, []);
 
   // Load supported languages on mount
   useEffect(() => {
@@ -114,17 +121,17 @@ export const useLanguageDetection = (
     }
 
     // Clear existing timeout
-    if (detectionTimeout) {
-      clearTimeout(detectionTimeout);
+    if (detectionTimeoutRef.current) {
+      clearTimeout(detectionTimeoutRef.current);
     }
 
     return new Promise((resolve) => {
-      const timeout = setTimeout(async () => {
+      detectionTimeoutRef.current = setTimeout(async () => {
         try {
           setState(prev => ({ ...prev, isDetecting: true }));
-          
+
           const result = await languageDetectionService.detectTextLanguage(text);
-          
+
           if (result && result.confidence > 0.6) {
             setState(prev => ({
               ...prev,
@@ -139,18 +146,16 @@ export const useLanguageDetection = (
             resolve(null);
           }
         } catch (error) {
-          setState(prev => ({ 
-            ...prev, 
+          setState(prev => ({
+            ...prev,
             isDetecting: false,
             error: 'Text detection failed'
           }));
           resolve(null);
         }
       }, debounceMs);
-
-      setDetectionTimeout(timeout);
     });
-  }, [enableTextDetection, debounceMs, detectionTimeout]);
+  }, [enableTextDetection, debounceMs]);
 
   const setUserLanguagePreference = useCallback((language: string): void => {
     try {

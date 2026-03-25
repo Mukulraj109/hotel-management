@@ -33,8 +33,12 @@ class EventPublisher {
    * Ensure publisher is initialized before publishing events
    */
   async ensureInitialized() {
-    if (!this.isInitialized) {
-      await this.initialize();
+    try {
+      if (!this.isInitialized) {
+        await this.initialize();
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 

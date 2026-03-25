@@ -223,7 +223,7 @@ class InventoryHistoricalService {
       }
 
       // Get patterns for all items
-      const items = await InventoryItem.find({ hotelId, isActive: true }).select('_id name category');
+      const items = await InventoryItem.find({ hotelId, isActive: true }).select('_id name category').lean().limit(1000);
       const allPatterns = {};
 
       for (const item of items) {
@@ -268,41 +268,47 @@ class InventoryHistoricalService {
 
       // Enhanced forecasting with seasonality and confidence intervals
       const forecasts = await Promise.all(filteredInsights.map(async (insight) => {
-        const historicalData = await InventoryHistory.getTrendData(hotelId, insight.itemId, 90);
+        try {
+          const historicalData = await InventoryHistory.getTrendData(hotelId, insight.itemId, 90);
 
-        let seasonalMultiplier = 1;
-        if (includeSeasonality && historicalData.length > 0) {
-          seasonalMultiplier = await this.calculateSeasonalMultiplier(hotelId, insight.itemId);
+          let seasonalMultiplier = 1;
+          if (includeSeasonality && historicalData.length > 0) {
+            seasonalMultiplier = await this.calculateSeasonalMultiplier(hotelId, insight.itemId);
+          }
+
+          const adjustedConsumption = insight.avgDailyConsumption * seasonalMultiplier;
+          const adjustedProjectedConsumption = adjustedConsumption * forecastDays;
+          const adjustedProjectedStock = Math.max(0, insight.currentStock - adjustedProjectedConsumption);
+
+          // Calculate confidence intervals
+          const variance = await this.calculateConsumptionVariance(hotelId, insight.itemId);
+          const standardError = Math.sqrt(variance / forecastDays);
+          const tValue = this.getTValue(confidenceLevel, Math.min(30, historicalData.length - 1));
+
+          const marginOfError = tValue * standardError * forecastDays;
+          const lowerBound = Math.max(0, adjustedProjectedStock - marginOfError);
+          const upperBound = adjustedProjectedStock + marginOfError;
+
+          return {
+            ...insight,
+            seasonalMultiplier: parseFloat(seasonalMultiplier.toFixed(2)),
+            adjustedAvgDailyConsumption: parseFloat(adjustedConsumption.toFixed(2)),
+            adjustedProjectedConsumption: parseFloat(adjustedProjectedConsumption.toFixed(2)),
+            adjustedProjectedStock: Math.round(adjustedProjectedStock),
+            confidence: {
+              level: confidenceLevel,
+              lowerBound: Math.round(lowerBound),
+              upperBound: Math.round(upperBound),
+              marginOfError: parseFloat(marginOfError.toFixed(2))
+            },
+            forecastAccuracy: await this.calculateForecastAccuracy(hotelId, insight.itemId),
+            recommendedAction: this.getEnhancedRecommendation(insight, adjustedProjectedStock, lowerBound)
+          };
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
         }
-
-        const adjustedConsumption = insight.avgDailyConsumption * seasonalMultiplier;
-        const adjustedProjectedConsumption = adjustedConsumption * forecastDays;
-        const adjustedProjectedStock = Math.max(0, insight.currentStock - adjustedProjectedConsumption);
-
-        // Calculate confidence intervals
-        const variance = await this.calculateConsumptionVariance(hotelId, insight.itemId);
-        const standardError = Math.sqrt(variance / forecastDays);
-        const tValue = this.getTValue(confidenceLevel, Math.min(30, historicalData.length - 1));
-
-        const marginOfError = tValue * standardError * forecastDays;
-        const lowerBound = Math.max(0, adjustedProjectedStock - marginOfError);
-        const upperBound = adjustedProjectedStock + marginOfError;
-
-        return {
-          ...insight,
-          seasonalMultiplier: parseFloat(seasonalMultiplier.toFixed(2)),
-          adjustedAvgDailyConsumption: parseFloat(adjustedConsumption.toFixed(2)),
-          adjustedProjectedConsumption: parseFloat(adjustedProjectedConsumption.toFixed(2)),
-          adjustedProjectedStock: Math.round(adjustedProjectedStock),
-          confidence: {
-            level: confidenceLevel,
-            lowerBound: Math.round(lowerBound),
-            upperBound: Math.round(upperBound),
-            marginOfError: parseFloat(marginOfError.toFixed(2))
-          },
-          forecastAccuracy: await this.calculateForecastAccuracy(hotelId, insight.itemId),
-          recommendedAction: this.getEnhancedRecommendation(insight, adjustedProjectedStock, lowerBound)
-        };
       }));
 
       return forecasts.sort((a, b) => {
@@ -331,7 +337,7 @@ class InventoryHistoricalService {
       const recentSnapshots = await InventoryHistory.find({
         hotelId,
         snapshotDate: { $gte: startDate }
-      }).sort({ snapshotDate: -1 }).limit(10);
+      }).sort({ snapshotDate: -1 }).limit(10).lean();
 
       // Calculate key metrics
       const keyMetrics = this.calculateKeyMetrics(recentSnapshots);
@@ -481,31 +487,39 @@ class InventoryHistoricalService {
   }
 
   static async calculateSeasonalMultiplier(hotelId, itemId) {
-    const currentMonth = new Date().getMonth() + 1;
-    const patterns = await InventoryHistory.getSeasonalPatterns(hotelId, itemId);
+    try {
+      const currentMonth = new Date().getMonth() + 1;
+      const patterns = await InventoryHistory.getSeasonalPatterns(hotelId, itemId);
 
-    if (patterns.length === 0) return 1;
+      if (patterns.length === 0) return 1;
 
-    const currentMonthPattern = patterns.find(p => p._id.month === currentMonth);
-    if (!currentMonthPattern) return 1;
+      const currentMonthPattern = patterns.find(p => p._id.month === currentMonth);
+      if (!currentMonthPattern) return 1;
 
-    const averageConsumption = patterns.reduce((sum, p) => sum + p.avgConsumption, 0) / patterns.length;
-    return currentMonthPattern.avgConsumption / averageConsumption;
+      const averageConsumption = patterns.reduce((sum, p) => sum + p.avgConsumption, 0) / patterns.length;
+      return currentMonthPattern.avgConsumption / averageConsumption;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async calculateConsumptionVariance(hotelId, itemId) {
-    const historicalData = await InventoryHistory.getTrendData(hotelId, itemId, 60);
+    try {
+      const historicalData = await InventoryHistory.getTrendData(hotelId, itemId, 60);
 
-    if (historicalData.length < 2) return 1;
+      if (historicalData.length < 2) return 1;
 
-    const consumptionRates = historicalData.map(h =>
-      h.items.find(i => i.itemId.toString() === itemId.toString())?.consumptionRate || 0
-    );
+      const consumptionRates = historicalData.map(h =>
+        h.items.find(i => i.itemId.toString() === itemId.toString())?.consumptionRate || 0
+      );
 
-    const mean = consumptionRates.reduce((a, b) => a + b, 0) / consumptionRates.length;
-    const variance = consumptionRates.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / consumptionRates.length;
+      const mean = consumptionRates.reduce((a, b) => a + b, 0) / consumptionRates.length;
+      const variance = consumptionRates.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / consumptionRates.length;
 
-    return variance;
+      return variance;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static getTValue(confidenceLevel, degreesOfFreedom) {
@@ -526,13 +540,17 @@ class InventoryHistoricalService {
   }
 
   static async calculateForecastAccuracy(hotelId, itemId) {
-    // This would compare previous forecasts with actual consumption
-    // For now, return a simulated accuracy based on data quality
-    const historicalData = await InventoryHistory.getTrendData(hotelId, itemId, 30);
+    try {
+      // This would compare previous forecasts with actual consumption
+      // For now, return a simulated accuracy based on data quality
+      const historicalData = await InventoryHistory.getTrendData(hotelId, itemId, 30);
 
-    if (historicalData.length < 7) return 60; // Low accuracy with limited data
-    if (historicalData.length < 14) return 75; // Medium accuracy
-    return 85; // Good accuracy with sufficient data
+      if (historicalData.length < 7) return 60; // Low accuracy with limited data
+      if (historicalData.length < 14) return 75; // Medium accuracy
+      return 85; // Good accuracy with sufficient data
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static getEnhancedRecommendation(insight, adjustedStock, lowerBound) {
@@ -600,42 +618,46 @@ class InventoryHistoricalService {
   }
 
   static async getTopItemsAnalysis(hotelId, period) {
-    const startDate = new Date(Date.now() - period * 24 * 60 * 60 * 1000);
+    try {
+      const startDate = new Date(Date.now() - period * 24 * 60 * 60 * 1000);
 
-    const pipeline = [
-      {
-        $match: {
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          snapshotDate: { $gte: startDate }
+      const pipeline = [
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            snapshotDate: { $gte: startDate }
+          }
+        },
+        { $unwind: '$items' },
+        {
+          $group: {
+            _id: '$items.itemId',
+            name: { $first: '$items.name' },
+            category: { $first: '$items.category' },
+            avgConsumption: { $avg: '$items.consumptionRate' },
+            avgValue: { $avg: '$items.totalValue' },
+            avgStock: { $avg: '$items.stockLevel' },
+            volatility: { $stdDevPop: '$items.consumptionRate' }
+          }
         }
-      },
-      { $unwind: '$items' },
-      {
-        $group: {
-          _id: '$items.itemId',
-          name: { $first: '$items.name' },
-          category: { $first: '$items.category' },
-          avgConsumption: { $avg: '$items.consumptionRate' },
-          avgValue: { $avg: '$items.totalValue' },
-          avgStock: { $avg: '$items.stockLevel' },
-          volatility: { $stdDevPop: '$items.consumptionRate' }
-        }
-      }
-    ];
+      ];
 
-    const results = await InventoryHistory.aggregate(pipeline);
+      const results = await InventoryHistory.aggregate(pipeline);
 
-    return {
-      topByConsumption: results
-        .sort((a, b) => b.avgConsumption - a.avgConsumption)
-        .slice(0, 10),
-      topByValue: results
-        .sort((a, b) => b.avgValue - a.avgValue)
-        .slice(0, 10),
-      mostVolatile: results
-        .sort((a, b) => b.volatility - a.volatility)
-        .slice(0, 10)
-    };
+      return {
+        topByConsumption: results
+          .sort((a, b) => b.avgConsumption - a.avgConsumption)
+          .slice(0, 10),
+        topByValue: results
+          .sort((a, b) => b.avgValue - a.avgValue)
+          .slice(0, 10),
+        mostVolatile: results
+          .sort((a, b) => b.volatility - a.volatility)
+          .slice(0, 10)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static generateAnalyticsRecommendations(metrics, anomalies, forecasting) {
@@ -681,39 +703,43 @@ class InventoryHistoricalService {
   }
 
   static async checkSnapshotTriggers(hotelId, snapshot) {
-    const triggers = [];
+    try {
+      const triggers = [];
 
-    // Check for low stock triggers
-    if (snapshot.aggregatedMetrics?.lowStockItems > 0) {
-      triggers.push({
-        type: 'low_stock',
-        threshold: 'stock_threshold',
-        actualValue: snapshot.aggregatedMetrics.lowStockItems,
-        triggeredAt: new Date()
-      });
-    }
-
-    // Check for consumption spikes
-    const previousSnapshot = await InventoryHistory.findOne({
-      hotelId,
-      snapshotDate: { $lt: snapshot.snapshotDate }
-    }).sort({ snapshotDate: -1 });
-
-    if (previousSnapshot) {
-      const currentAvgConsumption = snapshot.aggregatedMetrics?.averageConsumptionRate || 0;
-      const previousAvgConsumption = previousSnapshot.aggregatedMetrics?.averageConsumptionRate || 0;
-
-      if (currentAvgConsumption > previousAvgConsumption * 1.5) {
+      // Check for low stock triggers
+      if (snapshot.aggregatedMetrics?.lowStockItems > 0) {
         triggers.push({
-          type: 'consumption_spike',
-          threshold: previousAvgConsumption * 1.5,
-          actualValue: currentAvgConsumption,
+          type: 'low_stock',
+          threshold: 'stock_threshold',
+          actualValue: snapshot.aggregatedMetrics.lowStockItems,
           triggeredAt: new Date()
         });
       }
-    }
 
-    return triggers;
+      // Check for consumption spikes
+      const previousSnapshot = await InventoryHistory.findOne({
+        hotelId,
+        snapshotDate: { $lt: snapshot.snapshotDate }
+      }).sort({ snapshotDate: -1 }).lean();
+
+      if (previousSnapshot) {
+        const currentAvgConsumption = snapshot.aggregatedMetrics?.averageConsumptionRate || 0;
+        const previousAvgConsumption = previousSnapshot.aggregatedMetrics?.averageConsumptionRate || 0;
+
+        if (currentAvgConsumption > previousAvgConsumption * 1.5) {
+          triggers.push({
+            type: 'consumption_spike',
+            threshold: previousAvgConsumption * 1.5,
+            actualValue: currentAvgConsumption,
+            triggeredAt: new Date()
+          });
+        }
+      }
+
+      return triggers;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 

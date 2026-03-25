@@ -416,44 +416,48 @@ bypassApprovalWorkflowSchema.index({
 
 // Pre-save middleware
 bypassApprovalWorkflowSchema.pre('save', async function(next) {
-  // Generate unique workflow ID if not provided
-  if (!this.workflowId) {
-    const timestamp = Date.now().toString();
-    const random = crypto.randomBytes(4).toString('hex');
-    this.workflowId = `APPROVAL_${timestamp}_${random.toUpperCase()}`;
-  }
-
-  // Set analytics data
-  const now = new Date();
-  this.analytics.weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][now.getDay()];
-
-  const hours = now.getHours();
-  if (hours >= 6 && hours < 12) this.analytics.shift = 'morning';
-  else if (hours >= 12 && hours < 18) this.analytics.shift = 'afternoon';
-  else if (hours >= 18 && hours < 22) this.analytics.shift = 'evening';
-  else this.analytics.shift = 'night';
-
-  this.analytics.businessHours = hours >= 8 && hours < 18 && this.analytics.weekday !== 'Sunday' && this.analytics.weekday !== 'Saturday';
-
-  // Set timeout date
-  if (!this.timing.timeoutAt && this.approvalRules.timeoutMinutes) {
-    this.timing.timeoutAt = new Date(Date.now() + this.approvalRules.timeoutMinutes * 60 * 1000);
-  }
-
-  // Calculate total duration if completed
-  if (this.workflowStatus === 'approved' || this.workflowStatus === 'rejected') {
-    if (this.timing.completedAt) {
-      this.timing.totalDuration = this.timing.completedAt - this.timing.initiatedAt;
+  try {
+    // Generate unique workflow ID if not provided
+    if (!this.workflowId) {
+      const timestamp = Date.now().toString();
+      const random = crypto.randomBytes(4).toString('hex');
+      this.workflowId = `APPROVAL_${timestamp}_${random.toUpperCase()}`;
     }
 
-    // Calculate average response time
-    const responses = this.approvalChain.filter(a => a.responseTime);
-    if (responses.length > 0) {
-      this.timing.averageResponseTime = responses.reduce((sum, a) => sum + a.responseTime, 0) / responses.length;
-    }
-  }
+    // Set analytics data
+    const now = new Date();
+    this.analytics.weekday = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][now.getDay()];
 
-  next();
+    const hours = now.getHours();
+    if (hours >= 6 && hours < 12) this.analytics.shift = 'morning';
+    else if (hours >= 12 && hours < 18) this.analytics.shift = 'afternoon';
+    else if (hours >= 18 && hours < 22) this.analytics.shift = 'evening';
+    else this.analytics.shift = 'night';
+
+    this.analytics.businessHours = hours >= 8 && hours < 18 && this.analytics.weekday !== 'Sunday' && this.analytics.weekday !== 'Saturday';
+
+    // Set timeout date
+    if (!this.timing.timeoutAt && this.approvalRules.timeoutMinutes) {
+      this.timing.timeoutAt = new Date(Date.now() + this.approvalRules.timeoutMinutes * 60 * 1000);
+    }
+
+    // Calculate total duration if completed
+    if (this.workflowStatus === 'approved' || this.workflowStatus === 'rejected') {
+      if (this.timing.completedAt) {
+        this.timing.totalDuration = this.timing.completedAt - this.timing.initiatedAt;
+      }
+
+      // Calculate average response time
+      const responses = this.approvalChain.filter(a => a.responseTime);
+      if (responses.length > 0) {
+        this.timing.averageResponseTime = responses.reduce((sum, a) => sum + a.responseTime, 0) / responses.length;
+      }
+    }
+
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 });
 
 // Instance methods
@@ -620,28 +624,32 @@ bypassApprovalWorkflowSchema.methods.canEscalate = function() {
 
 // Static methods
 bypassApprovalWorkflowSchema.statics.createWorkflow = async function(workflowData) {
-  const workflow = new this({
-    hotelId: workflowData.hotelId,
-    bypassAuditId: workflowData.bypassAuditId,
-    initiatedBy: workflowData.initiatedBy,
-    approvalRules: workflowData.approvalRules,
-    approvalChain: workflowData.approvalChain || [],
-    escalation: workflowData.escalation || {}
-  });
-
-  // Add initial approval levels based on rules
-  if (workflowData.approvalLevels && workflowData.approvalLevels.length > 0) {
-    workflowData.approvalLevels.forEach((level, index) => {
-      workflow.addApprovalLevel(
-        index + 1,
-        level.requiredRole,
-        level.specificApproverId,
-        level.timeoutMinutes
-      );
+  try {
+    const workflow = new this({
+      hotelId: workflowData.hotelId,
+      bypassAuditId: workflowData.bypassAuditId,
+      initiatedBy: workflowData.initiatedBy,
+      approvalRules: workflowData.approvalRules,
+      approvalChain: workflowData.approvalChain || [],
+      escalation: workflowData.escalation || {}
     });
-  }
 
-  return await workflow.save();
+    // Add initial approval levels based on rules
+    if (workflowData.approvalLevels && workflowData.approvalLevels.length > 0) {
+      workflowData.approvalLevels.forEach((level, index) => {
+        workflow.addApprovalLevel(
+          index + 1,
+          level.requiredRole,
+          level.specificApproverId,
+          level.timeoutMinutes
+        );
+      });
+    }
+
+    return await workflow.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 bypassApprovalWorkflowSchema.statics.getPendingApprovals = function(approverId, hotelId) {
@@ -681,47 +689,51 @@ bypassApprovalWorkflowSchema.statics.getExpiredWorkflows = function(hotelId = nu
 };
 
 bypassApprovalWorkflowSchema.statics.getWorkflowStatistics = async function(hotelId, timeRange = 30) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - timeRange);
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - timeRange);
 
-  const stats = await this.aggregate([
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        createdAt: { $gte: startDate }
-      }
-    },
-    {
-      $group: {
-        _id: null,
-        totalWorkflows: { $sum: 1 },
-        approvedWorkflows: {
-          $sum: { $cond: [{ $eq: ['$workflowStatus', 'approved'] }, 1, 0] }
-        },
-        rejectedWorkflows: {
-          $sum: { $cond: [{ $eq: ['$workflowStatus', 'rejected'] }, 1, 0] }
-        },
-        expiredWorkflows: {
-          $sum: { $cond: [{ $eq: ['$workflowStatus', 'expired'] }, 1, 0] }
-        },
-        averageResponseTime: { $avg: '$timing.averageResponseTime' },
-        averageTotalDuration: { $avg: '$timing.totalDuration' },
-        escalatedCount: {
-          $sum: { $cond: [{ $gt: ['$escalation.currentEscalationLevel', 0] }, 1, 0] }
+    const stats = await this.aggregate([
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          createdAt: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalWorkflows: { $sum: 1 },
+          approvedWorkflows: {
+            $sum: { $cond: [{ $eq: ['$workflowStatus', 'approved'] }, 1, 0] }
+          },
+          rejectedWorkflows: {
+            $sum: { $cond: [{ $eq: ['$workflowStatus', 'rejected'] }, 1, 0] }
+          },
+          expiredWorkflows: {
+            $sum: { $cond: [{ $eq: ['$workflowStatus', 'expired'] }, 1, 0] }
+          },
+          averageResponseTime: { $avg: '$timing.averageResponseTime' },
+          averageTotalDuration: { $avg: '$timing.totalDuration' },
+          escalatedCount: {
+            $sum: { $cond: [{ $gt: ['$escalation.currentEscalationLevel', 0] }, 1, 0] }
+          }
         }
       }
-    }
-  ]);
+    ]);
 
-  return stats[0] || {
-    totalWorkflows: 0,
-    approvedWorkflows: 0,
-    rejectedWorkflows: 0,
-    expiredWorkflows: 0,
-    averageResponseTime: 0,
-    averageTotalDuration: 0,
-    escalatedCount: 0
-  };
+    return stats[0] || {
+      totalWorkflows: 0,
+      approvedWorkflows: 0,
+      rejectedWorkflows: 0,
+      expiredWorkflows: 0,
+      averageResponseTime: 0,
+      averageTotalDuration: 0,
+      escalatedCount: 0
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Virtual for approval completion percentage

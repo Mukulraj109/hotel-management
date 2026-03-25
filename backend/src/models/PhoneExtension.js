@@ -329,7 +329,7 @@ phoneExtensionSchema.pre('save', async function(next) {
     // Auto-populate room number if room is assigned
     if (this.isModified('roomId') && this.roomId) {
       const Room = mongoose.model('Room');
-      const room = await Room.findById(this.roomId).select('roomNumber');
+      const room = await Room.findById(this.roomId).select('roomNumber').lean();
       if (room) {
         this.roomNumber = room.roomNumber;
       }
@@ -538,21 +538,25 @@ phoneExtensionSchema.statics.bulkUpdateStatus = function(extensionIds, status, u
 };
 
 phoneExtensionSchema.statics.generateNextExtension = async function(hotelId, prefix = '') {
-  const lastExtension = await this.findOne(
-    { 
-      hotelId,
-      extensionNumber: new RegExp(`^${prefix}\\d+$`)
-    },
-    {},
-    { sort: { extensionNumber: -1 } }
-  );
+  try {
+    const lastExtension = await this.findOne(
+      { 
+        hotelId,
+        extensionNumber: new RegExp(`^${prefix}\\d+$`)
+      },
+      {},
+      { sort: { extensionNumber: -1 } }
+    ).lean();
 
-  if (!lastExtension) {
-    return `${prefix}1000`;
+    if (!lastExtension) {
+      return `${prefix}1000`;
+    }
+
+    const lastNumber = parseInt(lastExtension.extensionNumber.replace(prefix, ''));
+    return `${prefix}${lastNumber + 1}`;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  const lastNumber = parseInt(lastExtension.extensionNumber.replace(prefix, ''));
-  return `${prefix}${lastNumber + 1}`;
 };
 
 // Pre-remove middleware

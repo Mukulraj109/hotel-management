@@ -175,7 +175,7 @@ export const enforceResourceSharingAccess = (permission = 'view') => {
       // Import SharedResource model
       const SharedResource = mongoose.model('SharedResource');
       
-      const resource = await SharedResource.findById(resourceId);
+      const resource = await SharedResource.findById(resourceId).lean();
       
       if (!resource) {
         return res.status(404).json({
@@ -241,7 +241,7 @@ export const allowCrossPropertyAccess = (requiredRole = 'manager') => {
       const propertyGroupId = req.params.propertyGroupId || req.params.id;
       
       if (propertyGroupId) {
-        const propertyGroup = await PropertyGroup.findById(propertyGroupId);
+        const propertyGroup = await PropertyGroup.findById(propertyGroupId).lean();
         
         if (!propertyGroup) {
           return res.status(404).json({
@@ -259,7 +259,7 @@ export const allowCrossPropertyAccess = (requiredRole = 'manager') => {
               { ownerId: req.user._id },
               { 'staff.userId': req.user._id, 'staff.role': 'manager' }
             ]
-          });
+          }).lean().limit(1000);
 
           if (managedProperties.length === 0) {
             return res.status(403).json({
@@ -431,14 +431,14 @@ async function getUserAccessibleProperties(userId) {
       // Get properties owned by user
       const ownedProperties = await Hotel.find({ ownerId: userId, isActive: true })
         .select('_id name address.city propertyGroupId')
-        .lean();
+        .lean().limit(1000);
 
       // Get properties where user has management access
       const managedProperties = await Hotel.find({
         'staff.userId': userId,
         'staff.role': { $in: ['manager', 'admin'] },
         isActive: true
-      }).select('_id name address.city propertyGroupId').lean();
+      }).select('_id name address.city propertyGroupId').lean().limit(1000);
 
       // Combine and deduplicate
       const allProperties = [...ownedProperties, ...managedProperties];
@@ -470,7 +470,7 @@ async function getUserAccessiblePropertyGroups(userId) {
       // Get property groups owned by user
       userPropertyGroups = await PropertyGroup.find({ ownerId: userId, status: 'active' })
         .select('_id name groupType')
-        .lean();
+        .lean().limit(1000);
 
       await cacheService.set(cacheKey, userPropertyGroups, 1800); // Cache for 30 minutes
     }

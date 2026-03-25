@@ -2032,11 +2032,11 @@ export default function StaffSupplyRequests() {
             {/* Templates Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {templates.map((template) => (
-                <div
+                <div role="button" tabIndex={0}
                   key={template._id}
                   className="border border-gray-200 rounded-lg p-4 hover:border-blue-500 hover:shadow-md transition-all cursor-pointer"
                   onClick={() => setSelectedTemplate(template)}
-                >
+                 onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => setSelectedTemplate(template); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <h3 className="font-semibold text-gray-900">{template.name}</h3>

@@ -23,13 +23,13 @@ const debugKPIs = async () => {
     
     // Check bookings
     console.log('\n=== BOOKING DATA ===');
-    const bookings = await Booking.find({ hotelId });
+    const bookings = await Booking.find({ hotelId }).lean().limit(1000);
     console.log(`Total bookings: ${bookings.length}`);
     
     const confirmedBookings = await Booking.find({ 
       hotelId, 
       status: { $in: ['confirmed', 'checked_in', 'checked_out'] } 
-    });
+    }).lean().limit(1000);
     console.log(`Confirmed bookings: ${confirmedBookings.length}`);
     
     // Show sample bookings
@@ -49,7 +49,7 @@ const debugKPIs = async () => {
     
     // Check KPI data
     console.log('\n=== KPI DATA ===');
-    const kpis = await KPI.find({ hotelId }).sort({ date: -1 }).limit(1);
+    const kpis = await KPI.find({ hotelId }).sort({ date: -1 }).limit(1).lean();
     if (kpis.length > 0) {
       const kpi = kpis[0];
       console.log('Latest KPI data:');

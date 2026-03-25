@@ -39,7 +39,7 @@ export const getAccountAttributes = catchAsync(async (req, res, next) => {
 
 export const getAccountAttribute = catchAsync(async (req, res, next) => {
   const attribute = await AccountAttribute.findById(req.params.id)
-    .populate('createdBy updatedBy', 'name email');
+    .populate('createdBy updatedBy', 'name email').lean();
 
   if (!attribute) {
     return next(new ApplicationError('Account attribute not found', 404));
@@ -113,7 +113,7 @@ export const getGuestTypes = catchAsync(async (req, res, next) => {
 
 export const getGuestType = catchAsync(async (req, res, next) => {
   const guestType = await GuestType.findById(req.params.id)
-    .populate('createdBy updatedBy', 'name email');
+    .populate('createdBy updatedBy', 'name email').lean();
 
   if (!guestType) {
     return next(new ApplicationError('Guest type not found', 404));
@@ -208,7 +208,7 @@ export const getIdentificationTypes = catchAsync(async (req, res, next) => {
 
 export const getIdentificationType = catchAsync(async (req, res, next) => {
   const identificationType = await IdentificationType.findById(req.params.id)
-    .populate('createdBy updatedBy', 'name email');
+    .populate('createdBy updatedBy', 'name email').lean();
 
   if (!identificationType) {
     return next(new ApplicationError('Identification type not found', 404));

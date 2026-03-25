@@ -132,7 +132,7 @@ class PricingScheduler {
       const activeStrategies = await PricingStrategy.find({
         isActive: true,
         'dynamicPricing.enabled': true
-      }).distinct('hotelId');
+      }).distinct('hotelId').lean().limit(1000);
 
       if (activeStrategies.length === 0) {
         logger.info('No hotels with active dynamic pricing found');
@@ -192,7 +192,7 @@ class PricingScheduler {
       logger.info('🔮 Generating daily demand forecasts...');
 
       // Get all active room types
-      const roomTypes = await RoomType.find({ isActive: true });
+      const roomTypes = await RoomType.find({ isActive: true }).lean().limit(1000);
       const hotelIds = [...new Set(roomTypes.map(rt => rt.hotelId.toString()))];
 
       let totalForecasts = 0;
@@ -209,22 +209,29 @@ class PricingScheduler {
             forecastDates.push(date);
           }
 
+          // Batch: check existing forecasts for all roomType+date combos in a single query
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
+
+          const existingForecasts = await DemandForecast.find({
+            hotelId,
+            roomTypeId: { $in: hotelRoomTypes.map(rt => rt._id) },
+            date: { $in: forecastDates },
+            createdAt: { $gte: todayStart }
+          }).select('roomTypeId date').lean();
+
+          const existingSet = new Set(existingForecasts.map(f =>
+            f.roomTypeId.toString() + '_' + f.date.toISOString()
+          ));
+
           for (const roomType of hotelRoomTypes) {
             for (const date of forecastDates) {
               try {
-                // Check if forecast already exists for today
-                const existingForecast = await DemandForecast.findOne({
-                  hotelId,
-                  roomTypeId: roomType._id,
-                  date,
-                  createdAt: { $gte: new Date().setHours(0, 0, 0, 0) }
-                });
-
-                if (!existingForecast) {
+                const key = roomType._id.toString() + '_' + date.toISOString();
+                if (!existingSet.has(key)) {
                   await DemandForecast.generateForecast(hotelId, roomType._id, date);
                   totalForecasts++;
                 }
-
               } catch (forecastError) {
                 logger.error(`Error generating forecast for ${roomType.name} on ${date}:`, forecastError);
               }
@@ -251,7 +258,7 @@ class PricingScheduler {
       logger.info('📊 Calculating daily revenue KPIs...');
 
       // Get all unique hotel IDs
-      const roomTypes = await RoomType.find({ isActive: true }).distinct('hotelId');
+      const roomTypes = await RoomType.find({ isActive: true }).distinct('hotelId').lean().limit(1000);
 
       for (const hotelId of roomTypes) {
         try {
@@ -308,36 +315,48 @@ class PricingScheduler {
     try {
       logger.info('📈 Evaluating pricing strategy performance...');
 
-      const strategies = await PricingStrategy.find({ isActive: true });
+      const strategies = await PricingStrategy.find({ isActive: true }).lean().limit(1000);
       let evaluatedStrategies = 0;
 
+      // Process strategies and collect updates for bulkWrite
+      const bulkOps = [];
       for (const strategy of strategies) {
         try {
-          // Update strategy performance metrics
           const yesterday = new Date();
           yesterday.setDate(yesterday.getDate() - 1);
 
           const kpis = await revenueManagementService.calculateRevenueKPIs(
             strategy.hotelId,
-            new Date(yesterday.setDate(yesterday.getDate() - 30)), // Last 30 days
+            new Date(yesterday.setDate(yesterday.getDate() - 30)),
             yesterday
           );
 
           if (kpis.success) {
-            // Update strategy performance
-            strategy.performance.totalRevenue = kpis.kpis.totalRevenue;
-            strategy.performance.averageRate = kpis.kpis.adr;
-            strategy.performance.occupancyRate = kpis.kpis.occupancyRate;
-            strategy.performance.revPAR = kpis.kpis.revPAR;
-            strategy.performance.lastCalculated = new Date();
-
-            await strategy.save();
+            bulkOps.push({
+              updateOne: {
+                filter: { _id: strategy._id },
+                update: {
+                  $set: {
+                    'performance.totalRevenue': kpis.kpis.totalRevenue,
+                    'performance.averageRate': kpis.kpis.adr,
+                    'performance.occupancyRate': kpis.kpis.occupancyRate,
+                    'performance.revPAR': kpis.kpis.revPAR,
+                    'performance.lastCalculated': new Date()
+                  }
+                }
+              }
+            });
             evaluatedStrategies++;
           }
 
         } catch (strategyError) {
           logger.error(`Error evaluating strategy ${strategy.name}:`, strategyError);
         }
+      }
+
+      // Batch: apply all strategy updates with bulkWrite
+      if (bulkOps.length > 0) {
+        await PricingStrategy.bulkWrite(bulkOps);
       }
 
       logger.info(`✅ Evaluated ${evaluatedStrategies} pricing strategies`);

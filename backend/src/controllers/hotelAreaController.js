@@ -106,13 +106,13 @@ class HotelAreaController {
         result.children = await HotelArea.find({
           parentAreaId: area._id,
           status: { $in: ['active', 'under_renovation'] }
-        }).sort({ 'displaySettings.displayOrder': 1, areaName: 1 });
+        }).sort({ 'displaySettings.displayOrder': 1, areaName: 1 }).lean().limit(1000);
       }
 
       if (includeRooms === 'true') {
         result.rooms = await Room.find({
           hotelAreaId: area._id
-        }).select('roomNumber roomTypeId status floorNumber').populate('roomTypeId', 'typeName');
+        }).select('roomNumber roomTypeId status floorNumber').populate('roomTypeId', 'typeName').lean().limit(1000);
       }
 
       res.json({
@@ -154,7 +154,7 @@ class HotelAreaController {
         const parentArea = await HotelArea.findOne({
           _id: areaData.parentAreaId,
           hotelId
-        });
+        }).lean();
 
         if (!parentArea) {
           return res.status(400).json({
@@ -224,7 +224,7 @@ class HotelAreaController {
       };
 
       // Check if area exists
-      const existingArea = await HotelArea.findById(id);
+      const existingArea = await HotelArea.findById(id).lean();
       if (!existingArea) {
         return res.status(404).json({
           success: false,
@@ -243,7 +243,7 @@ class HotelAreaController {
         }
 
         // Check if the new parent would create a circular reference
-        const descendants = await HotelArea.find({ fullPath: { $regex: existingArea.areaName } });
+        const descendants = await HotelArea.find({ fullPath: { $regex: existingArea.areaName } }).lean().limit(1000);
         const descendantIds = descendants.map(d => d._id.toString());
         
         if (descendantIds.includes(updateData.parentAreaId)) {
@@ -253,7 +253,7 @@ class HotelAreaController {
           });
         }
 
-        const parentArea = await HotelArea.findById(updateData.parentAreaId);
+        const parentArea = await HotelArea.findById(updateData.parentAreaId).lean();
         if (!parentArea) {
           return res.status(400).json({
             success: false,
@@ -306,7 +306,7 @@ class HotelAreaController {
     try {
       const { id } = req.params;
 
-      const area = await HotelArea.findById(id);
+      const area = await HotelArea.findById(id).lean();
       if (!area) {
         return res.status(404).json({
           success: false,
@@ -431,7 +431,7 @@ class HotelAreaController {
     try {
       const { id } = req.params;
 
-      const area = await HotelArea.findById(id);
+      const area = await HotelArea.findById(id).lean();
       if (!area) {
         return res.status(404).json({
           success: false,
@@ -464,7 +464,7 @@ class HotelAreaController {
     try {
       const { id } = req.params;
 
-      const area = await HotelArea.findById(id);
+      const area = await HotelArea.findById(id).lean();
       if (!area) {
         return res.status(404).json({
           success: false,
@@ -493,7 +493,7 @@ class HotelAreaController {
     try {
       const { id } = req.params;
 
-      const area = await HotelArea.findById(id);
+      const area = await HotelArea.findById(id).lean();
       if (!area) {
         return res.status(404).json({
           success: false,
@@ -576,7 +576,7 @@ class HotelAreaController {
         status: { $in: ['active', 'under_renovation'] }
       })
       .select('areaName areaCode totalRooms availableRooms statistics displaySettings')
-      .sort({ 'displaySettings.displayOrder': 1, areaName: 1 });
+      .sort({ 'displaySettings.displayOrder': 1, areaName: 1 }).lean().limit(1000);
 
       res.json({
         success: true,

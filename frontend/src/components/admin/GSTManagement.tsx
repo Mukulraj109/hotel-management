@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DataTable } from '../dashboard/DataTable';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface GSTCalculationResult {
   baseAmount: number;
@@ -840,4 +841,4 @@ const GSTManagement: React.FC = () => {
   );
 };
 
-export default GSTManagement;
+export default withErrorBoundary(GSTManagement, { level: 'component' });

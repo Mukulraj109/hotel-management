@@ -2,10 +2,8 @@ import mongoose from 'mongoose';
 import BypassFinancialImpact from '../models/BypassFinancialImpact.js';
 import AdminBypassAudit from '../models/AdminBypassAudit.js';
 import AuditLog from '../models/AuditLog.js';
-import {
 import logger from '../utils/logger.js';
-    sendNotification
-} from './notificationService.js';
+import { sendNotification } from './notificationService.js';
 
 /**
  * Inventory Integration Service
@@ -177,7 +175,7 @@ class InventoryIntegrationService {
             // Get bypass audit record
             const auditRecord = await AdminBypassAudit.findById(bypassAuditId)
                 .populate('hotelId')
-                .populate('bookingId');
+                .populate('bookingId').lean();
 
             if (!auditRecord) {
                 throw new Error('Bypass audit record not found');
@@ -240,72 +238,76 @@ class InventoryIntegrationService {
      * Process impact for a specific inventory item
      */
     async processItemImpact(auditRecord, item) {
-        const hotelId = auditRecord.hotelId._id;
-        const itemId = item.itemId;
-        const quantityBypassed = item.quantity || 1;
+      try {
+          const hotelId = auditRecord.hotelId._id;
+          const itemId = item.itemId;
+          const quantityBypassed = item.quantity || 1;
 
-        // Get current stock levels
-        const stockInfo = await this.getItemStock(hotelId, itemId);
+          // Get current stock levels
+          const stockInfo = await this.getItemStock(hotelId, itemId);
 
-        // Calculate impact
-        const impact = {
-            itemId,
-            itemName: item.itemName || stockInfo?.name || 'Unknown Item',
-            category: item.category || stockInfo?.category || 'General',
-            quantityBypassed,
-            currentStock: stockInfo?.currentStock || 0,
-            maximumStock: stockInfo?.maximumStock || 100,
-            minimumStock: stockInfo?.minimumStock || 10,
-            reorderPoint: stockInfo?.reorderPoint || 20,
-            unitCost: stockInfo?.unitCost || 0,
-            totalImpactCost: (stockInfo?.unitCost || 0) * quantityBypassed,
-            requiresReorder: false,
-            urgencyLevel: this.calculateUrgencyLevel(auditRecord, stockInfo, quantityBypassed),
-            notifications: []
-        };
+          // Calculate impact
+          const impact = {
+              itemId,
+              itemName: item.itemName || stockInfo?.name || 'Unknown Item',
+              category: item.category || stockInfo?.category || 'General',
+              quantityBypassed,
+              currentStock: stockInfo?.currentStock || 0,
+              maximumStock: stockInfo?.maximumStock || 100,
+              minimumStock: stockInfo?.minimumStock || 10,
+              reorderPoint: stockInfo?.reorderPoint || 20,
+              unitCost: stockInfo?.unitCost || 0,
+              totalImpactCost: (stockInfo?.unitCost || 0) * quantityBypassed,
+              requiresReorder: false,
+              urgencyLevel: this.calculateUrgencyLevel(auditRecord, stockInfo, quantityBypassed),
+              notifications: []
+          };
 
-        // Update stock levels if auto-adjustment is enabled
-        if (this.integrationConfig.stockAdjustment.autoAdjustEnabled) {
-            const adjustmentResult = await this.adjustItemStock(hotelId, itemId, -quantityBypassed, {
-                reason: 'bypass_checkout',
-                bypassId: auditRecord.bypassId,
-                adjustedBy: auditRecord.adminId,
-                notes: `Stock adjustment due to bypass checkout: ${auditRecord.reason.description}`
-            });
+          // Update stock levels if auto-adjustment is enabled
+          if (this.integrationConfig.stockAdjustment.autoAdjustEnabled) {
+              const adjustmentResult = await this.adjustItemStock(hotelId, itemId, -quantityBypassed, {
+                  reason: 'bypass_checkout',
+                  bypassId: auditRecord.bypassId,
+                  adjustedBy: auditRecord.adminId,
+                  notes: `Stock adjustment due to bypass checkout: ${auditRecord.reason.description}`
+              });
 
-            impact.stockAdjusted = adjustmentResult.success;
-            impact.newStockLevel = adjustmentResult.newStock;
-        }
+              impact.stockAdjusted = adjustmentResult.success;
+              impact.newStockLevel = adjustmentResult.newStock;
+          }
 
-        // Check if reordering is needed
-        const stockLevel = impact.stockAdjusted ? impact.newStockLevel : impact.currentStock;
-        const stockPercentage = stockLevel / impact.maximumStock;
+          // Check if reordering is needed
+          const stockLevel = impact.stockAdjusted ? impact.newStockLevel : impact.currentStock;
+          const stockPercentage = stockLevel / impact.maximumStock;
 
-        if (stockPercentage <= this.integrationConfig.reordering.minimumStockThreshold) {
-            impact.requiresReorder = true;
-            impact.reorderPriority = stockPercentage <= this.integrationConfig.reordering.emergencyOrderThreshold ? 'emergency' : 'standard';
-        }
+          if (stockPercentage <= this.integrationConfig.reordering.minimumStockThreshold) {
+              impact.requiresReorder = true;
+              impact.reorderPriority = stockPercentage <= this.integrationConfig.reordering.emergencyOrderThreshold ? 'emergency' : 'standard';
+          }
 
-        // Generate notifications
-        if (impact.urgencyLevel === 'critical') {
-            impact.notifications.push({
-                type: 'critical_stock_impact',
-                message: `Critical item ${impact.itemName} bypassed - immediate attention required`,
-                recipients: ['inventory_manager', 'hotel_manager'],
-                priority: 'high'
-            });
-        }
+          // Generate notifications
+          if (impact.urgencyLevel === 'critical') {
+              impact.notifications.push({
+                  type: 'critical_stock_impact',
+                  message: `Critical item ${impact.itemName} bypassed - immediate attention required`,
+                  recipients: ['inventory_manager', 'hotel_manager'],
+                  priority: 'high'
+              });
+          }
 
-        if (impact.requiresReorder) {
-            impact.notifications.push({
-                type: 'reorder_required',
-                message: `Item ${impact.itemName} below reorder threshold - restocking needed`,
-                recipients: ['procurement_team'],
-                priority: impact.reorderPriority === 'emergency' ? 'high' : 'medium'
-            });
-        }
+          if (impact.requiresReorder) {
+              impact.notifications.push({
+                  type: 'reorder_required',
+                  message: `Item ${impact.itemName} below reorder threshold - restocking needed`,
+                  recipients: ['procurement_team'],
+                  priority: impact.reorderPriority === 'emergency' ? 'high' : 'medium'
+              });
+          }
 
-        return impact;
+          return impact;
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
@@ -345,77 +347,89 @@ class InventoryIntegrationService {
      * Get stock from internal database
      */
     async getStockFromDatabase(hotelId, itemId) {
-        // This would integrate with your internal inventory model
-        // For now, return simulated data
-        const itemCategories = {
-            'towels': {
-                name: 'Bath Towels',
-                category: 'Linen',
-                unitCost: 15
-            },
-            'toiletries': {
-                name: 'Toiletries Kit',
-                category: 'Amenities',
-                unitCost: 8
-            },
-            'minibar': {
-                name: 'Minibar Items',
-                category: 'Food & Beverage',
-                unitCost: 25
-            },
-            'cleaning': {
-                name: 'Cleaning Supplies',
-                category: 'Housekeeping',
-                unitCost: 12
-            },
-            'maintenance': {
-                name: 'Maintenance Parts',
-                category: 'Technical',
-                unitCost: 30
-            }
-        };
+      try {
+          // This would integrate with your internal inventory model
+          // For now, return simulated data
+          const itemCategories = {
+              'towels': {
+                  name: 'Bath Towels',
+                  category: 'Linen',
+                  unitCost: 15
+              },
+              'toiletries': {
+                  name: 'Toiletries Kit',
+                  category: 'Amenities',
+                  unitCost: 8
+              },
+              'minibar': {
+                  name: 'Minibar Items',
+                  category: 'Food & Beverage',
+                  unitCost: 25
+              },
+              'cleaning': {
+                  name: 'Cleaning Supplies',
+                  category: 'Housekeeping',
+                  unitCost: 12
+              },
+              'maintenance': {
+                  name: 'Maintenance Parts',
+                  category: 'Technical',
+                  unitCost: 30
+              }
+          };
 
-        const itemInfo = itemCategories[itemId] || {
-            name: 'Unknown Item',
-            category: 'General',
-            unitCost: 20
-        };
+          const itemInfo = itemCategories[itemId] || {
+              name: 'Unknown Item',
+              category: 'General',
+              unitCost: 20
+          };
 
-        return {
-            itemId,
-            name: itemInfo.name,
-            category: itemInfo.category,
-            currentStock: Math.floor(Math.random() * 100) + 10, // Random stock between 10-110
-            maximumStock: 200,
-            minimumStock: 20,
-            reorderPoint: 40,
-            unitCost: itemInfo.unitCost,
-            supplier: 'Primary Supplier Ltd',
-            lastUpdated: new Date()
-        };
+          return {
+              itemId,
+              name: itemInfo.name,
+              category: itemInfo.category,
+              currentStock: Math.floor(Math.random() * 100) + 10, // Random stock between 10-110
+              maximumStock: 200,
+              minimumStock: 20,
+              reorderPoint: 40,
+              unitCost: itemInfo.unitCost,
+              supplier: 'Primary Supplier Ltd',
+              lastUpdated: new Date()
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Get stock from external API
      */
     async getStockFromAPI(provider, hotelId, itemId) {
-        // Implement actual API integration here
-        // This is a placeholder for external system integration
-        logger.debug(`Getting stock from API: ${provider.name} for item ${itemId}`);
+      try {
+          // Implement actual API integration here
+          // This is a placeholder for external system integration
+          logger.debug(`Getting stock from API: ${provider.name} for item ${itemId}`);
 
-        // Simulate API call delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
+          // Simulate API call delay
+          await new Promise(resolve => setTimeout(resolve, 1000));
 
-        return this.getMockStockData(itemId);
+          return this.getMockStockData(itemId);
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Get stock from webhook provider
      */
     async getStockFromWebhook(provider, hotelId, itemId) {
-        // Implement webhook-based stock retrieval
-        logger.debug(`Getting stock from webhook: ${provider.name} for item ${itemId}`);
-        return this.getMockStockData(itemId);
+      try {
+          // Implement webhook-based stock retrieval
+          logger.debug(`Getting stock from webhook: ${provider.name} for item ${itemId}`);
+          return this.getMockStockData(itemId);
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
@@ -627,115 +641,127 @@ class InventoryIntegrationService {
      * Estimate inventory impact when specific items aren't provided
      */
     async estimateInventoryImpact(auditRecord) {
-        const reasonCategory = auditRecord.reason.category;
-        const estimatedLoss = auditRecord.financialImpact?.estimatedLoss || 0;
+      try {
+          const reasonCategory = auditRecord.reason.category;
+          const estimatedLoss = auditRecord.financialImpact?.estimatedLoss || 0;
 
-        // Estimate based on bypass category
-        const categoryImpacts = {
-            'inventory_unavailable': {
-                itemCount: 3,
-                averageValue: 25,
-                categories: ['Linen', 'Amenities', 'Housekeeping']
-            },
-            'guest_complaint': {
-                itemCount: 2,
-                averageValue: 40,
-                categories: ['Amenities', 'Food & Beverage']
-            },
-            'system_failure': {
-                itemCount: 1,
-                averageValue: 15,
-                categories: ['Technical']
-            },
-            'staff_shortage': {
-                itemCount: 4,
-                averageValue: 20,
-                categories: ['Linen', 'Housekeeping', 'Amenities']
-            }
-        };
+          // Estimate based on bypass category
+          const categoryImpacts = {
+              'inventory_unavailable': {
+                  itemCount: 3,
+                  averageValue: 25,
+                  categories: ['Linen', 'Amenities', 'Housekeeping']
+              },
+              'guest_complaint': {
+                  itemCount: 2,
+                  averageValue: 40,
+                  categories: ['Amenities', 'Food & Beverage']
+              },
+              'system_failure': {
+                  itemCount: 1,
+                  averageValue: 15,
+                  categories: ['Technical']
+              },
+              'staff_shortage': {
+                  itemCount: 4,
+                  averageValue: 20,
+                  categories: ['Linen', 'Housekeeping', 'Amenities']
+              }
+          };
 
-        const impact = categoryImpacts[reasonCategory] || categoryImpacts['inventory_unavailable'];
+          const impact = categoryImpacts[reasonCategory] || categoryImpacts['inventory_unavailable'];
 
-        return {
-            estimated: true,
-            bypassCategory: reasonCategory,
-            estimatedItemCount: impact.itemCount,
-            estimatedTotalValue: estimatedLoss || (impact.itemCount * impact.averageValue),
-            affectedCategories: impact.categories,
-            urgencyLevel: this.calculateUrgencyLevel(auditRecord, null, 0),
-            requiresDetailedAnalysis: true,
-            recommendations: [
-                'Conduct detailed inventory audit',
-                'Identify specific items affected',
-                'Update inventory tracking systems'
-            ]
-        };
+          return {
+              estimated: true,
+              bypassCategory: reasonCategory,
+              estimatedItemCount: impact.itemCount,
+              estimatedTotalValue: estimatedLoss || (impact.itemCount * impact.averageValue),
+              affectedCategories: impact.categories,
+              urgencyLevel: this.calculateUrgencyLevel(auditRecord, null, 0),
+              requiresDetailedAnalysis: true,
+              recommendations: [
+                  'Conduct detailed inventory audit',
+                  'Identify specific items affected',
+                  'Update inventory tracking systems'
+              ]
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Send reorder notifications
      */
     async sendReorderNotifications(reorderRequest) {
-        const notifications = [];
+      try {
+          const notifications = [];
 
-        // Notify procurement team
-        notifications.push({
-            type: 'reorder_created',
-            recipient: 'procurement_team',
-            subject: `Reorder Request Created: ${reorderRequest.itemName}`,
-            message: `A new reorder request has been created for ${reorderRequest.requestedQuantity} units of ${reorderRequest.itemName}. Priority: ${reorderRequest.priority}. Total cost: $${reorderRequest.totalCost.toLocaleString()}.`,
-            priority: reorderRequest.priority === 'emergency' ? 'high' : 'medium',
-            metadata: reorderRequest
-        });
+          // Notify procurement team
+          notifications.push({
+              type: 'reorder_created',
+              recipient: 'procurement_team',
+              subject: `Reorder Request Created: ${reorderRequest.itemName}`,
+              message: `A new reorder request has been created for ${reorderRequest.requestedQuantity} units of ${reorderRequest.itemName}. Priority: ${reorderRequest.priority}. Total cost: $${reorderRequest.totalCost.toLocaleString()}.`,
+              priority: reorderRequest.priority === 'emergency' ? 'high' : 'medium',
+              metadata: reorderRequest
+          });
 
-        // Notify inventory manager for high-value orders
-        if (reorderRequest.totalCost > 500) {
-            notifications.push({
-                type: 'high_value_reorder',
-                recipient: 'inventory_manager',
-                subject: `High-Value Reorder Request: $${reorderRequest.totalCost.toLocaleString()}`,
-                message: `A high-value reorder request has been created for ${reorderRequest.itemName}. Please review and approve if necessary.`,
-                priority: 'medium',
-                metadata: reorderRequest
-            });
-        }
+          // Notify inventory manager for high-value orders
+          if (reorderRequest.totalCost > 500) {
+              notifications.push({
+                  type: 'high_value_reorder',
+                  recipient: 'inventory_manager',
+                  subject: `High-Value Reorder Request: $${reorderRequest.totalCost.toLocaleString()}`,
+                  message: `A high-value reorder request has been created for ${reorderRequest.itemName}. Please review and approve if necessary.`,
+                  priority: 'medium',
+                  metadata: reorderRequest
+              });
+          }
 
-        // Send notifications
-        for (const notification of notifications) {
-            try {
-                await sendNotification(notification);
-            } catch (error) {
-                logger.error('Failed to send reorder notification:', error);
-            }
-        }
+          // Send notifications
+          for (const notification of notifications) {
+              try {
+                  await sendNotification(notification);
+              } catch (error) {
+                  logger.error('Failed to send reorder notification:', error);
+              }
+          }
 
-        return notifications;
+          return notifications;
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Log inventory integration activity
      */
     async logInventoryIntegration(auditRecord, results) {
-        await AuditLog.logChange({
-            hotelId: auditRecord.hotelId._id,
-            tableName: 'InventoryIntegration',
-            recordId: `${auditRecord.bypassId}_inventory`,
-            changeType: 'inventory_integration_processed',
-            userId: auditRecord.adminId,
-            source: 'inventory_integration_service',
-            newValues: {
-                bypassId: auditRecord.bypassId,
-                itemsProcessed: results.processed.length,
-                reordersCreated: results.reordersCreated.length,
-                errors: results.errors.length,
-                notificationsSent: results.notifications.length
-            },
-            metadata: {
-                processingResults: results,
-                integrationTimestamp: new Date(),
-                tags: ['inventory_integration', 'automation', 'bypass_processing']
-            }
-        });
+      try {
+          await AuditLog.logChange({
+              hotelId: auditRecord.hotelId._id,
+              tableName: 'InventoryIntegration',
+              recordId: `${auditRecord.bypassId}_inventory`,
+              changeType: 'inventory_integration_processed',
+              userId: auditRecord.adminId,
+              source: 'inventory_integration_service',
+              newValues: {
+                  bypassId: auditRecord.bypassId,
+                  itemsProcessed: results.processed.length,
+                  reordersCreated: results.reordersCreated.length,
+                  errors: results.errors.length,
+                  notificationsSent: results.notifications.length
+              },
+              metadata: {
+                  processingResults: results,
+                  integrationTimestamp: new Date(),
+                  tags: ['inventory_integration', 'automation', 'bypass_processing']
+              }
+          });
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
@@ -804,7 +830,7 @@ class InventoryIntegrationService {
                 'operationStatus.status': {
                     $in: ['completed', 'approved']
                 }
-            });
+            }).lean().limit(1000);
 
             const reconciliationResults = {
                 totalBypasses: bypassOperations.length,
@@ -814,13 +840,16 @@ class InventoryIntegrationService {
                 errors: []
             };
 
-            // Process each bypass operation
+            // Batch: fetch all financial impact records in a single query
+            const bypassIds = bypassOperations.map(b => b._id);
+            const financialImpacts = await BypassFinancialImpact.find({
+                bypassAuditId: { $in: bypassIds }
+            }).lean();
+            const impactMap = new Map(financialImpacts.map(fi => [fi.bypassAuditId.toString(), fi]));
+
             for (const bypass of bypassOperations) {
                 try {
-                    // Get financial impact record
-                    const financialImpact = await BypassFinancialImpact.findOne({
-                        bypassAuditId: bypass._id
-                    });
+                    const financialImpact = impactMap.get(bypass._id.toString());
 
                     if (financialImpact && financialImpact.directCosts.inventoryItems.length > 0) {
                         for (const item of financialImpact.directCosts.inventoryItems) {
@@ -934,30 +963,34 @@ class InventoryIntegrationService {
      * Check individual provider health
      */
     async checkProviderHealth(provider) {
-        const startTime = Date.now();
+      try {
+          const startTime = Date.now();
 
-        // Simulate health check based on provider type
-        switch (provider.type) {
-            case 'database':
-                // Check database connectivity
-                await new Promise(resolve => setTimeout(resolve, 50));
-                break;
-            case 'api':
-                // Check API connectivity
-                await new Promise(resolve => setTimeout(resolve, 200));
-                break;
-            case 'webhook':
-                // Check webhook endpoint
-                await new Promise(resolve => setTimeout(resolve, 100));
-                break;
-        }
+          // Simulate health check based on provider type
+          switch (provider.type) {
+              case 'database':
+                  // Check database connectivity
+                  await new Promise(resolve => setTimeout(resolve, 50));
+                  break;
+              case 'api':
+                  // Check API connectivity
+                  await new Promise(resolve => setTimeout(resolve, 200));
+                  break;
+              case 'webhook':
+                  // Check webhook endpoint
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                  break;
+          }
 
-        const responseTime = Date.now() - startTime;
+          const responseTime = Date.now() - startTime;
 
-        return {
-            status: 'healthy',
-            responseTime
-        };
+          return {
+              status: 'healthy',
+              responseTime
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 }
 

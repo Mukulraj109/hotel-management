@@ -159,114 +159,209 @@ generalLedgerSchema.pre('save', function(next) {
 
 // Method to calculate running balance
 generalLedgerSchema.methods.calculateRunningBalance = async function() {
-  const previousEntry = await this.constructor.findOne({
-    accountId: this.accountId,
-    transactionDate: { $lt: this.transactionDate },
-    status: 'Posted'
-  }).sort({ transactionDate: -1, createdAt: -1 });
+  try {
+    const previousEntry = await this.constructor.findOne({
+      accountId: this.accountId,
+      transactionDate: { $lt: this.transactionDate },
+      status: 'Posted'
+    }).sort({ transactionDate: -1, createdAt: -1 });
   
-  const previousBalance = previousEntry ? previousEntry.runningBalance : 0;
+    const previousBalance = previousEntry ? previousEntry.runningBalance : 0;
   
-  // Get account to determine normal balance
-  const account = await mongoose.model('ChartOfAccounts').findById(this.accountId);
+    // Get account to determine normal balance
+    const account = await mongoose.model('ChartOfAccounts').findById(this.accountId);
   
-  if (account.normalBalance === 'Debit') {
-    this.runningBalance = previousBalance + this.debitAmount - this.creditAmount;
-  } else {
-    this.runningBalance = previousBalance + this.creditAmount - this.debitAmount;
+    if (account.normalBalance === 'Debit') {
+      this.runningBalance = previousBalance + this.debitAmount - this.creditAmount;
+    } else {
+      this.runningBalance = previousBalance + this.creditAmount - this.debitAmount;
+    }
+  
+    return this.runningBalance;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  return this.runningBalance;
 };
 
 // Static method to get trial balance
 generalLedgerSchema.statics.getTrialBalance = async function(hotelId, date) {
-  // Temporarily bypass hotel filtering for testing
-  const matchFilter = hotelId 
-    ? { hotelId: mongoose.Types.ObjectId(hotelId), transactionDate: { $lte: date }, status: 'Posted' }
-    : { transactionDate: { $lte: date }, status: 'Posted' };
+  try {
+    // Temporarily bypass hotel filtering for testing
+    const matchFilter = hotelId 
+      ? { hotelId: mongoose.Types.ObjectId(hotelId), transactionDate: { $lte: date }, status: 'Posted' }
+      : { transactionDate: { $lte: date }, status: 'Posted' };
     
-  const pipeline = [
-    {
-      $match: matchFilter
-    },
-    {
-      $group: {
-        _id: '$accountId',
-        totalDebits: { $sum: '$debitAmount' },
-        totalCredits: { $sum: '$creditAmount' }
-      }
-    },
-    {
-      $lookup: {
-        from: 'chartofaccounts',
-        localField: '_id',
-        foreignField: '_id',
-        as: 'account'
-      }
-    },
-    {
-      $unwind: '$account'
-    },
-    {
-      $project: {
-        accountCode: '$account.accountCode',
-        accountName: '$account.accountName',
-        accountType: '$account.accountType',
-        debitBalance: {
-          $cond: [
-            { $gt: [{ $subtract: ['$totalDebits', '$totalCredits'] }, 0] },
-            { $subtract: ['$totalDebits', '$totalCredits'] },
-            0
-          ]
-        },
-        creditBalance: {
-          $cond: [
-            { $gt: [{ $subtract: ['$totalCredits', '$totalDebits'] }, 0] },
-            { $subtract: ['$totalCredits', '$totalDebits'] },
-            0
-          ]
+    const pipeline = [
+      {
+        $match: matchFilter
+      },
+      {
+        $group: {
+          _id: '$accountId',
+          totalDebits: { $sum: '$debitAmount' },
+          totalCredits: { $sum: '$creditAmount' }
         }
+      },
+      {
+        $lookup: {
+          from: 'chartofaccounts',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'account'
+        }
+      },
+      {
+        $unwind: '$account'
+      },
+      {
+        $project: {
+          accountCode: '$account.accountCode',
+          accountName: '$account.accountName',
+          accountType: '$account.accountType',
+          debitBalance: {
+            $cond: [
+              { $gt: [{ $subtract: ['$totalDebits', '$totalCredits'] }, 0] },
+              { $subtract: ['$totalDebits', '$totalCredits'] },
+              0
+            ]
+          },
+          creditBalance: {
+            $cond: [
+              { $gt: [{ $subtract: ['$totalCredits', '$totalDebits'] }, 0] },
+              { $subtract: ['$totalCredits', '$totalDebits'] },
+              0
+            ]
+          }
+        }
+      },
+      {
+        $sort: { accountCode: 1 }
       }
-    },
-    {
-      $sort: { accountCode: 1 }
-    }
-  ];
+    ];
   
-  return this.aggregate(pipeline);
+    return this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get account balance
 generalLedgerSchema.statics.getAccountBalance = async function(accountId, date = new Date()) {
-  const result = await this.aggregate([
-    {
-      $match: {
-        accountId: mongoose.Types.ObjectId(accountId),
-        transactionDate: { $lte: date },
-        status: 'Posted'
+  try {
+    const result = await this.aggregate([
+      {
+        $match: {
+          accountId: mongoose.Types.ObjectId(accountId),
+          transactionDate: { $lte: date },
+          status: 'Posted'
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalDebits: { $sum: '$debitAmount' },
+          totalCredits: { $sum: '$creditAmount' }
+        }
       }
-    },
-    {
-      $group: {
-        _id: null,
-        totalDebits: { $sum: '$debitAmount' },
-        totalCredits: { $sum: '$creditAmount' }
-      }
+    ]);
+  
+    if (result.length === 0) {
+      return 0;
     }
-  ]);
   
-  if (result.length === 0) {
-    return 0;
+    const account = await mongoose.model('ChartOfAccounts').findById(accountId);
+    const { totalDebits, totalCredits } = result[0];
+  
+    if (account.normalBalance === 'Debit') {
+      return totalDebits - totalCredits;
+    } else {
+      return totalCredits - totalDebits;
+    }
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  const account = await mongoose.model('ChartOfAccounts').findById(accountId);
-  const { totalDebits, totalCredits } = result[0];
-  
-  if (account.normalBalance === 'Debit') {
-    return totalDebits - totalCredits;
-  } else {
-    return totalCredits - totalDebits;
+};
+
+/**
+ * Verify ledger balance integrity.
+ * Compares sum of all posted debits vs credits and checks for imbalances.
+ * @param {ObjectId|string} hotelId
+ * @param {Object} options - { fiscalYear, fiscalPeriod, tolerance }
+ * @returns {Object} { balanced, totalDebits, totalCredits, difference, accounts[] }
+ */
+generalLedgerSchema.statics.verifyBalance = async function(hotelId, options = {}) {
+  try {
+    const { fiscalYear, fiscalPeriod, tolerance = 0.01 } = options;
+
+    const matchFilter = { status: 'Posted' };
+    if (hotelId) matchFilter.hotelId = new mongoose.Types.ObjectId(hotelId);
+    if (fiscalYear) matchFilter.fiscalYear = fiscalYear;
+    if (fiscalPeriod) matchFilter.fiscalPeriod = fiscalPeriod;
+
+    // Overall totals
+    const [totals] = await this.aggregate([
+      { $match: matchFilter },
+      {
+        $group: {
+          _id: null,
+          totalDebits: { $sum: '$debitAmount' },
+          totalCredits: { $sum: '$creditAmount' },
+          entryCount: { $sum: 1 }
+        }
+      }
+    ]);
+
+    if (!totals) {
+      return { balanced: true, totalDebits: 0, totalCredits: 0, difference: 0, entryCount: 0, accounts: [] };
+    }
+
+    const difference = Math.abs(totals.totalDebits - totals.totalCredits);
+    const balanced = difference < tolerance;
+
+    // Per-account breakdown for debugging imbalances
+    const accounts = await this.aggregate([
+      { $match: matchFilter },
+      {
+        $group: {
+          _id: '$accountId',
+          totalDebits: { $sum: '$debitAmount' },
+          totalCredits: { $sum: '$creditAmount' },
+          entryCount: { $sum: 1 }
+        }
+      },
+      {
+        $lookup: {
+          from: 'chartofaccounts',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'account'
+        }
+      },
+      { $unwind: { path: '$account', preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          accountCode: '$account.accountCode',
+          accountName: '$account.accountName',
+          accountType: '$account.accountType',
+          totalDebits: 1,
+          totalCredits: 1,
+          netBalance: { $subtract: ['$totalDebits', '$totalCredits'] },
+          entryCount: 1
+        }
+      },
+      { $sort: { accountCode: 1 } }
+    ]);
+
+    return {
+      balanced,
+      totalDebits: totals.totalDebits,
+      totalCredits: totals.totalCredits,
+      difference,
+      entryCount: totals.entryCount,
+      accounts
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
 };
 

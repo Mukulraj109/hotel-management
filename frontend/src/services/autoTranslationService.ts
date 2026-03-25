@@ -507,9 +507,12 @@ class AutoTranslationService {
     }
   }
 
+  private cacheCleanupInterval: ReturnType<typeof setInterval> | null = null;
+
   private startPeriodicCacheCleanup(): void {
     // Clean up cache every 30 minutes
-    setInterval(() => {
+    if (this.cacheCleanupInterval) clearInterval(this.cacheCleanupInterval);
+    this.cacheCleanupInterval = setInterval(() => {
       const now = Date.now();
       Object.keys(this.translationCache).forEach(key => {
         const item = this.translationCache[key];
@@ -519,6 +522,15 @@ class AutoTranslationService {
       });
       this.saveCacheToStorage();
     }, 30 * 60 * 1000);
+  }
+
+  public destroy(): void {
+    if (this.cacheCleanupInterval) {
+      clearInterval(this.cacheCleanupInterval);
+      this.cacheCleanupInterval = null;
+    }
+    this.debounceTimers.forEach(timer => clearTimeout(timer));
+    this.debounceTimers.clear();
   }
 }
 

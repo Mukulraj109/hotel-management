@@ -23,13 +23,13 @@ async function seedCRMData() {
     console.log('🌱 Starting CRM data seeding...');
 
     // Get hotels and users
-    const hotels = await Hotel.find().limit(3);
+    const hotels = await Hotel.find().limit(3).lean();
     if (hotels.length === 0) {
       console.log('❌ No hotels found. Please seed hotels first.');
       return;
     }
 
-    const users = await User.find({ role: 'guest' }).limit(50);
+    const users = await User.find({ role: 'guest' }).limit(50).lean();
     if (users.length === 0) {
       console.log('❌ No guest users found. Please seed users first.');
       return;
@@ -106,7 +106,7 @@ async function seedCRMData() {
             const behavior = await crmAutomationService.trackBehavior(user._id, hotel._id, behaviorData);
 
             // Update timestamp manually for historical data
-            await GuestBehavior.findByIdAndUpdate(behavior._id, { timestamp });
+            await GuestBehavior.findByIdAndUpdate(behavior._id, { timestamp }, { new: true });
 
             behaviorsCreated++;
           }

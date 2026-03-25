@@ -197,7 +197,7 @@ class RateManagementController {
       if (type) filter.type = type;
       if (isActive !== undefined) filter.isActive = isActive === 'true';
 
-      const ratePlans = await RatePlan.find(filter).sort({ createdAt: -1 });
+      const ratePlans = await RatePlan.find(filter).sort({ createdAt: -1 }).lean().limit(1000);
 
       res.json({
         success: true,
@@ -351,7 +351,7 @@ class RateManagementController {
         ];
       }
 
-      const seasonalRates = await SeasonalRate.find(filter).sort({ startDate: 1 });
+      const seasonalRates = await SeasonalRate.find(filter).sort({ startDate: 1 }).lean().limit(1000);
 
       res.json({
         success: true,
@@ -475,7 +475,7 @@ class RateManagementController {
 
       const overrides = await RateOverride.find(filter)
         .populate('approvedBy', 'firstName lastName')
-        .sort({ date: 1 });
+        .sort({ date: 1 }).lean().limit(1000);
 
       res.json({
         success: true,
@@ -564,7 +564,7 @@ class RateManagementController {
       if (type) filter.type = type;
       if (isActive !== undefined) filter.isActive = isActive === 'true';
 
-      const rules = await DynamicPricing.find(filter).sort({ priority: -1 });
+      const rules = await DynamicPricing.find(filter).sort({ priority: -1 }).lean().limit(1000);
 
       res.json({
         success: true,
@@ -637,7 +637,7 @@ class RateManagementController {
 
       if (roomType) filter.roomType = roomType;
 
-      const yieldData = await YieldManagement.find(filter).sort({ date: 1 });
+      const yieldData = await YieldManagement.find(filter).sort({ date: 1 }).lean().limit(1000);
 
       res.json({
         success: true,
@@ -726,7 +726,7 @@ class RateManagementController {
       if (type) filter.type = type;
       if (isActive !== undefined) filter.isActive = isActive === 'true';
 
-      const packages = await Package.find(filter).sort({ createdAt: -1 });
+      const packages = await Package.find(filter).sort({ createdAt: -1 }).lean().limit(1000);
 
       res.json({
         success: true,

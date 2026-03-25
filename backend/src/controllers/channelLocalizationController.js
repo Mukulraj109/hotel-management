@@ -19,7 +19,7 @@ class ChannelLocalizationController {
       }
 
       const configurations = await ChannelConfiguration.find(query)
-        .sort({ channelName: 1 });
+        .sort({ channelName: 1 }).lean().limit(1000);
 
       res.json({
         success: true,
@@ -400,7 +400,7 @@ class ChannelLocalizationController {
         query.channelId = channelId;
       }
 
-      const configurations = await ChannelConfiguration.find(query);
+      const configurations = await ChannelConfiguration.find(query).lean().limit(1000);
 
       const currencySupport = {};
       for (const config of configurations) {
@@ -440,7 +440,7 @@ class ChannelLocalizationController {
         query.channelId = channelId;
       }
 
-      const configurations = await ChannelConfiguration.find(query);
+      const configurations = await ChannelConfiguration.find(query).lean().limit(1000);
 
       const languageSupport = {};
       for (const config of configurations) {
@@ -480,7 +480,7 @@ class ChannelLocalizationController {
         query.channelId = channelId;
       }
 
-      const configurations = await ChannelConfiguration.find(query);
+      const configurations = await ChannelConfiguration.find(query).lean().limit(1000);
 
       const metrics = {};
       for (const config of configurations) {

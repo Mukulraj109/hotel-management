@@ -193,7 +193,7 @@ export const validateGuestData = catchAsync(async (req, res) => {
       const existingGuest = await User.findOne({
         email: guest.email,
         hotelId: req.user.hotelId
-      });
+      }).lean();
 
       if (existingGuest) {
         results.duplicates.push({

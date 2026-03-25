@@ -66,7 +66,7 @@ router.get('/:taskId', authorize('staff', 'admin'), catchAsync(async (req, res) 
     .populate('createdBy', 'name email')
     .populate('roomIds', 'roomNumber type floor status')
     .populate('inventoryItems.itemId', 'name category unitPrice stockThreshold')
-    .populate('verifiedBy', 'name email');
+    .populate('verifiedBy', 'name email').lean();
 
   if (!task) {
     throw new ApplicationError('Task not found', 404);
@@ -148,7 +148,7 @@ router.patch('/:taskId/status', authorize('staff', 'admin'), catchAsync(async (r
 router.patch('/:taskId/progress', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   const { progressData } = req.body;
 
-  const task = await StaffTask.findById(req.params.taskId);
+  const task = await StaffTask.findById(req.params.taskId).lean();
   if (!task) {
     throw new ApplicationError('Task not found', 404);
   }
@@ -171,7 +171,7 @@ router.patch('/:taskId/progress', authorize('staff', 'admin'), catchAsync(async 
 router.post('/:taskId/photos', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   const { photoUrl, description } = req.body;
 
-  const task = await StaffTask.findById(req.params.taskId);
+  const task = await StaffTask.findById(req.params.taskId).lean();
   if (!task) {
     throw new ApplicationError('Task not found', 404);
   }
@@ -203,7 +203,7 @@ router.post('/', authorize('admin'), catchAsync(async (req, res) => {
     const rooms = await Room.find({
       _id: { $in: taskData.roomIds },
       hotelId: req.user.hotelId
-    });
+    }).lean().limit(1000);
     
     if (rooms.length !== taskData.roomIds.length) {
       throw new ApplicationError('Some rooms not found or don\'t belong to your hotel', 400);
@@ -216,7 +216,7 @@ router.post('/', authorize('admin'), catchAsync(async (req, res) => {
     const items = await InventoryItem.find({
       _id: { $in: itemIds },
       hotelId: req.user.hotelId
-    });
+    }).lean().limit(1000);
     
     if (items.length !== itemIds.length) {
       throw new ApplicationError('Some inventory items not found or don\'t belong to your hotel', 400);
@@ -322,7 +322,7 @@ router.delete('/:taskId', authorize('admin'), catchAsync(async (req, res) => {
   const task = await StaffTask.findOne({
     _id: req.params.taskId,
     hotelId: req.user.hotelId
-  });
+  }).lean();
 
   if (!task) {
     throw new ApplicationError('Task not found', 404);
@@ -356,7 +356,7 @@ router.post('/create-daily-inventory-checks', authorize('admin'), catchAsync(asy
     hotelId: req.user.hotelId,
     isActive: true,
     status: { $nin: ['out_of_order', 'maintenance'] }
-  });
+  }).lean().limit(1000);
 
   if (rooms.length === 0) {
     throw new ApplicationError('No available rooms for inventory checks', 400);
@@ -392,7 +392,7 @@ router.post('/create-daily-inventory-checks', authorize('admin'), catchAsync(asy
     _id: { $in: tasks.map(t => t._id) }
   })
   .populate('assignedTo', 'name email')
-  .populate('roomIds', 'roomNumber type');
+  .populate('roomIds', 'roomNumber type').lean().limit(1000);
 
   res.status(201).json({
     status: 'success',

@@ -45,7 +45,7 @@ const AdminQuickSettings: React.FC<{ preferences: Record<string, unknown>; updat
                 <span className={`text-sm font-medium ${config.color}`}>
                   {config.label}
                 </span>
-                <button
+                <button aria-label="Close"
                   onClick={() => updatePreferences({
                     ...preferences,
                     priorities: {
@@ -75,7 +75,7 @@ const AdminQuickSettings: React.FC<{ preferences: Record<string, unknown>; updat
           {Object.entries(adminCategories).map(([category, label]) => (
             <div key={category} className="flex items-center justify-between p-2 rounded border">
               <span className="text-sm">{label}</span>
-              <button
+              <button aria-label="Close"
                 onClick={() => updatePreferences({
                   ...preferences,
                   categories: {
@@ -134,7 +134,7 @@ const StaffQuickSettings: React.FC<{ preferences: Record<string, unknown>; updat
           {Object.entries(staffCategories).map(([category, label]) => (
             <div key={category} className="flex items-center justify-between p-2 rounded hover:bg-gray-50">
               <span className="text-sm font-medium">{label}</span>
-              <button
+              <button aria-label="Close"
                 onClick={() => updatePreferences({
                   ...preferences,
                   categories: {
@@ -169,7 +169,7 @@ const StaffQuickSettings: React.FC<{ preferences: Record<string, unknown>; updat
                 <span>{config.icon}</span>
                 <span className="text-sm">{config.label}</span>
               </div>
-              <button
+              <button aria-label="Close"
                 onClick={() => updatePreferences({
                   ...preferences,
                   shifts: {
@@ -228,7 +228,7 @@ const GuestQuickSettings: React.FC<{ preferences: Record<string, unknown>; updat
           {Object.entries(guestCategories).map(([category, label]) => (
             <div key={category} className="flex items-center justify-between p-2 rounded hover:bg-gray-50">
               <span className="text-sm font-medium">{label}</span>
-              <button
+              <button aria-label="Close"
                 onClick={() => updatePreferences({
                   ...preferences,
                   categories: {
@@ -255,7 +255,7 @@ const GuestQuickSettings: React.FC<{ preferences: Record<string, unknown>; updat
         <h4 className="text-sm font-semibold text-gray-900 mb-3">How Often?</h4>
         <div className="space-y-2">
           {Object.entries(communicationPrefs).map(([freq, config]) => (
-            <button
+            <button aria-label="Close"
               key={freq}
               onClick={() => updatePreferences({
                 ...preferences,
@@ -354,7 +354,7 @@ export const RoleSpecificQuickSettings: React.FC<RoleSpecificQuickSettingsProps>
                 <p className="text-sm text-gray-600">Customize your notification experience</p>
               </div>
             </div>
-            <button
+            <button aria-label="Close"
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600 transition-colors"
             >

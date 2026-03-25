@@ -28,6 +28,7 @@ import { TemplateEditModal } from '../../components/admin/TemplateEditModal';
 import toast from 'react-hot-toast';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface Staff {
   _id: string;
@@ -350,7 +351,7 @@ const TemplatesManagement = () => {
   );
 };
 
-export default function AdminDailyCheckManagement() {
+function AdminDailyCheckManagement() {
   const { selectedPropertyId, selectedProperty } = useProperty();
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -560,7 +561,7 @@ export default function AdminDailyCheckManagement() {
             { id: 'assignments', label: 'Room Assignments', icon: Users },
             { id: 'templates', label: 'Templates', icon: Settings }
           ].map(({ id, label, icon: Icon }) => (
-            <button
+            <button aria-label="Close"
               key={id}
               onClick={() => setActiveTab(id as unknown)}
               className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
@@ -1129,3 +1130,5 @@ export default function AdminDailyCheckManagement() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminDailyCheckManagement, { level: 'page' });

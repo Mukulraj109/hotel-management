@@ -478,17 +478,21 @@ reasonSchema.pre('save', function(next) {
 
 // Pre-remove middleware
 reasonSchema.pre('remove', async function(next) {
-  // Check if reason is being used in any bookings, cancellations, etc.
-  // This would depend on your booking/transaction models
+  try {
+    // Check if reason is being used in any bookings, cancellations, etc.
+    // This would depend on your booking/transaction models
   
-  // For now, just prevent deletion of system reasons
-  if (this.isSystemReason) {
-    const error = new Error('Cannot delete system reason');
-    error.code = 'SYSTEM_REASON_DELETE';
-    return next(error);
+    // For now, just prevent deletion of system reasons
+    if (this.isSystemReason) {
+      const error = new Error('Cannot delete system reason');
+      error.code = 'SYSTEM_REASON_DELETE';
+      return next(error);
+    }
+  
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  next();
 });
 
 export default mongoose.model('Reason', reasonSchema);

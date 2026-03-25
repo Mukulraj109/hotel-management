@@ -145,30 +145,34 @@ class NotificationRoutingService {
    * Get target users based on roles, department, and other criteria
    */
   async getTargetUsers({ hotelId, roles, department, excludeUsers, metadata }) {
-    const query = {
-      hotelId,
-      role: { $in: roles },
-      isActive: true,
-      _id: { $nin: excludeUsers }
-    };
+    try {
+      const query = {
+        hotelId,
+        role: { $in: roles },
+        isActive: true,
+        _id: { $nin: excludeUsers }
+      };
 
-    // Add department filter if specified
-    if (department && this.departmentRouting[department]) {
-      query.department = { $in: this.departmentRouting[department] };
+      // Add department filter if specified
+      if (department && this.departmentRouting[department]) {
+        query.department = { $in: this.departmentRouting[department] };
+      }
+
+      // Add shift-based filtering for staff
+      if (roles.includes('staff') && metadata.shiftSensitive) {
+        const currentHour = new Date().getHours();
+        // This would need to be enhanced with actual shift data
+        query.currentShift = this.getCurrentShiftType(currentHour);
+      }
+
+      const users = await User.find(query)
+        .select('_id name email phone role department preferences')
+        .lean().limit(1000);
+
+      return users;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Add shift-based filtering for staff
-    if (roles.includes('staff') && metadata.shiftSensitive) {
-      const currentHour = new Date().getHours();
-      // This would need to be enhanced with actual shift data
-      query.currentShift = this.getCurrentShiftType(currentHour);
-    }
-
-    const users = await User.find(query)
-      .select('_id name email phone role department preferences')
-      .lean();
-
-    return users;
   }
 
   /**
@@ -177,10 +181,14 @@ class NotificationRoutingService {
   async filterRecipientsByPreferences(users, notificationType, priority) {
     const filteredUsers = [];
 
+    // Batch: fetch all notification preferences in a single query
+    const userIds = users.map(u => u._id);
+    const allPreferences = await NotificationPreference.find({ userId: { $in: userIds } }).lean();
+    const prefMap = new Map(allPreferences.map(p => [p.userId.toString(), p]));
+
     for (const user of users) {
       try {
-        // Get user's notification preferences
-        const preferences = await NotificationPreference.findOne({ userId: user._id });
+        const preferences = prefMap.get(user._id.toString()) || null;
 
         if (!preferences) {
           // If no preferences set, use defaults based on role
@@ -240,52 +248,56 @@ class NotificationRoutingService {
    * Create routing plan with channels and timing for each recipient
    */
   async createRoutingPlan(recipients, notificationType, priority, metadata) {
-    const routingPlan = [];
-    const priorityConfig = this.priorityRouting[priority];
+    try {
+      const routingPlan = [];
+      const priorityConfig = this.priorityRouting[priority];
 
-    for (const recipient of recipients) {
-      // Determine available channels for this user
-      const availableChannels = this.getUserAvailableChannels(
-        recipient,
-        priorityConfig.channels
-      );
+      for (const recipient of recipients) {
+        // Determine available channels for this user
+        const availableChannels = this.getUserAvailableChannels(
+          recipient,
+          priorityConfig.channels
+        );
 
-      // Select optimal channels based on user preferences and notification context
-      const selectedChannels = this.selectOptimalChannels(
-        availableChannels,
-        recipient.preferences,
-        notificationType,
-        priority
-      );
+        // Select optimal channels based on user preferences and notification context
+        const selectedChannels = this.selectOptimalChannels(
+          availableChannels,
+          recipient.preferences,
+          notificationType,
+          priority
+        );
 
-      // Calculate delivery timing
-      const deliveryTiming = this.calculateDeliveryTiming(
-        recipient,
-        priority,
-        metadata
-      );
+        // Calculate delivery timing
+        const deliveryTiming = this.calculateDeliveryTiming(
+          recipient,
+          priority,
+          metadata
+        );
 
-      routingPlan.push({
-        userId: recipient._id,
-        user: {
-          name: recipient.name,
-          email: recipient.email,
-          phone: recipient.phone,
-          role: recipient.role,
-          department: recipient.department
-        },
-        channels: selectedChannels,
-        timing: deliveryTiming,
-        requiresAcknowledgment: priorityConfig.requiresAcknowledgment,
-        escalationConfig: priority === 'urgent' || priority === 'high' ? {
-          enabled: true,
-          delay: priorityConfig.escalationDelay,
-          maxLevels: priorityConfig.maxEscalationLevels
-        } : null
-      });
+        routingPlan.push({
+          userId: recipient._id,
+          user: {
+            name: recipient.name,
+            email: recipient.email,
+            phone: recipient.phone,
+            role: recipient.role,
+            department: recipient.department
+          },
+          channels: selectedChannels,
+          timing: deliveryTiming,
+          requiresAcknowledgment: priorityConfig.requiresAcknowledgment,
+          escalationConfig: priority === 'urgent' || priority === 'high' ? {
+            enabled: true,
+            delay: priorityConfig.escalationDelay,
+            maxLevels: priorityConfig.maxEscalationLevels
+          } : null
+        });
+      }
+
+      return routingPlan;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return routingPlan;
   }
 
   /**
@@ -452,10 +464,14 @@ class NotificationRoutingService {
    * Check staff availability
    */
   async checkStaffAvailability(userId, preferences) {
-    // This would integrate with staff scheduling system
-    // For now, return true if no specific unavailability is set
-    const staffPrefs = preferences.staff || {};
-    return staffPrefs.available !== false;
+    try {
+      // This would integrate with staff scheduling system
+      // For now, return true if no specific unavailability is set
+      const staffPrefs = preferences.staff || {};
+      return staffPrefs.available !== false;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

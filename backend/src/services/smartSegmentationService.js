@@ -97,7 +97,7 @@ class SmartSegmentationService {
   async performAdvancedSegmentation(hotelId, options = {}) {
     try {
       const profiles = await GuestCRMProfile.find({ hotelId })
-        .populate('userId', 'firstName lastName email createdAt');
+        .populate('userId', 'firstName lastName email createdAt').lean().limit(1000);
 
       const segmentResults = new Map();
       const profileAnalytics = await this.calculateProfileAnalytics(profiles);
@@ -146,13 +146,13 @@ class SmartSegmentationService {
           userId: profile.userId,
           hotelId: profile.hotelId,
           status: { $in: ['confirmed', 'checked-in', 'checked-out'] }
-        }).sort({ createdAt: 1 });
+        }).sort({ createdAt: 1 }).lean().limit(1000);
 
         // Get behavioral data
         const behaviors = await GuestBehavior.find({
           userId: profile.userId,
           hotelId: profile.hotelId
-        }).sort({ timestamp: -1 }).limit(100);
+        }).sort({ timestamp: -1 }).limit(100).lean();
 
         const profileAnalytics = {
           // Booking patterns
@@ -197,19 +197,23 @@ class SmartSegmentationService {
   }
 
   async classifyProfile(profile, analytics) {
-    const segments = [];
+    try {
+      const segments = [];
 
-    for (const [ruleId, rule] of this.segmentationRules) {
-      if (this.profileMatchesRule(profile, analytics, rule)) {
-        segments.push(ruleId);
+      for (const [ruleId, rule] of this.segmentationRules) {
+        if (this.profileMatchesRule(profile, analytics, rule)) {
+          segments.push(ruleId);
+        }
       }
+
+      // Add dynamic segments based on behavior
+      const dynamicSegments = this.identifyDynamicSegments(profile, analytics);
+      segments.push(...dynamicSegments);
+
+      return segments;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Add dynamic segments based on behavior
-    const dynamicSegments = this.identifyDynamicSegments(profile, analytics);
-    segments.push(...dynamicSegments);
-
-    return segments;
   }
 
   profileMatchesRule(profile, analytics, rule) {

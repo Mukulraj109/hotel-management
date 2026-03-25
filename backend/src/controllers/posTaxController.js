@@ -45,7 +45,7 @@ class POSTaxController {
     const existingTax = await POSTax.findOne({
       hotelId: req.user.hotelId,
       name: { $regex: new RegExp(`^${name}$`, 'i') }
-    });
+    }).lean();
 
     if (existingTax) {
       return next(new ApplicationError('Tax with this name already exists', 409));
@@ -120,7 +120,7 @@ class POSTaxController {
       .populate('outletId', 'name type')
       .sort(sortOptions)
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit)).lean();
 
     const total = await POSTax.countDocuments(filter);
 
@@ -146,7 +146,7 @@ class POSTaxController {
       hotelId: req.user.hotelId
     })
       .populate('createdBy updatedBy', 'firstName lastName email')
-      .populate('outletId', 'name type');
+      .populate('outletId', 'name type').lean();
 
     if (!tax) {
       return next(new ApplicationError('Tax not found', 404));
@@ -167,7 +167,7 @@ class POSTaxController {
     const tax = await POSTax.findOne({
       _id: req.params.id,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!tax) {
       return next(new ApplicationError('Tax not found', 404));
@@ -179,7 +179,7 @@ class POSTaxController {
         hotelId: req.user.hotelId,
         name: { $regex: new RegExp(`^${req.body.name}$`, 'i') },
         _id: { $ne: req.params.id }
-      });
+      }).lean();
 
       if (existingTax) {
         return next(new ApplicationError('Tax with this name already exists', 409));
@@ -218,7 +218,7 @@ class POSTaxController {
     const tax = await POSTax.findOne({
       _id: req.params.id,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!tax) {
       return next(new ApplicationError('Tax not found', 404));
@@ -491,7 +491,7 @@ class POSTaxController {
     const tax = await POSTax.findOne({
       _id: taxId,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!tax) {
       return next(new ApplicationError('Tax not found', 404));
@@ -564,7 +564,7 @@ class POSTaxController {
 
     if (!updated) {
       // Determine whether tax or exemption was not found
-      const tax = await POSTax.findOne({ _id: taxId, hotelId: req.user.hotelId });
+      const tax = await POSTax.findOne({ _id: taxId, hotelId: req.user.hotelId }).lean();
       if (!tax) {
         return next(new ApplicationError('Tax not found', 404));
       }
@@ -604,7 +604,7 @@ class POSTaxController {
 
     if (!updated) {
       // Determine whether tax or exemption was not found
-      const tax = await POSTax.findOne({ _id: taxId, hotelId: req.user.hotelId });
+      const tax = await POSTax.findOne({ _id: taxId, hotelId: req.user.hotelId }).lean();
       if (!tax) {
         return next(new ApplicationError('Tax not found', 404));
       }

@@ -94,7 +94,7 @@ class BookingFormService {
    */
   async duplicateTemplate(templateId, newName, userId) {
     try {
-      const originalTemplate = await BookingFormTemplate.findById(templateId);
+      const originalTemplate = await BookingFormTemplate.findById(templateId).lean();
       if (!originalTemplate) {
         throw new Error('Template not found');
       }
@@ -148,7 +148,7 @@ class BookingFormService {
     session.startTransaction();
 
     try {
-      const template = await BookingFormTemplate.findById(templateId);
+      const template = await BookingFormTemplate.findById(templateId).lean();
       if (!template) {
         throw new Error('Form template not found');
       }
@@ -402,7 +402,7 @@ class BookingFormService {
    */
   async generateFormStructure(templateId, language = 'en') {
     try {
-      const template = await BookingFormTemplate.findById(templateId);
+      const template = await BookingFormTemplate.findById(templateId).lean();
       if (!template) {
         throw new Error('Template not found');
       }
@@ -471,7 +471,7 @@ class BookingFormService {
    */
   async getFormAnalytics(templateId, dateRange = {}) {
     try {
-      const template = await BookingFormTemplate.findById(templateId);
+      const template = await BookingFormTemplate.findById(templateId).lean();
       if (!template) {
         throw new Error('Template not found');
       }
@@ -494,7 +494,7 @@ class BookingFormService {
             $gte: new Date(dateRange.startDate),
             $lte: new Date(dateRange.endDate)
           }
-        }).sort({ createdAt: -1 });
+        }).sort({ createdAt: -1 }).lean().limit(1000);
 
         detailedAnalytics = this.processAnalyticsLogs(logs);
       }
@@ -636,7 +636,7 @@ class BookingFormService {
 
       const submissions = await Booking.find(query)
         .populate('hotelId', 'name')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 }).lean().limit(1000);
 
       if (format === 'csv') {
         return this.convertToCSV(submissions);

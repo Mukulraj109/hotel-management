@@ -94,46 +94,74 @@ interface ApiResponse<T> {
 
 class CheckoutInventoryService {
   async createCheckoutInventory(data: CreateCheckoutInventoryData): Promise<ApiResponse<{ checkoutInventory: CheckoutInventory }>> {
-    const response = await api.post('/checkout-inventory', data);
-    return response.data;
+    try {
+      const response = await api.post('/checkout-inventory', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getCheckoutInventories(filters: CheckoutInventoryFilters = {}): Promise<ApiResponse<{ checkoutInventories: CheckoutInventory[] }>> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/checkout-inventory?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/checkout-inventory?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getCheckoutInventoryById(id: string): Promise<ApiResponse<{ checkoutInventory: CheckoutInventory }>> {
-    const response = await api.get(`/checkout-inventory/${id}`);
-    return response.data;
+    try {
+      const response = await api.get(`/checkout-inventory/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getCheckoutInventoryByBooking(bookingId: string): Promise<ApiResponse<{ checkoutInventory: CheckoutInventory }>> {
-    const response = await api.get(`/checkout-inventory/booking/${bookingId}`);
-    return response.data;
+    try {
+      const response = await api.get(`/checkout-inventory/booking/${bookingId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateCheckoutInventory(id: string, updates: UpdateCheckoutInventoryData): Promise<ApiResponse<{ checkoutInventory: CheckoutInventory }>> {
-    const response = await api.patch(`/checkout-inventory/${id}`, updates);
-    return response.data;
+    try {
+      const response = await api.patch(`/checkout-inventory/${id}`, updates);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async processPayment(id: string, paymentData: PaymentData): Promise<ApiResponse<{ checkoutInventory: CheckoutInventory }>> {
-    const response = await api.post(`/checkout-inventory/${id}/payment`, paymentData);
-    return response.data;
+    try {
+      const response = await api.post(`/checkout-inventory/${id}/payment`, paymentData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async completeInventoryCheck(id: string): Promise<ApiResponse<{ checkoutInventory: CheckoutInventory }>> {
-    const response = await api.post(`/checkout-inventory/${id}/complete`);
-    return response.data;
+    try {
+      const response = await api.post(`/checkout-inventory/${id}/complete`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

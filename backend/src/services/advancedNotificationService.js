@@ -308,63 +308,71 @@ class AdvancedNotificationService {
    * Send notification using template
    */
   async sendNotification(templateName, data, options = {}) {
-    const template = this.templates.get(templateName);
-    if (!template) {
-      throw new Error(`Template '${templateName}' not found`);
-    }
+    try {
+      const template = this.templates.get(templateName);
+      if (!template) {
+        throw new Error(`Template '${templateName}' not found`);
+      }
 
-    const {
-      channels = template.channels,
-      priority = template.priority,
-      delay = 0,
-      retryAttempts = 3,
-      userId = null,
-      metadata = {}
-    } = options;
+      const {
+        channels = template.channels,
+        priority = template.priority,
+        delay = 0,
+        retryAttempts = 3,
+        userId = null,
+        metadata = {}
+      } = options;
 
-    const notificationId = uuidv4();
-    const notification = {
-      id: notificationId,
-      templateName,
-      data,
-      channels,
-      priority,
-      status: 'queued',
-      attempts: 0,
-      maxAttempts: retryAttempts,
-      scheduledFor: new Date(Date.now() + delay).toISOString(),
-      createdAt: new Date().toISOString(),
-      userId,
-      metadata
-    };
+      const notificationId = uuidv4();
+      const notification = {
+        id: notificationId,
+        templateName,
+        data,
+        channels,
+        priority,
+        status: 'queued',
+        attempts: 0,
+        maxAttempts: retryAttempts,
+        scheduledFor: new Date(Date.now() + delay).toISOString(),
+        createdAt: new Date().toISOString(),
+        userId,
+        metadata
+      };
 
-    // Add to queue
-    this.notificationQueue.push(notification);
+      // Add to queue
+      this.notificationQueue.push(notification);
     
-    // Sort queue by priority and scheduled time
-    this.sortQueue();
+      // Sort queue by priority and scheduled time
+      this.sortQueue();
 
-    logger.info('Notification queued', {
-      notificationId,
-      templateName,
-      channels,
-      priority
-    });
+      logger.info('Notification queued', {
+        notificationId,
+        templateName,
+        channels,
+        priority
+      });
 
-    return notificationId;
+      return notificationId;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Send immediate notification
    */
   async sendImmediate(templateName, data, options = {}) {
-    const notificationId = await this.sendNotification(templateName, data, {
-      ...options,
-      delay: 0
-    });
+    try {
+      const notificationId = await this.sendNotification(templateName, data, {
+        ...options,
+        delay: 0
+      });
 
-    // Process immediately
-    return await this.processNotification(notificationId);
+      // Process immediately
+      return await this.processNotification(notificationId);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -737,21 +745,25 @@ class AdvancedNotificationService {
    * Retry failed notification
    */
   async retryNotification(notificationId) {
-    const notification = this.notificationQueue.find(n => n.id === notificationId);
-    if (!notification) {
-      throw new Error(`Notification '${notificationId}' not found`);
-    }
+    try {
+      const notification = this.notificationQueue.find(n => n.id === notificationId);
+      if (!notification) {
+        throw new Error(`Notification '${notificationId}' not found`);
+      }
 
-    if (notification.attempts >= notification.maxAttempts) {
-      throw new Error('Maximum retry attempts exceeded');
-    }
+      if (notification.attempts >= notification.maxAttempts) {
+        throw new Error('Maximum retry attempts exceeded');
+      }
 
-    notification.status = 'queued';
-    notification.scheduledFor = new Date().toISOString();
+      notification.status = 'queued';
+      notification.scheduledFor = new Date().toISOString();
     
-    this.sortQueue();
+      this.sortQueue();
     
-    return await this.processNotification(notificationId);
+      return await this.processNotification(notificationId);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

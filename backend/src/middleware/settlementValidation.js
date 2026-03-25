@@ -161,7 +161,7 @@ export const validatePaymentAddition = [
       const settlement = await Settlement.findOne({
         _id: req.params.id,
         hotelId: req.user.hotelId
-      });
+      }).lean();
 
       if (!settlement) {
         return res.status(404).json({
@@ -306,7 +306,7 @@ export const validateAdjustment = [
       const settlement = await Settlement.findOne({
         _id: req.params.id,
         hotelId: req.user.hotelId
-      });
+      }).lean();
 
       if (!settlement) {
         return res.status(404).json({
@@ -431,7 +431,7 @@ export const validateEscalation = [
       const settlement = await Settlement.findOne({
         _id: req.params.id,
         hotelId: req.user.hotelId
-      });
+      }).lean();
 
       if (!settlement) {
         return res.status(404).json({
@@ -527,7 +527,7 @@ export const validateCalculationIntegrity = async (req, res, next) => {
       const settlement = await Settlement.findOne({
         _id: req.params.id,
         hotelId: req.user.hotelId
-      });
+      }).lean();
 
       if (!settlement) {
         return res.status(404).json({

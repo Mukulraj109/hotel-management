@@ -41,6 +41,7 @@ import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../compon
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface HousekeepingFilters {
   status?: string;
@@ -87,10 +88,10 @@ const HousekeepingTaskRow = React.memo(({ task, columns, onSelect }: {
   columns: HousekeepingColumn[];
   onSelect: (task: HousekeepingTask) => void;
 }) => (
-  <tr
+  <tr role="button" tabIndex={0}
     className="hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 cursor-pointer transition-all duration-200 border-b border-gray-100"
     onClick={() => onSelect(task)}
-  >
+   onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => onSelect(task); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
     {columns.map((column, colIndex) => {
       const value = column.key === 'actions' ? null : task[column.key as keyof HousekeepingTask];
       return (
@@ -106,7 +107,7 @@ const HousekeepingTaskRow = React.memo(({ task, columns, onSelect }: {
 ));
 HousekeepingTaskRow.displayName = 'HousekeepingTaskRow';
 
-export default function AdminHousekeeping() {
+function AdminHousekeeping() {
   // Property Context
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
 
@@ -865,6 +866,7 @@ export default function AdminHousekeeping() {
                 </label>
                 <Input
                   type="text"
+                  required
                   placeholder="Enter staff name"
                   value={filters.assignedToUserId || ''}
                   onChange={(e) => setFilters({ ...filters, assignedToUserId: e.target.value || undefined, page: 1 })}
@@ -1361,7 +1363,7 @@ export default function AdminHousekeeping() {
             <label className="block text-xs sm:text-sm font-semibold text-gray-700 mb-3">ASSIGNED TO</label>
             <div className="space-y-2 max-h-48 sm:max-h-60 overflow-y-auto">
               {staffMembers.map((staff) => (
-                <div
+                <div role="button" tabIndex={0}
                   key={staff._id}
                   className={`flex items-center p-3 border rounded-lg cursor-pointer transition-all duration-200 ${
                     selectedStaffId === staff._id
@@ -1369,7 +1371,7 @@ export default function AdminHousekeeping() {
                       : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
                   }`}
                   onClick={() => setSelectedStaffId(staff._id)}
-                >
+                 onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => setSelectedStaffId(staff._id); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                   <User className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 mr-3" />
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-gray-900 text-sm sm:text-base truncate">{staff.name}</div>
@@ -1425,6 +1427,7 @@ export default function AdminHousekeeping() {
               <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Task Title *</label>
               <Input
                 type="text"
+                required
                 placeholder="Enter task title"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
@@ -1531,6 +1534,7 @@ export default function AdminHousekeeping() {
                   <div className="flex-1">
                     <Input
                       type="text"
+                      required
                       placeholder="Supply name"
                       value={supply.name}
                       onChange={(e) => updateSupplyItem(index, 'name', e.target.value)}
@@ -1837,3 +1841,6 @@ export default function AdminHousekeeping() {
     </div>
   );
 }
+
+
+export default withErrorBoundary(AdminHousekeeping, { level: 'page' });

@@ -72,20 +72,26 @@ router.get('/', catchAsync(async (req, res) => {
 
 // Lock an audit day
 router.post('/:id/lock', authorize('admin'), catchAsync(async (req, res) => {
-  const audit = await NightAudit.findById(req.params.id);
+  const audit = await NightAudit.findOneAndUpdate(
+    { _id: req.params.id, status: 'completed' },
+    {
+      $set: {
+        locked: true,
+        lockedAt: new Date(),
+        lockedBy: req.user._id
+      }
+    },
+    { new: true, runValidators: true }
+  );
 
   if (!audit) {
-    throw new ApplicationError('Night audit not found', 404);
-  }
-
-  if (audit.status !== 'completed') {
+    // Determine the reason for failure
+    const existing = await NightAudit.findById(req.params.id).lean();
+    if (!existing) {
+      throw new ApplicationError('Night audit not found', 404);
+    }
     throw new ApplicationError('Only completed audits can be locked', 400);
   }
-
-  audit.locked = true;
-  audit.lockedAt = new Date();
-  audit.lockedBy = req.user._id;
-  await audit.save();
 
   res.json({
     status: 'success',

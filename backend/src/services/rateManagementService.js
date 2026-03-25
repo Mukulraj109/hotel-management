@@ -33,7 +33,7 @@ class RateManagementService {
 
       if (ratePlans.length === 0) {
         // Fallback to base rate
-        const room = await Room.findOne({ type: roomType });
+        const room = await Room.findOne({ type: roomType }).lean();
         return {
           rate: room?.baseRate || 0,
           planName: 'Standard Rate',
@@ -204,41 +204,45 @@ class RateManagementService {
    * Get applicable rate plans for given criteria
    */
   async getApplicableRatePlans(roomType, checkIn, checkOut, promoCode = null) {
-    const dayOfWeek = checkIn.getDay();
-    const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dayOfWeek];
+    try {
+      const dayOfWeek = checkIn.getDay();
+      const dayName = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dayOfWeek];
     
-    const query = {
-      isActive: true,
-      'baseRates.roomType': roomType,
-      [`applicableDays.${dayName}`]: true,
-      $or: [
-        { 'validity.startDate': { $lte: checkIn }, 'validity.endDate': { $gte: checkOut } },
-        { 'validity.startDate': null, 'validity.endDate': null }
-      ]
-    };
+      const query = {
+        isActive: true,
+        'baseRates.roomType': roomType,
+        [`applicableDays.${dayName}`]: true,
+        $or: [
+          { 'validity.startDate': { $lte: checkIn }, 'validity.endDate': { $gte: checkOut } },
+          { 'validity.startDate': null, 'validity.endDate': null }
+        ]
+      };
     
-    if (promoCode) {
-      query.$or = [
-        { 'restrictions.requirePromoCode': false },
-        { 'restrictions.promoCode': promoCode }
-      ];
-    } else {
-      query['restrictions.requirePromoCode'] = false;
-    }
+      if (promoCode) {
+        query.$or = [
+          { 'restrictions.requirePromoCode': false },
+          { 'restrictions.promoCode': promoCode }
+        ];
+      } else {
+        query['restrictions.requirePromoCode'] = false;
+      }
     
-    const plans = await RatePlan.find(query).sort({ priority: -1 });
+      const plans = await RatePlan.find(query).sort({ priority: -1 }).lean().limit(1000);
     
-    // Filter by booking window
-    const now = new Date();
-    const hoursUntilCheckIn = (checkIn - now) / (1000 * 60 * 60);
-    const daysUntilCheckIn = hoursUntilCheckIn / 24;
+      // Filter by booking window
+      const now = new Date();
+      const hoursUntilCheckIn = (checkIn - now) / (1000 * 60 * 60);
+      const daysUntilCheckIn = hoursUntilCheckIn / 24;
     
-    return plans.filter(plan => {
-      const minAdvance = plan.bookingWindow.minAdvanceBooking || 0;
-      const maxAdvance = plan.bookingWindow.maxAdvanceBooking || 365;
+      return plans.filter(plan => {
+        const minAdvance = plan.bookingWindow.minAdvanceBooking || 0;
+        const maxAdvance = plan.bookingWindow.maxAdvanceBooking || 365;
       
-      return hoursUntilCheckIn >= minAdvance && daysUntilCheckIn <= maxAdvance;
-    });
+        return hoursUntilCheckIn >= minAdvance && daysUntilCheckIn <= maxAdvance;
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -253,27 +257,31 @@ class RateManagementService {
    * Get seasonal adjustment
    */
   async getSeasonalAdjustment(roomType, date, ratePlanId) {
-    const seasonalRates = await SeasonalRate.find({
-      isActive: true,
-      startDate: { $lte: date },
-      endDate: { $gte: date },
-      $or: [
-        { applicableRatePlans: ratePlanId },
-        { applicableRatePlans: { $size: 0 } }
-      ]
-    }).sort({ priority: -1 });
+    try {
+      const seasonalRates = await SeasonalRate.find({
+        isActive: true,
+        startDate: { $lte: date },
+        endDate: { $gte: date },
+        $or: [
+          { applicableRatePlans: ratePlanId },
+          { applicableRatePlans: { $size: 0 } }
+        ]
+      }).sort({ priority: -1 }).lean().limit(1000);
     
-    if (seasonalRates.length === 0) return 0;
+      if (seasonalRates.length === 0) return 0;
     
-    const adjustment = seasonalRates[0].rateAdjustments.find(
-      adj => adj.roomType === roomType || !adj.roomType
-    );
+      const adjustment = seasonalRates[0].rateAdjustments.find(
+        adj => adj.roomType === roomType || !adj.roomType
+      );
     
-    if (!adjustment) return 0;
+      if (!adjustment) return 0;
     
-    return adjustment.adjustmentType === 'percentage' 
-      ? adjustment.adjustmentValue 
-      : 0; // Fixed adjustments handled separately
+      return adjustment.adjustmentType === 'percentage' 
+        ? adjustment.adjustmentValue 
+        : 0; // Fixed adjustments handled separately
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -294,7 +302,7 @@ class RateManagementService {
           { 'applicableRooms': roomType },
           { 'applicableRooms': 'all' }
         ]
-      }).sort({ priority: -1 });
+      }).sort({ priority: -1 }).lean().limit(1000);
       
       let totalAdjustment = 0;
       
@@ -375,20 +383,24 @@ class RateManagementService {
    * Get rate override for specific date
    */
   async getRateOverride(roomType, date, ratePlanId = null) {
-    const query = {
-      roomType,
-      date: {
-        $gte: new Date(date.setHours(0, 0, 0, 0)),
-        $lt: new Date(date.setHours(23, 59, 59, 999))
-      },
-      isActive: true
-    };
+    try {
+      const query = {
+        roomType,
+        date: {
+          $gte: new Date(date.setHours(0, 0, 0, 0)),
+          $lt: new Date(date.setHours(23, 59, 59, 999))
+        },
+        isActive: true
+      };
     
-    if (ratePlanId) {
-      query.ratePlanId = ratePlanId;
+      if (ratePlanId) {
+        query.ratePlanId = ratePlanId;
+      }
+    
+      return await RateOverride.findOne(query).lean();
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    return await RateOverride.findOne(query);
   }
 
   /**

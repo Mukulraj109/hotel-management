@@ -164,7 +164,7 @@ async function runProductionMigration() {
             checkOut: { $gt: currentDate },
             status: { $in: ['confirmed', 'checked_in'] },
             roomType: roomType.legacyType
-          }).session(session);
+          }).session(session).limit(1000);
           
           const soldRooms = bookingsForDate.reduce((total, booking) => {
             return total + booking.rooms.length;

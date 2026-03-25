@@ -216,71 +216,79 @@ class QueueService {
    * Start processing events
    */
   async startProcessing() {
-    if (this.isProcessing) {
-      logger.warn('Queue processing already started');
-      return;
-    }
+    try {
+      if (this.isProcessing) {
+        logger.warn('Queue processing already started');
+        return;
+      }
 
-    if (!this.redis) {
-      logger.warn('Redis not available - queue processing disabled');
-      return;
-    }
+      if (!this.redis) {
+        logger.warn('Redis not available - queue processing disabled');
+        return;
+      }
 
-    this.isProcessing = true;
+      this.isProcessing = true;
     
-    // Process scheduled events (move from MongoDB to Redis when ready)
-    setInterval(() => {
-      this.processScheduledEvents().catch(error => {
-        logger.error('Error processing scheduled events', { error: error.message });
-      });
-    }, 30000); // Check every 30 seconds
+      // Process scheduled events (move from MongoDB to Redis when ready)
+      setInterval(() => {
+        this.processScheduledEvents().catch(error => {
+          logger.error('Error processing scheduled events', { error: error.message });
+        });
+      }, 30000); // Check every 30 seconds
 
-    // Main processing loop
-    this.processingInterval = setInterval(() => {
-      this.processEvents().catch(error => {
-        logger.error('Error in processing loop', { error: error.message });
-      });
-    }, this.processingIntervalMs);
+      // Main processing loop
+      this.processingInterval = setInterval(() => {
+        this.processEvents().catch(error => {
+          logger.error('Error in processing loop', { error: error.message });
+        });
+      }, this.processingIntervalMs);
 
-    logger.info('Queue processing started', {
-      workerId: this.workerId,
-      processingIntervalMs: this.processingIntervalMs
-    });
+      logger.info('Queue processing started', {
+        workerId: this.workerId,
+        processingIntervalMs: this.processingIntervalMs
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Stop processing events
    */
   async stopProcessing() {
-    this.isProcessing = false;
+    try {
+      this.isProcessing = false;
     
-    if (this.processingInterval) {
-      clearInterval(this.processingInterval);
-      this.processingInterval = null;
-    }
-
-    // Wait for active jobs to complete
-    const activeJobIds = Array.from(this.activeJobs.keys());
-    if (activeJobIds.length > 0) {
-      logger.info('Waiting for active jobs to complete', { 
-        activeJobs: activeJobIds.length 
-      });
-      
-      // Wait up to 30 seconds for jobs to complete
-      const timeout = setTimeout(() => {
-        logger.warn('Timeout waiting for jobs to complete', {
-          remainingJobs: this.activeJobs.size
-        });
-      }, 30000);
-
-      while (this.activeJobs.size > 0) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+      if (this.processingInterval) {
+        clearInterval(this.processingInterval);
+        this.processingInterval = null;
       }
 
-      clearTimeout(timeout);
-    }
+      // Wait for active jobs to complete
+      const activeJobIds = Array.from(this.activeJobs.keys());
+      if (activeJobIds.length > 0) {
+        logger.info('Waiting for active jobs to complete', { 
+          activeJobs: activeJobIds.length 
+        });
+      
+        // Wait up to 30 seconds for jobs to complete
+        const timeout = setTimeout(() => {
+          logger.warn('Timeout waiting for jobs to complete', {
+            remainingJobs: this.activeJobs.size
+          });
+        }, 30000);
 
-    logger.info('Queue processing stopped', { workerId: this.workerId });
+        while (this.activeJobs.size > 0) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+        clearTimeout(timeout);
+      }
+
+      logger.info('Queue processing stopped', { workerId: this.workerId });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -298,7 +306,7 @@ class QueueService {
       const readyEvents = await EventQueue.find({
         status: 'pending',
         scheduledFor: { $lte: now }
-      }).limit(100);
+      }).limit(100).lean();
 
       for (const event of readyEvents) {
         await this.addToRedisQueue(event);
@@ -421,7 +429,7 @@ class QueueService {
       }
 
       // Get full event from MongoDB
-      const event = await EventQueue.findOne({ eventId });
+      const event = await EventQueue.findOne({ eventId }).lean();
       if (!event) {
         logger.warn('Event not found in database', { eventId });
         return;
@@ -467,7 +475,7 @@ class QueueService {
       });
 
       try {
-        const event = await EventQueue.findOne({ eventId });
+        const event = await EventQueue.findOne({ eventId }).lean();
         if (event) {
           const retryConfig = EventRetryConfig[event.eventType] || EventRetryConfig.rate_update;
           const retryDelay = retryConfig.initialDelay * Math.pow(retryConfig.backoffMultiplier, event.processing.attempts);
@@ -702,32 +710,48 @@ class QueueService {
    * Process room type update event - placeholder
    */
   async processRoomTypeUpdate(event) {
-    // TODO: Implement room type update processing
-    return [];
+    try {
+      // TODO: Implement room type update processing
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Process booking modification event - placeholder
    */
   async processBookingModification(event) {
-    // TODO: Implement booking modification processing
-    return [];
+    try {
+      // TODO: Implement booking modification processing
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Process cancellation event - placeholder
    */
   async processCancellation(event) {
-    // TODO: Implement cancellation processing
-    return [];
+    try {
+      // TODO: Implement cancellation processing
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Process stop sell update event - placeholder
    */
   async processStopSellUpdate(event) {
-    // TODO: Implement stop sell update processing
-    return [];
+    try {
+      // TODO: Implement stop sell update processing
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -794,7 +818,7 @@ class QueueService {
         throw new Error('Database not available');
       }
 
-      const event = await EventQueue.findOne({ eventId });
+      const event = await EventQueue.findOne({ eventId }).lean();
       if (!event) {
         throw new Error('Event not found');
       }

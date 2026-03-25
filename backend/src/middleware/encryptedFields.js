@@ -287,7 +287,7 @@ export async function migrateToEncryption(Model, batchSize = 100) {
       const batch = await Model.find({})
         .select('+' + (Model.encryptedFields || []).map(f => `${f}_encrypted`).join(' +'))
         .limit(batchSize)
-        .skip(processed);
+        .skip(processed).lean();
 
       const operations = [];
       

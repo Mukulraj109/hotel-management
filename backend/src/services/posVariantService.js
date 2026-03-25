@@ -34,7 +34,7 @@ class POSVariantService {
         maxVariants = 1000
       } = options;
 
-      const menuItem = await POSMenu.findById(menuItemId);
+      const menuItem = await POSMenu.findById(menuItemId).lean();
       if (!menuItem) {
         throw new Error('Menu item not found');
       }
@@ -67,7 +67,7 @@ class POSVariantService {
       }
 
       const variants = [];
-      const existingVariants = await POSItemVariant.find({ menuItemId });
+      const existingVariants = await POSItemVariant.find({ menuItemId }).lean().limit(1000);
 
       for (const combination of combinations) {
         const variant = await this.createVariantFromCombination(
@@ -121,7 +121,7 @@ class POSVariantService {
    */
   async getAttributesForMenuItem(menuItemId) {
     try {
-      const menuItem = await POSMenu.findById(menuItemId);
+      const menuItem = await POSMenu.findById(menuItemId).lean();
       if (!menuItem) {
         throw new Error('Menu item not found');
       }
@@ -134,19 +134,25 @@ class POSVariantService {
           { 'posIntegration.applicableCategories': { $in: [menuItem.category, 'GENERAL'] } },
           { 'posIntegration.applicableCategories': { $size: 0 } }
         ]
-      }).sort({ 'displayConfig.displayOrder': 1, displayName: 1 });
+      }).sort({ 'displayConfig.displayOrder': 1, displayName: 1 }).lean().limit(1000);
 
       // Populate attribute values
       const attributesWithValues = await Promise.all(
         attributes.map(async (attribute) => {
-          const values = await POSAttributeValue.getValuesByAttribute(
-            menuItem.hotelId,
-            attribute._id
-          );
-          return {
-            ...attribute.toObject(),
-            values: values
-          };
+          try {
+            const values = await POSAttributeValue.getValuesByAttribute(
+              menuItem.hotelId,
+              attribute._id
+            );
+            return {
+              ...attribute.toObject(),
+              values: values
+            };
+        
+          } catch (error) {
+            console.error('Operation failed:', error.message);
+            throw error;
+          }
         })
       );
 
@@ -228,7 +234,7 @@ class POSVariantService {
         return null; // Skip existing variants
       }
 
-      const menuItem = await POSMenu.findById(menuItemId);
+      const menuItem = await POSMenu.findById(menuItemId).lean();
       if (!menuItem) {
         throw new Error('Menu item not found');
       }
@@ -382,7 +388,7 @@ class POSVariantService {
         .limit(limit)
         .populate('menuItemId', 'name displayName price')
         .populate('attributes.attributeId', 'name displayName attributeType')
-        .populate('attributes.attributeValueId', 'name displayName value');
+        .populate('attributes.attributeValueId', 'name displayName value').lean();
 
       return variants;
 
@@ -412,7 +418,7 @@ class POSVariantService {
       })
         .populate('menuItemId', 'name displayName price')
         .populate('attributes.attributeId', 'name displayName attributeType')
-        .populate('attributes.attributeValueId', 'name displayName value');
+        .populate('attributes.attributeValueId', 'name displayName value').lean();
 
       return variant;
 
@@ -536,7 +542,7 @@ class POSVariantService {
         .sort({ 'analytics.popularityScore': -1, 'analytics.totalOrders': -1 })
         .limit(10)
         .populate('menuItemId', 'name displayName')
-        .select('displayName analytics.popularityScore analytics.totalOrders analytics.totalRevenue');
+        .select('displayName analytics.popularityScore analytics.totalOrders analytics.totalRevenue').lean();
 
       return {
         summary: analytics[0] || {

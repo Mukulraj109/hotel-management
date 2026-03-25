@@ -319,143 +319,147 @@ extraPersonChargeSchema.pre('validate', function(next) {
 
 // Static method to calculate extra person charge
 extraPersonChargeSchema.statics.calculateExtraPersonCharge = async function(hotelId, bookingData) {
-  const {
-    roomType,
-    baseRoomRate,
-    extraPersons,
-    checkIn,
-    checkOut,
-    bookingSource,
-    nights
-  } = bookingData;
+  try {
+    const {
+      roomType,
+      baseRoomRate,
+      extraPersons,
+      checkIn,
+      checkOut,
+      bookingSource,
+      nights
+    } = bookingData;
 
-  // Find applicable charge rules
-  const query = {
-    hotelId,
-    isActive: true,
-    $and: [
-      {
-        $or: [
-          { applicableRoomTypes: { $in: [roomType] } },
-          { applicableRoomTypes: { $size: 0 } } // Apply to all room types
-        ]
-      },
-      {
-        effectiveFrom: { $lte: new Date(checkIn) }
-      },
-      {
-        $or: [
-          { effectiveTo: { $exists: false } },
-          { effectiveTo: { $gte: new Date(checkOut) } }
-        ]
+    // Find applicable charge rules
+    const query = {
+      hotelId,
+      isActive: true,
+      $and: [
+        {
+          $or: [
+            { applicableRoomTypes: { $in: [roomType] } },
+            { applicableRoomTypes: { $size: 0 } } // Apply to all room types
+          ]
+        },
+        {
+          effectiveFrom: { $lte: new Date(checkIn) }
+        },
+        {
+          $or: [
+            { effectiveTo: { $exists: false } },
+            { effectiveTo: { $gte: new Date(checkOut) } }
+          ]
+        }
+      ]
+    };
+
+    // Extract unique guest types from extra persons
+    const guestTypes = [...new Set(extraPersons.map(p => p.type))];
+
+    const chargeRules = await this.find(query).sort({ priority: -1 }).lean().limit(1000);
+
+    if (chargeRules.length === 0) {
+      throw new Error('No extra person charge rules found for this room type');
+    }
+
+    let totalExtraCharge = 0;
+    const chargeBreakdown = [];
+    const checkInDate = new Date(checkIn);
+
+    // Process each extra person
+    for (const person of extraPersons) {
+      // Find the best matching rule
+      const applicableRule = chargeRules.find(rule => {
+        if (rule.guestType !== person.type) return false;
+
+        // Check age range for children
+        if (person.type === 'child' && rule.ageRange) {
+          if (person.age < rule.ageRange.min || person.age > rule.ageRange.max) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+
+      if (!applicableRule) continue;
+
+      // Calculate base charge
+      let baseCharge = 0;
+      const applicablePricingTier = applicableRule.pricingTiers.find(tier =>
+        extraPersons.length >= tier.fromPersonCount && extraPersons.length <= tier.toPersonCount
+      );
+
+      if (applicablePricingTier) {
+        // Use pricing tier
+        baseCharge = this.calculateChargeAmount(
+          applicablePricingTier.chargeType,
+          applicablePricingTier.amount,
+          baseRoomRate,
+          nights
+        );
+      } else {
+        // Use base rule
+        baseCharge = this.calculateChargeAmount(
+          applicableRule.chargeType,
+          applicableRule.amount,
+          baseRoomRate,
+          nights
+        );
       }
-    ]
-  };
 
-  // Extract unique guest types from extra persons
-  const guestTypes = [...new Set(extraPersons.map(p => p.type))];
+      // Apply seasonal multiplier
+      const seasonMultiplier = this.getSeasonalMultiplier(applicableRule.seasonalRates, checkInDate);
 
-  const chargeRules = await this.find(query).sort({ priority: -1 });
+      // Apply day of week multiplier
+      const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      const dayOfWeek = dayNames[checkInDate.getDay()];
+      const dayMultiplier = applicableRule.dayOfWeekRates[dayOfWeek] || 1;
 
-  if (chargeRules.length === 0) {
-    throw new Error('No extra person charge rules found for this room type');
-  }
+      // Apply source-specific multiplier
+      const sourceMultiplier = this.getSourceMultiplier(applicableRule.sourceSpecificRates, bookingSource);
 
-  let totalExtraCharge = 0;
-  const chargeBreakdown = [];
-  const checkInDate = new Date(checkIn);
+      const finalCharge = baseCharge * seasonMultiplier * dayMultiplier * sourceMultiplier;
 
-  // Process each extra person
-  for (const person of extraPersons) {
-    // Find the best matching rule
-    const applicableRule = chargeRules.find(rule => {
-      if (rule.guestType !== person.type) return false;
-
-      // Check age range for children
-      if (person.type === 'child' && rule.ageRange) {
-        if (person.age < rule.ageRange.min || person.age > rule.ageRange.max) {
-          return false;
+      // Apply tax if applicable
+      let taxAmount = 0;
+      if (applicableRule.taxSettings.isTaxable) {
+        if (applicableRule.taxSettings.taxType === 'exclusive') {
+          taxAmount = (finalCharge * applicableRule.taxSettings.taxRate) / 100;
+        } else {
+          // Inclusive tax - extract tax from total
+          taxAmount = (finalCharge * applicableRule.taxSettings.taxRate) / (100 + applicableRule.taxSettings.taxRate);
         }
       }
 
-      return true;
-    });
+      const personCharge = {
+        personId: person.id,
+        personName: person.name,
+        personType: person.type,
+        age: person.age,
+        ruleApplied: applicableRule._id,
+        baseCharge,
+        seasonMultiplier,
+        dayMultiplier,
+        sourceMultiplier,
+        chargeBeforeTax: finalCharge,
+        taxAmount,
+        totalCharge: finalCharge + taxAmount,
+        currency: applicableRule.currency
+      };
 
-    if (!applicableRule) continue;
-
-    // Calculate base charge
-    let baseCharge = 0;
-    const applicablePricingTier = applicableRule.pricingTiers.find(tier =>
-      extraPersons.length >= tier.fromPersonCount && extraPersons.length <= tier.toPersonCount
-    );
-
-    if (applicablePricingTier) {
-      // Use pricing tier
-      baseCharge = this.calculateChargeAmount(
-        applicablePricingTier.chargeType,
-        applicablePricingTier.amount,
-        baseRoomRate,
-        nights
-      );
-    } else {
-      // Use base rule
-      baseCharge = this.calculateChargeAmount(
-        applicableRule.chargeType,
-        applicableRule.amount,
-        baseRoomRate,
-        nights
-      );
+      chargeBreakdown.push(personCharge);
+      totalExtraCharge += personCharge.totalCharge;
     }
 
-    // Apply seasonal multiplier
-    const seasonMultiplier = this.getSeasonalMultiplier(applicableRule.seasonalRates, checkInDate);
-
-    // Apply day of week multiplier
-    const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const dayOfWeek = dayNames[checkInDate.getDay()];
-    const dayMultiplier = applicableRule.dayOfWeekRates[dayOfWeek] || 1;
-
-    // Apply source-specific multiplier
-    const sourceMultiplier = this.getSourceMultiplier(applicableRule.sourceSpecificRates, bookingSource);
-
-    const finalCharge = baseCharge * seasonMultiplier * dayMultiplier * sourceMultiplier;
-
-    // Apply tax if applicable
-    let taxAmount = 0;
-    if (applicableRule.taxSettings.isTaxable) {
-      if (applicableRule.taxSettings.taxType === 'exclusive') {
-        taxAmount = (finalCharge * applicableRule.taxSettings.taxRate) / 100;
-      } else {
-        // Inclusive tax - extract tax from total
-        taxAmount = (finalCharge * applicableRule.taxSettings.taxRate) / (100 + applicableRule.taxSettings.taxRate);
-      }
-    }
-
-    const personCharge = {
-      personId: person.id,
-      personName: person.name,
-      personType: person.type,
-      age: person.age,
-      ruleApplied: applicableRule._id,
-      baseCharge,
-      seasonMultiplier,
-      dayMultiplier,
-      sourceMultiplier,
-      chargeBeforeTax: finalCharge,
-      taxAmount,
-      totalCharge: finalCharge + taxAmount,
-      currency: applicableRule.currency
+    return {
+      totalExtraCharge,
+      chargeBreakdown,
+      currency: chargeRules[0].currency
     };
-
-    chargeBreakdown.push(personCharge);
-    totalExtraCharge += personCharge.totalCharge;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  return {
-    totalExtraCharge,
-    chargeBreakdown,
-    currency: chargeRules[0].currency
-  };
 };
 
 // Helper method to calculate charge amount based on type

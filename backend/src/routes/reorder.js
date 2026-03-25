@@ -183,7 +183,7 @@ router.post('/configure/:itemId',
       const hotelId = req.user.hotelId;
 
       // Verify item exists and belongs to hotel
-      const item = await InventoryItem.findOne({ _id: itemId, hotelId });
+      const item = await InventoryItem.findOne({ _id: itemId, hotelId }).lean();
       if (!item) {
         return next(new ApplicationError('Inventory item not found', 404));
       }
@@ -347,7 +347,7 @@ router.post('/approve/:alertId',
       const hotelId = req.user.hotelId;
 
       // Verify alert exists and belongs to hotel
-      const alert = await ReorderAlert.findOne({ _id: alertId, hotelId });
+      const alert = await ReorderAlert.findOne({ _id: alertId, hotelId }).lean();
       if (!alert) {
         return next(new ApplicationError('Reorder alert not found', 404));
       }
@@ -439,7 +439,7 @@ router.post('/acknowledge/:alertId',
       const hotelId = req.user.hotelId;
 
       // Verify alert exists and belongs to hotel
-      const alert = await ReorderAlert.findOne({ _id: alertId, hotelId });
+      const alert = await ReorderAlert.findOne({ _id: alertId, hotelId }).lean();
       if (!alert) {
         return next(new ApplicationError('Reorder alert not found', 404));
       }
@@ -512,7 +512,7 @@ router.post('/dismiss/:alertId',
       const hotelId = req.user.hotelId;
 
       // Verify alert exists and belongs to hotel
-      const alert = await ReorderAlert.findOne({ _id: alertId, hotelId });
+      const alert = await ReorderAlert.findOne({ _id: alertId, hotelId }).lean();
       if (!alert) {
         return next(new ApplicationError('Reorder alert not found', 404));
       }
@@ -743,12 +743,16 @@ router.post('/bulk-configure', authenticate, ensurePropertyAccess, requireRole([
       failed: []
     };
 
+    // Batch: verify all items exist in a single query
+    const configItemIds = items.map(c => c.itemId);
+    const existingItems = await InventoryItem.find({ _id: { $in: configItemIds }, hotelId }).select('_id').lean();
+    const existingItemIds = new Set(existingItems.map(i => i._id.toString()));
+
     for (const itemConfig of items) {
       try {
         const { itemId, autoReorderEnabled, reorderPoint, reorderQuantity, preferredSupplier } = itemConfig;
 
-        // Verify item exists and belongs to hotel
-        const item = await InventoryItem.findOne({ _id: itemId, hotelId });
+        const item = existingItemIds.has(itemId.toString());
         if (!item) {
           results.failed.push({ itemId, error: 'Item not found' });
           continue;

@@ -391,98 +391,106 @@ bookingConversationSchema.methods.escalate = function(escalatedBy, reason) {
 
 // Static method to get conversations for a user
 bookingConversationSchema.statics.getForUser = async function(userId, role, filters = {}) {
-  let query = {};
+  try {
+    let query = {};
 
-  if (role === 'guest') {
-    query['participants.userId'] = userId;
-  } else if (role === 'staff') {
-    query = {
-      $or: [
-        { 'participants.userId': userId },
-        { 'metadata.assignedTo.userId': userId }
-      ]
+    if (role === 'guest') {
+      query['participants.userId'] = userId;
+    } else if (role === 'staff') {
+      query = {
+        $or: [
+          { 'participants.userId': userId },
+          { 'metadata.assignedTo.userId': userId }
+        ]
+      };
+    } else if (role === 'admin' || role === 'manager') {
+      // Admin can see all conversations for their hotel
+      if (filters.hotelId) {
+        query.hotelId = filters.hotelId;
+      }
+    }
+
+    // Apply additional filters
+    if (filters.status) query.status = filters.status;
+    if (filters.category) query.category = filters.category;
+    if (filters.priority) query.priority = filters.priority;
+    if (filters.bookingId) query.bookingId = filters.bookingId;
+
+    const page = parseInt(filters.page) || 1;
+    const limit = parseInt(filters.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    const conversations = await this.find(query)
+      .populate('bookingId', 'bookingNumber checkIn checkOut')
+      .populate('participants.userId', 'name email role')
+      .populate('metadata.assignedTo.userId', 'name email')
+      .sort('-statistics.lastMessageAt')
+      .skip(skip)
+      .limit(limit).lean();
+
+    const total = await this.countDocuments(query);
+
+    return {
+      conversations,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
     };
-  } else if (role === 'admin' || role === 'manager') {
-    // Admin can see all conversations for their hotel
-    if (filters.hotelId) {
-      query.hotelId = filters.hotelId;
-    }
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  // Apply additional filters
-  if (filters.status) query.status = filters.status;
-  if (filters.category) query.category = filters.category;
-  if (filters.priority) query.priority = filters.priority;
-  if (filters.bookingId) query.bookingId = filters.bookingId;
-
-  const page = parseInt(filters.page) || 1;
-  const limit = parseInt(filters.limit) || 20;
-  const skip = (page - 1) * limit;
-
-  const conversations = await this.find(query)
-    .populate('bookingId', 'bookingNumber checkIn checkOut')
-    .populate('participants.userId', 'name email role')
-    .populate('metadata.assignedTo.userId', 'name email')
-    .sort('-statistics.lastMessageAt')
-    .skip(skip)
-    .limit(limit);
-
-  const total = await this.countDocuments(query);
-
-  return {
-    conversations,
-    pagination: {
-      page,
-      limit,
-      total,
-      pages: Math.ceil(total / limit)
-    }
-  };
 };
 
 // Static method to get conversation statistics
 bookingConversationSchema.statics.getStats = async function(hotelId, startDate, endDate) {
-  const matchQuery = { hotelId };
+  try {
+    const matchQuery = { hotelId };
 
-  if (startDate && endDate) {
-    matchQuery.createdAt = {
-      $gte: new Date(startDate),
-      $lte: new Date(endDate)
-    };
-  }
-
-  const stats = await this.aggregate([
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: {
-          status: '$status',
-          category: '$category'
-        },
-        count: { $sum: 1 },
-        avgResolutionTime: { $avg: '$statistics.resolutionTime' },
-        avgResponseTime: { $avg: '$statistics.averageResponseTime' },
-        avgMessageCount: { $avg: '$statistics.messageCount' }
-      }
-    },
-    {
-      $group: {
-        _id: '$_id.status',
-        categories: {
-          $push: {
-            category: '$_id.category',
-            count: '$count',
-            avgResolutionTime: '$avgResolutionTime',
-            avgResponseTime: '$avgResponseTime',
-            avgMessageCount: '$avgMessageCount'
-          }
-        },
-        totalCount: { $sum: '$count' }
-      }
+    if (startDate && endDate) {
+      matchQuery.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
     }
-  ]);
 
-  return stats;
+    const stats = await this.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: {
+            status: '$status',
+            category: '$category'
+          },
+          count: { $sum: 1 },
+          avgResolutionTime: { $avg: '$statistics.resolutionTime' },
+          avgResponseTime: { $avg: '$statistics.averageResponseTime' },
+          avgMessageCount: { $avg: '$statistics.messageCount' }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.status',
+          categories: {
+            $push: {
+              category: '$_id.category',
+              count: '$count',
+              avgResolutionTime: '$avgResolutionTime',
+              avgResponseTime: '$avgResponseTime',
+              avgMessageCount: '$avgMessageCount'
+            }
+          },
+          totalCount: { $sum: '$count' }
+        }
+      }
+    ]);
+
+    return stats;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 export default mongoose.model('BookingConversation', bookingConversationSchema);

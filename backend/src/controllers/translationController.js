@@ -40,29 +40,45 @@ class TranslationController {
         { $sort: { name: 1 } }
       ]);
 
-      // Calculate completeness for each namespace
-      const namespacesWithCompleteness = await Promise.all(
-        namespaces.map(async (ns) => {
-          const completeness = {};
-          
-          for (const language of ns.languages) {
-            const total = ns.keyCount;
-            const translated = await Translation.countDocuments({
-              namespace: ns.name,
-              'translations.language': language,
-              'translations.status': { $in: ['approved', 'published'] },
-              isActive: true
-            });
-            
-            completeness[language] = total > 0 ? Math.round((translated / total) * 100) : 0;
+      // Batch: compute completeness for all namespaces using a single aggregation
+      const allNsNames = namespaces.map(ns => ns.name);
+      const translationCounts = await Translation.aggregate([
+        {
+          $match: {
+            namespace: { $in: allNsNames },
+            'translations.status': { $in: ['approved', 'published'] },
+            isActive: true
           }
-          
-          return {
-            ...ns,
-            completeness
-          };
-        })
-      );
+        },
+        { $unwind: '$translations' },
+        { $match: { 'translations.status': { $in: ['approved', 'published'] } } },
+        {
+          $group: {
+            _id: { namespace: '$namespace', language: '$translations.language' },
+            count: { $sum: 1 }
+          }
+        }
+      ]);
+
+      const countMap = new Map();
+      for (const tc of translationCounts) {
+        const key = `${tc._id.namespace}:${tc._id.language}`;
+        countMap.set(key, tc.count);
+      }
+
+      const namespacesWithCompleteness = namespaces.map((ns) => {
+        try {
+          const completeness = {};
+          for (const language of ns.languages) {
+            const translated = countMap.get(`${ns.name}:${language}`) || 0;
+            completeness[language] = ns.keyCount > 0 ? Math.round((translated / ns.keyCount) * 100) : 0;
+          }
+          return { ...ns, completeness };
+        } catch (error) {
+            console.error('Operation failed:', error.message);
+            throw error;
+          }
+        });
 
       res.json({
         success: true,
@@ -95,7 +111,7 @@ class TranslationController {
         query.contexts = context;
       }
 
-      const translations = await Translation.find(query).lean();
+      const translations = await Translation.find(query).lean().limit(1000);
       
       const result = {};
       let keyCount = 0;
@@ -180,7 +196,7 @@ class TranslationController {
         namespace: namespace || 'common',
         key: { $in: keys },
         isActive: true
-      }).lean();
+      }).lean().limit(1000);
 
       const result = {};
       const missing = [];
@@ -520,10 +536,11 @@ class TranslationController {
       const { namespace, key } = req.params;
       const { language, reviewerId } = req.body;
 
-      const translation = await Translation.findOne({ 
-        namespace, 
+      // Removed .lean() so we can call .save() on the Mongoose document
+      const translation = await Translation.findOne({
+        namespace,
         key,
-        isActive: true 
+        isActive: true
       });
 
       if (!translation) {
@@ -533,7 +550,7 @@ class TranslationController {
         });
       }
 
-      const langTranslation = translation.translations.find(t => 
+      const langTranslation = translation.translations.find(t =>
         t.language === language.toUpperCase()
       );
 
@@ -541,6 +558,22 @@ class TranslationController {
         return res.status(404).json({
           success: false,
           message: 'Language translation not found'
+        });
+      }
+
+      // Validate translation status transition
+      const allowedTranslationTransitions = {
+        pending: ['approved', 'rejected'],
+        draft: ['pending', 'approved'],
+        rejected: ['pending', 'draft'],
+        approved: []
+      };
+      const currentStatus = langTranslation.status || 'pending';
+      const allowedTargets = allowedTranslationTransitions[currentStatus] || ['approved'];
+      if (!allowedTargets.includes('approved')) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot approve translation: invalid transition from '${currentStatus}' to 'approved'`
         });
       }
 

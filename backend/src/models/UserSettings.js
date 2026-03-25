@@ -512,15 +512,19 @@ userSettingsSchema.statics.getDefaultSettings = function(role) {
 };
 
 userSettingsSchema.statics.createDefaultSettings = async function(userId, role) {
-  const defaultSettings = this.getDefaultSettings(role);
+  try {
+    const defaultSettings = this.getDefaultSettings(role);
 
-  const userSettings = new this({
-    userId,
-    role,
-    ...defaultSettings
-  });
+    const userSettings = new this({
+      userId,
+      role,
+      ...defaultSettings
+    });
 
-  return await userSettings.save();
+    return await userSettings.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Pre-save middleware for validation and defaults

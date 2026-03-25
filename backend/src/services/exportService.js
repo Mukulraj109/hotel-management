@@ -61,7 +61,7 @@ class ExportService {
         .populate('bookingId', 'bookingNumber checkIn checkOut totalAmount status')
         .populate('travelAgentId', 'companyName agentCode contactPerson')
         .populate('hotelId', 'name')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 }).lean().limit(1000);
 
       // Prepare data for Excel
       const excelData = bookings.map(booking => ({
@@ -145,7 +145,7 @@ class ExportService {
         .populate('bookingId', 'bookingNumber checkIn checkOut totalAmount status')
         .populate('travelAgentId', 'companyName agentCode contactPerson')
         .populate('hotelId', 'name')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 }).lean().limit(1000);
 
       // Prepare CSV header
       const headers = [
@@ -368,7 +368,7 @@ class ExportService {
       const booking = await TravelAgentBooking.findById(bookingId)
         .populate('bookingId', 'bookingNumber checkIn checkOut totalAmount guestDetails')
         .populate('travelAgentId', 'companyName agentCode contactPerson email phone address')
-        .populate('hotelId', 'name address phone email');
+        .populate('hotelId', 'name address phone email').lean();
 
       if (!booking) {
         throw new ApplicationError('Booking not found', 404);
@@ -561,7 +561,7 @@ class ExportService {
         const bookings = await TravelAgentBooking.find({
           ...filters,
           isActive: true
-        }).limit(50); // Limit to prevent too many files
+        }).limit(50).lean(); // Limit to prevent too many files
 
         for (const booking of bookings) {
           try {
@@ -608,23 +608,27 @@ class ExportService {
    * @returns {Promise} Compression promise
    */
   async createZipArchive(sourceDir, outputPath) {
-    return new Promise((resolve, reject) => {
-      const output = fs.createWriteStream(outputPath);
-      const archive = archiver('zip', { zlib: { level: 9 } });
+    try {
+      return new Promise((resolve, reject) => {
+        const output = fs.createWriteStream(outputPath);
+        const archive = archiver('zip', { zlib: { level: 9 } });
 
-      output.on('close', () => {
-        logger.info(`Archive created: ${archive.pointer()} bytes`);
-        resolve();
+        output.on('close', () => {
+          logger.info(`Archive created: ${archive.pointer()} bytes`);
+          resolve();
+        });
+
+        archive.on('error', (err) => {
+          reject(err);
+        });
+
+        archive.pipe(output);
+        archive.directory(sourceDir, false);
+        archive.finalize();
       });
-
-      archive.on('error', (err) => {
-        reject(err);
-      });
-
-      archive.pipe(output);
-      archive.directory(sourceDir, false);
-      archive.finalize();
-    });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

@@ -47,6 +47,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface MobileApp {
   id: string;
@@ -800,7 +801,7 @@ export const MobileAppInfrastructure: React.FC = () => {
             {tabs.map(tab => {
               const Icon = tab.icon;
               return (
-                <button
+                <button aria-label="Close"
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex items-center px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
@@ -894,3 +895,5 @@ export const MobileAppInfrastructure: React.FC = () => {
     </div>
   );
 };
+
+export default withErrorBoundary(MobileAppInfrastructure, { level: 'component' });

@@ -156,7 +156,7 @@ const ErrorAlert: React.FC<ErrorAlertProps> = ({
           
           {showActions && (
             <div className="mt-3 flex items-center gap-3">
-              <button
+              <button aria-label="Close"
                 onClick={() => handleAction(config.actionType)}
                 className={`text-sm font-medium ${config.textColor} hover:underline focus:outline-none focus:underline`}
               >

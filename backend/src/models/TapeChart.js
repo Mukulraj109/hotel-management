@@ -579,47 +579,102 @@ const roomAssignmentRulesSchema = new mongoose.Schema({
   timestamps: true
 });
 
+// Indexes for RoomConfiguration
+roomConfigurationSchema.index({ roomNumber: 1 });
+roomConfigurationSchema.index({ roomType: 1, floor: 1 });
+roomConfigurationSchema.index({ isActive: 1, sortOrder: 1 });
+
+// Indexes for RoomStatusHistory
+roomStatusHistorySchema.index({ roomId: 1, date: -1 });
+roomStatusHistorySchema.index({ status: 1, date: -1 });
+roomStatusHistorySchema.index({ bookingId: 1 });
+roomStatusHistorySchema.index({ changedBy: 1, createdAt: -1 });
+
+// Indexes for RoomBlock
+roomBlockSchema.index({ startDate: 1, endDate: 1, status: 1 });
+roomBlockSchema.index({ groupName: 1 });
+roomBlockSchema.index({ corporateId: 1 });
+roomBlockSchema.index({ status: 1, cutOffDate: 1 });
+
+// Indexes for AdvancedReservation
+advancedReservationSchema.index({ bookingId: 1 });
+advancedReservationSchema.index({ reservationType: 1, priority: 1 });
+advancedReservationSchema.index({ 'guestProfile.vipStatus': 1 });
+advancedReservationSchema.index({ 'waitlistInfo.waitlistPosition': 1 });
+
+// Indexes for TapeChartView
+tapeChartViewSchema.index({ viewType: 1, isSystemDefault: 1 });
+tapeChartViewSchema.index({ createdBy: 1 });
+
+// Indexes for RoomAssignmentRules
+roomAssignmentRulesSchema.index({ priority: -1, isActive: 1 });
+roomAssignmentRulesSchema.index({ isActive: 1 });
+
 // Pre-save middleware to generate IDs
 roomConfigurationSchema.pre('save', async function(next) {
-  if (!this.configId) {
-    this.configId = `RC-${Date.now()}`;
+  try {
+    if (!this.configId) {
+      this.configId = `RC-${Date.now()}`;
+    }
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  next();
 });
 
 roomStatusHistorySchema.pre('save', async function(next) {
-  if (!this.historyId) {
-    this.historyId = `RSH-${Date.now()}`;
+  try {
+    if (!this.historyId) {
+      this.historyId = `RSH-${Date.now()}`;
+    }
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  next();
 });
 
 roomBlockSchema.pre('save', async function(next) {
-  if (!this.blockId) {
-    this.blockId = `RB-${Date.now()}`;
+  try {
+    if (!this.blockId) {
+      this.blockId = `RB-${Date.now()}`;
+    }
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  next();
 });
 
 advancedReservationSchema.pre('save', async function(next) {
-  if (!this.reservationId) {
-    this.reservationId = `RES-${Date.now()}`;
+  try {
+    if (!this.reservationId) {
+      this.reservationId = `RES-${Date.now()}`;
+    }
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  next();
 });
 
 tapeChartViewSchema.pre('save', async function(next) {
-  if (!this.viewId) {
-    this.viewId = `TCV-${Date.now()}`;
+  try {
+    if (!this.viewId) {
+      this.viewId = `TCV-${Date.now()}`;
+    }
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  next();
 });
 
 roomAssignmentRulesSchema.pre('save', async function(next) {
-  if (!this.ruleId) {
-    this.ruleId = `RAR-${Date.now()}`;
+  try {
+    if (!this.ruleId) {
+      this.ruleId = `RAR-${Date.now()}`;
+    }
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  next();
 });
 
 const RoomConfiguration = mongoose.model('RoomConfiguration', roomConfigurationSchema);

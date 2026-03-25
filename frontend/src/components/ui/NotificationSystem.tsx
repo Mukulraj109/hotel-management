@@ -156,6 +156,14 @@ const NotificationSystem: React.FC<NotificationSystemProps> = ({
     }
   ];
 
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     // Simulate receiving notifications
     const timer = setInterval(() => {
@@ -193,7 +201,8 @@ const NotificationSystem: React.FC<NotificationSystemProps> = ({
 
     // Auto-remove non-critical notifications
     if (notification.priority !== 'critical' && autoRemoveDelay > 0) {
-      setTimeout(() => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
         removeNotification(notification.id);
       }, autoRemoveDelay);
     }
@@ -406,7 +415,7 @@ const NotificationSystem: React.FC<NotificationSystemProps> = ({
                   </div>
                 ) : (
                   filteredNotifications.map((notification) => (
-                    <div
+                    <div role="button" tabIndex={0}
                       key={notification.id}
                       className={`
                         relative rounded-lg border p-3 cursor-pointer transition-colors
@@ -415,7 +424,7 @@ const NotificationSystem: React.FC<NotificationSystemProps> = ({
                         ${!notification.isRead ? 'border-l-4' : 'opacity-75'}
                       `}
                       onClick={() => markAsRead(notification.id)}
-                    >
+                     onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => markAsRead(notification.id); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                       <div className="flex items-start gap-3">
                         <div className="mt-0.5">
                           {getNotificationIcon(notification.type, notification.category)}

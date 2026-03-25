@@ -292,7 +292,7 @@ class HealthCheckService {
           const Booking = mongoose.models.Booking || null;
 
           if (User) {
-            userCount = await User.countDocuments();
+            userCount = await User.estimatedDocumentCount();
           }
           
           if (Hotel) {
@@ -553,64 +553,68 @@ class HealthCheckService {
    * Check for alert conditions
    */
   async checkAlertConditions(healthStatus) {
-    const alerts = [];
+    try {
+      const alerts = [];
     
-    // Overall system health alert - but don't alert for database being unavailable in development
-    if (healthStatus.status === 'unhealthy') {
-      // Check if it's just the database being unavailable
-      const isDatabaseOnlyIssue = this.isDatabaseOnlyIssue(healthStatus);
+      // Overall system health alert - but don't alert for database being unavailable in development
+      if (healthStatus.status === 'unhealthy') {
+        // Check if it's just the database being unavailable
+        const isDatabaseOnlyIssue = this.isDatabaseOnlyIssue(healthStatus);
       
-      if (!isDatabaseOnlyIssue || process.env.NODE_ENV === 'production') {
-        alerts.push({
-          severity: 'critical',
-          message: 'System health check failed',
-          details: healthStatus.summary
-        });
-      }
-    } else if (healthStatus.status === 'degraded') {
-      // Only alert for degraded status in production, or if it's not just database
-      const isDatabaseOnlyIssue = this.isDatabaseOnlyIssue(healthStatus);
-      
-      if (!isDatabaseOnlyIssue || process.env.NODE_ENV === 'production') {
-        alerts.push({
-          severity: 'info', // Reduced severity for development
-          message: 'System performance degraded',
-          details: healthStatus.summary
-        });
-      }
-    }
-    
-    // Check response time
-    if (healthStatus.responseTime > this.alertThresholds.response_time) {
-      alerts.push({
-        severity: 'warning',
-        message: `Health check response time high: ${healthStatus.responseTime}ms`,
-        threshold: this.alertThresholds.response_time
-      });
-    }
-    
-    // Check individual services - but be more lenient for database issues in development
-    for (const [checkName, result] of Object.entries(healthStatus.checks)) {
-      if (result.status === 'unhealthy') {
-        // Skip database and business_logic alerts in development when database is unavailable
-        if (process.env.NODE_ENV === 'development' && 
-            (checkName === 'database' || checkName === 'business_logic') &&
-            (result.error?.includes('Database') || result.error?.includes('connection'))) {
-          continue; // Skip database-related alerts in development
+        if (!isDatabaseOnlyIssue || process.env.NODE_ENV === 'production') {
+          alerts.push({
+            severity: 'critical',
+            message: 'System health check failed',
+            details: healthStatus.summary
+          });
         }
-        
+      } else if (healthStatus.status === 'degraded') {
+        // Only alert for degraded status in production, or if it's not just database
+        const isDatabaseOnlyIssue = this.isDatabaseOnlyIssue(healthStatus);
+      
+        if (!isDatabaseOnlyIssue || process.env.NODE_ENV === 'production') {
+          alerts.push({
+            severity: 'info', // Reduced severity for development
+            message: 'System performance degraded',
+            details: healthStatus.summary
+          });
+        }
+      }
+    
+      // Check response time
+      if (healthStatus.responseTime > this.alertThresholds.response_time) {
         alerts.push({
-          severity: checkName === 'database' ? 'warning' : 'critical',
-          message: `Service '${checkName}' is unhealthy`,
-          error: result.error,
-          service: checkName
+          severity: 'warning',
+          message: `Health check response time high: ${healthStatus.responseTime}ms`,
+          threshold: this.alertThresholds.response_time
         });
       }
-    }
     
-    // Send alerts if any
-    if (alerts.length > 0) {
-      await this.sendHealthAlerts(alerts, healthStatus);
+      // Check individual services - but be more lenient for database issues in development
+      for (const [checkName, result] of Object.entries(healthStatus.checks)) {
+        if (result.status === 'unhealthy') {
+          // Skip database and business_logic alerts in development when database is unavailable
+          if (process.env.NODE_ENV === 'development' && 
+              (checkName === 'database' || checkName === 'business_logic') &&
+              (result.error?.includes('Database') || result.error?.includes('connection'))) {
+            continue; // Skip database-related alerts in development
+          }
+        
+          alerts.push({
+            severity: checkName === 'database' ? 'warning' : 'critical',
+            message: `Service '${checkName}' is unhealthy`,
+            error: result.error,
+            service: checkName
+          });
+        }
+      }
+    
+      // Send alerts if any
+      if (alerts.length > 0) {
+        await this.sendHealthAlerts(alerts, healthStatus);
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -618,22 +622,26 @@ class HealthCheckService {
    * Send health alerts
    */
   async sendHealthAlerts(alerts, healthStatus) {
-    for (const alert of alerts) {
-      // Use different log levels based on severity and environment
-      const logLevel = process.env.NODE_ENV === 'development' && alert.severity === 'info' ? 'debug' : 
-                       alert.severity === 'warning' ? 'warn' : 
-                       alert.severity === 'critical' ? 'error' : 'warn';
+    try {
+      for (const alert of alerts) {
+        // Use different log levels based on severity and environment
+        const logLevel = process.env.NODE_ENV === 'development' && alert.severity === 'info' ? 'debug' : 
+                         alert.severity === 'warning' ? 'warn' : 
+                         alert.severity === 'critical' ? 'error' : 'warn';
       
-      logger[logLevel]('Health Check Alert', {
-        alert: true,
-        severity: alert.severity,
-        message: alert.message,
-        timestamp: healthStatus.timestamp,
-        ...alert
-      });
+        logger[logLevel]('Health Check Alert', {
+          alert: true,
+          severity: alert.severity,
+          message: alert.message,
+          timestamp: healthStatus.timestamp,
+          ...alert
+        });
       
-      // In production, this would send to alerting system
-      // await alertingService.send(alert);
+        // In production, this would send to alerting system
+        // await alertingService.send(alert);
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 

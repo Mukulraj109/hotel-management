@@ -142,7 +142,7 @@ export function ExportButton({
 
           <div className="grid grid-cols-1 gap-3">
             {formats.map((format) => (
-              <button
+              <button aria-label="View"
                 key={format}
                 onClick={() => handleExport(format)}
                 disabled={exportMutation.isPending}

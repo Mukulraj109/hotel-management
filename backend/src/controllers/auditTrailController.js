@@ -58,7 +58,7 @@ export const getAuditLogs = catchAsync(async (req, res, next) => {
     .populate('sourceDetails.channel', 'name category')
     .sort(sort)
     .limit(parseInt(limit))
-    .skip((parseInt(page) - 1) * parseInt(limit));
+    .skip((parseInt(page) - 1) * parseInt(limit)).lean();
 
   // Transform data for response
   const transformedLogs = auditLogs.map(log => ({
@@ -117,7 +117,7 @@ export const getAuditLogById = catchAsync(async (req, res, next) => {
   })
     .populate('userId', 'name email role')
     .populate('sourceDetails.channel', 'name category')
-    .populate('reconciliation.reconciledBy', 'name email');
+    .populate('reconciliation.reconciledBy', 'name email').lean();
 
   if (!auditLog) {
     return next(new ApplicationError('Audit log not found', 404));
@@ -419,7 +419,7 @@ export const reconcileAuditLog = catchAsync(async (req, res, next) => {
   const auditLog = await AuditLog.findOne({
     _id: id,
     hotelId: req.user.hotelId
-  });
+  }).lean();
 
   if (!auditLog) {
     return next(new ApplicationError('Audit log not found', 404));

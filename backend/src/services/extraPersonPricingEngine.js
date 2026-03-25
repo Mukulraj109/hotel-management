@@ -160,17 +160,21 @@ class ExtraPersonPricingEngine {
    * Calculate base charges using existing ExtraPersonCharge model
    */
   async calculateBaseCharges(hotelId, baseBookingData, extraPersons) {
-    const bookingData = {
-      ...baseBookingData,
-      extraPersons: extraPersons.map(person => ({
-        id: person.personId || person.id,
-        name: person.name,
-        type: person.type,
-        age: person.age
-      }))
-    };
+    try {
+      const bookingData = {
+        ...baseBookingData,
+        extraPersons: extraPersons.map(person => ({
+          id: person.personId || person.id,
+          name: person.name,
+          type: person.type,
+          age: person.age
+        }))
+      };
 
-    return await ExtraPersonCharge.calculateExtraPersonCharge(hotelId, bookingData);
+      return await ExtraPersonCharge.calculateExtraPersonCharge(hotelId, bookingData);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -434,18 +438,22 @@ class ExtraPersonPricingEngine {
    * Get active promotions for a hotel and date
    */
   async getActivePromotions(hotelId, checkInDate) {
-    // This would integrate with a promotions/marketing system
-    // For now, return mock data
-    return [
-      {
-        code: 'SUMMER2024',
-        discountRate: 0.15,
-        description: 'Summer special discount',
-        validFrom: new Date('2024-06-01'),
-        validTo: new Date('2024-08-31'),
-        applicableToExtraPersons: true
-      }
-    ];
+    try {
+      // This would integrate with a promotions/marketing system
+      // For now, return mock data
+      return [
+        {
+          code: 'SUMMER2024',
+          discountRate: 0.15,
+          description: 'Summer special discount',
+          validFrom: new Date('2024-06-01'),
+          validTo: new Date('2024-08-31'),
+          applicableToExtraPersons: true
+        }
+      ];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -462,30 +470,38 @@ class ExtraPersonPricingEngine {
    * Get occupancy forecast for demand-based pricing
    */
   async getOccupancyForecast(hotelId, date) {
-    // This would integrate with a revenue management system
-    // For now, return mock data based on date
-    const dayOfWeek = new Date(date).getDay();
-    const isWeekend = dayOfWeek === 5 || dayOfWeek === 6;
+    try {
+      // This would integrate with a revenue management system
+      // For now, return mock data based on date
+      const dayOfWeek = new Date(date).getDay();
+      const isWeekend = dayOfWeek === 5 || dayOfWeek === 6;
 
-    return {
-      occupancyRate: isWeekend ? 0.85 : 0.65,
-      averageDailyRate: isWeekend ? 5500 : 4200,
-      competitorOccupancy: isWeekend ? 0.80 : 0.60
-    };
+      return {
+        occupancyRate: isWeekend ? 0.85 : 0.65,
+        averageDailyRate: isWeekend ? 5500 : 4200,
+        competitorOccupancy: isWeekend ? 0.80 : 0.60
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Get competitor pricing data
    */
   async getCompetitorPricing(hotelId, baseBookingData) {
-    // This would integrate with competitive intelligence APIs
-    // For now, return mock data
-    return {
-      averagePrice: baseBookingData.baseRoomRate * 0.95,
-      lowestPrice: baseBookingData.baseRoomRate * 0.80,
-      highestPrice: baseBookingData.baseRoomRate * 1.20,
-      numberOfCompetitors: 5
-    };
+    try {
+      // This would integrate with competitive intelligence APIs
+      // For now, return mock data
+      return {
+        averagePrice: baseBookingData.baseRoomRate * 0.95,
+        lowestPrice: baseBookingData.baseRoomRate * 0.80,
+        highestPrice: baseBookingData.baseRoomRate * 1.20,
+        numberOfCompetitors: 5
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -528,16 +544,20 @@ class ExtraPersonPricingEngine {
    * Get pricing preview without saving
    */
   async getPricingPreview(hotelId, previewData) {
-    const mockContext = {
-      hotelId,
-      bookingId: null,
-      extraPersons: previewData.extraPersons,
-      baseBookingData: previewData.baseBookingData,
-      guestProfile: previewData.guestProfile || {},
-      marketingSettings: previewData.marketingSettings || {}
-    };
+    try {
+      const mockContext = {
+        hotelId,
+        bookingId: null,
+        extraPersons: previewData.extraPersons,
+        baseBookingData: previewData.baseBookingData,
+        guestProfile: previewData.guestProfile || {},
+        marketingSettings: previewData.marketingSettings || {}
+      };
 
-    return await this.calculateDynamicPricing(mockContext);
+      return await this.calculateDynamicPricing(mockContext);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 

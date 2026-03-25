@@ -28,7 +28,7 @@ export default function AdminHeader({ onMenuClick, onSidebarToggle, isSidebarCol
       <div className="flex justify-between items-center">
         <div className="flex items-center space-x-3">
           {/* Mobile menu button */}
-          <button
+          <button aria-label="More options"
             onClick={onMenuClick}
             className="lg:hidden p-2 rounded-md text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
@@ -36,7 +36,7 @@ export default function AdminHeader({ onMenuClick, onSidebarToggle, isSidebarCol
           </button>
 
           {/* Desktop sidebar toggle button */}
-          <button
+          <button aria-label="Close"
             onClick={onSidebarToggle}
             className="hidden lg:block p-2 rounded-md text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
             title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -12,6 +12,7 @@ import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../compon
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface HotelArea {
   _id: string;
@@ -132,6 +133,15 @@ const AdminHotelAreas: React.FC = () => {
     { value: 'closed', label: 'Closed', color: 'bg-red-100 text-red-800' }
   ];
 
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     fetchAreas();
     fetchAreaStatistics();
@@ -193,7 +203,8 @@ const AdminHotelAreas: React.FC = () => {
           if (!result) return;
 
           setShowSuccess(true);
-          setTimeout(() => setShowSuccess(false), 3000);
+          if (successTimerRef.current) clearTimeout(successTimerRef.current);
+          successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
           setApplyToScope('single');
           fetchAreas();
         } else {
@@ -221,7 +232,8 @@ const AdminHotelAreas: React.FC = () => {
         if (!result) return;
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         setSelectedAreas([]);
         setApplyToScope('single');
         fetchAreas();
@@ -243,7 +255,8 @@ const AdminHotelAreas: React.FC = () => {
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         setApplyToScope('single');
         fetchAreas();
       }
@@ -692,4 +705,4 @@ const AdminHotelAreas: React.FC = () => {
   );
 };
 
-export default AdminHotelAreas;
+export default withErrorBoundary(AdminHotelAreas, { level: 'page' });

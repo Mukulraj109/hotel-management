@@ -21,6 +21,7 @@ import {
   PolarRadiusAxis,
   Radar
 } from 'recharts';
+import { withErrorBoundary } from '../ErrorBoundary';
 import {
   DollarSign,
   TrendingDown,
@@ -311,7 +312,7 @@ const CostOptimizationDashboard: React.FC = () => {
         {/* Tab Navigation */}
         <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
           {['overview', 'suppliers', 'opportunities', 'analysis'].map((tab) => (
-            <button
+            <button aria-label="Close"
               key={tab}
               onClick={() => setActiveTab(tab as typeof activeTab)}
               className={`flex-1 px-4 py-2 text-sm font-medium rounded-md transition-colors ${
@@ -770,4 +771,4 @@ const CostOptimizationDashboard: React.FC = () => {
   );
 };
 
-export default CostOptimizationDashboard;
+export default withErrorBoundary(CostOptimizationDashboard, { level: 'component' });

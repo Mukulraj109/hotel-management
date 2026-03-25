@@ -592,29 +592,33 @@ bypassFinancialImpactSchema.index({
 
 // Pre-save middleware
 bypassFinancialImpactSchema.pre('save', async function(next) {
-    // Generate unique impact ID if not provided
-    if (!this.impactId) {
-        const timestamp = Date.now().toString();
-        const random = crypto.randomBytes(4).toString('hex');
-        this.impactId = `IMPACT_${timestamp}_${random.toUpperCase()}`;
-    }
+  try {
+      // Generate unique impact ID if not provided
+      if (!this.impactId) {
+          const timestamp = Date.now().toString();
+          const random = crypto.randomBytes(4).toString('hex');
+          this.impactId = `IMPACT_${timestamp}_${random.toUpperCase()}`;
+      }
 
-    // Calculate total direct costs
-    this.calculateTotalDirectCosts();
+      // Calculate total direct costs
+      this.calculateTotalDirectCosts();
 
-    // Calculate total indirect costs
-    this.calculateTotalIndirectCosts();
+      // Calculate total indirect costs
+      this.calculateTotalIndirectCosts();
 
-    // Calculate net revenue impact
-    this.calculateNetRevenueImpact();
+      // Calculate net revenue impact
+      this.calculateNetRevenueImpact();
 
-    // Update budget impact percentages
-    this.updateBudgetImpactPercentages();
+      // Update budget impact percentages
+      this.updateBudgetImpactPercentages();
 
-    // Update recovery percentage
-    this.updateRecoveryPercentage();
+      // Update recovery percentage
+      this.updateRecoveryPercentage();
 
-    next();
+      next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 });
 
 // Instance methods
@@ -784,163 +788,179 @@ bypassFinancialImpactSchema.methods.completeRecoveryAction = function(actionId, 
 
 // Static methods
 bypassFinancialImpactSchema.statics.createFinancialImpact = async function(impactData) {
-    const impact = new this(impactData);
-    return await impact.save();
+  try {
+      const impact = new this(impactData);
+      return await impact.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 bypassFinancialImpactSchema.statics.getHotelFinancialSummary = async function(hotelId, timeRange = 30) {
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - timeRange);
+  try {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - timeRange);
 
-    const matchQuery = {
-        createdAt: {
-            $gte: startDate
-        }
-    };
+      const matchQuery = {
+          createdAt: {
+              $gte: startDate
+          }
+      };
     
-    // Only add hotelId filter if hotelId is provided and valid
-    if (hotelId && mongoose.Types.ObjectId.isValid(hotelId)) {
-        matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
-    }
+      // Only add hotelId filter if hotelId is provided and valid
+      if (hotelId && mongoose.Types.ObjectId.isValid(hotelId)) {
+          matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
+      }
 
-    const summary = await this.aggregate([{
-            $match: matchQuery
-        },
-        {
-            $group: {
-                _id: null,
-                totalImpacts: {
-                    $sum: 1
-                },
-                totalDirectCosts: {
-                    $sum: '$directCosts.totalDirectCost'
-                },
-                totalIndirectCosts: {
-                    $sum: '$indirectCosts.totalIndirectCost'
-                },
-                totalRevenueImpact: {
-                    $sum: '$revenueImpact.netRevenueImpact'
-                },
-                averageImpactPerBypass: {
-                    $avg: {
-                        $add: ['$directCosts.totalDirectCost', '$indirectCosts.totalIndirectCost']
-                    }
-                },
-                totalRecoveredAmount: {
-                    $sum: '$recovery.recoveredAmount'
-                },
-                byCategory: {
-                    $push: {
-                        category: '$analytics.frequencyPattern.isRecurring',
-                        cost: {
-                            $add: ['$directCosts.totalDirectCost', '$indirectCosts.totalIndirectCost']
-                        }
-                    }
-                }
-            }
-        }
-    ]);
+      const summary = await this.aggregate([{
+              $match: matchQuery
+          },
+          {
+              $group: {
+                  _id: null,
+                  totalImpacts: {
+                      $sum: 1
+                  },
+                  totalDirectCosts: {
+                      $sum: '$directCosts.totalDirectCost'
+                  },
+                  totalIndirectCosts: {
+                      $sum: '$indirectCosts.totalIndirectCost'
+                  },
+                  totalRevenueImpact: {
+                      $sum: '$revenueImpact.netRevenueImpact'
+                  },
+                  averageImpactPerBypass: {
+                      $avg: {
+                          $add: ['$directCosts.totalDirectCost', '$indirectCosts.totalIndirectCost']
+                      }
+                  },
+                  totalRecoveredAmount: {
+                      $sum: '$recovery.recoveredAmount'
+                  },
+                  byCategory: {
+                      $push: {
+                          category: '$analytics.frequencyPattern.isRecurring',
+                          cost: {
+                              $add: ['$directCosts.totalDirectCost', '$indirectCosts.totalIndirectCost']
+                          }
+                      }
+                  }
+              }
+          }
+      ]);
 
-    return summary[0] || {
-        totalImpacts: 0,
-        totalDirectCosts: 0,
-        totalIndirectCosts: 0,
-        totalRevenueImpact: 0,
-        averageImpactPerBypass: 0,
-        totalRecoveredAmount: 0,
-        byCategory: []
-    };
+      return summary[0] || {
+          totalImpacts: 0,
+          totalDirectCosts: 0,
+          totalIndirectCosts: 0,
+          totalRevenueImpact: 0,
+          averageImpactPerBypass: 0,
+          totalRecoveredAmount: 0,
+          byCategory: []
+      };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 bypassFinancialImpactSchema.statics.getCostTrends = async function(hotelId, months = 12) {
-    const startDate = new Date();
-    startDate.setMonth(startDate.getMonth() - months);
+  try {
+      const startDate = new Date();
+      startDate.setMonth(startDate.getMonth() - months);
 
-    const matchQuery = {
-        createdAt: {
-            $gte: startDate
-        }
-    };
+      const matchQuery = {
+          createdAt: {
+              $gte: startDate
+          }
+      };
     
-    // Only add hotelId filter if hotelId is provided and valid
-    if (hotelId && mongoose.Types.ObjectId.isValid(hotelId)) {
-        matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
-    }
+      // Only add hotelId filter if hotelId is provided and valid
+      if (hotelId && mongoose.Types.ObjectId.isValid(hotelId)) {
+          matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
+      }
 
-    return await this.aggregate([{
-            $match: matchQuery
-        },
-        {
-            $group: {
-                _id: {
-                    year: {
-                        $year: '$createdAt'
-                    },
-                    month: {
-                        $month: '$createdAt'
-                    }
-                },
-                totalCost: {
-                    $sum: {
-                        $add: ['$directCosts.totalDirectCost', '$indirectCosts.totalIndirectCost']
-                    }
-                },
-                bypassCount: {
-                    $sum: 1
-                },
-                averageCost: {
-                    $avg: {
-                        $add: ['$directCosts.totalDirectCost', '$indirectCosts.totalIndirectCost']
-                    }
-                }
-            }
-        },
-        {
-            $sort: {
-                '_id.year': 1,
-                '_id.month': 1
-            }
-        }
-    ]);
+      return await this.aggregate([{
+              $match: matchQuery
+          },
+          {
+              $group: {
+                  _id: {
+                      year: {
+                          $year: '$createdAt'
+                      },
+                      month: {
+                          $month: '$createdAt'
+                      }
+                  },
+                  totalCost: {
+                      $sum: {
+                          $add: ['$directCosts.totalDirectCost', '$indirectCosts.totalIndirectCost']
+                      }
+                  },
+                  bypassCount: {
+                      $sum: 1
+                  },
+                  averageCost: {
+                      $avg: {
+                          $add: ['$directCosts.totalDirectCost', '$indirectCosts.totalIndirectCost']
+                      }
+                  }
+              }
+          },
+          {
+              $sort: {
+                  '_id.year': 1,
+                  '_id.month': 1
+              }
+          }
+      ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 bypassFinancialImpactSchema.statics.getTopCostDrivers = async function(hotelId, limit = 10) {
-    const matchQuery = {};
+  try {
+      const matchQuery = {};
     
-    // Only add hotelId filter if hotelId is provided and valid
-    if (hotelId && mongoose.Types.ObjectId.isValid(hotelId)) {
-        matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
-    }
+      // Only add hotelId filter if hotelId is provided and valid
+      if (hotelId && mongoose.Types.ObjectId.isValid(hotelId)) {
+          matchQuery.hotelId = new mongoose.Types.ObjectId(hotelId);
+      }
 
-    return await this.aggregate([{
-            $match: matchQuery
-        },
-        {
-            $unwind: '$directCosts.inventoryItems'
-        },
-        {
-            $group: {
-                _id: '$directCosts.inventoryItems.itemName',
-                totalCost: {
-                    $sum: '$directCosts.inventoryItems.totalCost'
-                },
-                frequency: {
-                    $sum: 1
-                },
-                averageCost: {
-                    $avg: '$directCosts.inventoryItems.totalCost'
-                }
-            }
-        },
-        {
-            $sort: {
-                totalCost: -1
-            }
-        },
-        {
-            $limit: limit
-        }
-    ]);
+      return await this.aggregate([{
+              $match: matchQuery
+          },
+          {
+              $unwind: '$directCosts.inventoryItems'
+          },
+          {
+              $group: {
+                  _id: '$directCosts.inventoryItems.itemName',
+                  totalCost: {
+                      $sum: '$directCosts.inventoryItems.totalCost'
+                  },
+                  frequency: {
+                      $sum: 1
+                  },
+                  averageCost: {
+                      $avg: '$directCosts.inventoryItems.totalCost'
+                  }
+              }
+          },
+          {
+              $sort: {
+                  totalCost: -1
+              }
+          },
+          {
+              $limit: limit
+          }
+      ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Virtual for total financial impact

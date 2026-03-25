@@ -615,8 +615,12 @@ class CredentialManagerService {
   }
 
   async initializeSystemCredentials() {
-    // Initialize with system defaults if needed
-    logger.info('Credential manager initialized');
+    try {
+      // Initialize with system defaults if needed
+      logger.info('Credential manager initialized');
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

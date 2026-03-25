@@ -186,7 +186,7 @@ const CommissionChart: React.FC<CommissionChartProps> = ({
         {/* Time Range Selector */}
         <div className="flex bg-gray-100 rounded-lg p-1">
           {(['week', 'month', 'quarter', 'year'] as const).map((range) => (
-            <button
+            <button aria-label="Close"
               key={range}
               onClick={() => onTimeRangeChange(range)}
               className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${

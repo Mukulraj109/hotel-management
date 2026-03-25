@@ -8,6 +8,7 @@ import { format, parseISO, isToday, isTomorrow } from 'date-fns';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 import { BookingEditModal } from '../../components/booking/BookingEditModal';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import {
   Calendar,
   Users,
@@ -27,7 +28,7 @@ import {
   Edit
 } from 'lucide-react';
 
-export default function StaffUpcomingBookings() {
+function StaffUpcomingBookings() {
   const { user } = useAuth();
   const [bookings, setBookings] = useState<StaffUpcomingBooking[]>([]);
   const [stats, setStats] = useState<StaffUpcomingStats>({
@@ -522,7 +523,7 @@ export default function StaffUpcomingBookings() {
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold">Arrival Details</h2>
-                <button
+                <button aria-label="Close"
                   onClick={() => setShowDetailsModal(false)}
                   className="text-gray-400 hover:text-gray-600 text-2xl"
                 >
@@ -701,3 +702,5 @@ export default function StaffUpcomingBookings() {
     </div>
   );
 }
+
+export default withErrorBoundary(StaffUpcomingBookings, { level: 'page' });

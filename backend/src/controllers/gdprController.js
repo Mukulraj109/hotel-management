@@ -1,4 +1,5 @@
 import gdprComplianceService from '../services/gdprComplianceService.js';
+import ConsentRecord from '../models/ConsentRecord.js';
 import logger from '../utils/logger.js';
 import { ValidationError, NotFoundError } from '../middleware/errorHandler.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
@@ -6,12 +7,52 @@ import { ensureTenantContext } from '../middleware/tenantIsolation.js';
 export const recordConsent = async (req, res, next) => {
   try {
     const userId = req.user.id;
+    const hotelId = req.user.hotelId;
     const { consents, ipAddress, userAgent, method } = req.body;
 
     if (!consents || typeof consents !== 'object') {
       throw new ValidationError('Consents object is required');
     }
 
+    // Batch: use bulkWrite with upsert to persist all consent types at once
+    const consentBulkOps = Object.entries(consents).map(([consentType, granted]) => ({
+      updateOne: {
+        filter: { userId, consentType },
+        update: {
+          $set: {
+            hotelId,
+            granted: !!granted,
+            collectionMethod: method || 'api',
+            ipAddress: ipAddress || req.ip,
+            userAgent: userAgent || req.headers['user-agent'],
+            policyVersion: '1.0',
+            consentGivenAt: granted ? new Date() : undefined,
+            consentWithdrawnAt: granted ? null : new Date(),
+            expiresAt: granted ? new Date(Date.now() + 730 * 24 * 60 * 60 * 1000) : undefined
+          },
+          $push: {
+            auditTrail: {
+              action: granted ? 'granted' : 'withdrawn',
+              timestamp: new Date(),
+              performedBy: userId,
+              ipAddress: ipAddress || req.ip,
+              policyVersion: '1.0'
+            }
+          }
+        },
+        upsert: true
+      }
+    }));
+
+    if (consentBulkOps.length > 0) {
+      await ConsentRecord.bulkWrite(consentBulkOps);
+    }
+
+    // Fetch the saved records for response
+    const consentTypes = Object.keys(consents);
+    const savedRecords = await ConsentRecord.find({ userId, consentType: { $in: consentTypes } }).lean();
+
+    // Also forward to in-memory GDPR compliance service
     const consentRecord = await gdprComplianceService.recordConsent(userId, {
       consents,
       ipAddress: ipAddress || req.ip,
@@ -22,7 +63,8 @@ export const recordConsent = async (req, res, next) => {
     logger.info('User consent recorded', {
       userId,
       consentId: consentRecord.id,
-      consentsGiven: Object.keys(consents).filter(k => consents[k])
+      consentsGiven: Object.keys(consents).filter(k => consents[k]),
+      persistedRecords: savedRecords.length
     });
 
     res.status(201).json({
@@ -30,7 +72,8 @@ export const recordConsent = async (req, res, next) => {
       data: {
         consentId: consentRecord.id,
         timestamp: consentRecord.timestamp,
-        consents: consentRecord.consents
+        consents: consentRecord.consents,
+        persistedRecords: savedRecords.length
       }
     });
   } catch (error) {
@@ -70,16 +113,21 @@ export const updateConsent = async (req, res, next) => {
 export const getConsentHistory = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    
-    // In production, this would query the ConsentRecord collection
-    const history = []; // Placeholder
-    
+
+    // Query persistent ConsentRecord collection
+    const records = await ConsentRecord.find({ userId })
+      .sort({ updatedAt: -1 })
+      .limit(1000).lean();
+
+    const summary = await ConsentRecord.getConsentSummary(userId);
+
     res.json({
       success: true,
       data: {
         userId,
-        consentHistory: history,
-        total: history.length
+        consentSummary: summary,
+        consentHistory: records,
+        total: records.length
       }
     });
   } catch (error) {
@@ -382,6 +430,23 @@ export const processDataRequest = async (req, res, next) => {
       throw new NotFoundError('Data request not found');
     }
 
+    // Validate status transition for data request
+    const allowedDataRequestTransitions = {
+      pending: ['approved', 'rejected', 'processing'],
+      approved: ['processing', 'completed'],
+      rejected: [],
+      processing: ['completed', 'failed'],
+      completed: [],
+      failed: ['pending']
+    };
+    const targetStatus = action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : 'processing';
+    const allowedTargets = allowedDataRequestTransitions[request.status] || [];
+    if (!allowedTargets.includes(targetStatus)) {
+      throw new ValidationError(
+        `Cannot ${action} request: invalid transition from '${request.status}' to '${targetStatus}'`
+      );
+    }
+
     // Process the request based on action
     switch (action) {
       case 'approve':
@@ -396,7 +461,7 @@ export const processDataRequest = async (req, res, next) => {
         request.rejectionReason = notes;
         break;
       case 'process':
-        // Actually execute the request
+        request.status = 'processing';
         break;
       default:
         throw new ValidationError('Invalid action');
@@ -428,15 +493,28 @@ export const getBulkConsentStatus = async (req, res, next) => {
       throw new ValidationError('userIds must be an array');
     }
 
-    // Get consent status for multiple users
+    // Query persistent ConsentRecord collection for all users
+    const allRecords = await ConsentRecord.find({
+      userId: { $in: userIds }
+    }).limit(1000).lean();
+
+    // Group records by userId
+    const recordsByUser = {};
+    for (const record of allRecords) {
+      const uid = record.userId.toString();
+      if (!recordsByUser[uid]) recordsByUser[uid] = {};
+      recordsByUser[uid][record.consentType] = {
+        granted: record.granted,
+        isActive: record.granted && !record.consentWithdrawnAt && new Date() < record.expiresAt,
+        consentGivenAt: record.consentGivenAt,
+        expiresAt: record.expiresAt
+      };
+    }
+
     const consentStatuses = userIds.map(userId => ({
       userId,
-      hasConsent: true, // Placeholder - would check actual consent records
-      consentDate: new Date().toISOString(),
-      consentTypes: gdprComplianceService.consentTypes.reduce((acc, type) => {
-        acc[type] = true; // Placeholder
-        return acc;
-      }, {})
+      hasConsent: !!recordsByUser[userId] && Object.values(recordsByUser[userId] || {}).some(c => c.isActive),
+      consentTypes: recordsByUser[userId] || {}
     }));
 
     res.json({

@@ -38,7 +38,7 @@ export const createCreditTransaction = catchAsync(async (req, res, next) => {
     _id: req.body.corporateCompanyId,
     hotelId: req.user.hotelId,
     isActive: true
-  });
+  }).lean();
   
   if (!company) {
     return next(new ApplicationError('Corporate company not found or inactive', 404));
@@ -152,7 +152,7 @@ export const getCreditTransaction = catchAsync(async (req, res, next) => {
   .populate('invoiceId')
   .populate('groupBookingId')
   .populate('metadata.createdBy', 'name email')
-  .populate('approvalDetails.approvedBy', 'name email');
+  .populate('approvalDetails.approvedBy', 'name email').lean();
   
   if (!transaction) {
     return next(new ApplicationError('Credit transaction not found', 404));
@@ -214,7 +214,7 @@ export const approveCreditTransaction = catchAsync(async (req, res, next) => {
   await transaction.approve(req.user.id, req.body.notes);
   
   // Update company's available credit
-  const company = await CorporateCompany.findById(transaction.corporateCompanyId);
+  const company = await CorporateCompany.findById(transaction.corporateCompanyId).lean();
   if (company) {
     const amount = transaction.transactionType === 'debit' ? 
       -Math.abs(transaction.amount) : Math.abs(transaction.amount);
@@ -274,7 +274,7 @@ export const rejectCreditTransaction = catchAsync(async (req, res, next) => {
   const transaction = await CorporateCredit.findOne({
     _id: req.params.id,
     hotelId: req.user.hotelId
-  });
+  }).lean();
   
   if (!transaction) {
     return next(new ApplicationError('Credit transaction not found', 404));
@@ -402,7 +402,7 @@ export const getCompanyCreditSummary = catchAsync(async (req, res, next) => {
   const company = await CorporateCompany.findOne({
     _id: req.params.companyId,
     hotelId: req.user.hotelId
-  });
+  }).lean();
   
   if (!company) {
     return next(new ApplicationError('Corporate company not found', 404));
@@ -421,7 +421,7 @@ export const getCompanyCreditSummary = catchAsync(async (req, res, next) => {
   .sort({ createdAt: -1 })
   .limit(10)
   .populate('bookingId', 'bookingNumber')
-  .populate('invoiceId', 'invoiceNumber');
+  .populate('invoiceId', 'invoiceNumber').lean();
   
   // Calculate credit utilization percentage
   const creditUtilization = company.creditLimit > 0 ? 
@@ -485,25 +485,32 @@ export const bulkApproveCreditTransactions = catchAsync(async (req, res, next) =
     failed: []
   };
   
+  // Batch: fetch all pending transactions and related companies in parallel
+  const [transactions, allCompanies] = await Promise.all([
+    CorporateCredit.find({
+      _id: { $in: transactionIds },
+      hotelId: req.user.hotelId,
+      status: 'pending'
+    }),
+    CorporateCompany.find({}).lean() // will filter in map
+  ]);
+  const txnMap = new Map(transactions.map(t => [t._id.toString(), t]));
+  const companyMap = new Map(allCompanies.map(c => [c._id.toString(), c]));
+
   for (const transactionId of transactionIds) {
     try {
-      const transaction = await CorporateCredit.findOne({
-        _id: transactionId,
-        hotelId: req.user.hotelId,
-        status: 'pending'
-      });
-      
+      const transaction = txnMap.get(transactionId.toString());
+
       if (transaction) {
         await transaction.approve(req.user.id, notes);
-        
-        // Update company's available credit
-        const company = await CorporateCompany.findById(transaction.corporateCompanyId);
+
+        const company = companyMap.get(transaction.corporateCompanyId?.toString());
         if (company) {
-          const amount = transaction.transactionType === 'debit' ? 
+          const amount = transaction.transactionType === 'debit' ?
             -Math.abs(transaction.amount) : Math.abs(transaction.amount);
           await company.updateAvailableCredit(amount);
         }
-        
+
         results.approved.push(transactionId);
       } else {
         results.failed.push({

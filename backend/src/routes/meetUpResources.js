@@ -76,7 +76,7 @@ router.get('/admin/all-bookings', adminAuth, async (req, res) => {
       .populate('hotelId', 'name')
       .sort({ proposedDate: -1 })
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit)).lean();
 
     const total = await MeetUpRequest.countDocuments(query);
 

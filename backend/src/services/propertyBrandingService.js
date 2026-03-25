@@ -510,7 +510,7 @@ class PropertyBrandingService {
       const properties = await Hotel.find({ 
         propertyGroupId,
         'groupSettings.inheritSettings': { $ne: false }
-      }).select('_id name');
+      }).select('_id name').lean().limit(1000);
 
       const updatePromises = properties.map(property => 
         this.updatePropertyOverrides(property._id, settingsUpdate, userId)

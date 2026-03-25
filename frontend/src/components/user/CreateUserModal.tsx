@@ -242,7 +242,7 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
                     required
                     className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
-                  <button
+                  <button aria-label="View"
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
@@ -471,7 +471,7 @@ export function CreateUserModal({ isOpen, onClose, onSuccess }: CreateUserModalP
           >
             Cancel
           </button>
-          <button
+          <button aria-label="Close"
             type="submit"
             disabled={loading}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"

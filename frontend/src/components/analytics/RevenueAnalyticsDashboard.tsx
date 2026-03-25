@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, Area, AreaChart, ScatterChart, Scatter
@@ -79,6 +79,11 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
   const [activeTab, setActiveTab] = useState('overview');
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   // Mock data - in real implementation, this would come from APIs
   const revenueData: RevenueData[] = [
@@ -159,6 +164,7 @@ export const RevenueAnalyticsDashboard: React.FC<DashboardProps> = ({ hotelId, c
     setIsLoading(true);
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
+    if (!isMountedRef.current) return;
     setLastUpdated(new Date());
     setIsLoading(false);
   };

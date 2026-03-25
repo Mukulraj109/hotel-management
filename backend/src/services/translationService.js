@@ -207,112 +207,124 @@ class TranslationService {
    * Translate with Google Translate
    */
   async translateWithGoogle(text, fromLanguage, toLanguage, config) {
-    const response = await fetch(`${config.url}?key=${config.apiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        q: text,
-        source: fromLanguage.toLowerCase(),
-        target: toLanguage.toLowerCase(),
-        format: 'text'
-      })
-    });
+    try {
+      const response = await fetch(`${config.url}?key=${config.apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          q: text,
+          source: fromLanguage.toLowerCase(),
+          target: toLanguage.toLowerCase(),
+          format: 'text'
+        })
+      });
 
-    if (!response.ok) {
-      throw new Error(`Google Translate API error: ${response.status}`);
-    }
+      if (!response.ok) {
+        throw new Error(`Google Translate API error: ${response.status}`);
+      }
 
-    const data = await response.json();
+      const data = await response.json();
     
-    if (!data.data || !data.data.translations || data.data.translations.length === 0) {
-      throw new Error('Invalid response from Google Translate');
-    }
+      if (!data.data || !data.data.translations || data.data.translations.length === 0) {
+        throw new Error('Invalid response from Google Translate');
+      }
 
-    return {
-      originalText: text,
-      translatedText: data.data.translations[0].translatedText,
-      fromLanguage,
-      toLanguage,
-      confidence: 0.9, // Google doesn't provide confidence scores
-      provider: 'google'
-    };
+      return {
+        originalText: text,
+        translatedText: data.data.translations[0].translatedText,
+        fromLanguage,
+        toLanguage,
+        confidence: 0.9, // Google doesn't provide confidence scores
+        provider: 'google'
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Translate with DeepL
    */
   async translateWithDeepL(text, fromLanguage, toLanguage, config) {
-    const response = await fetch(config.url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `DeepL-Auth-Key ${config.apiKey}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        text: text,
-        source_lang: fromLanguage.toUpperCase(),
-        target_lang: toLanguage.toUpperCase(),
-        preserve_formatting: '1'
-      })
-    });
+    try {
+      const response = await fetch(config.url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `DeepL-Auth-Key ${config.apiKey}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          text: text,
+          source_lang: fromLanguage.toUpperCase(),
+          target_lang: toLanguage.toUpperCase(),
+          preserve_formatting: '1'
+        })
+      });
 
-    if (!response.ok) {
-      throw new Error(`DeepL API error: ${response.status}`);
-    }
+      if (!response.ok) {
+        throw new Error(`DeepL API error: ${response.status}`);
+      }
 
-    const data = await response.json();
+      const data = await response.json();
     
-    if (!data.translations || data.translations.length === 0) {
-      throw new Error('Invalid response from DeepL');
-    }
+      if (!data.translations || data.translations.length === 0) {
+        throw new Error('Invalid response from DeepL');
+      }
 
-    return {
-      originalText: text,
-      translatedText: data.translations[0].text,
-      fromLanguage,
-      toLanguage,
-      confidence: 0.95, // DeepL is generally high quality
-      provider: 'deepl',
-      detectedSourceLanguage: data.translations[0].detected_source_language
-    };
+      return {
+        originalText: text,
+        translatedText: data.translations[0].text,
+        fromLanguage,
+        toLanguage,
+        confidence: 0.95, // DeepL is generally high quality
+        provider: 'deepl',
+        detectedSourceLanguage: data.translations[0].detected_source_language
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Translate with Azure Translator
    */
   async translateWithAzure(text, fromLanguage, toLanguage, config) {
-    const response = await fetch(`${config.url}?api-version=3.0&from=${fromLanguage}&to=${toLanguage}`, {
-      method: 'POST',
-      headers: {
-        'Ocp-Apim-Subscription-Key': config.apiKey,
-        'Ocp-Apim-Subscription-Region': config.region,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify([{ text: text }])
-    });
+    try {
+      const response = await fetch(`${config.url}?api-version=3.0&from=${fromLanguage}&to=${toLanguage}`, {
+        method: 'POST',
+        headers: {
+          'Ocp-Apim-Subscription-Key': config.apiKey,
+          'Ocp-Apim-Subscription-Region': config.region,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify([{ text: text }])
+      });
 
-    if (!response.ok) {
-      throw new Error(`Azure Translator API error: ${response.status}`);
-    }
+      if (!response.ok) {
+        throw new Error(`Azure Translator API error: ${response.status}`);
+      }
 
-    const data = await response.json();
+      const data = await response.json();
     
-    if (!data || data.length === 0 || !data[0].translations || data[0].translations.length === 0) {
-      throw new Error('Invalid response from Azure Translator');
+      if (!data || data.length === 0 || !data[0].translations || data[0].translations.length === 0) {
+        throw new Error('Invalid response from Azure Translator');
+      }
+
+      const translation = data[0].translations[0];
+
+      return {
+        originalText: text,
+        translatedText: translation.text,
+        fromLanguage,
+        toLanguage,
+        confidence: translation.confidence || 0.8,
+        provider: 'azure'
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    const translation = data[0].translations[0];
-
-    return {
-      originalText: text,
-      translatedText: translation.text,
-      fromLanguage,
-      toLanguage,
-      confidence: translation.confidence || 0.8,
-      provider: 'azure'
-    };
   }
 
   /**
@@ -371,20 +383,24 @@ class TranslationService {
    * Select the best provider for translation
    */
   async selectBestProvider(fromLanguage, toLanguage, textLength) {
-    const availableProviders = Object.entries(this.providers)
-      .filter(([name, config]) => {
-        return config.apiKey &&
-               config.supportedLanguages.includes(fromLanguage.toLowerCase()) &&
-               config.supportedLanguages.includes(toLanguage.toLowerCase()) &&
-               textLength <= config.maxCharacters;
-      })
-      .sort(([, a], [, b]) => a.priority - b.priority);
+    try {
+      const availableProviders = Object.entries(this.providers)
+        .filter(([name, config]) => {
+          return config.apiKey &&
+                 config.supportedLanguages.includes(fromLanguage.toLowerCase()) &&
+                 config.supportedLanguages.includes(toLanguage.toLowerCase()) &&
+                 textLength <= config.maxCharacters;
+        })
+        .sort(([, a], [, b]) => a.priority - b.priority);
 
-    if (availableProviders.length === 0) {
-      throw new Error('No suitable translation provider found');
+      if (availableProviders.length === 0) {
+        throw new Error('No suitable translation provider found');
+      }
+
+      return availableProviders[0][0];
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return availableProviders[0][0];
   }
 
   /**

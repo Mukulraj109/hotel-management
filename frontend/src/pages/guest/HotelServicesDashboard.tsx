@@ -30,8 +30,9 @@ import { formatCurrency } from '../../utils/formatters';
 import { useRealTime } from '../../services/realTimeService';
 import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function HotelServicesDashboard() {
+function HotelServicesDashboard() {
   const [selectedType, setSelectedType] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [favorites, setFavorites] = useState<string[]>([]);
@@ -558,7 +559,7 @@ function ServiceCard({
         </div>
         
         {/* Favorite Button */}
-        <button
+        <button aria-label="Toggle"
           onClick={(e) => {
             e.stopPropagation();
             onToggleFavorite(service._id);
@@ -590,7 +591,7 @@ function ServiceCard({
       </div>
 
       {/* Service Info */}
-      <div onClick={onClick}>
+      <div role="button" tabIndex={0} onClick={onClick} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e as any); } }}>
         <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
           {service.name}
         </h3>
@@ -698,3 +699,6 @@ function ServiceCard({
     </div>
   );
 }
+
+
+export default withErrorBoundary(HotelServicesDashboard, { level: 'page' });

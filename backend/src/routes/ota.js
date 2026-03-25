@@ -19,26 +19,31 @@ router.post('/setup/:hotelId',
     
     try {
       const Hotel = (await import('../models/Hotel.js')).default;
-      const hotel = await Hotel.findById(hotelId);
-      
+
+      // Atomic update: set OTA connections
+      const hotel = await Hotel.findByIdAndUpdate(
+        hotelId,
+        {
+          $set: {
+            otaConnections: {
+              bookingCom: {
+                isEnabled: true,
+                credentials: {
+                  clientId: process.env.OTA_CLIENT_ID || 'configure-in-env',
+                  clientSecret: process.env.OTA_CLIENT_SECRET || 'configure-in-env',
+                  hotelId: 'booking_com_hotel_123'
+                },
+                lastSync: null
+              }
+            }
+          }
+        },
+        { new: true }
+      );
+
       if (!hotel) {
         throw new ApplicationError('Hotel not found', 404);
       }
-
-      // Initialize and enable Booking.com integration for demo
-      hotel.otaConnections = {
-        bookingCom: {
-          isEnabled: true,
-          credentials: {
-            clientId: process.env.OTA_CLIENT_ID || 'configure-in-env',
-            clientSecret: process.env.OTA_CLIENT_SECRET || 'configure-in-env',
-            hotelId: 'booking_com_hotel_123'
-          },
-          lastSync: null
-        }
-      };
-      
-      await hotel.save();
 
       res.json({
         status: 'success',
@@ -182,22 +187,26 @@ router.get('/config/:hotelId',
     try {
       // Try to get actual hotel configuration
       const Hotel = (await import('../models/Hotel.js')).default;
-      const hotel = await Hotel.findById(hotelId);
-      
+
+      // Initialize OTA connections if they don't exist, atomically
+      const hotel = await Hotel.findOneAndUpdate(
+        { _id: hotelId, otaConnections: { $exists: false } },
+        {
+          $set: {
+            otaConnections: {
+              bookingCom: {
+                isEnabled: false,
+                credentials: {},
+                lastSync: null
+              }
+            }
+          }
+        },
+        { new: true }
+      ) || await Hotel.findById(hotelId).lean();
+
       if (!hotel) {
         throw new ApplicationError('Hotel not found', 404);
-      }
-      
-      // Initialize OTA connections if they don't exist
-      if (!hotel.otaConnections) {
-        hotel.otaConnections = {
-          bookingCom: {
-            isEnabled: false,
-            credentials: {},
-            lastSync: null
-          }
-        };
-        await hotel.save();
       }
       
       const config = {
@@ -255,32 +264,29 @@ router.patch('/config/:hotelId',
 
     try {
       const Hotel = (await import('../models/Hotel.js')).default;
-      const hotel = await Hotel.findById(hotelId);
-      
-      if (!hotel) {
-        throw new ApplicationError('Hotel not found', 404);
-      }
 
-      // Initialize OTA connections if they don't exist
-      if (!hotel.otaConnections) {
-        hotel.otaConnections = {};
-      }
+      // Build atomic update for the specific provider
+      const updateFields = {};
 
-      // Update the specific provider configuration
       if (provider === 'bookingCom') {
-        hotel.otaConnections.bookingCom = {
-          isEnabled: config.enabled || false,
-          credentials: {
-            clientId: config.clientId || '',
-            clientSecret: config.clientSecret || '',
-            hotelId: config.hotelId || ''
-          },
-          lastSync: hotel.otaConnections.bookingCom?.lastSync || null
+        updateFields[`otaConnections.bookingCom.isEnabled`] = config.enabled || false;
+        updateFields[`otaConnections.bookingCom.credentials`] = {
+          clientId: config.clientId || '',
+          clientSecret: config.clientSecret || '',
+          hotelId: config.hotelId || ''
         };
       }
       // Add other providers as needed
-      
-      await hotel.save();
+
+      const hotel = await Hotel.findByIdAndUpdate(
+        hotelId,
+        { $set: updateFields },
+        { new: true }
+      );
+
+      if (!hotel) {
+        throw new ApplicationError('Hotel not found', 404);
+      }
 
       res.json({
         status: 'success',
@@ -308,7 +314,7 @@ router.get('/stats/:hotelId',
       const Hotel = (await import('../models/Hotel.js')).default;
 
       // Get hotel and check active providers
-      const hotel = await Hotel.findById(hotelId);
+      const hotel = await Hotel.findById(hotelId).lean();
       if (!hotel) {
         throw new ApplicationError('Hotel not found', 404);
       }

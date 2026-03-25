@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface BillMessage {
   _id: string;
@@ -702,6 +703,7 @@ const MessageForm: React.FC<{
               value={formData.content}
               onChange={(e) => setFormData({ ...formData, content: e.target.value })}
               placeholder="Enter message content. Use {{variable_name}} for dynamic content."
+              required
             />
             <p className="text-sm text-gray-600 mt-1">
               Use variables like {'{{customerName}}'}, {'{{orderAmount}}'}, {'{{currentDate}}'} for dynamic content
@@ -848,4 +850,4 @@ const MessageForm: React.FC<{
   );
 };
 
-export default AdminBillMessages;
+export default withErrorBoundary(AdminBillMessages, { level: 'page' });

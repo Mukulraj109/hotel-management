@@ -25,10 +25,7 @@ const migrateExtraPersonCharges = async () => {
   try {
     // Connect to MongoDB
     console.log('📡 Connecting to MongoDB...');
-    await mongoose.connect(MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    await mongoose.connect(MONGO_URI);
     console.log('✅ Connected to MongoDB\n');
 
     const db = mongoose.connection.db;
@@ -38,7 +35,7 @@ const migrateExtraPersonCharges = async () => {
     console.log('🔍 Step 1: Finding bookings with extra person charges...');
     const bookingsWithCharges = await bookingsCollection.find({
       'extraPersonCharges.0': { $exists: true } // Has at least one extra person charge
-    }).toArray();
+    }).toArray().lean().limit(1000);
 
     console.log(`📊 Found ${bookingsWithCharges.length} bookings with extra person charges\n`);
 
@@ -134,7 +131,7 @@ const migrateExtraPersonCharges = async () => {
     const verification = await bookingsCollection.find({
       'extraPersonCharges.0': { $exists: true },
       'extraPersonCharges.status': { $exists: false }
-    }).toArray();
+    }).toArray().lean().limit(1000);
 
     if (verification.length === 0) {
       console.log('✅ Verification PASSED: All charges now have required fields\n');
@@ -146,7 +143,7 @@ const migrateExtraPersonCharges = async () => {
     console.log('📋 Sample Migrated Data:');
     const sample = await bookingsCollection.findOne({
       'extraPersonCharges.0': { $exists: true }
-    });
+    }).lean();
 
     if (sample && sample.extraPersonCharges && sample.extraPersonCharges.length > 0) {
       const sampleCharge = sample.extraPersonCharges[0];

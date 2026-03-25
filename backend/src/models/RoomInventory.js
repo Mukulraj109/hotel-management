@@ -408,61 +408,69 @@ roomInventorySchema.statics.getRoomsNeedingInspection = function(hotelId) {
 
 // Static method to get inventory summary
 roomInventorySchema.statics.getInventorySummary = async function(hotelId) {
-  const pipeline = [
-    { $match: { hotelId: new mongoose.Types.ObjectId(hotelId), isActive: true } },
-    { $unwind: '$items' },
-    {
-      $group: {
-        _id: '$items.condition',
-        count: { $sum: 1 },
-        totalQuantity: { $sum: '$items.currentQuantity' }
+  try {
+    const pipeline = [
+      { $match: { hotelId: new mongoose.Types.ObjectId(hotelId), isActive: true } },
+      { $unwind: '$items' },
+      {
+        $group: {
+          _id: '$items.condition',
+          count: { $sum: 1 },
+          totalQuantity: { $sum: '$items.currentQuantity' }
+        }
       }
-    }
-  ];
+    ];
   
-  const summary = await this.aggregate(pipeline);
+    const summary = await this.aggregate(pipeline);
   
-  const statusCounts = await this.aggregate([
-    { $match: { hotelId: new mongoose.Types.ObjectId(hotelId), isActive: true } },
-    { $group: { _id: '$status', count: { $sum: 1 } } }
-  ]);
+    const statusCounts = await this.aggregate([
+      { $match: { hotelId: new mongoose.Types.ObjectId(hotelId), isActive: true } },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
   
-  return {
-    itemConditions: summary,
-    roomStatuses: statusCounts
-  };
+    return {
+      itemConditions: summary,
+      roomStatuses: statusCounts
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to initialize room inventory from template
 roomInventorySchema.statics.initializeFromTemplate = async function(roomId, templateId, bookingId = null) {
-  const RoomInventoryTemplate = mongoose.model('RoomInventoryTemplate');
-  const Room = mongoose.model('Room');
+  try {
+    const RoomInventoryTemplate = mongoose.model('RoomInventoryTemplate');
+    const Room = mongoose.model('Room');
   
-  const template = await RoomInventoryTemplate.findById(templateId).populate('items.itemId');
-  const room = await Room.findById(roomId);
+    const template = await RoomInventoryTemplate.findById(templateId).populate('items.itemId').lean();
+    const room = await Room.findById(roomId).lean();
   
-  if (!template || !room) {
-    throw new Error('Template or room not found');
+    if (!template || !room) {
+      throw new Error('Template or room not found');
+    }
+  
+    const items = template.items.map(templateItem => ({
+      itemId: templateItem.itemId._id,
+      currentQuantity: templateItem.defaultQuantity,
+      expectedQuantity: templateItem.defaultQuantity,
+      condition: 'good',
+      location: templateItem.location,
+      lastCheckedDate: new Date()
+    }));
+  
+    return await this.create({
+      hotelId: room.hotelId,
+      roomId: roomId,
+      currentBookingId: bookingId,
+      templateId: templateId,
+      lastInspectionDate: new Date(),
+      status: 'clean',
+      items: items
+    });
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  const items = template.items.map(templateItem => ({
-    itemId: templateItem.itemId._id,
-    currentQuantity: templateItem.defaultQuantity,
-    expectedQuantity: templateItem.defaultQuantity,
-    condition: 'good',
-    location: templateItem.location,
-    lastCheckedDate: new Date()
-  }));
-  
-  return await this.create({
-    hotelId: room.hotelId,
-    roomId: roomId,
-    currentBookingId: bookingId,
-    templateId: templateId,
-    lastInspectionDate: new Date(),
-    status: 'clean',
-    items: items
-  });
 };
 
 export default mongoose.model('RoomInventory', roomInventorySchema);

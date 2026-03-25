@@ -43,10 +43,11 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { formatDate } from '../../utils/formatters';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface AdminMeetUpManagementProps {}
 
-export default function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
+function AdminMeetUpManagement({}: AdminMeetUpManagementProps) {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [activeTab, setActiveTab] = useState<'all-meetups' | 'analytics' | 'insights'>('all-meetups');
   const [searchTerm, setSearchTerm] = useState('');
@@ -1426,3 +1427,5 @@ function ForceCancelModal({ meetUp, onClose, onConfirm, isLoading }: ForceCancel
     </div>
   );
 }
+
+export default withErrorBoundary(AdminMeetUpManagement, { level: 'page' });

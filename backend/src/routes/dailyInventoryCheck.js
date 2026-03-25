@@ -65,7 +65,7 @@ router.post('/', authenticate, authorize('staff', 'admin'), catchAsync(async (re
   const { hotelId } = req.user;
 
   // Verify room exists and belongs to hotel
-  const room = await Room.findOne({ _id: roomId, hotelId });
+  const room = await Room.findOne({ _id: roomId, hotelId }).lean();
   if (!room) {
     throw new ApplicationError('Room not found', 404);
   }
@@ -75,7 +75,7 @@ router.post('/', authenticate, authorize('staff', 'admin'), catchAsync(async (re
   const inventoryItems = await InventoryItem.find({
     _id: { $in: itemIds },
     hotelId
-  });
+  }).lean().limit(1000);
 
   if (inventoryItems.length !== itemIds.length) {
     throw new ApplicationError('Some inventory items not found', 400);
@@ -272,7 +272,7 @@ router.get('/:id', authenticate, authorize('staff', 'admin'), catchAsync(async (
   const dailyCheck = await DailyInventoryCheck.findById(req.params.id)
     .populate('roomId', 'roomNumber type')
     .populate('checkedBy', 'name email')
-    .populate('items.itemId', 'name category unitPrice');
+    .populate('items.itemId', 'name category unitPrice').lean();
 
   if (!dailyCheck) {
     throw new ApplicationError('Daily inventory check not found', 404);
@@ -326,30 +326,36 @@ router.get('/:id', authenticate, authorize('staff', 'admin'), catchAsync(async (
  *         description: Daily inventory check updated successfully
  */
 router.patch('/:id', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
-  const dailyCheck = await DailyInventoryCheck.findById(req.params.id);
-  
-  if (!dailyCheck) {
+  // Read-only check for permissions
+  const existingCheck = await DailyInventoryCheck.findById(req.params.id).lean();
+
+  if (!existingCheck) {
     throw new ApplicationError('Daily inventory check not found', 404);
   }
 
   // Check permissions
-  if (req.user.role === 'staff' && dailyCheck.checkedBy.toString() !== req.user._id.toString()) {
+  if (req.user.role === 'staff' && existingCheck.checkedBy.toString() !== req.user._id.toString()) {
     throw new ApplicationError('You can only update your own inventory checks', 403);
   }
 
   const { status, items, notes } = req.body;
 
-  // Update fields
-  if (status) dailyCheck.status = status;
-  if (items) dailyCheck.items = items;
-  if (notes !== undefined) dailyCheck.notes = notes;
+  // Build atomic update
+  const updateFields = {};
+  if (status) updateFields.status = status;
+  if (items) updateFields.items = items;
+  if (notes !== undefined) updateFields.notes = notes;
 
   // Set completedAt if status is completed
-  if (status === 'completed' && !dailyCheck.completedAt) {
-    dailyCheck.completedAt = new Date();
+  if (status === 'completed' && !existingCheck.completedAt) {
+    updateFields.completedAt = new Date();
   }
 
-  await dailyCheck.save();
+  const dailyCheck = await DailyInventoryCheck.findByIdAndUpdate(
+    req.params.id,
+    { $set: updateFields },
+    { new: true, runValidators: true }
+  );
 
   await dailyCheck.populate([
     { path: 'roomId', select: 'roomNumber type' },
@@ -381,18 +387,23 @@ router.patch('/:id', authenticate, authorize('staff', 'admin'), catchAsync(async
  *         description: Daily inventory check marked as completed
  */
 router.patch('/:id/complete', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
-  const dailyCheck = await DailyInventoryCheck.findById(req.params.id);
-  
-  if (!dailyCheck) {
+  const existingCheck = await DailyInventoryCheck.findById(req.params.id).lean();
+
+  if (!existingCheck) {
     throw new ApplicationError('Daily inventory check not found', 404);
   }
 
   // Check permissions
-  if (req.user.role === 'staff' && dailyCheck.checkedBy.toString() !== req.user._id.toString()) {
+  if (req.user.role === 'staff' && existingCheck.checkedBy.toString() !== req.user._id.toString()) {
     throw new ApplicationError('You can only complete your own inventory checks', 403);
   }
 
-  await dailyCheck.markCompleted();
+  // Atomic update instead of calling instance method on lean object
+  const dailyCheck = await DailyInventoryCheck.findByIdAndUpdate(
+    req.params.id,
+    { $set: { status: 'completed', completedAt: new Date() } },
+    { new: true, runValidators: true }
+  );
 
   await dailyCheck.populate([
     { path: 'roomId', select: 'roomNumber type' },
@@ -442,19 +453,34 @@ router.patch('/:id/complete', authenticate, authorize('staff', 'admin'), catchAs
  */
 router.post('/:id/issues', authenticate, authorize('staff', 'admin'), catchAsync(async (req, res) => {
   const { itemId, issue, priority = 'medium' } = req.body;
-  
-  const dailyCheck = await DailyInventoryCheck.findById(req.params.id);
-  
-  if (!dailyCheck) {
+
+  const existingCheck = await DailyInventoryCheck.findById(req.params.id).lean();
+
+  if (!existingCheck) {
     throw new ApplicationError('Daily inventory check not found', 404);
   }
 
   // Check permissions
-  if (req.user.role === 'staff' && dailyCheck.checkedBy.toString() !== req.user._id.toString()) {
+  if (req.user.role === 'staff' && existingCheck.checkedBy.toString() !== req.user._id.toString()) {
     throw new ApplicationError('You can only add issues to your own inventory checks', 403);
   }
 
-  await dailyCheck.addIssue(itemId, issue, priority);
+  // Atomic update: push issue instead of calling instance method on lean object
+  const dailyCheck = await DailyInventoryCheck.findByIdAndUpdate(
+    req.params.id,
+    {
+      $push: {
+        issues: {
+          itemId,
+          issue,
+          priority,
+          reportedBy: req.user._id,
+          reportedAt: new Date()
+        }
+      }
+    },
+    { new: true, runValidators: true }
+  );
 
   res.json({
     status: 'success',
@@ -551,7 +577,7 @@ router.get('/template/:roomId', authorize('staff', 'admin'), catchAsync(async (r
   const roomInventory = await RoomInventory.findOne({ 
     roomId: new mongoose.Types.ObjectId(roomId),
     isActive: true 
-  }).populate('items.itemId');
+  }).populate('items.itemId').lean();
 
   if (!roomInventory) {
     return res.status(404).json({

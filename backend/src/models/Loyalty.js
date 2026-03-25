@@ -135,60 +135,72 @@ loyaltySchema.virtual('transactionValue').get(function() {
 
 // Static method to get user's total points
 loyaltySchema.statics.getUserTotalPoints = async function(userId) {
-  const result = await this.aggregate([
-    { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-    { $group: { _id: null, totalPoints: { $sum: '$points' } } }
-  ]);
-  return result.length > 0 ? result[0].totalPoints : 0;
+  try {
+    const result = await this.aggregate([
+      { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+      { $group: { _id: null, totalPoints: { $sum: '$points' } } }
+    ]);
+    return result.length > 0 ? result[0].totalPoints : 0;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get user's active points (not expired)
 loyaltySchema.statics.getUserActivePoints = async function(userId) {
-  const result = await this.aggregate([
-    { 
-      $match: { 
-        userId: new mongoose.Types.ObjectId(userId),
-        $or: [
-          { expiresAt: { $gt: new Date() } },
-          { expiresAt: { $exists: false } }
-        ]
-      } 
-    },
-    { $group: { _id: null, totalPoints: { $sum: '$points' } } }
-  ]);
-  return result.length > 0 ? result[0].totalPoints : 0;
+  try {
+    const result = await this.aggregate([
+      { 
+        $match: { 
+          userId: new mongoose.Types.ObjectId(userId),
+          $or: [
+            { expiresAt: { $gt: new Date() } },
+            { expiresAt: { $exists: false } }
+          ]
+        } 
+      },
+      { $group: { _id: null, totalPoints: { $sum: '$points' } } }
+    ]);
+    return result.length > 0 ? result[0].totalPoints : 0;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get user's transaction history
 loyaltySchema.statics.getUserHistory = async function(userId, options = {}) {
-  const { page = 1, limit = 20, type } = options;
-  const skip = (page - 1) * limit;
+  try {
+    const { page = 1, limit = 20, type } = options;
+    const skip = (page - 1) * limit;
   
-  const matchQuery = { userId: new mongoose.Types.ObjectId(userId) };
-  if (type) {
-    matchQuery.type = type;
-  }
-  
-  const transactions = await this.find(matchQuery)
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
-    .populate('bookingId', 'bookingNumber checkIn checkOut totalAmount')
-    .populate('offerId', 'title category')
-    .populate('hotelId', 'name');
-    
-  const total = await this.countDocuments(matchQuery);
-  
-  return {
-    transactions,
-    pagination: {
-      currentPage: page,
-      totalPages: Math.ceil(total / limit),
-      totalItems: total,
-      hasNext: page * limit < total,
-      hasPrev: page > 1
+    const matchQuery = { userId: new mongoose.Types.ObjectId(userId) };
+    if (type) {
+      matchQuery.type = type;
     }
-  };
+  
+    const transactions = await this.find(matchQuery)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate('bookingId', 'bookingNumber checkIn checkOut totalAmount')
+      .populate('offerId', 'title category')
+      .populate('hotelId', 'name').lean();
+    
+    const total = await this.countDocuments(matchQuery);
+  
+    return {
+      transactions,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        totalItems: total,
+        hasNext: page * limit < total,
+        hasPrev: page > 1
+      }
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance method to check if transaction is valid

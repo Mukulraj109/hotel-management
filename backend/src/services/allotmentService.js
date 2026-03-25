@@ -14,62 +14,68 @@ class AllotmentService {
   async createAllotment(allotmentData, userId) {
     try {
       const allotment = await withTransaction(async (session) => {
-        // Check if allotment already exists for this room type
-        const existing = await RoomTypeAllotment.findOne({
-          hotelId: allotmentData.hotelId,
-          roomTypeId: allotmentData.roomTypeId,
-          status: 'active'
-        }).session(session);
+        try {
+          // Check if allotment already exists for this room type
+          const existing = await RoomTypeAllotment.findOne({
+            hotelId: allotmentData.hotelId,
+            roomTypeId: allotmentData.roomTypeId,
+            status: 'active'
+          }).session(session);
 
-        if (existing) {
-          throw new Error('Active allotment configuration already exists for this room type');
+          if (existing) {
+            throw new Error('Active allotment configuration already exists for this room type');
+          }
+
+          // Validate room type exists
+          const roomType = await RoomType.findById(allotmentData.roomTypeId).session(session);
+          if (!roomType) {
+            throw new Error('Room type not found');
+          }
+
+          // Set default values
+          const allotmentConfig = {
+            ...allotmentData,
+            createdBy: userId && mongoose.Types.ObjectId.isValid(userId) ? userId : null,
+            updatedBy: userId && mongoose.Types.ObjectId.isValid(userId) ? userId : null,
+            status: 'active'
+          };
+
+          // Create default channels if not provided
+          if (!allotmentConfig.channels || allotmentConfig.channels.length === 0) {
+            allotmentConfig.channels = this.getDefaultChannels();
+          } else {
+            // Ensure all channels have required fields
+            allotmentConfig.channels = allotmentConfig.channels.map(channel => ({
+              ...channel,
+              isActive: channel.isActive !== undefined ? channel.isActive : true,
+              priority: channel.priority || 1,
+              commission: channel.commission || 0,
+              markup: channel.markup || 0,
+              restrictions: {
+                minimumStay: 1,
+                maximumStay: 30,
+                closedToArrival: false,
+                closedToDeparture: false,
+                stopSell: false,
+                ...channel.restrictions
+              }
+            }));
+          }
+
+          // Initialize default allocation rules
+          if (!allotmentConfig.allocationRules || allotmentConfig.allocationRules.length === 0) {
+            allotmentConfig.allocationRules = this.getDefaultAllocationRules(allotmentConfig.channels);
+          }
+
+          const newAllotment = new RoomTypeAllotment(allotmentConfig);
+          await newAllotment.save({ session });
+
+          return newAllotment;
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
         }
-
-        // Validate room type exists
-        const roomType = await RoomType.findById(allotmentData.roomTypeId).session(session);
-        if (!roomType) {
-          throw new Error('Room type not found');
-        }
-
-        // Set default values
-        const allotmentConfig = {
-          ...allotmentData,
-          createdBy: userId && mongoose.Types.ObjectId.isValid(userId) ? userId : null,
-          updatedBy: userId && mongoose.Types.ObjectId.isValid(userId) ? userId : null,
-          status: 'active'
-        };
-
-        // Create default channels if not provided
-        if (!allotmentConfig.channels || allotmentConfig.channels.length === 0) {
-          allotmentConfig.channels = this.getDefaultChannels();
-        } else {
-          // Ensure all channels have required fields
-          allotmentConfig.channels = allotmentConfig.channels.map(channel => ({
-            ...channel,
-            isActive: channel.isActive !== undefined ? channel.isActive : true,
-            priority: channel.priority || 1,
-            commission: channel.commission || 0,
-            markup: channel.markup || 0,
-            restrictions: {
-              minimumStay: 1,
-              maximumStay: 30,
-              closedToArrival: false,
-              closedToDeparture: false,
-              stopSell: false,
-              ...channel.restrictions
-            }
-          }));
-        }
-
-        // Initialize default allocation rules
-        if (!allotmentConfig.allocationRules || allotmentConfig.allocationRules.length === 0) {
-          allotmentConfig.allocationRules = this.getDefaultAllocationRules(allotmentConfig.channels);
-        }
-
-        const newAllotment = new RoomTypeAllotment(allotmentConfig);
-        await newAllotment.save({ session });
-
-        return newAllotment;
       });
 
       // Create initial allotments for the next 90 days (outside transaction for performance)
@@ -189,7 +195,7 @@ class AllotmentService {
    */
   async initializeAllotments(allotmentId, days = 90) {
     try {
-      const allotment = await RoomTypeAllotment.findById(allotmentId);
+      const allotment = await RoomTypeAllotment.findById(allotmentId).lean();
       if (!allotment) {
         throw new Error('Allotment not found');
       }
@@ -392,32 +398,36 @@ class AllotmentService {
    * Apply priority-based allocation
    */
   async applyPriorityAllocation(allotment, dailyAllotment, rule, date) {
-    const totalInventory = dailyAllotment.totalInventory;
-    const priorities = rule.allocation.priority.sort((a, b) => b.priority - a.priority);
+    try {
+      const totalInventory = dailyAllotment.totalInventory;
+      const priorities = rule.allocation.priority.sort((a, b) => b.priority - a.priority);
     
-    let remainingInventory = totalInventory;
+      let remainingInventory = totalInventory;
 
-    for (const priorityRule of priorities) {
-      const { channelId, minAllocation, maxAllocation } = priorityRule;
+      for (const priorityRule of priorities) {
+        const { channelId, minAllocation, maxAllocation } = priorityRule;
       
-      // Get channel performance metrics
-      const performance = await this.getChannelPerformance(allotment._id, channelId, date);
+        // Get channel performance metrics
+        const performance = await this.getChannelPerformance(allotment._id, channelId, date);
       
-      // Calculate allocation based on performance and priority
-      let allocation = Math.min(
-        maxAllocation || remainingInventory,
-        Math.max(
-          minAllocation || 0,
-          Math.floor(remainingInventory * (performance.utilizationRate / 100))
-        )
-      );
+        // Calculate allocation based on performance and priority
+        let allocation = Math.min(
+          maxAllocation || remainingInventory,
+          Math.max(
+            minAllocation || 0,
+            Math.floor(remainingInventory * (performance.utilizationRate / 100))
+          )
+        );
 
-      allocation = Math.min(allocation, remainingInventory);
+        allocation = Math.min(allocation, remainingInventory);
       
-      this.updateChannelAllocation(allotment, dailyAllotment, channelId, { allocated: allocation });
-      remainingInventory -= allocation;
+        this.updateChannelAllocation(allotment, dailyAllotment, channelId, { allocated: allocation });
+        remainingInventory -= allocation;
 
-      if (remainingInventory <= 0) break;
+        if (remainingInventory <= 0) break;
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -508,7 +518,7 @@ class AllotmentService {
         hotelId,
         roomTypeId,
         status: 'active'
-      });
+      }).lean();
 
       if (!allotment) {
         throw new Error('No active allotment found for this room type');
@@ -638,7 +648,7 @@ class AllotmentService {
    */
   async getChannelPerformance(allotmentId, channelId, referenceDate) {
     try {
-      const allotment = await RoomTypeAllotment.findById(allotmentId);
+      const allotment = await RoomTypeAllotment.findById(allotmentId).lean();
       if (!allotment) {
         return { utilizationRate: 50, conversionRate: 20, averageRate: 100 }; // Default values
       }
@@ -693,7 +703,7 @@ class AllotmentService {
   async getDemandForecast(allotmentId, date) {
     try {
       // This is a simplified forecast - in production, this would use ML models
-      const allotment = await RoomTypeAllotment.findById(allotmentId);
+      const allotment = await RoomTypeAllotment.findById(allotmentId).lean();
       const dayOfWeek = date.getDay();
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
       
@@ -743,7 +753,7 @@ class AllotmentService {
    */
   async generateAnalytics(allotmentId, period) {
     try {
-      const allotment = await RoomTypeAllotment.findById(allotmentId);
+      const allotment = await RoomTypeAllotment.findById(allotmentId).lean();
       if (!allotment) {
         throw new Error('Allotment not found');
       }
@@ -916,7 +926,7 @@ class AllotmentService {
         hotelId: new mongoose.Types.ObjectId(hotelId),
         createdAt: { $gte: analysisStartDate },
         status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-      }).select('createdAt checkIn');
+      }).select('createdAt checkIn').lean().limit(1000);
 
       if (bookings.length === 0) {
         // Fallback to estimated distribution if no booking data available
@@ -1288,7 +1298,7 @@ class AllotmentService {
       // Get all allotments for the hotel
       const allotments = await RoomTypeAllotment.find({ hotelId })
         .populate('roomTypeId', 'name code baseRate')
-        .lean();
+        .lean().limit(1000);
 
       logger.debug('📊 [AllotmentService] Found allotments:', allotments.length);
 
@@ -1452,7 +1462,7 @@ class AllotmentService {
 
       const allotments = await RoomTypeAllotment.find(filter)
         .populate('roomTypeId', 'name code')
-        .lean();
+        .lean().limit(1000);
 
       const calendarData = [];
       const start = new Date(startDate);
@@ -1500,23 +1510,20 @@ class AllotmentService {
    */
   async bulkUpdateAllotments(updates) {
     try {
-      const results = [];
-
-      for (const update of updates) {
-        try {
-          const allotment = await RoomTypeAllotment.findByIdAndUpdate(
-            update.id,
-            { ...update.data, updatedAt: new Date() },
-            { new: true, runValidators: true }
-          );
-
-          if (allotment) {
-            results.push(allotment);
-          }
-        } catch (error) {
-          logger.error(`Failed to update allotment ${update.id}:`, error.message);
+      // Batch: use bulkWrite to update all allotments at once
+      const bulkOps = updates.map(update => ({
+        updateOne: {
+          filter: { _id: update.id },
+          update: { $set: { ...update.data, updatedAt: new Date() } }
         }
+      }));
+
+      if (bulkOps.length > 0) {
+        await RoomTypeAllotment.bulkWrite(bulkOps);
       }
+
+      const updatedIds = updates.map(u => u.id);
+      const results = await RoomTypeAllotment.find({ _id: { $in: updatedIds } }).lean();
 
       return results;
     } catch (error) {

@@ -4,8 +4,12 @@ import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validate } from '../middleware/validation.js';
 import Joi from 'joi';
+import financialRateLimiter from '../middleware/financialRateLimiter.js';
 
 const router = express.Router();
+
+// Rate limiting for POS tax operations
+router.use(financialRateLimiter);
 
 // Validation schemas
 const createTaxSchema = Joi.object({

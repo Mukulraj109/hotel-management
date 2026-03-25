@@ -178,19 +178,23 @@ demandForecastSchema.pre('save', function(next) {
 
 // Instance methods
 demandForecastSchema.methods.updateWithActual = async function(actualOccupancy, actualRevenue) {
-  this.validation.actualOccupancy = actualOccupancy;
-  this.validation.actualRevenue = actualRevenue;
+  try {
+    this.validation.actualOccupancy = actualOccupancy;
+    this.validation.actualRevenue = actualRevenue;
   
-  // Calculate accuracy score
-  const occupancyError = Math.abs(this.predictedDemand.occupancyRate - actualOccupancy);
-  this.validation.accuracyScore = Math.max(0, 100 - (occupancyError * 2)); // Penalize errors
+    // Calculate accuracy score
+    const occupancyError = Math.abs(this.predictedDemand.occupancyRate - actualOccupancy);
+    this.validation.accuracyScore = Math.max(0, 100 - (occupancyError * 2)); // Penalize errors
   
-  this.validation.validated = true;
-  this.validation.validatedAt = new Date();
+    this.validation.validated = true;
+    this.validation.validatedAt = new Date();
   
-  await this.save();
+    await this.save();
   
-  return this.validation.accuracyScore;
+    return this.validation.accuracyScore;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 demandForecastSchema.methods.generateAlerts = function() {
@@ -322,78 +326,94 @@ demandForecastSchema.statics.generateForecast = async function(hotelId, roomType
 };
 
 demandForecastSchema.statics.getHistoricalData = async function(hotelId, roomTypeId, date) {
-  const RoomAvailability = mongoose.model('RoomAvailability');
+  try {
+    const RoomAvailability = mongoose.model('RoomAvailability');
   
-  // Get same day of week for last 8 weeks
-  const historicalDates = [];
-  for (let i = 1; i <= 8; i++) {
-    const histDate = new Date(date);
-    histDate.setDate(histDate.getDate() - (i * 7));
-    historicalDates.push(histDate);
+    // Get same day of week for last 8 weeks
+    const historicalDates = [];
+    for (let i = 1; i <= 8; i++) {
+      const histDate = new Date(date);
+      histDate.setDate(histDate.getDate() - (i * 7));
+      historicalDates.push(histDate);
+    }
+  
+    const historicalData = await RoomAvailability.find({
+      hotelId,
+      roomTypeId,
+      date: { $in: historicalDates }
+    }).lean().limit(1000);
+  
+    const occupancies = historicalData.map(d => (d.soldRooms / d.totalRooms) * 100);
+    const averageOccupancy = occupancies.reduce((sum, occ) => sum + occ, 0) / occupancies.length || 60;
+  
+    return {
+      averageOccupancy,
+      sameWeekLastYear: averageOccupancy, // Simplified
+      sameMonthLastYear: averageOccupancy, // Simplified
+      averageLast30Days: averageOccupancy,
+      trendDirection: 'stable',
+      dataPoints: historicalData.length
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  const historicalData = await RoomAvailability.find({
-    hotelId,
-    roomTypeId,
-    date: { $in: historicalDates }
-  });
-  
-  const occupancies = historicalData.map(d => (d.soldRooms / d.totalRooms) * 100);
-  const averageOccupancy = occupancies.reduce((sum, occ) => sum + occ, 0) / occupancies.length || 60;
-  
-  return {
-    averageOccupancy,
-    sameWeekLastYear: averageOccupancy, // Simplified
-    sameMonthLastYear: averageOccupancy, // Simplified
-    averageLast30Days: averageOccupancy,
-    trendDirection: 'stable',
-    dataPoints: historicalData.length
-  };
 };
 
 demandForecastSchema.statics.getBookingPace = async function(hotelId, roomTypeId, date) {
-  const Booking = mongoose.model('Booking');
+  try {
+    const Booking = mongoose.model('Booking');
   
-  // Get current bookings for this date
-  const currentBookings = await Booking.countDocuments({
-    hotelId,
-    roomType: roomTypeId, // Note: This might need adjustment based on your booking model
-    checkIn: { $lte: date },
-    checkOut: { $gt: date },
-    status: { $in: ['confirmed', 'checked_in'] }
-  });
+    // Get current bookings for this date
+    const currentBookings = await Booking.countDocuments({
+      hotelId,
+      roomType: roomTypeId, // Note: This might need adjustment based on your booking model
+      checkIn: { $lte: date },
+      checkOut: { $gt: date },
+      status: { $in: ['confirmed', 'checked_in'] }
+    });
   
-  return {
-    currentBookings,
-    paceVsLastYear: 0, // Simplified
-    leadTimePattern: 'normal',
-    cancellationRate: 5, // Default 5%
-    adjustment: 0 // No adjustment for now
-  };
+    return {
+      currentBookings,
+      paceVsLastYear: 0, // Simplified
+      leadTimePattern: 'normal',
+      cancellationRate: 5, // Default 5%
+      adjustment: 0 // No adjustment for now
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 demandForecastSchema.statics.getMarketFactors = async function(hotelId, date) {
-  return {
-    competitorOccupancy: 65, // Default market occupancy
-    marketEvents: [],
-    economicIndicators: {
-      localBusinessActivity: 70,
-      tourismIndex: 75
-    },
-    adjustment: 0
-  };
+  try {
+    return {
+      competitorOccupancy: 65, // Default market occupancy
+      marketEvents: [],
+      economicIndicators: {
+        localBusinessActivity: 70,
+        tourismIndex: 75
+      },
+      adjustment: 0
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 demandForecastSchema.statics.getTotalRooms = async function(hotelId, roomTypeId) {
-  const RoomAvailability = mongoose.model('RoomAvailability');
+  try {
+    const RoomAvailability = mongoose.model('RoomAvailability');
   
-  const availability = await RoomAvailability.findOne({
-    hotelId,
-    roomTypeId,
-    date: { $gte: new Date() }
-  });
+    const availability = await RoomAvailability.findOne({
+      hotelId,
+      roomTypeId,
+      date: { $gte: new Date() }
+    }).lean();
   
-  return availability ? availability.totalRooms : 20; // Default fallback
+    return availability ? availability.totalRooms : 20; // Default fallback
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 demandForecastSchema.statics.getSeasonalAdjustment = function(date) {
@@ -441,5 +461,8 @@ demandForecastSchema.statics.calculateConfidence = function(historical, booking,
   
   return Math.min(95, confidence);
 };
+
+// Data retention TTL: auto-delete demand forecasts after 365 days
+demandForecastSchema.index({ createdAt: 1 }, { expireAfterSeconds: 365 * 24 * 60 * 60 });
 
 export default mongoose.model('DemandForecast', demandForecastSchema);

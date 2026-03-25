@@ -237,10 +237,10 @@ const GroupReservationManager: React.FC<GroupReservationManagerProps> = ({
                 className="border border-gray-200 rounded-lg overflow-hidden"
               >
                 {/* Room Header */}
-                <div
+                <div role="button" tabIndex={0}
                   className="p-4 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
                   onClick={() => toggleRoomDetails(room.id)}
-                >
+                 onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => toggleRoomDetails(room.id); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-2">

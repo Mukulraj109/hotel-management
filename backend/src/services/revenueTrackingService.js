@@ -170,33 +170,37 @@ class RevenueTrackingService {
    * @returns {Object} Revenue account
    */
   async findRevenueAccountForCharge(hotelId, charge, criteria = {}) {
-    const chargeTypeMapping = {
-      'upgrade': 'upgrade_revenue',
-      'package': 'package_revenue',
-      'addon': 'addon_revenue',
-      'fee': 'fee_revenue',
-      'penalty': 'penalty_revenue',
-      'deposit': 'deposit_revenue'
-    };
+    try {
+      const chargeTypeMapping = {
+        'upgrade': 'upgrade_revenue',
+        'package': 'package_revenue',
+        'addon': 'addon_revenue',
+        'fee': 'fee_revenue',
+        'penalty': 'penalty_revenue',
+        'deposit': 'deposit_revenue'
+      };
 
-    const revenueCategory = chargeTypeMapping[charge.type] || 'other_revenue';
+      const revenueCategory = chargeTypeMapping[charge.type] || 'other_revenue';
 
-    const account = await RevenueAccount.findOne({
-      hotelId,
-      revenueCategory,
-      isActive: true,
-      validFrom: { $lte: new Date() },
-      $or: [
-        { validTo: { $exists: false } },
-        { validTo: { $gte: new Date() } }
-      ]
-    }).populate('applicableRoomTypes');
+      const account = await RevenueAccount.findOne({
+        hotelId,
+        revenueCategory,
+        isActive: true,
+        validFrom: { $lte: new Date() },
+        $or: [
+          { validTo: { $exists: false } },
+          { validTo: { $gte: new Date() } }
+        ]
+      }).populate('applicableRoomTypes').lean();
 
-    if (account && account.isApplicable(criteria)) {
-      return account;
+      if (account && account.isApplicable(criteria)) {
+        return account;
+      }
+
+      return null;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return null;
   }
 
   /**
@@ -294,19 +298,22 @@ class RevenueTrackingService {
 
       const transactionResults = [];
 
-      for (const allocation of revenueAllocations) {
-        // Update account audit info
-        await RevenueAccount.findByIdAndUpdate(
-          allocation.accountId,
-          {
-            $inc: {
-              'auditInfo.totalRevenue': allocation.allocatedAmount,
-              'auditInfo.transactionCount': 1
-            },
-            'auditInfo.lastRevenueDate': transactionDate
+      // Batch: use bulkWrite to update all revenue accounts at once
+      const revBulkOps = revenueAllocations.map(allocation => ({
+        updateOne: {
+          filter: { _id: allocation.accountId },
+          update: {
+            $inc: { 'auditInfo.totalRevenue': allocation.allocatedAmount, 'auditInfo.transactionCount': 1 },
+            $set: { 'auditInfo.lastRevenueDate': transactionDate }
           }
-        );
+        }
+      }));
 
+      if (revBulkOps.length > 0) {
+        await RevenueAccount.bulkWrite(revBulkOps);
+      }
+
+      for (const allocation of revenueAllocations) {
         transactionResults.push({
           accountId: allocation.accountId,
           accountCode: allocation.accountCode,
@@ -372,7 +379,7 @@ class RevenueTrackingService {
 
       const accounts = await RevenueAccount.find(matchQuery)
         .populate('parentAccount', 'accountCode accountName')
-        .sort({ revenueCategory: 1, accountCode: 1 });
+        .sort({ revenueCategory: 1, accountCode: 1 }).lean().limit(1000);
 
       const report = {
         reportDate: new Date().toISOString(),
@@ -506,7 +513,7 @@ class RevenueTrackingService {
 
       const matchQuery = { hotelId, isActive: true };
 
-      const accounts = await RevenueAccount.find(matchQuery);
+      const accounts = await RevenueAccount.find(matchQuery).lean().limit(1000);
 
       const analysis = {
         period,

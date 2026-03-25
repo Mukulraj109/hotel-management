@@ -46,8 +46,9 @@ import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function AdminNotifications() {
+function AdminNotifications() {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState({
@@ -695,3 +696,5 @@ export default function AdminNotifications() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminNotifications, { level: 'page' });

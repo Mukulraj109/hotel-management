@@ -343,7 +343,7 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
                 </div>
                 
                 <div className="flex items-center space-x-2">
-                  <button
+                  <button aria-label="Expand"
                     onClick={() => setExpandedPeriod(isExpanded ? null : period._id)}
                     className="p-2 text-gray-400 hover:text-gray-600"
                     title="View Details"
@@ -351,7 +351,7 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
                     <Eye className="h-4 w-4" />
                   </button>
                   
-                  <button
+                  <button aria-label="Edit"
                     onClick={() => onEdit(period)}
                     className="p-2 text-gray-400 hover:text-blue-600"
                     title="Edit"
@@ -359,7 +359,7 @@ const SpecialPeriodManager: React.FC<SpecialPeriodManagerProps> = ({
                     <Edit className="h-4 w-4" />
                   </button>
                   
-                  <button
+                  <button aria-label="Delete"
                     onClick={() => onDelete(period._id)}
                     className="p-2 text-gray-400 hover:text-red-600"
                     title="Delete"

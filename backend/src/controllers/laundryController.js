@@ -577,7 +577,7 @@ export const getLaundryTransaction = catchAsync(async (req, res, next) => {
     .populate('itemId', 'name category')
     .populate('processedBy', 'name')
     .populate('returnedBy', 'name')
-    .populate('metadata.createdBy', 'name');
+    .populate('metadata.createdBy', 'name').lean();
 
   if (!transaction) {
     return next(new ApplicationError('Laundry transaction not found', 404));

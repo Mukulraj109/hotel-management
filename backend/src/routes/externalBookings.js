@@ -7,6 +7,7 @@ import RoomAvailability from '../models/RoomAvailability.js';
 import RoomType from '../models/RoomType.js';
 import logger from '../utils/logger.js';
 import rateLimit from 'express-rate-limit';
+import { validateTransition } from '../utils/bookingStateMachine.js';
 
 const router = express.Router();
 
@@ -153,7 +154,7 @@ router.post('/',
     // Check idempotency - prevent duplicate bookings
     const existingBooking = await Booking.findOne({
       idempotencyKey: idempotencyKey
-    });
+    }).lean();
 
     if (existingBooking) {
       logger.info(`Duplicate booking request with idempotency key: ${idempotencyKey}`, {
@@ -172,7 +173,7 @@ router.post('/',
     }
 
     // Validate room type exists
-    const roomType = await RoomType.findById(roomTypeId);
+    const roomType = await RoomType.findById(roomTypeId).lean();
     if (!roomType) {
       return res.status(400).json({
         success: false,
@@ -351,7 +352,7 @@ router.put('/:bookingId',
     } = req.body;
 
     // Find the booking
-    const booking = await Booking.findById(bookingId);
+    const booking = await Booking.findById(bookingId).lean();
     if (!booking) {
       return res.status(404).json({
         success: false,
@@ -555,15 +556,34 @@ router.post('/:bookingId/cancel',
       });
     }
 
+    // Validate status transition using state machine
+    const transition = validateTransition(booking.status, 'cancelled');
+    if (!transition.valid) {
+      return res.status(400).json({
+        success: false,
+        error: transition.error
+      });
+    }
+
     // Store old values for audit
     const oldValues = {
       status: booking.status,
       totalAmount: booking.totalAmount
     };
 
+    // Calculate refund for external cancellation
+    let refundInfo = { refundAmount: 0, penaltyAmount: 0, refundPercentage: 0 };
+    try {
+      const cancellationService = (await import('../services/cancellationService.js')).default;
+      refundInfo = cancellationService.calculateRefund(booking);
+    } catch { /* cancellation service not available, proceed without refund calc */ }
+
     // Update booking status
     booking.status = 'cancelled';
     booking.cancellationReason = reason;
+    booking.settlementTracking = booking.settlementTracking || {};
+    booking.settlementTracking.refundAmount = refundInfo.refundAmount;
+    booking.settlementTracking.penaltyAmount = refundInfo.penaltyAmount;
 
     // Release inventory
     await RoomAvailability.releaseRoomsWithLock(
@@ -607,7 +627,8 @@ router.post('/:bookingId/cancel',
       data: {
         bookingId: booking._id,
         bookingNumber: booking.bookingNumber,
-        status: booking.status
+        status: booking.status,
+        refund: refundInfo
       }
     });
   })
@@ -686,7 +707,7 @@ router.get('/availability',
     );
 
     // Get room type information
-    const roomType = await RoomType.findById(roomTypeId).select('name description baseRate');
+    const roomType = await RoomType.findById(roomTypeId).select('name description baseRate').lean();
 
     const availabilityResponse = availability.map(date => ({
       date: date.date.toISOString().split('T')[0],

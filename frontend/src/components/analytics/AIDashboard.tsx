@@ -24,6 +24,7 @@ import {
 import { format, addDays, subDays } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/utils/currencyUtils';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface AIInsight {
   id: string;
@@ -571,11 +572,11 @@ const AIDashboard: React.FC = () => {
               <CardContent>
                 <div className="space-y-4">
                   {aiInsights.filter(i => i.type === 'opportunity').slice(0, 3).map(insight => (
-                    <div 
+                    <div role="button" tabIndex={0} 
                       key={insight.id} 
                       className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50"
                       onClick={() => setSelectedInsight(insight)}
-                    >
+                     onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => setSelectedInsight(insight); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                       <div className="flex-1">
                         <div className="font-medium">{insight.title}</div>
                         <div className="text-sm text-gray-600">{insight.description}</div>
@@ -606,14 +607,14 @@ const AIDashboard: React.FC = () => {
               <CardContent>
                 <div className="space-y-4">
                   {aiInsights.filter(i => i.type === 'risk').map(insight => (
-                    <div 
+                    <div role="button" tabIndex={0} 
                       key={insight.id} 
                       className={cn(
                         'flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50',
                         getInsightColor(insight.severity)
                       )}
                       onClick={() => setSelectedInsight(insight)}
-                    >
+                     onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => setSelectedInsight(insight); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           {getInsightIcon(insight.type)}
@@ -1020,4 +1021,4 @@ const AIDashboard: React.FC = () => {
   );
 };
 
-export default AIDashboard;
+export default withErrorBoundary(AIDashboard, { level: 'component' });

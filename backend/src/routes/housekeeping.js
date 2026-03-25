@@ -8,6 +8,7 @@ import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
 import logger from '../utils/logger.js';
+import { validateStatusTransition, HOUSEKEEPING_TRANSITIONS } from '../utils/statusTransitions.js';
 
 const router = express.Router();
 
@@ -114,7 +115,7 @@ router.get('/', authenticate, ensureTenantContext, authorize('admin', 'staff', '
     .populate('assignedTo', 'name')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   const total = await Housekeeping.countDocuments(query);
 
@@ -250,11 +251,14 @@ router.post('/:id/inspect', authenticate, authorize('admin', 'frontdesk'), ensur
     throw new ApplicationError('Housekeeping task not found', 404);
   }
 
-  if (task.status !== 'completed') {
-    throw new ApplicationError('Only completed tasks can be inspected', 400);
-  }
-
   const { passed, rating, notes, failureReasons, qaChecklist } = req.body;
+
+  // Determine target status based on inspection result
+  const targetStatus = passed ? 'inspected' : 'assigned';
+  const transition = validateStatusTransition(HOUSEKEEPING_TRANSITIONS, task.status, targetStatus);
+  if (!transition.valid) {
+    throw new ApplicationError(transition.error, 400);
+  }
 
   task.inspection = {
     inspectedBy: req.user._id,

@@ -33,6 +33,7 @@ import {
   MousePointer
 } from 'lucide-react';
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface UserSession {
   id: string;
@@ -259,7 +260,7 @@ const getStatusColor = (status: string) => {
   }
 };
 
-export const UserActivityTracking: React.FC<UserActivityTrackingProps> = ({
+const UserActivityTracking: React.FC<UserActivityTrackingProps> = ({
   propertyGroupId,
   dateRange,
   onExportReport
@@ -775,3 +776,5 @@ export const UserActivityTracking: React.FC<UserActivityTrackingProps> = ({
     </div>
   );
 };
+
+export default withErrorBoundary(UserActivityTracking, { level: 'component' });

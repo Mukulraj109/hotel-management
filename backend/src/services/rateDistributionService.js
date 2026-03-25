@@ -138,104 +138,116 @@ class RateDistributionService {
    * Convert a single rate between currencies with channel-specific settings
    */
   async convertRate(rate, fromCurrency, toCurrency, currencyConfig, channelId) {
-    if (fromCurrency === toCurrency) {
+    try {
+      if (fromCurrency === toCurrency) {
+        return {
+          ...rate,
+          currency: toCurrency,
+          originalCurrency: fromCurrency,
+          conversionRate: 1,
+          markup: 0,
+          channelId
+        };
+      }
+
+      // Get exchange rate
+      const exchangeRate = await this.getExchangeRate(fromCurrency, toCurrency, currencyConfig);
+
+      // Apply conversion
+      let convertedAmount = rate.baseRate * exchangeRate;
+
+      // Apply channel markup
+      if (currencyConfig.markup && currencyConfig.markup !== 0) {
+        convertedAmount *= (1 + currencyConfig.markup / 100);
+      }
+
+      // Apply rounding
+      convertedAmount = this.applyRounding(convertedAmount, currencyConfig.rounding);
+
       return {
         ...rate,
+        baseRate: convertedAmount,
         currency: toCurrency,
+        channelCurrency: currencyConfig.channelCurrencyCode || toCurrency,
         originalCurrency: fromCurrency,
-        conversionRate: 1,
-        markup: 0,
+        originalAmount: rate.baseRate,
+        conversionRate: exchangeRate,
+        markup: currencyConfig.markup || 0,
+        convertedAt: new Date(),
         channelId
       };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Get exchange rate
-    const exchangeRate = await this.getExchangeRate(fromCurrency, toCurrency, currencyConfig);
-
-    // Apply conversion
-    let convertedAmount = rate.baseRate * exchangeRate;
-
-    // Apply channel markup
-    if (currencyConfig.markup && currencyConfig.markup !== 0) {
-      convertedAmount *= (1 + currencyConfig.markup / 100);
-    }
-
-    // Apply rounding
-    convertedAmount = this.applyRounding(convertedAmount, currencyConfig.rounding);
-
-    return {
-      ...rate,
-      baseRate: convertedAmount,
-      currency: toCurrency,
-      channelCurrency: currencyConfig.channelCurrencyCode || toCurrency,
-      originalCurrency: fromCurrency,
-      originalAmount: rate.baseRate,
-      conversionRate: exchangeRate,
-      markup: currencyConfig.markup || 0,
-      convertedAt: new Date(),
-      channelId
-    };
   }
 
   /**
    * Get exchange rate with caching
    */
   async getExchangeRate(fromCurrency, toCurrency, currencyConfig) {
-    const cacheKey = `${fromCurrency}-${toCurrency}`;
-    const cached = this.exchangeRateCache.get(cacheKey);
+    try {
+      const cacheKey = `${fromCurrency}-${toCurrency}`;
+      const cached = this.exchangeRateCache.get(cacheKey);
 
-    if (cached && (Date.now() - cached.timestamp) < this.exchangeRateCacheTimeout) {
-      return cached.rate;
+      if (cached && (Date.now() - cached.timestamp) < this.exchangeRateCacheTimeout) {
+        return cached.rate;
+      }
+
+      let rate;
+
+      switch (currencyConfig.conversionMethod) {
+        case 'fixed_rate':
+          rate = currencyConfig.fixedRate;
+          if (!rate) {
+            throw new Error(`Fixed rate not configured for ${toCurrency}`);
+          }
+          break;
+
+        case 'daily_rate':
+          rate = await this.getDailyRate(fromCurrency, toCurrency);
+          break;
+
+        case 'live_rate':
+        default:
+          rate = await exchangeRateService.getExchangeRate(fromCurrency, toCurrency);
+          break;
+      }
+
+      if (!rate || rate <= 0) {
+        throw new Error(`Invalid exchange rate for ${fromCurrency} to ${toCurrency}`);
+      }
+
+      // Cache the rate
+      this.exchangeRateCache.set(cacheKey, {
+        rate,
+        timestamp: Date.now()
+      });
+
+      return rate;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    let rate;
-
-    switch (currencyConfig.conversionMethod) {
-      case 'fixed_rate':
-        rate = currencyConfig.fixedRate;
-        if (!rate) {
-          throw new Error(`Fixed rate not configured for ${toCurrency}`);
-        }
-        break;
-
-      case 'daily_rate':
-        rate = await this.getDailyRate(fromCurrency, toCurrency);
-        break;
-
-      case 'live_rate':
-      default:
-        rate = await exchangeRateService.getExchangeRate(fromCurrency, toCurrency);
-        break;
-    }
-
-    if (!rate || rate <= 0) {
-      throw new Error(`Invalid exchange rate for ${fromCurrency} to ${toCurrency}`);
-    }
-
-    // Cache the rate
-    this.exchangeRateCache.set(cacheKey, {
-      rate,
-      timestamp: Date.now()
-    });
-
-    return rate;
   }
 
   /**
    * Get daily cached exchange rate
    */
   async getDailyRate(fromCurrency, toCurrency) {
-    const today = new Date().toISOString().split('T')[0];
-    const cacheKey = `daily-${fromCurrency}-${toCurrency}-${today}`;
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const cacheKey = `daily-${fromCurrency}-${toCurrency}-${today}`;
     
-    let rate = this.cache.get(cacheKey);
+      let rate = this.cache.get(cacheKey);
     
-    if (!rate) {
-      rate = await exchangeRateService.getExchangeRate(fromCurrency, toCurrency);
-      this.cache.set(cacheKey, rate);
-    }
+      if (!rate) {
+        rate = await exchangeRateService.getExchangeRate(fromCurrency, toCurrency);
+        this.cache.set(cacheKey, rate);
+      }
 
-    return rate;
+      return rate;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -284,108 +296,128 @@ class RateDistributionService {
    * Send rates to Booking.com
    */
   async sendToBookingCom(channelConfig, rates) {
-    const endpoint = channelConfig.integrationSettings.endpoints.rates;
-    const credentials = channelConfig.integrationSettings.apiCredentials;
+    try {
+      const endpoint = channelConfig.integrationSettings.endpoints.rates;
+      const credentials = channelConfig.integrationSettings.apiCredentials;
 
-    // Group rates by date and room type
-    const groupedRates = this.groupRatesByDateAndRoom(rates);
+      // Group rates by date and room type
+      const groupedRates = this.groupRatesByDateAndRoom(rates);
 
-    const payload = {
-      hotel_id: credentials.hotelCode,
-      rates: Object.entries(groupedRates).map(([key, rateGroup]) => {
-        const [date, roomType] = key.split('|');
-        return {
-          date,
-          room_type: roomType,
-          rates: rateGroup.map(rate => ({
-            rate_plan: rate.ratePlanId,
-            currency: rate.channelCurrency || rate.currency,
-            amount: rate.baseRate,
-            occupancy: rate.occupancy || 2
-          }))
-        };
-      })
-    };
+      const payload = {
+        hotel_id: credentials.hotelCode,
+        rates: Object.entries(groupedRates).map(([key, rateGroup]) => {
+          const [date, roomType] = key.split('|');
+          return {
+            date,
+            room_type: roomType,
+            rates: rateGroup.map(rate => ({
+              rate_plan: rate.ratePlanId,
+              currency: rate.channelCurrency || rate.currency,
+              amount: rate.baseRate,
+              occupancy: rate.occupancy || 2
+            }))
+          };
+        })
+      };
 
-    return await this.makeChannelRequest(endpoint, payload, channelConfig);
+      return await this.makeChannelRequest(endpoint, payload, channelConfig);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Send rates to Expedia
    */
   async sendToExpedia(channelConfig, rates) {
-    const endpoint = channelConfig.integrationSettings.endpoints.rates;
+    try {
+      const endpoint = channelConfig.integrationSettings.endpoints.rates;
     
-    const payload = {
-      propertyId: channelConfig.integrationSettings.apiCredentials.propertyId,
-      rateUpdates: rates.map(rate => ({
-        date: rate.date,
-        roomTypeId: rate.roomTypeId,
-        ratePlanId: rate.ratePlanId,
-        currency: rate.channelCurrency || rate.currency,
-        baseRate: rate.baseRate,
-        taxesAndFees: rate.taxesAndFees || 0
-      }))
-    };
+      const payload = {
+        propertyId: channelConfig.integrationSettings.apiCredentials.propertyId,
+        rateUpdates: rates.map(rate => ({
+          date: rate.date,
+          roomTypeId: rate.roomTypeId,
+          ratePlanId: rate.ratePlanId,
+          currency: rate.channelCurrency || rate.currency,
+          baseRate: rate.baseRate,
+          taxesAndFees: rate.taxesAndFees || 0
+        }))
+      };
 
-    return await this.makeChannelRequest(endpoint, payload, channelConfig);
+      return await this.makeChannelRequest(endpoint, payload, channelConfig);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Send rates to Airbnb
    */
   async sendToAirbnb(channelConfig, rates) {
-    const endpoint = channelConfig.integrationSettings.endpoints.rates;
+    try {
+      const endpoint = channelConfig.integrationSettings.endpoints.rates;
     
-    // Airbnb uses a different rate structure
-    const payload = {
-      listingId: channelConfig.integrationSettings.apiCredentials.propertyId,
-      calendar: rates.map(rate => ({
-        date: rate.date,
-        available: rate.available !== false,
-        price: {
-          amount: Math.round(rate.baseRate),
-          currency: rate.channelCurrency || rate.currency
-        }
-      }))
-    };
+      // Airbnb uses a different rate structure
+      const payload = {
+        listingId: channelConfig.integrationSettings.apiCredentials.propertyId,
+        calendar: rates.map(rate => ({
+          date: rate.date,
+          available: rate.available !== false,
+          price: {
+            amount: Math.round(rate.baseRate),
+            currency: rate.channelCurrency || rate.currency
+          }
+        }))
+      };
 
-    return await this.makeChannelRequest(endpoint, payload, channelConfig);
+      return await this.makeChannelRequest(endpoint, payload, channelConfig);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Send rates to Agoda
    */
   async sendToAgoda(channelConfig, rates) {
-    const endpoint = channelConfig.integrationSettings.endpoints.rates;
+    try {
+      const endpoint = channelConfig.integrationSettings.endpoints.rates;
     
-    const payload = {
-      HotelCode: channelConfig.integrationSettings.apiCredentials.hotelCode,
-      RateUpdates: rates.map(rate => ({
-        Date: rate.date,
-        RoomTypeCode: rate.roomTypeId,
-        RatePlanCode: rate.ratePlanId,
-        Currency: rate.channelCurrency || rate.currency,
-        Rate: rate.baseRate,
-        ExtraPersonRate: rate.extraPersonRate || 0
-      }))
-    };
+      const payload = {
+        HotelCode: channelConfig.integrationSettings.apiCredentials.hotelCode,
+        RateUpdates: rates.map(rate => ({
+          Date: rate.date,
+          RoomTypeCode: rate.roomTypeId,
+          RatePlanCode: rate.ratePlanId,
+          Currency: rate.channelCurrency || rate.currency,
+          Rate: rate.baseRate,
+          ExtraPersonRate: rate.extraPersonRate || 0
+        }))
+      };
 
-    return await this.makeChannelRequest(endpoint, payload, channelConfig);
+      return await this.makeChannelRequest(endpoint, payload, channelConfig);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Send rates to generic channel
    */
   async sendToGenericChannel(channelConfig, rates) {
-    const endpoint = channelConfig.integrationSettings.endpoints.rates;
+    try {
+      const endpoint = channelConfig.integrationSettings.endpoints.rates;
     
-    const payload = {
-      hotelId: channelConfig.integrationSettings.apiCredentials.hotelCode,
-      rates: rates
-    };
+      const payload = {
+        hotelId: channelConfig.integrationSettings.apiCredentials.hotelCode,
+        rates: rates
+      };
 
-    return await this.makeChannelRequest(endpoint, payload, channelConfig);
+      return await this.makeChannelRequest(endpoint, payload, channelConfig);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

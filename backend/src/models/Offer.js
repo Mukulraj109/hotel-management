@@ -247,44 +247,52 @@ offerSchema.virtual('discountDisplay').get(function() {
 
 // Static method to get available offers for a user
 offerSchema.statics.getAvailableOffers = async function(userId, userTier, hotelId = null) {
-  const query = {
-    isActive: true,
-    minTier: { $lte: userTier },
-    $or: [
-      { validUntil: { $gt: new Date() } },
-      { validUntil: { $exists: false } }
-    ]
-  };
+  try {
+    const query = {
+      isActive: true,
+      minTier: { $lte: userTier },
+      $or: [
+        { validUntil: { $gt: new Date() } },
+        { validUntil: { $exists: false } }
+      ]
+    };
   
-  if (hotelId) {
-    query.hotelId = hotelId;
-  }
+    if (hotelId) {
+      query.hotelId = hotelId;
+    }
   
-  const offers = await this.find(query)
-    .sort({ pointsRequired: 1, createdAt: -1 })
-    .populate('hotelId', 'name');
+    const offers = await this.find(query)
+      .sort({ pointsRequired: 1, createdAt: -1 })
+      .populate('hotelId', 'name').lean().limit(1000);
     
-  return offers.filter(offer => offer.isValid);
+    return offers.filter(offer => offer.isValid);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get offers by category
 offerSchema.statics.getOffersByCategory = async function(category, hotelId = null) {
-  const query = {
-    category,
-    isActive: true,
-    $or: [
-      { validUntil: { $gt: new Date() } },
-      { validUntil: { $exists: false } }
-    ]
-  };
+  try {
+    const query = {
+      category,
+      isActive: true,
+      $or: [
+        { validUntil: { $gt: new Date() } },
+        { validUntil: { $exists: false } }
+      ]
+    };
   
-  if (hotelId) {
-    query.hotelId = hotelId;
+    if (hotelId) {
+      query.hotelId = hotelId;
+    }
+  
+    return await this.find(query)
+      .sort({ pointsRequired: 1 })
+      .populate('hotelId', 'name').lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  return await this.find(query)
-    .sort({ pointsRequired: 1 })
-    .populate('hotelId', 'name');
 };
 
 // Helper function to get tier hierarchy value
@@ -308,12 +316,16 @@ offerSchema.methods.canRedeem = function(userTier, userPoints) {
 
 // Instance method to increment redemption count
 offerSchema.methods.incrementRedemption = async function() {
-  if (this.maxRedemptions && this.currentRedemptions >= this.maxRedemptions) {
-    throw new Error('Maximum redemptions reached for this offer');
-  }
+  try {
+    if (this.maxRedemptions && this.currentRedemptions >= this.maxRedemptions) {
+      throw new Error('Maximum redemptions reached for this offer');
+    }
   
-  this.currentRedemptions += 1;
-  return await this.save();
+    this.currentRedemptions += 1;
+    return await this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Pre-save middleware to validate offer

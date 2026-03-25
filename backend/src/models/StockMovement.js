@@ -221,148 +221,167 @@ StockMovementSchema.pre('save', function(next) {
 
 // Static methods for analytics
 StockMovementSchema.statics.getTransactionSummary = async function(hotelId, filters = {}) {
-  const matchStage = { hotelId: mongoose.Types.ObjectId(hotelId), ...filters };
+  try {
+    const matchStage = { hotelId: mongoose.Types.ObjectId(hotelId), ...filters };
 
-  const pipeline = [
-    { $match: matchStage },
-    {
-      $group: {
-        _id: '$transactionType',
-        count: { $sum: 1 },
-        totalQuantity: { $sum: '$quantity' },
-        totalValue: { $sum: '$totalCost' },
-        avgQuantity: { $avg: '$quantity' }
+    const pipeline = [
+      { $match: matchStage },
+      {
+        $group: {
+          _id: '$transactionType',
+          count: { $sum: 1 },
+          totalQuantity: { $sum: '$quantity' },
+          totalValue: { $sum: '$totalCost' },
+          avgQuantity: { $avg: '$quantity' }
+        }
+      },
+      {
+        $sort: { _id: 1 }
       }
-    },
-    {
-      $sort: { _id: 1 }
-    }
-  ];
+    ];
 
-  return await this.aggregate(pipeline);
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 StockMovementSchema.statics.getItemUsagePattern = async function(hotelId, itemId, days = 30) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
 
-  const pipeline = [
-    {
-      $match: {
-        hotelId: mongoose.Types.ObjectId(hotelId),
-        inventoryItemId: mongoose.Types.ObjectId(itemId),
-        'timestamps.created': { $gte: startDate },
-        status: 'completed'
+    const pipeline = [
+      {
+        $match: {
+          hotelId: mongoose.Types.ObjectId(hotelId),
+          inventoryItemId: mongoose.Types.ObjectId(itemId),
+          'timestamps.created': { $gte: startDate },
+          status: 'completed'
+        }
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$timestamps.created' },
+            month: { $month: '$timestamps.created' },
+            day: { $dayOfMonth: '$timestamps.created' }
+          },
+          totalIn: {
+            $sum: {
+              $cond: [{ $in: ['$transactionType', ['IN', 'REORDER']] }, '$quantity', 0]
+            }
+          },
+          totalOut: {
+            $sum: {
+              $cond: [{ $in: ['$transactionType', ['OUT', 'CONSUMPTION']] }, { $abs: '$quantity' }, 0]
+            }
+          },
+          transactionCount: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 }
       }
-    },
-    {
-      $group: {
-        _id: {
-          year: { $year: '$timestamps.created' },
-          month: { $month: '$timestamps.created' },
-          day: { $dayOfMonth: '$timestamps.created' }
-        },
-        totalIn: {
-          $sum: {
-            $cond: [{ $in: ['$transactionType', ['IN', 'REORDER']] }, '$quantity', 0]
-          }
-        },
-        totalOut: {
-          $sum: {
-            $cond: [{ $in: ['$transactionType', ['OUT', 'CONSUMPTION']] }, { $abs: '$quantity' }, 0]
-          }
-        },
-        transactionCount: { $sum: 1 }
-      }
-    },
-    {
-      $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 }
-    }
-  ];
+    ];
 
-  return await this.aggregate(pipeline);
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 StockMovementSchema.statics.getUserActivitySummary = async function(hotelId, userId, startDate, endDate) {
-  const pipeline = [
-    {
-      $match: {
-        hotelId: mongoose.Types.ObjectId(hotelId),
-        performedBy: mongoose.Types.ObjectId(userId),
-        'timestamps.created': {
-          $gte: startDate,
-          $lte: endDate
-        },
-        status: 'completed'
+  try {
+    const pipeline = [
+      {
+        $match: {
+          hotelId: mongoose.Types.ObjectId(hotelId),
+          performedBy: mongoose.Types.ObjectId(userId),
+          'timestamps.created': {
+            $gte: startDate,
+            $lte: endDate
+          },
+          status: 'completed'
+        }
+      },
+      {
+        $group: {
+          _id: '$transactionType',
+          count: { $sum: 1 },
+          totalQuantity: { $sum: { $abs: '$quantity' } },
+          totalValue: { $sum: '$totalCost' }
+        }
       }
-    },
-    {
-      $group: {
-        _id: '$transactionType',
-        count: { $sum: 1 },
-        totalQuantity: { $sum: { $abs: '$quantity' } },
-        totalValue: { $sum: '$totalCost' }
-      }
-    }
-  ];
+    ];
 
-  return await this.aggregate(pipeline);
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 StockMovementSchema.statics.getInventoryTrends = async function(hotelId, days = 30) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
 
-  const pipeline = [
-    {
-      $match: {
-        hotelId: mongoose.Types.ObjectId(hotelId),
-        'timestamps.created': { $gte: startDate },
-        status: 'completed'
-      }
-    },
-    {
-      $lookup: {
-        from: 'inventories',
-        localField: 'inventoryItemId',
-        foreignField: '_id',
-        as: 'item'
-      }
-    },
-    {
-      $unwind: '$item'
-    },
-    {
-      $group: {
-        _id: {
-          category: '$item.category',
-          date: {
-            $dateToString: {
-              format: '%Y-%m-%d',
-              date: '$timestamps.created'
+    const pipeline = [
+      {
+        $match: {
+          hotelId: mongoose.Types.ObjectId(hotelId),
+          'timestamps.created': { $gte: startDate },
+          status: 'completed'
+        }
+      },
+      {
+        $lookup: {
+          from: 'inventories',
+          localField: 'inventoryItemId',
+          foreignField: '_id',
+          as: 'item'
+        }
+      },
+      {
+        $unwind: '$item'
+      },
+      {
+        $group: {
+          _id: {
+            category: '$item.category',
+            date: {
+              $dateToString: {
+                format: '%Y-%m-%d',
+                date: '$timestamps.created'
+              }
             }
-          }
-        },
-        totalIn: {
-          $sum: {
-            $cond: [{ $in: ['$transactionType', ['IN', 'REORDER']] }, '$quantity', 0]
-          }
-        },
-        totalOut: {
-          $sum: {
-            $cond: [{ $in: ['$transactionType', ['OUT', 'CONSUMPTION']] }, { $abs: '$quantity' }, 0]
-          }
-        },
-        totalValue: { $sum: '$totalCost' }
+          },
+          totalIn: {
+            $sum: {
+              $cond: [{ $in: ['$transactionType', ['IN', 'REORDER']] }, '$quantity', 0]
+            }
+          },
+          totalOut: {
+            $sum: {
+              $cond: [{ $in: ['$transactionType', ['OUT', 'CONSUMPTION']] }, { $abs: '$quantity' }, 0]
+            }
+          },
+          totalValue: { $sum: '$totalCost' }
+        }
+      },
+      {
+        $sort: { '_id.date': 1, '_id.category': 1 }
       }
-    },
-    {
-      $sort: { '_id.date': 1, '_id.category': 1 }
-    }
-  ];
+    ];
 
-  return await this.aggregate(pipeline);
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
+
+// Data retention TTL: auto-delete stock movement records after 2 years
+StockMovementSchema.index({ createdAt: 1 }, { expireAfterSeconds: 730 * 24 * 60 * 60 });
 
 const StockMovement = mongoose.model('StockMovement', StockMovementSchema);
 

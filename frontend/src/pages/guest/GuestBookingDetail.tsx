@@ -26,6 +26,7 @@ import {
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface GuestDetails {
   firstName: string;
@@ -164,7 +165,7 @@ const formatDateTime = (dateString: string) => {
   });
 };
 
-export default function GuestBookingDetail() {
+function GuestBookingDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [booking, setBooking] = useState<BookingDetail | null>(null);
@@ -682,3 +683,6 @@ export default function GuestBookingDetail() {
     </div>
   );
 }
+
+
+export default withErrorBoundary(GuestBookingDetail, { level: 'page' });

@@ -265,14 +265,18 @@ class POSReportsService {
     groupBy?: 'day' | 'week' | 'month';
     hotelId?: string;
   }): Promise<SalesSummaryResponse> {
-    const queryParams = new URLSearchParams();
-    queryParams.append('startDate', params.startDate);
-    queryParams.append('endDate', params.endDate);
-    if (params.groupBy) queryParams.append('groupBy', params.groupBy);
-    if (params.hotelId) queryParams.append('hotelId', params.hotelId);
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append('startDate', params.startDate);
+      queryParams.append('endDate', params.endDate);
+      if (params.groupBy) queryParams.append('groupBy', params.groupBy);
+      if (params.hotelId) queryParams.append('hotelId', params.hotelId);
 
-    const response = await api.get(`${this.baseUrl}/sales-summary?${queryParams.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/sales-summary?${queryParams.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get outlet performance report
@@ -281,13 +285,17 @@ class POSReportsService {
     endDate: string;
     hotelId?: string;
   }): Promise<OutletPerformanceResponse> {
-    const queryParams = new URLSearchParams();
-    queryParams.append('startDate', params.startDate);
-    queryParams.append('endDate', params.endDate);
-    if (params.hotelId) queryParams.append('hotelId', params.hotelId);
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append('startDate', params.startDate);
+      queryParams.append('endDate', params.endDate);
+      if (params.hotelId) queryParams.append('hotelId', params.hotelId);
 
-    const response = await api.get(`${this.baseUrl}/outlet-performance?${queryParams.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/outlet-performance?${queryParams.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get transaction history report
@@ -301,18 +309,22 @@ class POSReportsService {
     limit?: number;
     hotelId?: string;
   }): Promise<TransactionHistoryResponse> {
-    const queryParams = new URLSearchParams();
-    if (params.startDate) queryParams.append('startDate', params.startDate);
-    if (params.endDate) queryParams.append('endDate', params.endDate);
-    if (params.status) queryParams.append('status', params.status);
-    if (params.paymentMethod) queryParams.append('paymentMethod', params.paymentMethod);
-    if (params.outlet) queryParams.append('outlet', params.outlet);
-    if (params.page) queryParams.append('page', params.page.toString());
-    if (params.limit) queryParams.append('limit', params.limit.toString());
-    if (params.hotelId) queryParams.append('hotelId', params.hotelId);
+    try {
+      const queryParams = new URLSearchParams();
+      if (params.startDate) queryParams.append('startDate', params.startDate);
+      if (params.endDate) queryParams.append('endDate', params.endDate);
+      if (params.status) queryParams.append('status', params.status);
+      if (params.paymentMethod) queryParams.append('paymentMethod', params.paymentMethod);
+      if (params.outlet) queryParams.append('outlet', params.outlet);
+      if (params.page) queryParams.append('page', params.page.toString());
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.hotelId) queryParams.append('hotelId', params.hotelId);
 
-    const response = await api.get(`${this.baseUrl}/transaction-history?${queryParams.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/transaction-history?${queryParams.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get payment methods analysis
@@ -321,13 +333,17 @@ class POSReportsService {
     endDate: string;
     hotelId?: string;
   }): Promise<PaymentMethodsResponse> {
-    const queryParams = new URLSearchParams();
-    queryParams.append('startDate', params.startDate);
-    queryParams.append('endDate', params.endDate);
-    if (params.hotelId) queryParams.append('hotelId', params.hotelId);
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append('startDate', params.startDate);
+      queryParams.append('endDate', params.endDate);
+      if (params.hotelId) queryParams.append('hotelId', params.hotelId);
 
-    const response = await api.get(`${this.baseUrl}/payment-methods?${queryParams.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/payment-methods?${queryParams.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get top items report
@@ -337,14 +353,18 @@ class POSReportsService {
     limit?: number;
     hotelId?: string;
   }): Promise<TopItemsResponse> {
-    const queryParams = new URLSearchParams();
-    queryParams.append('startDate', params.startDate);
-    queryParams.append('endDate', params.endDate);
-    if (params.limit) queryParams.append('limit', params.limit.toString());
-    if (params.hotelId) queryParams.append('hotelId', params.hotelId);
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append('startDate', params.startDate);
+      queryParams.append('endDate', params.endDate);
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.hotelId) queryParams.append('hotelId', params.hotelId);
 
-    const response = await api.get(`${this.baseUrl}/top-items?${queryParams.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/top-items?${queryParams.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get staff performance report
@@ -353,13 +373,17 @@ class POSReportsService {
     endDate: string;
     hotelId?: string;
   }): Promise<StaffPerformanceResponse> {
-    const queryParams = new URLSearchParams();
-    queryParams.append('startDate', params.startDate);
-    queryParams.append('endDate', params.endDate);
-    if (params.hotelId) queryParams.append('hotelId', params.hotelId);
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append('startDate', params.startDate);
+      queryParams.append('endDate', params.endDate);
+      if (params.hotelId) queryParams.append('hotelId', params.hotelId);
 
-    const response = await api.get(`${this.baseUrl}/staff-performance?${queryParams.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/staff-performance?${queryParams.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get guest analytics report
@@ -369,14 +393,18 @@ class POSReportsService {
     limit?: number;
     hotelId?: string;
   }): Promise<GuestAnalyticsResponse> {
-    const queryParams = new URLSearchParams();
-    queryParams.append('startDate', params.startDate);
-    queryParams.append('endDate', params.endDate);
-    if (params.limit) queryParams.append('limit', params.limit.toString());
-    if (params.hotelId) queryParams.append('hotelId', params.hotelId);
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append('startDate', params.startDate);
+      queryParams.append('endDate', params.endDate);
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.hotelId) queryParams.append('hotelId', params.hotelId);
 
-    const response = await api.get(`${this.baseUrl}/guest-analytics?${queryParams.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/guest-analytics?${queryParams.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get peak hours analysis
@@ -385,13 +413,17 @@ class POSReportsService {
     endDate: string;
     hotelId?: string;
   }): Promise<PeakHoursResponse> {
-    const queryParams = new URLSearchParams();
-    queryParams.append('startDate', params.startDate);
-    queryParams.append('endDate', params.endDate);
-    if (params.hotelId) queryParams.append('hotelId', params.hotelId);
+    try {
+      const queryParams = new URLSearchParams();
+      queryParams.append('startDate', params.startDate);
+      queryParams.append('endDate', params.endDate);
+      if (params.hotelId) queryParams.append('hotelId', params.hotelId);
 
-    const response = await api.get(`${this.baseUrl}/peak-hours?${queryParams.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/peak-hours?${queryParams.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Utility function to get date ranges

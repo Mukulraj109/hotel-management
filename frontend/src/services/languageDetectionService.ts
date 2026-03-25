@@ -214,21 +214,25 @@ class LanguageDetectionService {
    * Detect language of given text using backend service
    */
   async detectTextLanguage(text: string): Promise<DetectionResult | null> {
-    if (!text || text.trim().length < 10) {
-      return null;
-    }
-
     try {
-      const response = await api.post('/languages/detect', { text });
-      const { language, confidence } = response.data.data;
+      if (!text || text.trim().length < 10) {
+        return null;
+      }
 
-      return {
-        language: language?.toUpperCase(),
-        confidence: confidence || 0.5,
-        source: 'text'
-      };
-    } catch (error) {
-      return null;
+      try {
+        const response = await api.post('/languages/detect', { text });
+        const { language, confidence } = response.data.data;
+
+        return {
+          language: language?.toUpperCase(),
+          confidence: confidence || 0.5,
+          source: 'text'
+        };
+      } catch (error) {
+        return null;
+      }
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 

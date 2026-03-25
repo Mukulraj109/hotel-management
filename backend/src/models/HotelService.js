@@ -318,43 +318,59 @@ hotelServiceSchema.virtual('operatingHoursDisplay').get(function() {
 
 // Static method to get services by type
 hotelServiceSchema.statics.getServicesByType = async function(hotelId, type) {
-  return await this.find({
-    hotelId,
-    type,
-    isActive: true
-  }).sort({ featured: -1, 'rating.average': -1 });
+  try {
+    return await this.find({
+      hotelId,
+      type,
+      isActive: true
+    }).sort({ featured: -1, 'rating.average': -1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get featured services
 hotelServiceSchema.statics.getFeaturedServices = async function(hotelId) {
-  return await this.find({
-    hotelId,
-    featured: true,
-    isActive: true
-  }).sort({ 'rating.average': -1 });
+  try {
+    return await this.find({
+      hotelId,
+      featured: true,
+      isActive: true
+    }).sort({ 'rating.average': -1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to search services
 hotelServiceSchema.statics.searchServices = async function(hotelId, searchTerm) {
-  const regex = new RegExp(searchTerm, 'i');
+  try {
+    const regex = new RegExp(searchTerm, 'i');
   
-  return await this.find({
-    hotelId,
-    isActive: true,
-    $or: [
-      { name: regex },
-      { description: regex },
-      { tags: regex }
-    ]
-  }).sort({ featured: -1, 'rating.average': -1 });
+    return await this.find({
+      hotelId,
+      isActive: true,
+      $or: [
+        { name: regex },
+        { description: regex },
+        { tags: regex }
+      ]
+    }).sort({ featured: -1, 'rating.average': -1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance method to update rating
 hotelServiceSchema.methods.updateRating = async function(newRating) {
-  const totalRating = this.rating.average * this.rating.count + newRating;
-  this.rating.count += 1;
-  this.rating.average = totalRating / this.rating.count;
-  return await this.save();
+  try {
+    const totalRating = this.rating.average * this.rating.count + newRating;
+    this.rating.count += 1;
+    this.rating.average = totalRating / this.rating.count;
+    return await this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Staff Management Methods
@@ -424,12 +440,16 @@ hotelServiceSchema.methods.hasAdequateStaffing = function() {
 
 // Static method to get services assigned to staff member
 hotelServiceSchema.statics.getServicesForStaff = async function(staffId, hotelId) {
-  return await this.find({
-    hotelId,
-    'assignedStaff.staffId': staffId,
-    'assignedStaff.isActive': true,
-    isActive: true
-  }).populate('assignedStaff.staffId', 'name email department');
+  try {
+    return await this.find({
+      hotelId,
+      'assignedStaff.staffId': staffId,
+      'assignedStaff.isActive': true,
+      isActive: true
+    }).populate('assignedStaff.staffId', 'name email department').lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Pre-save middleware to validate operating hours

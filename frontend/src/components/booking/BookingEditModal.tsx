@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Modal } from '../ui/Modal';
 import { User, UserPlus, UserMinus, Calculator, IndianRupee, AlertCircle, CheckCircle, Clock, FileText, CreditCard, Receipt, Eye, Edit } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -7,6 +7,7 @@ import { MultiPaymentExtraPersonCharges, PaymentMethod } from '../payments/Multi
 import { ExtraPersonChargePayment } from '../../services/stripePaymentService';
 import { bookingEditingService } from '../../services/bookingEditingService';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface ExtraPerson {
   personId?: string;
@@ -60,7 +61,7 @@ interface BookingEditModalProps {
   onBookingUpdated?: (updatedBooking: BookingData) => void;
 }
 
-export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }: BookingEditModalProps) {
+function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }: BookingEditModalProps) {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'persons' | 'settlement'>('persons');
   const [extraPersons, setExtraPersons] = useState<ExtraPerson[]>([]);
@@ -100,6 +101,21 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
 
   // Check if user has permission (admin or staff only)
   const hasPermission = user && ['admin', 'staff'].includes(user.role);
+
+  const isMountedRef = useRef(true);
+
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     if (booking && isOpen) {
@@ -167,7 +183,8 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
       // NEW: Show pending status in success message
       const suggestedCharge = result.data.suggestedCharge;
       setSuccess(`${personData.type} "${personData.name}" added successfully. Suggested charge: ₹${suggestedCharge?.totalCharge || 0} (Pending approval)`);
-      setTimeout(() => setSuccess(null), 5000);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => setSuccess(null), 5000);
 
       // Refresh settlement data
       fetchSettlementData();
@@ -194,7 +211,8 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
       setCharges(prev => prev.filter(c => c.personId !== personId));
 
       setSuccess(`${result.data.removedPerson.name} removed successfully`);
-      setTimeout(() => setSuccess(null), 3000);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => setSuccess(null), 3000);
 
       // Refresh settlement data
       fetchSettlementData();
@@ -225,7 +243,8 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
       // setSettlement(result.data.updatedSettlement);
 
       // Force a fresh fetch of settlement data to avoid stale calculations
-      setTimeout(() => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => {
         fetchSettlementData();
       }, 500);
 
@@ -235,7 +254,8 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
       setAdjustmentDescription('');
 
       setSuccess('Settlement adjustment added successfully');
-      setTimeout(() => setSuccess(null), 3000);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => setSuccess(null), 3000);
     } catch (error: unknown) {
       setError(error.response?.data?.message || 'Failed to add adjustment. Please try again.');
     } finally {
@@ -258,7 +278,8 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
 
 
       setSuccess('Charges recalculated successfully');
-      setTimeout(() => setSuccess(null), 3000);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => setSuccess(null), 3000);
 
       // If there's a callback to refresh booking data, call it
       if (onBookingUpdated && result.data.booking) {
@@ -299,7 +320,8 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
 
       setCharges(result.data.booking.extraPersonCharges);
       setSuccess('Price updated successfully');
-      setTimeout(() => setSuccess(null), 3000);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => setSuccess(null), 3000);
       setEditingCharge(null);
 
       if (onBookingUpdated) {
@@ -330,7 +352,8 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
 
       setCharges(result.data.booking.extraPersonCharges);
       setSuccess('Charge applied successfully. Guest can now pay.');
-      setTimeout(() => setSuccess(null), 3000);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => setSuccess(null), 3000);
       fetchSettlementData();
 
       if (onBookingUpdated) {
@@ -506,6 +529,7 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
 
       // For now, simulate success
       await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate API call
+    if (!isMountedRef.current) return;
 
       setSuccess('Settlement invoice would be generated successfully!');
       // In reality: if (response.status === 'success') { ... }
@@ -698,7 +722,7 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
                   </div>
                 )}
                 <div className="flex items-end">
-                  <button
+                  <button aria-label="Add"
                     onClick={addExtraPerson}
                     disabled={isAddingPerson || !newPersonName.trim()}
                     className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -798,7 +822,7 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
                                             <Edit className="w-4 h-4" />
                                             <span>Edit Price</span>
                                           </button>
-                                          <button
+                                          <button aria-label="Lock"
                                             onClick={() => approveCharge(personCharge.personId)}
                                             className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-medium px-4 py-2.5 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                                             disabled={isApproving}
@@ -865,7 +889,7 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
                             </div>
 
                             {/* Remove Button */}
-                            <button
+                            <button aria-label="Delete"
                               onClick={() => removeExtraPerson(person.personId!, person.name)}
                               disabled={isLoading}
                               className="flex-shrink-0 mt-1 w-8 h-8 flex items-center justify-center text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -950,7 +974,7 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
                         </div>
                       )}
 
-                      <button
+                      <button aria-label="Lock"
                         onClick={() => {
                           generateSupplementaryInvoice();
                         }}
@@ -1200,7 +1224,7 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
                       />
                     </div>
                     <div className="flex items-end">
-                      <button
+                      <button aria-label="Add"
                         onClick={addSettlementAdjustment}
                         disabled={isAddingAdjustment || !adjustmentType || !adjustmentAmount || !adjustmentDescription.trim()}
                         className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
@@ -1219,7 +1243,7 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
                 {/* Generate Settlement Invoice Button */}
                 {settlement.adjustments && settlement.adjustments.length > 0 && (
                   <div className="border-t pt-4">
-                    <button
+                    <button aria-label="Lock"
                       onClick={generateSettlementInvoice}
                       disabled={isGeneratingSettlementInvoice}
                       className="w-full bg-purple-600 text-white px-4 py-3 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
@@ -1273,13 +1297,15 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
             });
 
             // Also refresh from backend to ensure accuracy
-            setTimeout(() => {
+            if (successTimerRef.current) clearTimeout(successTimerRef.current);
+            successTimerRef.current = setTimeout(() => {
               fetchSettlementData();
             }, 500);
 
             // TEMPORARY FIX: If we know settlement should be completed, force the status
             if (newOutstanding === 0) {
-              setTimeout(() => {
+              if (successTimerRef.current) clearTimeout(successTimerRef.current);
+              successTimerRef.current = setTimeout(() => {
                 setSettlement(prev => prev ? {
                   ...prev,
                   outstandingBalance: 0,
@@ -1289,7 +1315,8 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
             }
 
             // Also trigger parent component update
-            setTimeout(() => {
+            if (successTimerRef.current) clearTimeout(successTimerRef.current);
+            successTimerRef.current = setTimeout(() => {
               if (onBookingUpdated) {
                 // This will update the upcoming bookings list
                 const refreshedBooking = { ...booking, settlementTracking: { ...settlement, outstandingBalance: newOutstanding, status: newOutstanding === 0 ? 'completed' : 'partial' } };
@@ -1397,7 +1424,7 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
               >
                 Cancel
               </button>
-              <button
+              <button aria-label="Edit"
                 onClick={saveEditedPrice}
                 disabled={!editedAmount || !editReason.trim() || isSavingEdit}
                 className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
@@ -1418,3 +1445,6 @@ export function BookingEditModal({ isOpen, onClose, booking, onBookingUpdated }:
     </Modal>
   );
 }
+
+export { BookingEditModal };
+export default withErrorBoundary(BookingEditModal, { level: 'component' });

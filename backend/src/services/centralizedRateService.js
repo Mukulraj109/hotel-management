@@ -112,7 +112,7 @@ class CentralizedRateService {
       await session.commitTransaction();
       
       // Auto-sync if enabled
-      const propertyGroup = await PropertyGroup.findById(rate.propertyGroup.groupId);
+      const propertyGroup = await PropertyGroup.findById(rate.propertyGroup.groupId).lean();
       if (propertyGroup?.settings?.rateManagement?.autoSync) {
         await rate.distributeToProperties();
       }
@@ -163,7 +163,7 @@ class CentralizedRateService {
   
   async distributeRate(rateId, options = {}) {
     try {
-      const rate = await CentralizedRate.findById(rateId).populate('propertyGroup.groupId');
+      const rate = await CentralizedRate.findById(rateId).populate('propertyGroup.groupId').lean();
       if (!rate) {
         throw new Error('Rate not found');
       }
@@ -190,7 +190,7 @@ class CentralizedRateService {
   
   async bulkDistribute(groupId, rateIds = [], options = {}) {
     try {
-      const propertyGroup = await PropertyGroup.findById(groupId);
+      const propertyGroup = await PropertyGroup.findById(groupId).lean();
       if (!propertyGroup) {
         throw new Error('Property group not found');
       }
@@ -201,13 +201,13 @@ class CentralizedRateService {
           _id: { $in: rateIds },
           'propertyGroup.groupId': groupId,
           isActive: true
-        });
+        }).lean().limit(1000);
       } else {
         rates = await CentralizedRate.find({
           'propertyGroup.groupId': groupId,
           isActive: true,
           'audit.approvalStatus': 'approved'
-        });
+        }).lean().limit(1000);
       }
       
       const results = {
@@ -253,20 +253,24 @@ class CentralizedRateService {
   // Conflict Resolution
   
   async findConflictingRates(groupId, startDate, endDate, rateType, session = null) {
-    const query = {
-      'propertyGroup.groupId': groupId,
-      rateType,
-      isActive: true,
-      $or: [
-        {
-          'validityPeriod.startDate': { $lte: endDate },
-          'validityPeriod.endDate': { $gte: startDate }
-        }
-      ]
-    };
+    try {
+      const query = {
+        'propertyGroup.groupId': groupId,
+        rateType,
+        isActive: true,
+        $or: [
+          {
+            'validityPeriod.startDate': { $lte: endDate },
+            'validityPeriod.endDate': { $gte: startDate }
+          }
+        ]
+      };
     
-    const options = session ? { session } : {};
-    return CentralizedRate.find(query, null, options);
+      const options = session ? { session } : {};
+      return CentralizedRate.find(query, null, options);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   async resolveConflict(rateId, conflictId, resolution, resolvedBy) {
@@ -427,7 +431,7 @@ class CentralizedRateService {
         ])
       ]);
       
-      const propertyGroup = await PropertyGroup.findById(groupId);
+      const propertyGroup = await PropertyGroup.findById(groupId).lean();
       
       return {
         groupInfo: {
@@ -471,7 +475,7 @@ class CentralizedRateService {
       
       const rates = await CentralizedRate.find(query)
         .select('rateId rateName distributionSettings propertySpecificRates')
-        .populate('propertyGroup.groupId', 'name properties');
+        .populate('propertyGroup.groupId', 'name properties').lean().limit(1000);
       
       const report = rates.map(rate => ({
         rateId: rate.rateId,
@@ -504,7 +508,7 @@ class CentralizedRateService {
   
   async calculateRate(rateId, propertyId, checkIn, checkOut, roomType, guests = 2) {
     try {
-      const rate = await CentralizedRate.findById(rateId);
+      const rate = await CentralizedRate.findById(rateId).lean();
       if (!rate) {
         throw new Error('Rate not found');
       }
@@ -576,49 +580,69 @@ class CentralizedRateService {
   }
   
   async updateGroupAnalytics(groupId, session = null) {
-    const options = session ? { session } : {};
+    try {
+      const options = session ? { session } : {};
     
-    const rateCount = await CentralizedRate.countDocuments({
-      'propertyGroup.groupId': groupId,
-      isActive: true
-    }, options);
+      const rateCount = await CentralizedRate.countDocuments({
+        'propertyGroup.groupId': groupId,
+        isActive: true
+      }, options);
     
-    await PropertyGroup.findByIdAndUpdate(
-      groupId,
-      {
-        $set: {
-          'analytics.totalRates': rateCount,
-          'analytics.lastSyncDate': new Date()
-        }
-      },
-      { ...options, new: true }
-    );
+      await PropertyGroup.findByIdAndUpdate(
+        groupId,
+        {
+          $set: {
+            'analytics.totalRates': rateCount,
+            'analytics.lastSyncDate': new Date()
+          }
+        },
+        { ...options, new: true }
+      );
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   async updateSyncStatistics(groupId, results) {
-    await PropertyGroup.findByIdAndUpdate(
-      groupId,
-      {
-        $set: {
-          'analytics.lastSyncDate': new Date(),
-          'analytics.syncSuccess': results.failed?.length === 0
+    try {
+      await PropertyGroup.findByIdAndUpdate(
+        groupId,
+        {
+          $set: {
+            'analytics.lastSyncDate': new Date(),
+            'analytics.syncSuccess': results.failed?.length === 0
+          }
         }
-      }
-    );
+      ,
+        { new: true }
+      );
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   async setPriority(rateId, priority) {
-    await CentralizedRate.findByIdAndUpdate(
-      rateId,
-      { $set: { 'conflictResolution.priority': priority } }
-    );
+    try {
+      await CentralizedRate.findByIdAndUpdate(
+        rateId,
+        { $set: { 'conflictResolution.priority': priority } }
+      ,
+        { new: true }
+      );
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   async mergeRates(rateId1, rateId2, mergedBy) {
-    // Implementation for merging conflicting rates
-    // This would depend on specific business rules
-    logger.debug(`Merging rates ${rateId1} and ${rateId2} by ${mergedBy}`);
-    // Placeholder implementation
+    try {
+      // Implementation for merging conflicting rates
+      // This would depend on specific business rules
+      logger.debug(`Merging rates ${rateId1} and ${rateId2} by ${mergedBy}`);
+      // Placeholder implementation
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   // Validation Methods

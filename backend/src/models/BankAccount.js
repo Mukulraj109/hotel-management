@@ -191,162 +191,178 @@ bankAccountSchema.virtual('reconciliationDifference').get(function() {
 
 // Method to add transaction
 bankAccountSchema.methods.addTransaction = async function(transactionData) {
-  const lastTransaction = this.transactions.length > 0 
-    ? this.transactions[this.transactions.length - 1]
-    : { balance: this.openingBalance };
+  try {
+    const lastTransaction = this.transactions.length > 0 
+      ? this.transactions[this.transactions.length - 1]
+      : { balance: this.openingBalance };
   
-  const newBalance = lastTransaction.balance + 
-    (transactionData.creditAmount || 0) - 
-    (transactionData.debitAmount || 0);
+    const newBalance = lastTransaction.balance + 
+      (transactionData.creditAmount || 0) - 
+      (transactionData.debitAmount || 0);
   
-  const transaction = {
-    ...transactionData,
-    balance: newBalance
-  };
+    const transaction = {
+      ...transactionData,
+      balance: newBalance
+    };
   
-  this.transactions.push(transaction);
-  this.currentBalance = newBalance;
+    this.transactions.push(transaction);
+    this.currentBalance = newBalance;
   
-  // Create journal entry if not already created
-  if (!transaction.journalEntryId) {
-    const JournalEntry = mongoose.model('JournalEntry');
-    const ChartOfAccounts = mongoose.model('ChartOfAccounts');
+    // Create journal entry if not already created
+    if (!transaction.journalEntryId) {
+      const JournalEntry = mongoose.model('JournalEntry');
+      const ChartOfAccounts = mongoose.model('ChartOfAccounts');
     
-    // Determine the other account based on transaction type
-    let otherAccountCode;
-    switch (transaction.transactionType) {
-      case 'Deposit':
-        otherAccountCode = '4000'; // Revenue account
-        break;
-      case 'Withdrawal':
-      case 'Fee':
-        otherAccountCode = '5000'; // Expense account
-        break;
-      default:
-        otherAccountCode = '1000'; // Default cash account
-    }
+      // Determine the other account based on transaction type
+      let otherAccountCode;
+      switch (transaction.transactionType) {
+        case 'Deposit':
+          otherAccountCode = '4000'; // Revenue account
+          break;
+        case 'Withdrawal':
+        case 'Fee':
+          otherAccountCode = '5000'; // Expense account
+          break;
+        default:
+          otherAccountCode = '1000'; // Default cash account
+      }
     
-    const otherAccount = await ChartOfAccounts.findOne({ 
-      hotelId: this.hotelId, 
-      accountCode: otherAccountCode 
-    });
+      const otherAccount = await ChartOfAccounts.findOne({ 
+        hotelId: this.hotelId, 
+        accountCode: otherAccountCode 
+      }).lean();
     
-    if (otherAccount) {
-      const journalEntry = new JournalEntry({
-        entryDate: transaction.transactionDate,
-        entryType: 'Automatic',
-        description: transaction.description,
-        lines: [
-          {
-            accountId: transaction.debitAmount > 0 ? this.glAccountId : otherAccount._id,
-            description: transaction.description,
-            debitAmount: transaction.debitAmount || transaction.creditAmount || 0,
-            creditAmount: 0
-          },
-          {
-            accountId: transaction.creditAmount > 0 ? this.glAccountId : otherAccount._id,
-            description: transaction.description,
-            debitAmount: 0,
-            creditAmount: transaction.creditAmount || transaction.debitAmount || 0
-          }
-        ],
-        referenceType: 'BankTransaction',
-        referenceId: this.accountNumber,
-        referenceNumber: transaction.referenceNumber,
-        hotelId: this.hotelId,
-        createdBy: this.updatedBy || this.createdBy
-      });
+      if (otherAccount) {
+        const journalEntry = new JournalEntry({
+          entryDate: transaction.transactionDate,
+          entryType: 'Automatic',
+          description: transaction.description,
+          lines: [
+            {
+              accountId: transaction.debitAmount > 0 ? this.glAccountId : otherAccount._id,
+              description: transaction.description,
+              debitAmount: transaction.debitAmount || transaction.creditAmount || 0,
+              creditAmount: 0
+            },
+            {
+              accountId: transaction.creditAmount > 0 ? this.glAccountId : otherAccount._id,
+              description: transaction.description,
+              debitAmount: 0,
+              creditAmount: transaction.creditAmount || transaction.debitAmount || 0
+            }
+          ],
+          referenceType: 'BankTransaction',
+          referenceId: this.accountNumber,
+          referenceNumber: transaction.referenceNumber,
+          hotelId: this.hotelId,
+          createdBy: this.updatedBy || this.createdBy
+        });
       
-      await journalEntry.save();
-      await journalEntry.post(this.updatedBy || this.createdBy);
+        await journalEntry.save();
+        await journalEntry.post(this.updatedBy || this.createdBy);
       
-      transaction.journalEntryId = journalEntry._id;
+        transaction.journalEntryId = journalEntry._id;
+      }
     }
+  
+    await this.save();
+    return transaction;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  await this.save();
-  return transaction;
 };
 
 // Method to reconcile account
 bankAccountSchema.methods.reconcile = async function(statementBalance, statementDate, reconciledTransactionIds) {
-  // Mark transactions as reconciled
-  this.transactions.forEach(transaction => {
-    if (reconciledTransactionIds.includes(transaction._id.toString())) {
-      transaction.isReconciled = true;
-      transaction.reconciledDate = new Date();
-    }
-  });
+  try {
+    // Mark transactions as reconciled
+    this.transactions.forEach(transaction => {
+      if (reconciledTransactionIds.includes(transaction._id.toString())) {
+        transaction.isReconciled = true;
+        transaction.reconciledDate = new Date();
+      }
+    });
   
-  // Update reconciliation info
-  this.lastReconciledDate = new Date();
-  this.lastReconciledBalance = statementBalance;
-  this.lastStatementDate = statementDate;
-  this.lastStatementBalance = statementBalance;
+    // Update reconciliation info
+    this.lastReconciledDate = new Date();
+    this.lastReconciledBalance = statementBalance;
+    this.lastStatementDate = statementDate;
+    this.lastStatementBalance = statementBalance;
   
-  await this.save();
+    await this.save();
   
-  return {
-    reconciledCount: reconciledTransactionIds.length,
-    difference: this.reconciliationDifference
-  };
+    return {
+      reconciledCount: reconciledTransactionIds.length,
+      difference: this.reconciliationDifference
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Method to import bank statement
 bankAccountSchema.methods.importStatement = async function(statements) {
-  const importedTransactions = [];
+  try {
+    const importedTransactions = [];
   
-  for (const statement of statements) {
-    // Check if transaction already exists
-    const exists = this.transactions.some(t => 
-      t.referenceNumber === statement.referenceNumber &&
-      t.transactionDate.getTime() === new Date(statement.date).getTime()
-    );
+    for (const statement of statements) {
+      // Check if transaction already exists
+      const exists = this.transactions.some(t => 
+        t.referenceNumber === statement.referenceNumber &&
+        t.transactionDate.getTime() === new Date(statement.date).getTime()
+      );
     
-    if (!exists) {
-      const transaction = await this.addTransaction({
-        transactionDate: new Date(statement.date),
-        description: statement.description,
-        referenceNumber: statement.referenceNumber,
-        debitAmount: statement.debit || 0,
-        creditAmount: statement.credit || 0,
-        transactionType: statement.type || 'Adjustment'
-      });
+      if (!exists) {
+        const transaction = await this.addTransaction({
+          transactionDate: new Date(statement.date),
+          description: statement.description,
+          referenceNumber: statement.referenceNumber,
+          debitAmount: statement.debit || 0,
+          creditAmount: statement.credit || 0,
+          transactionType: statement.type || 'Adjustment'
+        });
       
-      importedTransactions.push(transaction);
+        importedTransactions.push(transaction);
+      }
     }
-  }
   
-  return importedTransactions;
+    return importedTransactions;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get cash position
 bankAccountSchema.statics.getCashPosition = async function(hotelId) {
-  const accounts = await this.find({ hotelId, isActive: true });
+  try {
+    const accounts = await this.find({ hotelId, isActive: true }).lean().limit(1000);
   
-  return accounts.reduce((position, account) => {
-    const convertedBalance = account.currentBalance; // TODO: Apply exchange rate
+    return accounts.reduce((position, account) => {
+      const convertedBalance = account.currentBalance; // TODO: Apply exchange rate
     
-    return {
-      totalCash: position.totalCash + (account.accountType !== 'Credit Card' ? convertedBalance : 0),
-      totalDebt: position.totalDebt + (account.accountType === 'Credit Card' || account.accountType === 'Loan' ? Math.abs(convertedBalance) : 0),
-      byAccount: [...position.byAccount, {
-        accountName: account.accountName,
-        accountType: account.accountType,
-        currency: account.currency,
-        balance: account.currentBalance
-      }],
-      byCurrency: {
-        ...position.byCurrency,
-        [account.currency]: (position.byCurrency[account.currency] || 0) + convertedBalance
-      }
-    };
-  }, {
-    totalCash: 0,
-    totalDebt: 0,
-    byAccount: [],
-    byCurrency: {}
-  });
+      return {
+        totalCash: position.totalCash + (account.accountType !== 'Credit Card' ? convertedBalance : 0),
+        totalDebt: position.totalDebt + (account.accountType === 'Credit Card' || account.accountType === 'Loan' ? Math.abs(convertedBalance) : 0),
+        byAccount: [...position.byAccount, {
+          accountName: account.accountName,
+          accountType: account.accountType,
+          currency: account.currency,
+          balance: account.currentBalance
+        }],
+        byCurrency: {
+          ...position.byCurrency,
+          [account.currency]: (position.byCurrency[account.currency] || 0) + convertedBalance
+        }
+      };
+    }, {
+      totalCash: 0,
+      totalDebt: 0,
+      byAccount: [],
+      byCurrency: {}
+    });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 const BankAccount = mongoose.model('BankAccount', bankAccountSchema);

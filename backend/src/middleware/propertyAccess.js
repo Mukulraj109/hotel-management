@@ -39,7 +39,7 @@ export const ensurePropertyAccess = catchAsync(async (req, res, next) => {
 
   if (isReadOnlyRequest && isAdmin) {
     // Admin read access - still verify the admin has this property in their scope
-    const property = await Hotel.findById(hotelId);
+    const property = await Hotel.findById(hotelId).lean();
     if (!property) {
       throw new ApplicationError('Property not found.', 404);
     }
@@ -77,7 +77,7 @@ export const ensurePropertyAccess = catchAsync(async (req, res, next) => {
       { ownerId: req.user._id },
       { createdBy: req.user._id }
     ]
-  });
+  }).lean();
 
   // If user owns the property, allow access
   if (property) {
@@ -86,7 +86,7 @@ export const ensurePropertyAccess = catchAsync(async (req, res, next) => {
   }
 
   // Check if property exists at all (for multi-property users)
-  const propertyExists = await Hotel.findById(hotelId);
+  const propertyExists = await Hotel.findById(hotelId).lean();
 
   if (!propertyExists) {
     throw new ApplicationError(
@@ -141,7 +141,7 @@ export const ensureGroupAccess = catchAsync(async (req, res, next) => {
   const group = await PropertyGroup.findOne({
     _id: id,
     ownerId: req.user._id
-  });
+  }).lean();
 
   if (!group) {
     throw new ApplicationError(
@@ -218,7 +218,7 @@ export const filterByUserProperties = catchAsync(async (req, res, next) => {
       { ownerId: req.user._id },
       { createdBy: req.user._id }
     ]
-  }).select('_id');
+  }).select('_id').lean().limit(1000);
 
   // Combine owned properties with user's assigned properties
   const ownedPropertyIds = ownedProperties.map(p => p._id.toString());
@@ -258,40 +258,46 @@ export const filterByUserProperties = catchAsync(async (req, res, next) => {
  * @returns {Promise<boolean>} - True if user has access
  */
 export const checkPropertyAccess = async (userId, hotelId, user = null) => {
-  if (!hotelId) {
+  try {
+    if (!hotelId) {
+      return false;
+    }
+
+    // Check ownership first
+    const hasOwnership = await Hotel.exists({
+      _id: hotelId,
+      $or: [
+        { ownerId: userId },
+        { createdBy: userId }
+      ]
+    });
+
+    if (hasOwnership) {
+      return true;
+    }
+
+    // If user object provided, check multi-property access
+    if (user) {
+      const hotelIdStr = hotelId.toString();
+      const userProperties = user.properties?.map(p => p.toString()) || [];
+      const allowedProperties = user.multiPropertyAccess?.allowedProperties?.map(p => p.toString()) || [];
+      const primaryProperty = user.primaryProperty?.toString();
+      const userHotelId = user.hotelId?.toString();
+
+      return (
+        userProperties.includes(hotelIdStr) ||
+        allowedProperties.includes(hotelIdStr) ||
+        primaryProperty === hotelIdStr ||
+        userHotelId === hotelIdStr
+      );
+    }
+
     return false;
+
+  } catch (error) {
+    console.error('Operation failed:', error.message);
+    throw error;
   }
-
-  // Check ownership first
-  const hasOwnership = await Hotel.exists({
-    _id: hotelId,
-    $or: [
-      { ownerId: userId },
-      { createdBy: userId }
-    ]
-  });
-
-  if (hasOwnership) {
-    return true;
-  }
-
-  // If user object provided, check multi-property access
-  if (user) {
-    const hotelIdStr = hotelId.toString();
-    const userProperties = user.properties?.map(p => p.toString()) || [];
-    const allowedProperties = user.multiPropertyAccess?.allowedProperties?.map(p => p.toString()) || [];
-    const primaryProperty = user.primaryProperty?.toString();
-    const userHotelId = user.hotelId?.toString();
-
-    return (
-      userProperties.includes(hotelIdStr) ||
-      allowedProperties.includes(hotelIdStr) ||
-      primaryProperty === hotelIdStr ||
-      userHotelId === hotelIdStr
-    );
-  }
-
-  return false;
 };
 
 /**
@@ -302,35 +308,41 @@ export const checkPropertyAccess = async (userId, hotelId, user = null) => {
  * @returns {Promise<string[]>} - Array of property IDs
  */
 export const getUserPropertyIds = async (userId, user = null) => {
-  // Get owned properties
-  const ownedProperties = await Hotel.find({
-    $or: [
-      { ownerId: userId },
-      { createdBy: userId }
-    ]
-  }).select('_id');
+  try {
+    // Get owned properties
+    const ownedProperties = await Hotel.find({
+      $or: [
+        { ownerId: userId },
+        { createdBy: userId }
+      ]
+    }).select('_id').lean().limit(1000);
 
-  const ownedPropertyIds = ownedProperties.map(p => p._id.toString());
+    const ownedPropertyIds = ownedProperties.map(p => p._id.toString());
 
-  // If user object provided, include assigned properties
-  if (user) {
-    const assignedPropertyIds = user.properties?.map(p => p.toString()) || [];
-    const allowedPropertyIds = user.multiPropertyAccess?.allowedProperties?.map(p => p.toString()) || [];
+    // If user object provided, include assigned properties
+    if (user) {
+      const assignedPropertyIds = user.properties?.map(p => p.toString()) || [];
+      const allowedPropertyIds = user.multiPropertyAccess?.allowedProperties?.map(p => p.toString()) || [];
 
-    const allPropertyIds = [
-      ...new Set([
-        ...ownedPropertyIds,
-        ...assignedPropertyIds,
-        ...allowedPropertyIds,
-        ...(user.primaryProperty ? [user.primaryProperty.toString()] : []),
-        ...(user.hotelId ? [user.hotelId.toString()] : [])
-      ])
-    ];
+      const allPropertyIds = [
+        ...new Set([
+          ...ownedPropertyIds,
+          ...assignedPropertyIds,
+          ...allowedPropertyIds,
+          ...(user.primaryProperty ? [user.primaryProperty.toString()] : []),
+          ...(user.hotelId ? [user.hotelId.toString()] : [])
+        ])
+      ];
 
-    return allPropertyIds;
+      return allPropertyIds;
+    }
+
+    return ownedPropertyIds;
+
+  } catch (error) {
+    console.error('Operation failed:', error.message);
+    throw error;
   }
-
-  return ownedPropertyIds;
 };
 
 /**
@@ -357,7 +369,7 @@ export const ensurePropertyInGroup = catchAsync(async (req, res, next) => {
   const property = await Hotel.findOne({
     _id: propertyId,
     propertyGroupId: groupId
-  });
+  }).lean();
 
   if (!property) {
     throw new ApplicationError(

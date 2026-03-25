@@ -31,7 +31,7 @@ class RoomTypeController {
       }
 
       const roomTypes = await RoomType.find(filter)
-        .sort({ name: 1 });
+        .sort({ name: 1 }).lean().limit(1000);
 
       // Include room count and inventory stats if requested
       if (includeStats === 'true') {
@@ -89,7 +89,7 @@ class RoomTypeController {
       const roomTypes = await RoomType.find({ 
         hotelId, 
         isActive: true 
-      }).select('_id name code baseRate totalRooms specifications.maxOccupancy');
+      }).select('_id name code baseRate totalRooms specifications.maxOccupancy').lean().limit(1000);
 
       const options = roomTypes.map(rt => ({
         id: rt._id.toString(), // Frontend expects 'id', not '_id'
@@ -125,7 +125,7 @@ class RoomTypeController {
     try {
       const { id } = req.params;
       
-      const roomType = await RoomType.findById(id);
+      const roomType = await RoomType.findById(id).lean();
 
       if (!roomType) {
         return res.status(404).json({
@@ -228,7 +228,7 @@ class RoomTypeController {
     try {
       const { id } = req.params;
       
-      const existingRoomType = await RoomType.findById(id);
+      const existingRoomType = await RoomType.findById(id).lean();
       if (!existingRoomType) {
         return res.status(404).json({
           success: false,
@@ -286,7 +286,7 @@ class RoomTypeController {
     try {
       const { id } = req.params;
       
-      const roomType = await RoomType.findById(id);
+      const roomType = await RoomType.findById(id).lean();
       if (!roomType) {
         return res.status(404).json({
           success: false,
@@ -347,36 +347,39 @@ class RoomTypeController {
       const { id } = req.params;
       const { channel, channelRoomTypeId, channelRoomTypeName } = req.body;
 
-      const roomType = await RoomType.findById(id);
-      if (!roomType) {
-        return res.status(404).json({
-          success: false,
-          message: 'Room type not found'
-        });
-      }
-
-      // Check if mapping already exists
-      const existingMapping = roomType.channels.find(
-        mapping => mapping.channel === channel
+      // Atomically push channel mapping only if it doesn't already exist
+      const roomType = await RoomType.findOneAndUpdate(
+        {
+          _id: id,
+          'channels.channel': { $ne: channel }
+        },
+        {
+          $push: {
+            channels: {
+              channel,
+              channelRoomTypeId,
+              name: channelRoomTypeName,
+              isActive: true
+            }
+          }
+        },
+        { new: true, runValidators: true }
       );
 
-      if (existingMapping) {
+      if (!roomType) {
+        // Check if not found or duplicate channel
+        const existing = await RoomType.findById(id).lean();
+        if (!existing) {
+          return res.status(404).json({
+            success: false,
+            message: 'Room type not found'
+          });
+        }
         return res.status(400).json({
           success: false,
           message: 'Channel mapping already exists for this room type'
         });
       }
-
-      const oldValues = roomType.toObject();
-      
-      roomType.channels.push({
-        channel,
-        channelRoomTypeId,
-        name: channelRoomTypeName,
-        isActive: true
-      });
-
-      await roomType.save();
 
       // Log the update
       await AuditLog.logChange({
@@ -384,7 +387,6 @@ class RoomTypeController {
         tableName: 'RoomType',
         recordId: roomType._id,
         changeType: 'update',
-        oldValues,
         newValues: roomType.toObject(),
         userId: req.user?.id,
         userEmail: req.user?.email,
@@ -416,7 +418,13 @@ class RoomTypeController {
     try {
       const { id, channelId } = req.params;
 
-      const roomType = await RoomType.findById(id);
+      // Atomically pull the channel mapping from the array
+      const roomType = await RoomType.findOneAndUpdate(
+        { _id: id },
+        { $pull: { channels: { channel: channelId } } },
+        { new: true }
+      );
+
       if (!roomType) {
         return res.status(404).json({
           success: false,
@@ -424,21 +432,12 @@ class RoomTypeController {
         });
       }
 
-      const oldValues = roomType.toObject();
-      
-      roomType.channels = roomType.channels.filter(
-        mapping => mapping.channel !== channelId
-      );
-
-      await roomType.save();
-
       // Log the update
       await AuditLog.logChange({
         hotelId: roomType.hotelId,
         tableName: 'RoomType',
         recordId: roomType._id,
         changeType: 'update',
-        oldValues,
         newValues: roomType.toObject(),
         userId: req.user?.id,
         userEmail: req.user?.email,
@@ -504,7 +503,7 @@ class RoomTypeController {
         hotelId,
         roomTypeId: { $exists: false },
         type: { $exists: true }
-      });
+      }).lean().limit(1000);
 
       let migratedCount = 0;
       const results = [];
@@ -594,7 +593,7 @@ class RoomTypeController {
       const { id } = req.params;
       const { year, month, totalRooms, baseRate } = req.body;
 
-      const roomType = await RoomType.findById(id);
+      const roomType = await RoomType.findById(id).lean();
       if (!roomType) {
         return res.status(404).json({
           success: false,
@@ -753,7 +752,9 @@ class RoomTypeController {
       if (autoTranslate !== undefined) {
         await RoomType.findByIdAndUpdate(id, {
           'content.autoTranslate': autoTranslate
-        });
+        },
+          { new: true }
+        );
       }
 
       res.json({
@@ -825,7 +826,7 @@ class RoomTypeController {
         _id: { $in: roomTypeIds },
         hotelId,
         isActive: true
-      });
+      }).lean().limit(1000);
 
       if (roomTypes.length !== roomTypeIds.length) {
         return res.status(400).json({
@@ -1032,7 +1033,7 @@ class RoomTypeController {
       const { id } = req.params;
       const { updateTranslations = false, targetLanguages = [] } = req.body;
       
-      const existingRoomType = await RoomType.findById(id);
+      const existingRoomType = await RoomType.findById(id).lean();
       if (!existingRoomType) {
         return res.status(404).json({
           success: false,
@@ -1130,7 +1131,7 @@ class RoomTypeController {
       }
 
       const roomTypes = await RoomType.find(filter)
-        .sort({ name: 1 });
+        .sort({ name: 1 }).lean().limit(1000);
 
       // Apply localization if needed
       const localizedRoomTypes = roomTypes.map(roomType => {

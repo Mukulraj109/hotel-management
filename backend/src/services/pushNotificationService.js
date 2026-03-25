@@ -76,7 +76,7 @@ class PushNotificationService {
    */
   async sendNotification(userId, notificationData) {
     try {
-      const user = await User.findById(userId);
+      const user = await User.findById(userId).lean();
       if (!user || !user.pushSubscription || !user.pushNotificationsEnabled) {
         logger.debug(`User ${userId} is not subscribed to push notifications`);
         return { success: false, message: 'User not subscribed' };
@@ -150,7 +150,7 @@ class PushNotificationService {
         role: { $in: roles },
         pushNotificationsEnabled: true,
         pushSubscription: { $ne: null }
-      });
+      }).lean().limit(1000);
 
       const userIds = users.map(user => user._id.toString());
       return await this.sendBulkNotification(userIds, notificationData);
@@ -164,141 +164,157 @@ class PushNotificationService {
    * Send housekeeping task notifications
    */
   async sendHousekeepingTaskNotification(hotelId, taskData) {
-    const notificationData = {
-      title: `New Housekeeping Task`,
-      body: `Room ${taskData.roomNumber}: ${taskData.taskType}`,
-      icon: '/icons/housekeeping-icon.png',
-      tag: 'housekeeping',
-      url: '/staff/housekeeping',
-      requireInteraction: true,
-      actions: [
-        {
-          action: 'view',
-          title: 'View Task',
-          icon: '/icons/view-icon.png'
-        },
-        {
-          action: 'accept',
-          title: 'Accept Task',
-          icon: '/icons/accept-icon.png'
+    try {
+      const notificationData = {
+        title: `New Housekeeping Task`,
+        body: `Room ${taskData.roomNumber}: ${taskData.taskType}`,
+        icon: '/icons/housekeeping-icon.png',
+        tag: 'housekeeping',
+        url: '/staff/housekeeping',
+        requireInteraction: true,
+        actions: [
+          {
+            action: 'view',
+            title: 'View Task',
+            icon: '/icons/view-icon.png'
+          },
+          {
+            action: 'accept',
+            title: 'Accept Task',
+            icon: '/icons/accept-icon.png'
+          }
+        ],
+        data: {
+          type: 'housekeeping_task',
+          taskId: taskData.taskId,
+          roomNumber: taskData.roomNumber,
+          priority: taskData.priority
         }
-      ],
-      data: {
-        type: 'housekeeping_task',
-        taskId: taskData.taskId,
-        roomNumber: taskData.roomNumber,
-        priority: taskData.priority
-      }
-    };
+      };
 
-    return await this.sendNotificationByRole(
-      hotelId, 
-      ['housekeeping', 'staff'], 
-      notificationData
-    );
+      return await this.sendNotificationByRole(
+        hotelId, 
+        ['housekeeping', 'staff'], 
+        notificationData
+      );
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Send maintenance request notifications
    */
   async sendMaintenanceNotification(hotelId, maintenanceData) {
-    const notificationData = {
-      title: `${maintenanceData.priority.toUpperCase()} Maintenance Request`,
-      body: `Room ${maintenanceData.roomNumber}: ${maintenanceData.description}`,
-      icon: '/icons/maintenance-icon.png',
-      tag: 'maintenance',
-      url: '/staff/maintenance',
-      requireInteraction: maintenanceData.priority === 'urgent',
-      actions: [
-        {
-          action: 'view',
-          title: 'View Request',
-          icon: '/icons/view-icon.png'
-        },
-        {
-          action: 'assign',
-          title: 'Assign to Me',
-          icon: '/icons/assign-icon.png'
+    try {
+      const notificationData = {
+        title: `${maintenanceData.priority.toUpperCase()} Maintenance Request`,
+        body: `Room ${maintenanceData.roomNumber}: ${maintenanceData.description}`,
+        icon: '/icons/maintenance-icon.png',
+        tag: 'maintenance',
+        url: '/staff/maintenance',
+        requireInteraction: maintenanceData.priority === 'urgent',
+        actions: [
+          {
+            action: 'view',
+            title: 'View Request',
+            icon: '/icons/view-icon.png'
+          },
+          {
+            action: 'assign',
+            title: 'Assign to Me',
+            icon: '/icons/assign-icon.png'
+          }
+        ],
+        data: {
+          type: 'maintenance_request',
+          requestId: maintenanceData.requestId,
+          roomNumber: maintenanceData.roomNumber,
+          priority: maintenanceData.priority
         }
-      ],
-      data: {
-        type: 'maintenance_request',
-        requestId: maintenanceData.requestId,
-        roomNumber: maintenanceData.roomNumber,
-        priority: maintenanceData.priority
-      }
-    };
+      };
 
-    return await this.sendNotificationByRole(
-      hotelId, 
-      ['maintenance', 'staff'], 
-      notificationData
-    );
+      return await this.sendNotificationByRole(
+        hotelId, 
+        ['maintenance', 'staff'], 
+        notificationData
+      );
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Send guest service request notifications
    */
   async sendGuestServiceNotification(hotelId, serviceData) {
-    const notificationData = {
-      title: 'Guest Service Request',
-      body: `Room ${serviceData.roomNumber}: ${serviceData.serviceType}`,
-      icon: '/icons/service-icon.png',
-      tag: 'guest-service',
-      url: '/staff/guest-services',
-      requireInteraction: false,
-      actions: [
-        {
-          action: 'view',
-          title: 'View Request',
-          icon: '/icons/view-icon.png'
-        },
-        {
-          action: 'fulfill',
-          title: 'Fulfill Request',
-          icon: '/icons/fulfill-icon.png'
+    try {
+      const notificationData = {
+        title: 'Guest Service Request',
+        body: `Room ${serviceData.roomNumber}: ${serviceData.serviceType}`,
+        icon: '/icons/service-icon.png',
+        tag: 'guest-service',
+        url: '/staff/guest-services',
+        requireInteraction: false,
+        actions: [
+          {
+            action: 'view',
+            title: 'View Request',
+            icon: '/icons/view-icon.png'
+          },
+          {
+            action: 'fulfill',
+            title: 'Fulfill Request',
+            icon: '/icons/fulfill-icon.png'
+          }
+        ],
+        data: {
+          type: 'guest_service',
+          serviceId: serviceData.serviceId,
+          roomNumber: serviceData.roomNumber,
+          guestName: serviceData.guestName
         }
-      ],
-      data: {
-        type: 'guest_service',
-        serviceId: serviceData.serviceId,
-        roomNumber: serviceData.roomNumber,
-        guestName: serviceData.guestName
-      }
-    };
+      };
 
-    return await this.sendNotificationByRole(
-      hotelId, 
-      ['front_desk', 'staff'], 
-      notificationData
-    );
+      return await this.sendNotificationByRole(
+        hotelId, 
+        ['front_desk', 'staff'], 
+        notificationData
+      );
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Send booking notifications
    */
   async sendBookingNotification(hotelId, bookingData) {
-    const notificationData = {
-      title: 'New Booking',
-      body: `${bookingData.guestName} - Room ${bookingData.roomNumber}`,
-      icon: '/icons/booking-icon.png',
-      tag: 'booking',
-      url: '/admin/bookings',
-      requireInteraction: false,
-      data: {
-        type: 'new_booking',
-        bookingId: bookingData.bookingId,
-        roomNumber: bookingData.roomNumber,
-        guestName: bookingData.guestName,
-        checkIn: bookingData.checkIn
-      }
-    };
+    try {
+      const notificationData = {
+        title: 'New Booking',
+        body: `${bookingData.guestName} - Room ${bookingData.roomNumber}`,
+        icon: '/icons/booking-icon.png',
+        tag: 'booking',
+        url: '/admin/bookings',
+        requireInteraction: false,
+        data: {
+          type: 'new_booking',
+          bookingId: bookingData.bookingId,
+          roomNumber: bookingData.roomNumber,
+          guestName: bookingData.guestName,
+          checkIn: bookingData.checkIn
+        }
+      };
 
-    return await this.sendNotificationByRole(
-      hotelId, 
-      ['admin', 'front_desk'], 
-      notificationData
-    );
+      return await this.sendNotificationByRole(
+        hotelId, 
+        ['admin', 'front_desk'], 
+        notificationData
+      );
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -380,20 +396,24 @@ class PushNotificationService {
    * Send sync completion notifications (for offline users)
    */
   async sendSyncNotification(userId, syncData) {
-    const notificationData = {
-      title: 'Data Synchronized',
-      body: `${syncData.itemCount} items successfully synced to server`,
-      icon: '/icons/sync-icon.png',
-      tag: 'sync-complete',
-      requireInteraction: false,
-      data: {
-        type: 'sync_complete',
-        itemCount: syncData.itemCount,
-        syncTypes: syncData.syncTypes
-      }
-    };
+    try {
+      const notificationData = {
+        title: 'Data Synchronized',
+        body: `${syncData.itemCount} items successfully synced to server`,
+        icon: '/icons/sync-icon.png',
+        tag: 'sync-complete',
+        requireInteraction: false,
+        data: {
+          type: 'sync_complete',
+          itemCount: syncData.itemCount,
+          syncTypes: syncData.syncTypes
+        }
+      };
 
-    return await this.sendNotification(userId, notificationData);
+      return await this.sendNotification(userId, notificationData);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -427,7 +447,7 @@ class PushNotificationService {
     try {
       const notifications = await Notification.find({ userId })
         .sort({ sentAt: -1 })
-        .limit(limit);
+        .limit(limit).lean();
       
       return notifications;
     } catch (error) {
@@ -444,6 +464,8 @@ class PushNotificationService {
       await Notification.findOneAndUpdate(
         { _id: notificationId, userId },
         { isRead: true, readAt: new Date() }
+      ,
+        { new: true }
       );
       
       return { success: true };
@@ -474,52 +496,64 @@ class PushNotificationService {
    * Helper method to get bookings for a specific date
    */
   async getBookingsForDate(hotelId, date) {
-    // This would be implemented based on your Booking model
-    // Placeholder implementation
-    const { default: Booking } = await import('../models/Booking.js');
-    const startOfDay = new Date(date);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(date);
-    endOfDay.setHours(23, 59, 59, 999);
+    try {
+      // This would be implemented based on your Booking model
+      // Placeholder implementation
+      const { default: Booking } = await import('../models/Booking.js');
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
 
-    return await Booking.find({
-      hotelId,
-      checkIn: { $gte: startOfDay, $lte: endOfDay }
-    }).populate('roomId');
+      return await Booking.find({
+        hotelId,
+        checkIn: { $gte: startOfDay, $lte: endOfDay }
+      }).populate('roomId').lean().limit(1000);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Helper method to get overdue tasks
    */
   async getOverdueTasks(hotelId) {
-    // This would be implemented based on your Task/Housekeeping model
-    const { default: Housekeeping } = await import('../models/Housekeeping.js');
-    const now = new Date();
+    try {
+      // This would be implemented based on your Task/Housekeeping model
+      const { default: Housekeeping } = await import('../models/Housekeeping.js');
+      const now = new Date();
 
-    return await Housekeeping.find({
-      hotelId,
-      status: { $ne: 'completed' },
-      scheduledFor: { $lt: now }
-    }).populate('roomId assignedTo');
+      return await Housekeeping.find({
+        hotelId,
+        status: { $ne: 'completed' },
+        scheduledFor: { $lt: now }
+      }).populate('roomId assignedTo').lean().limit(1000);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Test push notification (for debugging)
    */
   async sendTestNotification(userId) {
-    const testData = {
-      title: 'Test Notification',
-      body: 'This is a test push notification from the Hotel Management System',
-      icon: '/icons/icon-192x192.png',
-      tag: 'test',
-      requireInteraction: false,
-      data: {
-        type: 'test',
-        timestamp: new Date().toISOString()
-      }
-    };
+    try {
+      const testData = {
+        title: 'Test Notification',
+        body: 'This is a test push notification from the Hotel Management System',
+        icon: '/icons/icon-192x192.png',
+        tag: 'test',
+        requireInteraction: false,
+        data: {
+          type: 'test',
+          timestamp: new Date().toISOString()
+        }
+      };
 
-    return await this.sendNotification(userId, testData);
+      return await this.sendNotification(userId, testData);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 

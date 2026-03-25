@@ -24,8 +24,8 @@ class EnhancedAPIDataSeeder {
       logger.info('Connected to MongoDB for enhanced API data seeding');
       console.log('✅ Connected to MongoDB for enhanced API data seeding');
 
-      this.hotels = await Hotel.find({}).select('_id name');
-      this.adminUser = await User.findOne({ role: 'admin' }).select('_id');
+      this.hotels = await Hotel.find({}).select('_id name').lean().limit(1000);
+      this.adminUser = await User.findOne({ role: 'admin' }).select('_id').lean();
 
       console.log(`✅ Found ${this.hotels.length} hotels`);
       console.log(`✅ Using admin user: ${this.adminUser._id}`);

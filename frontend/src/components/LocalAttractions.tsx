@@ -90,7 +90,7 @@ export function LocalAttractions({
       {/* Tab Navigation */}
       <div className="flex border-b border-gray-200 mb-6">
         {TABS.map((tab) => (
-          <button
+          <button aria-label="Close"
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
             className={cn(
@@ -173,7 +173,7 @@ function AttractionCard({ attraction }: AttractionCardProps) {
               {walkingTime}
             </div>
             {(attraction.coordinates?.lat && attraction.coordinates?.lng) && (
-              <button
+              <button aria-label="View"
                 className="mt-2 p-1.5 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
                 onClick={() => {
                   // Open Google Maps with the coordinates

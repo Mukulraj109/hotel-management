@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -165,6 +165,12 @@ const GroupBookingFlow: React.FC<GroupBookingFlowProps> = ({
     'Spa Discount', 'Late Checkout', 'Welcome Amenity'
   ];
 
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   useEffect(() => {
     if (bookingData.checkInDate && bookingData.checkOutDate) {
       fetchAvailableRooms();
@@ -295,6 +301,7 @@ const GroupBookingFlow: React.FC<GroupBookingFlowProps> = ({
 
       // Mock submission - replace with actual API call
       await new Promise(resolve => setTimeout(resolve, 2000));
+    if (!isMountedRef.current) return;
       
       toast.success('Group booking created successfully');
       onComplete?.(bookingData);

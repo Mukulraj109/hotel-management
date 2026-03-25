@@ -22,18 +22,30 @@ interface RefundData {
 
 class PaymentService {
   async createPaymentIntent(data: PaymentIntentData): Promise<PaymentIntentResponse> {
-    const response = await api.post('/payments/intent', data);
-    return response.data;
+    try {
+      const response = await api.post('/payments/intent', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async confirmPayment(paymentIntentId: string): Promise<unknown> {
-    const response = await api.post('/payments/confirm', { paymentIntentId });
-    return response.data;
+    try {
+      const response = await api.post('/payments/confirm', { paymentIntentId });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async createRefund(data: RefundData): Promise<unknown> {
-    const response = await api.post('/payments/refund', data);
-    return response.data;
+    try {
+      const response = await api.post('/payments/refund', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

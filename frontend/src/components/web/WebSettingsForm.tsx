@@ -29,6 +29,7 @@ import {
   Settings
 } from 'lucide-react';
 import { WebSettings } from '@/services/webSettingsService';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface WebSettingsFormProps {
   settings: WebSettings;
@@ -39,7 +40,7 @@ interface WebSettingsFormProps {
   onChange?: () => void;
 }
 
-export default function WebSettingsForm({ 
+function WebSettingsForm({ 
   settings, 
   section, 
   onSave, 
@@ -161,6 +162,7 @@ export default function WebSettingsForm({
               <Input
                 id="email"
                 type="email"
+                required
                 value={formData.contact?.email || ''}
                 onChange={(e) => handleChange('contact.email', e.target.value)}
                 placeholder="hotel@example.com"
@@ -991,3 +993,5 @@ export default function WebSettingsForm({
     </div>
   );
 }
+
+export default withErrorBoundary(WebSettingsForm, { level: 'component' });

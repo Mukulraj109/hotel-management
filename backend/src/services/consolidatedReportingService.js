@@ -44,7 +44,7 @@ class ConsolidatedReportingService {
       const properties = await Hotel.find({
         propertyGroupId,
         isActive: true
-      }).select('_id name address.city totalRooms');
+      }).select('_id name address.city totalRooms').lean().limit(1000);
 
       const propertyIds = properties.map(p => p._id);
 
@@ -52,6 +52,10 @@ class ConsolidatedReportingService {
       const dateGrouping = this.getDateGrouping(aggregateBy);
 
       // Get availability data
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
       const occupancyData = await RoomAvailability.aggregate([
         {
           $match: {
@@ -188,12 +192,16 @@ class ConsolidatedReportingService {
       const properties = await Hotel.find({
         propertyGroupId,
         isActive: true
-      }).select('_id name address.city settings.currency');
+      }).select('_id name address.city settings.currency').lean().limit(1000);
 
       const propertyIds = properties.map(p => p._id);
       const dateGrouping = this.getDateGrouping(aggregateBy);
 
       // Get booking revenue data
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
       const revenueData = await Booking.aggregate([
         {
           $match: {
@@ -328,7 +336,7 @@ class ConsolidatedReportingService {
       const properties = await Hotel.find({
         propertyGroupId,
         isActive: true
-      }).select('_id name address totalRooms');
+      }).select('_id name address totalRooms').lean().limit(1000);
 
       const propertyIds = properties.map(p => p._id);
       const performanceData = [];
@@ -410,7 +418,7 @@ class ConsolidatedReportingService {
 
       // Get property group info
       const propertyGroup = await PropertyGroup.findById(propertyGroupId)
-        .populate('properties', 'name address totalRooms isActive');
+        .populate('properties', 'name address totalRooms isActive').lean();
 
       if (!propertyGroup) {
         throw new Error('Property group not found');
@@ -514,27 +522,37 @@ class ConsolidatedReportingService {
   }
 
   async getOccupancyComparison(propertyIds, startDate, endDate, aggregateBy) {
-    const dateGrouping = this.getDateGrouping(aggregateBy);
+    try {
+      const dateGrouping = this.getDateGrouping(aggregateBy);
 
-    return await RoomAvailability.aggregate([
-      {
-        $match: {
-          hotelId: { $in: propertyIds },
-          date: { $gte: startDate, $lte: endDate }
-        }
-      },
-      {
-        $group: {
-          _id: dateGrouping,
-          avgOccupancyRate: { $avg: { $divide: ['$soldRooms', '$totalRooms'] } }
-        }
-      },
-      { $sort: { '_id': 1 } }
-    ]);
+      // Consider caching this aggregation result for 5 minutes
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+      return await RoomAvailability.aggregate([
+        {
+          $match: {
+            hotelId: { $in: propertyIds },
+            date: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: dateGrouping,
+            avgOccupancyRate: { $avg: { $divide: ['$soldRooms', '$totalRooms'] } }
+          }
+        },
+        { $sort: { '_id': 1 } }
+      ]);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async calculateRevPAR(propertyIds, startDate, endDate, aggregateBy) {
     try {
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
       const revparData = await Booking.aggregate([
         {
           $match: {
@@ -598,95 +616,127 @@ class ConsolidatedReportingService {
   }
 
   async calculatePropertyMetrics(propertyId, startDate, endDate, metrics) {
-    const results = {};
+    try {
+      const results = {};
 
-    for (const metric of metrics) {
-      switch (metric) {
-        case 'occupancy':
-          results.occupancy = await this.getPropertyOccupancy(propertyId, startDate, endDate);
-          break;
-        case 'revenue':
-          results.revenue = await this.getPropertyRevenue(propertyId, startDate, endDate);
-          break;
-        case 'adr':
-          results.adr = await this.getPropertyADR(propertyId, startDate, endDate);
-          break;
-        case 'revpar':
-          results.revpar = await this.getPropertyRevPAR(propertyId, startDate, endDate);
-          break;
+      for (const metric of metrics) {
+        switch (metric) {
+          case 'occupancy':
+            results.occupancy = await this.getPropertyOccupancy(propertyId, startDate, endDate);
+            break;
+          case 'revenue':
+            results.revenue = await this.getPropertyRevenue(propertyId, startDate, endDate);
+            break;
+          case 'adr':
+            results.adr = await this.getPropertyADR(propertyId, startDate, endDate);
+            break;
+          case 'revpar':
+            results.revpar = await this.getPropertyRevPAR(propertyId, startDate, endDate);
+            break;
+        }
       }
-    }
 
-    return results;
+      return results;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getPropertyOccupancy(propertyId, startDate, endDate) {
-    const result = await RoomAvailability.aggregate([
-      {
-        $match: {
-          hotelId: propertyId,
-          date: { $gte: startDate, $lte: endDate }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          avgOccupancy: { $avg: { $divide: ['$soldRooms', '$totalRooms'] } }
-        }
-      }
-    ]);
+    try {
+      // Consider caching this aggregation result for 5 minutes
 
-    return result.length > 0 ? (result[0].avgOccupancy * 100) : 0;
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const result = await RoomAvailability.aggregate([
+        {
+          $match: {
+            hotelId: propertyId,
+            date: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            avgOccupancy: { $avg: { $divide: ['$soldRooms', '$totalRooms'] } }
+          }
+        }
+      ]);
+
+      return result.length > 0 ? (result[0].avgOccupancy * 100) : 0;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getPropertyRevenue(propertyId, startDate, endDate) {
-    const result = await Booking.aggregate([
-      {
-        $match: {
-          hotelId: propertyId,
-          status: { $in: ['confirmed', 'checked_in', 'completed'] },
-          createdAt: { $gte: startDate, $lte: endDate }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: '$totalAmount' }
-        }
-      }
-    ]);
+    try {
+      // Consider caching this aggregation result for 5 minutes
 
-    return result.length > 0 ? result[0].totalRevenue : 0;
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const result = await Booking.aggregate([
+        {
+          $match: {
+            hotelId: propertyId,
+            status: { $in: ['confirmed', 'checked_in', 'completed'] },
+            createdAt: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: '$totalAmount' }
+          }
+        }
+      ]);
+
+      return result.length > 0 ? result[0].totalRevenue : 0;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getPropertyADR(propertyId, startDate, endDate) {
-    const result = await Booking.aggregate([
-      {
-        $match: {
-          hotelId: propertyId,
-          status: { $in: ['confirmed', 'checked_in', 'completed'] },
-          createdAt: { $gte: startDate, $lte: endDate }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          averageRate: { $avg: '$totalAmount' }
-        }
-      }
-    ]);
+    try {
+      // Consider caching this aggregation result for 5 minutes
 
-    return result.length > 0 ? result[0].averageRate : 0;
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const result = await Booking.aggregate([
+        {
+          $match: {
+            hotelId: propertyId,
+            status: { $in: ['confirmed', 'checked_in', 'completed'] },
+            createdAt: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            averageRate: { $avg: '$totalAmount' }
+          }
+        }
+      ]);
+
+      return result.length > 0 ? result[0].averageRate : 0;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getPropertyRevPAR(propertyId, startDate, endDate) {
-    // Simplified RevPAR calculation
-    const [revenue, occupancy] = await Promise.all([
-      this.getPropertyRevenue(propertyId, startDate, endDate),
-      this.getPropertyOccupancy(propertyId, startDate, endDate)
-    ]);
+    try {
+      // Simplified RevPAR calculation
+      const [revenue, occupancy] = await Promise.all([
+        this.getPropertyRevenue(propertyId, startDate, endDate),
+        this.getPropertyOccupancy(propertyId, startDate, endDate)
+      ]);
 
-    return (revenue * occupancy) / 100;
+      return (revenue * occupancy) / 100;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   calculateGroupAverages(performanceData, metrics) {
@@ -751,62 +801,70 @@ class ConsolidatedReportingService {
   }
 
   async generatePerformanceAlerts(propertyGroupId, kpis) {
-    const alerts = [];
+    try {
+      const alerts = [];
 
-    // Low occupancy alert
-    if (kpis.averageOccupancy < 60) {
-      alerts.push({
-        type: 'warning',
-        category: 'occupancy',
-        message: `Group occupancy rate is below 60% (${kpis.averageOccupancy.toFixed(2)}%)`,
-        priority: 'medium'
-      });
+      // Low occupancy alert
+      if (kpis.averageOccupancy < 60) {
+        alerts.push({
+          type: 'warning',
+          category: 'occupancy',
+          message: `Group occupancy rate is below 60% (${kpis.averageOccupancy.toFixed(2)}%)`,
+          priority: 'medium'
+        });
+      }
+
+      // Low revenue alert
+      if (kpis.totalRevenue < 10000) {
+        alerts.push({
+          type: 'warning',
+          category: 'revenue',
+          message: `Group revenue is below expected threshold`,
+          priority: 'high'
+        });
+      }
+
+      // Low RevPAR alert
+      if (kpis.revPAR < 50) {
+        alerts.push({
+          type: 'info',
+          category: 'revpar',
+          message: `Group RevPAR could be improved (${kpis.revPAR.toFixed(2)})`,
+          priority: 'low'
+        });
+      }
+
+      return alerts;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Low revenue alert
-    if (kpis.totalRevenue < 10000) {
-      alerts.push({
-        type: 'warning',
-        category: 'revenue',
-        message: `Group revenue is below expected threshold`,
-        priority: 'high'
-      });
-    }
-
-    // Low RevPAR alert
-    if (kpis.revPAR < 50) {
-      alerts.push({
-        type: 'info',
-        category: 'revpar',
-        message: `Group RevPAR could be improved (${kpis.revPAR.toFixed(2)})`,
-        priority: 'low'
-      });
-    }
-
-    return alerts;
   }
 
   async generateBasicForecasts(propertyGroupId, occupancyData, revenueData) {
-    // Simple linear projection - can be enhanced with machine learning models
-    const forecasts = {};
+    try {
+      // Simple linear projection - can be enhanced with machine learning models
+      const forecasts = {};
 
-    if (occupancyData.length >= 3) {
-      const trend = this.calculateLinearTrend(occupancyData.map(d => d.consolidatedOccupancyRate));
-      forecasts.occupancy = {
-        nextPeriod: Math.max(0, Math.min(100, occupancyData[occupancyData.length - 1].consolidatedOccupancyRate + trend)),
-        confidence: 'low' // Basic forecast has low confidence
-      };
+      if (occupancyData.length >= 3) {
+        const trend = this.calculateLinearTrend(occupancyData.map(d => d.consolidatedOccupancyRate));
+        forecasts.occupancy = {
+          nextPeriod: Math.max(0, Math.min(100, occupancyData[occupancyData.length - 1].consolidatedOccupancyRate + trend)),
+          confidence: 'low' // Basic forecast has low confidence
+        };
+      }
+
+      if (revenueData.length >= 3) {
+        const trend = this.calculateLinearTrend(revenueData.map(d => d.consolidatedRevenue));
+        forecasts.revenue = {
+          nextPeriod: Math.max(0, revenueData[revenueData.length - 1].consolidatedRevenue + trend),
+          confidence: 'low'
+        };
+      }
+
+      return forecasts;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    if (revenueData.length >= 3) {
-      const trend = this.calculateLinearTrend(revenueData.map(d => d.consolidatedRevenue));
-      forecasts.revenue = {
-        nextPeriod: Math.max(0, revenueData[revenueData.length - 1].consolidatedRevenue + trend),
-        confidence: 'low'
-      };
-    }
-
-    return forecasts;
   }
 
   calculateLinearTrend(values) {

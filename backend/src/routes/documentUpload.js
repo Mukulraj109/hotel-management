@@ -378,7 +378,7 @@ router.get('/:id', catchAsync(async (req, res) => {
     .populate('uploadedBy', 'name email')
     .populate('verificationDetails.verifiedBy', 'name email')
     .populate('departmentId', 'name code')
-    .populate('bookingId', 'bookingNumber checkIn checkOut');
+    .populate('bookingId', 'bookingNumber checkIn checkOut').lean();
 
   if (!document) {
     throw new ApplicationError('Document not found', 404);
@@ -410,7 +410,7 @@ router.get('/:id', catchAsync(async (req, res) => {
  *       - bearerAuth: []
  */
 router.get('/:id/download', catchAsync(async (req, res) => {
-  const document = await Document.findById(req.params.id).select('+filePath');
+  const document = await Document.findById(req.params.id).select('+filePath').lean();
 
   if (!document) {
     throw new ApplicationError('Document not found', 404);
@@ -468,7 +468,7 @@ router.patch('/:id/verify',
   catchAsync(async (req, res) => {
     const { comments, confidenceLevel = 5 } = req.body;
 
-    const document = await Document.findById(req.params.id);
+    const document = await Document.findById(req.params.id).lean();
     if (!document) {
       throw new ApplicationError('Document not found', 404);
     }
@@ -507,7 +507,7 @@ router.patch('/:id/reject',
       throw new ApplicationError('Rejection reason is required', 400);
     }
 
-    const document = await Document.findById(req.params.id);
+    const document = await Document.findById(req.params.id).lean();
     if (!document) {
       throw new ApplicationError('Document not found', 404);
     }
@@ -538,41 +538,45 @@ router.patch('/:id/reject',
 router.patch('/:id', catchAsync(async (req, res) => {
   const { description, tags, category, documentType, expiryDate } = req.body;
 
-  const document = await Document.findById(req.params.id);
-  if (!document) {
-    throw new ApplicationError('Document not found', 404);
+  // Build ownership query
+  const ownershipQuery = { _id: req.params.id };
+  if (req.user.role !== 'admin') {
+    ownershipQuery.userId = req.user._id;
   }
 
-  // Users can only update their own documents unless they're admin
-  if (req.user.role !== 'admin' && document.userId.toString() !== req.user._id.toString()) {
+  // Build update fields
+  const setFields = { updatedBy: req.user._id };
+  if (description !== undefined) setFields.description = description;
+  if (tags !== undefined) setFields.tags = Array.isArray(tags) ? tags : tags.split(',').map(tag => tag.trim());
+  if (category !== undefined && req.user.role === 'admin') setFields.category = category;
+  if (documentType !== undefined && req.user.role === 'admin') setFields.documentType = documentType;
+  if (expiryDate !== undefined && req.user.role === 'admin') setFields.expiryDate = new Date(expiryDate);
+
+  const document = await Document.findOneAndUpdate(
+    ownershipQuery,
+    {
+      $set: setFields,
+      $push: {
+        auditTrail: {
+          action: 'update',
+          performedBy: req.user._id,
+          details: { newValues: { description, tags, category, documentType, expiryDate } },
+          ipAddress: req.ip,
+          userAgent: req.get('user-agent'),
+          timestamp: new Date()
+        }
+      }
+    },
+    { new: true, runValidators: true }
+  );
+
+  if (!document) {
+    const exists = await Document.findById(req.params.id).lean();
+    if (!exists) {
+      throw new ApplicationError('Document not found', 404);
+    }
     throw new ApplicationError('You can only update your own documents', 403);
   }
-
-  // Store original values for audit
-  const originalValues = {
-    description: document.description,
-    tags: document.tags,
-    category: document.category,
-    documentType: document.documentType,
-    expiryDate: document.expiryDate
-  };
-
-  // Update allowed fields
-  if (description !== undefined) document.description = description;
-  if (tags !== undefined) document.tags = Array.isArray(tags) ? tags : tags.split(',').map(tag => tag.trim());
-  if (category !== undefined && req.user.role === 'admin') document.category = category;
-  if (documentType !== undefined && req.user.role === 'admin') document.documentType = documentType;
-  if (expiryDate !== undefined && req.user.role === 'admin') document.expiryDate = new Date(expiryDate);
-
-  document.updatedBy = req.user._id;
-
-  // Add audit entry
-  await document.addAuditEntry('update', req.user._id, {
-    originalValues,
-    newValues: { description, tags, category, documentType, expiryDate }
-  }, req.ip, req.get('user-agent'));
-
-  await document.save();
 
   res.json({
     status: 'success',
@@ -591,27 +595,42 @@ router.patch('/:id', catchAsync(async (req, res) => {
  *     tags: [Documents]
  */
 router.delete('/:id', catchAsync(async (req, res) => {
-  const document = await Document.findById(req.params.id);
-  if (!document) {
-    throw new ApplicationError('Document not found', 404);
+  // Build ownership query
+  const ownershipQuery = { _id: req.params.id };
+  if (req.user.role !== 'admin') {
+    ownershipQuery.userId = req.user._id;
   }
 
-  // Users can only delete their own documents unless they're admin
-  if (req.user.role !== 'admin' && document.userId.toString() !== req.user._id.toString()) {
+  const document = await Document.findOneAndUpdate(
+    ownershipQuery,
+    {
+      $set: {
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedBy: req.user._id,
+        isActive: false
+      },
+      $push: {
+        auditTrail: {
+          action: 'delete',
+          performedBy: req.user._id,
+          details: { deletedBy: req.user.name },
+          ipAddress: req.ip,
+          userAgent: req.get('user-agent'),
+          timestamp: new Date()
+        }
+      }
+    },
+    { new: true }
+  );
+
+  if (!document) {
+    const exists = await Document.findById(req.params.id).lean();
+    if (!exists) {
+      throw new ApplicationError('Document not found', 404);
+    }
     throw new ApplicationError('You can only delete your own documents', 403);
   }
-
-  // Soft delete
-  document.isDeleted = true;
-  document.deletedAt = new Date();
-  document.deletedBy = req.user._id;
-  document.isActive = false;
-
-  await document.addAuditEntry('delete', req.user._id, {
-    deletedBy: req.user.name
-  }, req.ip, req.get('user-agent'));
-
-  await document.save();
 
   res.json({
     status: 'success',
@@ -635,7 +654,7 @@ router.get('/staff/:staffId',
     const { status, category, limit = 50, skip = 0 } = req.query;
 
     // Verify the user is actually a staff member
-    const staffUser = await User.findById(staffId);
+    const staffUser = await User.findById(staffId).lean();
     if (!staffUser || staffUser.role !== 'staff') {
       throw new ApplicationError('Staff member not found', 404);
     }
@@ -680,7 +699,7 @@ router.get('/guest/:guestId',
     const { status, category, bookingId, limit = 50, skip = 0 } = req.query;
 
     // Verify the user exists
-    const guestUser = await User.findById(guestId);
+    const guestUser = await User.findById(guestId).lean();
     if (!guestUser) {
       throw new ApplicationError('Guest not found', 404);
     }

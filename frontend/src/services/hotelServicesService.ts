@@ -116,16 +116,24 @@ class HotelServicesService {
     search?: string;
     featured?: boolean;
   }): Promise<HotelService[]> {
-    const response = await api.get('/hotel-services', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/hotel-services', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get specific hotel service details
    */
   async getService(serviceId: string): Promise<HotelService> {
-    const response = await api.get(`/hotel-services/${serviceId}`);
-    return response.data.data;
+    try {
+      const response = await api.get(`/hotel-services/${serviceId}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -143,10 +151,14 @@ class HotelServicesService {
     date: string,
     people: number
   ): Promise<AvailabilityCheck> {
-    const response = await api.get(`/hotel-services/${serviceId}/availability`, {
-      params: { date, people }
-    });
-    return response.data.data;
+    try {
+      const response = await api.get(`/hotel-services/${serviceId}/availability`, {
+        params: { date, people }
+      });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -156,8 +168,12 @@ class HotelServicesService {
     serviceId: string,
     bookingData: ServiceBookingRequest
   ): Promise<{ message: string; booking: ServiceBooking }> {
-    const response = await api.post(`/hotel-services/${serviceId}/bookings`, bookingData);
-    return response.data.data;
+    try {
+      const response = await api.post(`/hotel-services/${serviceId}/bookings`, bookingData);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -168,16 +184,24 @@ class HotelServicesService {
     limit?: number;
     status?: string;
   }): Promise<ServiceBookingsResponse> {
-    const response = await api.get('/hotel-services/bookings', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/hotel-services/bookings', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get specific service booking details
    */
   async getBooking(bookingId: string): Promise<ServiceBooking> {
-    const response = await api.get(`/hotel-services/bookings/${bookingId}`);
-    return response.data.data;
+    try {
+      const response = await api.get(`/hotel-services/bookings/${bookingId}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -187,24 +211,36 @@ class HotelServicesService {
     bookingId: string,
     cancelData: CancelBookingRequest
   ): Promise<{ message: string; booking: ServiceBooking }> {
-    const response = await api.post(`/hotel-services/bookings/${bookingId}/cancel`, cancelData);
-    return response.data.data;
+    try {
+      const response = await api.post(`/hotel-services/bookings/${bookingId}/cancel`, cancelData);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get all service types
    */
   async getServiceTypes(): Promise<ServiceType[]> {
-    const response = await api.get('/hotel-services/types');
-    return response.data.data;
+    try {
+      const response = await api.get('/hotel-services/types');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get featured services
    */
   async getFeaturedServices(): Promise<HotelService[]> {
-    const response = await api.get('/hotel-services/featured');
-    return response.data.data;
+    try {
+      const response = await api.get('/hotel-services/featured');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -432,65 +468,93 @@ class HotelServicesService {
       hasPrev: boolean;
     };
   }> {
-    const response = await api.get('/admin/hotel-services', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/admin/hotel-services', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Create a new hotel service (Admin only)
    */
   async createService(serviceData: FormData): Promise<HotelService> {
-    const response = await api.post('/admin/hotel-services', serviceData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    return response.data.data;
+    try {
+      const response = await api.post('/admin/hotel-services', serviceData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Update a hotel service (Admin only)
    */
   async updateService(serviceId: string, serviceData: FormData): Promise<HotelService> {
-    const response = await api.put(`/admin/hotel-services/${serviceId}`, serviceData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    return response.data.data;
+    try {
+      const response = await api.put(`/admin/hotel-services/${serviceId}`, serviceData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Delete a hotel service (Admin only)
    */
   async deleteService(serviceId: string): Promise<void> {
-    await api.delete(`/admin/hotel-services/${serviceId}`);
+    try {
+      await api.delete(`/admin/hotel-services/${serviceId}`);
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Toggle service active status (Admin only)
    */
   async toggleServiceStatus(serviceId: string): Promise<HotelService> {
-    const response = await api.patch(`/admin/hotel-services/${serviceId}/toggle-status`);
-    return response.data.data;
+    try {
+      const response = await api.patch(`/admin/hotel-services/${serviceId}/toggle-status`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Delete a specific service image (Admin only)
    */
   async deleteServiceImage(serviceId: string, imageIndex: number): Promise<HotelService> {
-    const response = await api.delete(`/admin/hotel-services/${serviceId}/images/${imageIndex}`);
-    return response.data.data;
+    try {
+      const response = await api.delete(`/admin/hotel-services/${serviceId}/images/${imageIndex}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Perform bulk operations on services (Admin only)
    */
   async bulkOperations(operation: string, serviceIds: string[]): Promise<void> {
-    await api.post('/admin/hotel-services/bulk-operations', {
-      operation,
-      serviceIds
-    });
+    try {
+      await api.post('/admin/hotel-services/bulk-operations', {
+        operation,
+        serviceIds
+      });
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**

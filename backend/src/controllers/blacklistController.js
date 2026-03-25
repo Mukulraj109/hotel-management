@@ -47,7 +47,7 @@ export const getBlacklistEntry = catchAsync(async (req, res) => {
     .populate('guestId', 'name email phone')
     .populate('createdBy', 'name email')
     .populate('updatedBy', 'name email')
-    .populate('reviewedBy', 'name email');
+    .populate('reviewedBy', 'name email').lean();
 
   if (!blacklistEntry) {
     throw new ApplicationError('Blacklist entry not found', 404);

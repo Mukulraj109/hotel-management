@@ -176,7 +176,7 @@ export const getAvailableRooms = catchAsync(async (req, res) => {
 
   const rooms = await Room.find(query)
     .select('roomNumber type capacity amenities description baseRate')
-    .sort({ capacity: 1, roomNumber: 1 });
+    .sort({ capacity: 1, roomNumber: 1 }).lean().limit(1000);
 
   res.json({
     success: true,
@@ -298,7 +298,7 @@ export const bookRoom = catchAsync(async (req, res) => {
   }
 
   // Check if user owns the meet-up or is the target user
-  const meetUp = await MeetUpRequest.findById(meetUpId);
+  const meetUp = await MeetUpRequest.findById(meetUpId).lean();
   if (!meetUp) {
     throw new ApplicationError('Meet-up request not found', 404);
   }
@@ -443,7 +443,7 @@ export const cancelRoomBooking = catchAsync(async (req, res) => {
   const { reason = 'Cancelled by user' } = req.body;
 
   // Check if user owns the meet-up
-  const meetUp = await MeetUpRequest.findById(meetUpId);
+  const meetUp = await MeetUpRequest.findById(meetUpId).lean();
   if (!meetUp) {
     throw new ApplicationError('Meet-up request not found', 404);
   }
@@ -496,7 +496,7 @@ export const getBookingDetails = catchAsync(async (req, res) => {
   // Get meet-up with room booking details
   const meetUp = await MeetUpRequest.findById(meetUpId)
     .populate('meetingRoomBooking.roomId', 'roomNumber type capacity amenities description')
-    .populate('meetingRoomBooking.bookingId');
+    .populate('meetingRoomBooking.bookingId').lean();
 
   if (!meetUp) {
     throw new ApplicationError('Meet-up request not found', 404);
@@ -589,7 +589,7 @@ export const getRoomSchedule = catchAsync(async (req, res) => {
     .populate('meetingRoomBooking.roomId', 'roomNumber type capacity')
     .populate('requesterId', 'name email')
     .populate('targetUserId', 'name email')
-    .select('title proposedTime meetingRoomBooking requesterId targetUserId status');
+    .select('title proposedTime meetingRoomBooking requesterId targetUserId status').lean().limit(1000);
 
   // Group by room
   const schedule = meetUps.reduce((acc, meetUp) => {

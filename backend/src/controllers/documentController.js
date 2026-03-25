@@ -13,104 +13,110 @@ class DocumentController {
    * Upload a single document
    */
   async uploadDocument(req, res) {
-    const {
-      category,
-      documentType,
-      description,
-      userType,
-      bookingId,
-      departmentId,
-      priority = 'medium',
-      expiryDate,
-      tags
-    } = req.body;
+    try {
+      const {
+        category,
+        documentType,
+        description,
+        userType,
+        bookingId,
+        departmentId,
+        priority = 'medium',
+        expiryDate,
+        tags
+      } = req.body;
 
-    const { _id: userId, hotelId, role } = req.user;
+      const { _id: userId, hotelId, role } = req.user;
 
-    if (!req.file) {
-      throw new ApplicationError('No document uploaded', 400);
-    }
-
-    // Validate user type
-    const actualUserType = userType || (role === 'staff' ? 'staff' : 'guest');
-
-    // Validate required fields
-    if (!category || !documentType) {
-      throw new ApplicationError('Category and document type are required', 400);
-    }
-
-    // Validate document against requirements
-    await this.validateDocumentAgainstRequirements(
-      hotelId,
-      actualUserType,
-      category,
-      documentType,
-      { departmentId, bookingId }
-    );
-
-    // Get client metadata
-    const uploadMetadata = this.extractUploadMetadata(req);
-
-    // Create document record
-    const documentData = {
-      userId,
-      userType: actualUserType,
-      hotelId,
-      filename: req.file.filename,
-      originalName: req.file.originalname,
-      fileType: req.file.mimetype,
-      fileSize: req.file.size,
-      filePath: req.file.path,
-      category,
-      documentType,
-      description: description || '',
-      priority,
-      uploadedBy: userId,
-      uploadSource: 'web',
-      ...uploadMetadata,
-      tags: tags ? tags.split(',').map(tag => tag.trim()) : []
-    };
-
-    // Add context-specific fields
-    if (actualUserType === 'guest' && bookingId) {
-      await this.validateBookingAccess(userId, bookingId);
-      documentData.bookingId = bookingId;
-    }
-
-    if (actualUserType === 'staff') {
-      const validDepartmentId = await this.validateDepartmentAccess(userId, departmentId);
-      documentData.departmentId = validDepartmentId;
-    }
-
-    if (expiryDate) {
-      documentData.expiryDate = new Date(expiryDate);
-    }
-
-    const document = new Document(documentData);
-
-    // Add initial audit entry
-    await document.addAuditEntry('upload', userId, {
-      originalName: req.file.originalname,
-      fileSize: req.file.size,
-      category,
-      documentType
-    }, uploadMetadata.ipAddress, uploadMetadata.deviceInfo.userAgent);
-
-    await document.save();
-
-    // Send notifications if required
-    await this.sendUploadNotifications(document);
-
-    // Remove sensitive data from response
-    const responseDoc = document.toJSON();
-
-    return {
-      status: 'success',
-      data: {
-        document: responseDoc,
-        message: 'Document uploaded successfully'
+      if (!req.file) {
+        throw new ApplicationError('No document uploaded', 400);
       }
-    };
+
+      // Validate user type
+      const actualUserType = userType || (role === 'staff' ? 'staff' : 'guest');
+
+      // Validate required fields
+      if (!category || !documentType) {
+        throw new ApplicationError('Category and document type are required', 400);
+      }
+
+      // Validate document against requirements
+      await this.validateDocumentAgainstRequirements(
+        hotelId,
+        actualUserType,
+        category,
+        documentType,
+        { departmentId, bookingId }
+      );
+
+      // Get client metadata
+      const uploadMetadata = this.extractUploadMetadata(req);
+
+      // Create document record
+      const documentData = {
+        userId,
+        userType: actualUserType,
+        hotelId,
+        filename: req.file.filename,
+        originalName: req.file.originalname,
+        fileType: req.file.mimetype,
+        fileSize: req.file.size,
+        filePath: req.file.path,
+        category,
+        documentType,
+        description: description || '',
+        priority,
+        uploadedBy: userId,
+        uploadSource: 'web',
+        ...uploadMetadata,
+        tags: tags ? tags.split(',').map(tag => tag.trim()) : []
+      };
+
+      // Add context-specific fields
+      if (actualUserType === 'guest' && bookingId) {
+        await this.validateBookingAccess(userId, bookingId);
+        documentData.bookingId = bookingId;
+      }
+
+      if (actualUserType === 'staff') {
+        const validDepartmentId = await this.validateDepartmentAccess(userId, departmentId);
+        documentData.departmentId = validDepartmentId;
+      }
+
+      if (expiryDate) {
+        documentData.expiryDate = new Date(expiryDate);
+      }
+
+      const document = new Document(documentData);
+
+      // Add initial audit entry
+      await document.addAuditEntry('upload', userId, {
+        originalName: req.file.originalname,
+        fileSize: req.file.size,
+        category,
+        documentType
+      }, uploadMetadata.ipAddress, uploadMetadata.deviceInfo.userAgent);
+
+      await document.save();
+
+      // Send notifications if required
+      await this.sendUploadNotifications(document);
+
+      // Remove sensitive data from response
+      const responseDoc = document.toJSON();
+
+      return {
+        status: 'success',
+        data: {
+          document: responseDoc,
+          message: 'Document uploaded successfully'
+        }
+      };
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
+    }
   }
 
   /**
@@ -207,464 +213,553 @@ class DocumentController {
    * Get user's documents with filtering
    */
   async getUserDocuments(req, res) {
-    const {
-      status,
-      category,
-      userType,
-      limit = 50,
-      skip = 0,
-      sortBy = '-createdAt'
-    } = req.query;
+    try {
+      const {
+        status,
+        category,
+        userType,
+        limit = 50,
+        skip = 0,
+        sortBy = '-createdAt'
+      } = req.query;
 
-    const documents = await Document.getDocumentsByUser(req.user._id, {
-      status,
-      category,
-      userType,
-      limit: parseInt(limit),
-      skip: parseInt(skip),
-      sortBy
-    });
+      const documents = await Document.getDocumentsByUser(req.user._id, {
+        status,
+        category,
+        userType,
+        limit: parseInt(limit),
+        skip: parseInt(skip),
+        sortBy
+      });
 
-    return {
-      status: 'success',
-      results: documents.length,
-      data: { documents }
-    };
+      return {
+        status: 'success',
+        results: documents.length,
+        data: { documents }
+      };
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
+    }
   }
 
   /**
    * Get specific document details
    */
   async getDocumentById(req, res) {
-    const document = await Document.findById(req.params.id)
-      .populate('userId', 'name email role')
-      .populate('uploadedBy', 'name email')
-      .populate('verificationDetails.verifiedBy', 'name email')
-      .populate('departmentId', 'name code')
-      .populate('bookingId', 'bookingNumber checkIn checkOut');
+    try {
+      const document = await Document.findById(req.params.id)
+        .populate('userId', 'name email role')
+        .populate('uploadedBy', 'name email')
+        .populate('verificationDetails.verifiedBy', 'name email')
+        .populate('departmentId', 'name code')
+        .populate('bookingId', 'bookingNumber checkIn checkOut').lean();
 
-    if (!document) {
-      throw new ApplicationError('Document not found', 404);
+      if (!document) {
+        throw new ApplicationError('Document not found', 404);
+      }
+
+      // Check if user can view this document
+      if (!document.canBeViewedBy(req.user, req.user.departmentId)) {
+        throw new ApplicationError('You do not have permission to view this document', 403);
+      }
+
+      // Log access
+      await document.addAuditEntry('view', req.user._id, {
+        viewedBy: req.user.name
+      }, req.ip, req.get('user-agent'));
+
+      return {
+        status: 'success',
+        data: { document }
+      };
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
     }
-
-    // Check if user can view this document
-    if (!document.canBeViewedBy(req.user, req.user.departmentId)) {
-      throw new ApplicationError('You do not have permission to view this document', 403);
-    }
-
-    // Log access
-    await document.addAuditEntry('view', req.user._id, {
-      viewedBy: req.user.name
-    }, req.ip, req.get('user-agent'));
-
-    return {
-      status: 'success',
-      data: { document }
-    };
   }
 
   /**
    * Download document file
    */
   async downloadDocument(req, res) {
-    const document = await Document.findById(req.params.id).select('+filePath');
+    try {
+      const document = await Document.findById(req.params.id).select('+filePath').lean();
 
-    if (!document) {
-      throw new ApplicationError('Document not found', 404);
+      if (!document) {
+        throw new ApplicationError('Document not found', 404);
+      }
+
+      // Check if user can view this document
+      if (!document.canBeViewedBy(req.user, req.user.departmentId)) {
+        throw new ApplicationError('You do not have permission to download this document', 403);
+      }
+
+      const filePath = document.filePath;
+
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        throw new ApplicationError('Document file not found', 404);
+      }
+
+      // Log download
+      await document.addAuditEntry('download', req.user._id, {
+        downloadedBy: req.user.name
+      }, req.ip, req.get('user-agent'));
+
+      // Set appropriate headers
+      const ext = path.extname(document.originalName).toLowerCase();
+      const contentTypeMap = {
+        '.pdf': 'application/pdf',
+        '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.webp': 'image/webp'
+      };
+
+      return {
+        filePath,
+        contentType: contentTypeMap[ext] || 'application/octet-stream',
+        originalName: document.originalName
+      };
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
     }
-
-    // Check if user can view this document
-    if (!document.canBeViewedBy(req.user, req.user.departmentId)) {
-      throw new ApplicationError('You do not have permission to download this document', 403);
-    }
-
-    const filePath = document.filePath;
-
-    // Check if file exists
-    if (!fs.existsSync(filePath)) {
-      throw new ApplicationError('Document file not found', 404);
-    }
-
-    // Log download
-    await document.addAuditEntry('download', req.user._id, {
-      downloadedBy: req.user.name
-    }, req.ip, req.get('user-agent'));
-
-    // Set appropriate headers
-    const ext = path.extname(document.originalName).toLowerCase();
-    const contentTypeMap = {
-      '.pdf': 'application/pdf',
-      '.doc': 'application/msword',
-      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.png': 'image/png',
-      '.webp': 'image/webp'
-    };
-
-    return {
-      filePath,
-      contentType: contentTypeMap[ext] || 'application/octet-stream',
-      originalName: document.originalName
-    };
   }
 
   /**
    * Verify a document (Admin only)
    */
   async verifyDocument(req, res) {
-    const { comments, confidenceLevel = 5 } = req.body;
+    try {
+      const { comments, confidenceLevel = 5 } = req.body;
 
-    const document = await Document.findById(req.params.id);
-    if (!document) {
-      throw new ApplicationError('Document not found', 404);
-    }
-
-    if (document.status !== 'pending') {
-      throw new ApplicationError('Only pending documents can be verified', 400);
-    }
-
-    await document.verify(req.user._id, comments, confidenceLevel);
-
-    // Send verification notification
-    await this.sendVerificationNotification(document, 'verified');
-
-    return {
-      status: 'success',
-      data: {
-        document,
-        message: 'Document verified successfully'
+      const document = await Document.findById(req.params.id).lean();
+      if (!document) {
+        throw new ApplicationError('Document not found', 404);
       }
-    };
+
+      if (document.status !== 'pending') {
+        throw new ApplicationError('Only pending documents can be verified', 400);
+      }
+
+      await document.verify(req.user._id, comments, confidenceLevel);
+
+      // Send verification notification
+      await this.sendVerificationNotification(document, 'verified');
+
+      return {
+        status: 'success',
+        data: {
+          document,
+          message: 'Document verified successfully'
+        }
+      };
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
+    }
   }
 
   /**
    * Reject a document (Admin only)
    */
   async rejectDocument(req, res) {
-    const { rejectionReason } = req.body;
+    try {
+      const { rejectionReason } = req.body;
 
-    if (!rejectionReason) {
-      throw new ApplicationError('Rejection reason is required', 400);
-    }
-
-    const document = await Document.findById(req.params.id);
-    if (!document) {
-      throw new ApplicationError('Document not found', 404);
-    }
-
-    if (document.status !== 'pending') {
-      throw new ApplicationError('Only pending documents can be rejected', 400);
-    }
-
-    await document.reject(req.user._id, rejectionReason);
-
-    // Send rejection notification
-    await this.sendVerificationNotification(document, 'rejected');
-
-    return {
-      status: 'success',
-      data: {
-        document,
-        message: 'Document rejected'
+      if (!rejectionReason) {
+        throw new ApplicationError('Rejection reason is required', 400);
       }
-    };
+
+      const document = await Document.findById(req.params.id).lean();
+      if (!document) {
+        throw new ApplicationError('Document not found', 404);
+      }
+
+      if (document.status !== 'pending') {
+        throw new ApplicationError('Only pending documents can be rejected', 400);
+      }
+
+      await document.reject(req.user._id, rejectionReason);
+
+      // Send rejection notification
+      await this.sendVerificationNotification(document, 'rejected');
+
+      return {
+        status: 'success',
+        data: {
+          document,
+          message: 'Document rejected'
+        }
+      };
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
+    }
   }
 
   /**
    * Update document metadata
    */
   async updateDocument(req, res) {
-    const { description, tags, category, documentType, expiryDate } = req.body;
+    try {
+      const { description, tags, category, documentType, expiryDate } = req.body;
 
-    const document = await Document.findById(req.params.id);
-    if (!document) {
-      throw new ApplicationError('Document not found', 404);
-    }
-
-    // Users can only update their own documents unless they're admin
-    if (req.user.role !== 'admin' && document.userId.toString() !== req.user._id.toString()) {
-      throw new ApplicationError('You can only update your own documents', 403);
-    }
-
-    // Store original values for audit
-    const originalValues = {
-      description: document.description,
-      tags: document.tags,
-      category: document.category,
-      documentType: document.documentType,
-      expiryDate: document.expiryDate
-    };
-
-    // Build atomic $set fields
-    const setFields = { updatedBy: req.user._id };
-    if (description !== undefined) setFields.description = description;
-    if (tags !== undefined) {
-      setFields.tags = Array.isArray(tags) ? tags : tags.split(',').map(tag => tag.trim());
-    }
-    if (category !== undefined && req.user.role === 'admin') setFields.category = category;
-    if (documentType !== undefined && req.user.role === 'admin') setFields.documentType = documentType;
-    if (expiryDate !== undefined && req.user.role === 'admin') {
-      setFields.expiryDate = new Date(expiryDate);
-    }
-
-    // Add audit entry before update
-    await document.addAuditEntry('update', req.user._id, {
-      originalValues,
-      newValues: { description, tags, category, documentType, expiryDate }
-    }, req.ip, req.get('user-agent'));
-
-    const updatedDocument = await Document.findOneAndUpdate(
-      { _id: req.params.id },
-      { $set: setFields },
-      { new: true, runValidators: true }
-    );
-
-    return {
-      status: 'success',
-      data: {
-        document: updatedDocument,
-        message: 'Document updated successfully'
+      const document = await Document.findById(req.params.id).lean();
+      if (!document) {
+        throw new ApplicationError('Document not found', 404);
       }
-    };
+
+      // Users can only update their own documents unless they're admin
+      if (req.user.role !== 'admin' && document.userId.toString() !== req.user._id.toString()) {
+        throw new ApplicationError('You can only update your own documents', 403);
+      }
+
+      // Store original values for audit
+      const originalValues = {
+        description: document.description,
+        tags: document.tags,
+        category: document.category,
+        documentType: document.documentType,
+        expiryDate: document.expiryDate
+      };
+
+      // Build atomic $set fields
+      const setFields = { updatedBy: req.user._id };
+      if (description !== undefined) setFields.description = description;
+      if (tags !== undefined) {
+        setFields.tags = Array.isArray(tags) ? tags : tags.split(',').map(tag => tag.trim());
+      }
+      if (category !== undefined && req.user.role === 'admin') setFields.category = category;
+      if (documentType !== undefined && req.user.role === 'admin') setFields.documentType = documentType;
+      if (expiryDate !== undefined && req.user.role === 'admin') {
+        setFields.expiryDate = new Date(expiryDate);
+      }
+
+      // Add audit entry before update
+      await document.addAuditEntry('update', req.user._id, {
+        originalValues,
+        newValues: { description, tags, category, documentType, expiryDate }
+      }, req.ip, req.get('user-agent'));
+
+      const updatedDocument = await Document.findOneAndUpdate(
+        { _id: req.params.id },
+        { $set: setFields },
+        { new: true, runValidators: true }
+      );
+
+      return {
+        status: 'success',
+        data: {
+          document: updatedDocument,
+          message: 'Document updated successfully'
+        }
+      };
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
+    }
   }
 
   /**
    * Delete a document (soft delete)
    */
   async deleteDocument(req, res) {
-    const document = await Document.findById(req.params.id);
-    if (!document) {
-      throw new ApplicationError('Document not found', 404);
+    try {
+      // Build a query that checks ownership for non-admins
+      const query = { _id: req.params.id };
+      if (req.user.role !== 'admin') {
+        query.userId = req.user._id;
+      }
+
+      // Atomically soft-delete the document
+      const document = await Document.findOneAndUpdate(
+        query,
+        {
+          $set: {
+            isDeleted: true,
+            deletedAt: new Date(),
+            deletedBy: req.user._id,
+            isActive: false
+          },
+          $push: {
+            auditTrail: {
+              action: 'delete',
+              performedBy: req.user._id,
+              details: { deletedBy: req.user.name },
+              ipAddress: req.ip,
+              userAgent: req.get('user-agent'),
+              timestamp: new Date()
+            }
+          }
+        },
+        { new: true }
+      );
+
+      if (!document) {
+        // Distinguish between not found and permission denied
+        const existing = await Document.findById(req.params.id).lean();
+        if (!existing) {
+          throw new ApplicationError('Document not found', 404);
+        }
+        throw new ApplicationError('You can only delete your own documents', 403);
+      }
+
+      return {
+        status: 'success',
+        message: 'Document deleted successfully'
+      };
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
     }
-
-    // Users can only delete their own documents unless they're admin
-    if (req.user.role !== 'admin' && document.userId.toString() !== req.user._id.toString()) {
-      throw new ApplicationError('You can only delete your own documents', 403);
-    }
-
-    // Soft delete
-    document.isDeleted = true;
-    document.deletedAt = new Date();
-    document.deletedBy = req.user._id;
-    document.isActive = false;
-
-    await document.addAuditEntry('delete', req.user._id, {
-      deletedBy: req.user.name
-    }, req.ip, req.get('user-agent'));
-
-    await document.save();
-
-    return {
-      status: 'success',
-      message: 'Document deleted successfully'
-    };
   }
 
   /**
    * Get staff member's documents (Admin only)
    */
   async getStaffDocuments(req, res) {
-    const { staffId } = req.params;
-    const { status, category, limit = 50, skip = 0 } = req.query;
+    try {
+      const { staffId } = req.params;
+      const { status, category, limit = 50, skip = 0 } = req.query;
 
-    // Verify the user is actually a staff member
-    const staffUser = await User.findById(staffId);
-    if (!staffUser || staffUser.role !== 'staff') {
-      throw new ApplicationError('Staff member not found', 404);
-    }
-
-    const documents = await Document.getDocumentsByUser(staffId, {
-      userType: 'staff',
-      status,
-      category,
-      limit: parseInt(limit),
-      skip: parseInt(skip)
-    });
-
-    return {
-      status: 'success',
-      results: documents.length,
-      data: {
-        documents,
-        staffMember: {
-          _id: staffUser._id,
-          name: staffUser.name,
-          email: staffUser.email,
-          departmentId: staffUser.departmentId
-        }
+      // Verify the user is actually a staff member
+      const staffUser = await User.findById(staffId).lean();
+      if (!staffUser || staffUser.role !== 'staff') {
+        throw new ApplicationError('Staff member not found', 404);
       }
-    };
+
+      const documents = await Document.getDocumentsByUser(staffId, {
+        userType: 'staff',
+        status,
+        category,
+        limit: parseInt(limit),
+        skip: parseInt(skip)
+      });
+
+      return {
+        status: 'success',
+        results: documents.length,
+        data: {
+          documents,
+          staffMember: {
+            _id: staffUser._id,
+            name: staffUser.name,
+            email: staffUser.email,
+            departmentId: staffUser.departmentId
+          }
+        }
+      };
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
+    }
   }
 
   /**
    * Get guest's documents (Admin only)
    */
   async getGuestDocuments(req, res) {
-    const { guestId } = req.params;
-    const { status, category, bookingId, limit = 50, skip = 0 } = req.query;
+    try {
+      const { guestId } = req.params;
+      const { status, category, bookingId, limit = 50, skip = 0 } = req.query;
 
-    // Verify the user exists
-    const guestUser = await User.findById(guestId);
-    if (!guestUser) {
-      throw new ApplicationError('Guest not found', 404);
-    }
-
-    let query = {
-      userType: 'guest',
-      status,
-      category,
-      limit: parseInt(limit),
-      skip: parseInt(skip)
-    };
-
-    if (bookingId) {
-      query.bookingId = bookingId;
-    }
-
-    const documents = await Document.getDocumentsByUser(guestId, query);
-
-    return {
-      status: 'success',
-      results: documents.length,
-      data: {
-        documents,
-        guest: {
-          _id: guestUser._id,
-          name: guestUser.name,
-          email: guestUser.email
-        }
+      // Verify the user exists
+      const guestUser = await User.findById(guestId).lean();
+      if (!guestUser) {
+        throw new ApplicationError('Guest not found', 404);
       }
-    };
+
+      let query = {
+        userType: 'guest',
+        status,
+        category,
+        limit: parseInt(limit),
+        skip: parseInt(skip)
+      };
+
+      if (bookingId) {
+        query.bookingId = bookingId;
+      }
+
+      const documents = await Document.getDocumentsByUser(guestId, query);
+
+      return {
+        status: 'success',
+        results: documents.length,
+        data: {
+          documents,
+          guest: {
+            _id: guestUser._id,
+            name: guestUser.name,
+            email: guestUser.email
+          }
+        }
+      };
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
+    }
   }
 
   /**
    * Get pending document verifications (Admin only)
    */
   async getPendingVerifications(req, res) {
-    const {
-      userType,
-      departmentId,
-      priority,
-      limit = 100,
-      skip = 0
-    } = req.query;
+    try {
+      const {
+        userType,
+        departmentId,
+        priority,
+        limit = 100,
+        skip = 0
+      } = req.query;
 
-    const documents = await Document.getPendingVerifications(req.user.hotelId, {
-      userType,
-      departmentId,
-      priority,
-      limit: parseInt(limit),
-      skip: parseInt(skip)
-    });
+      const documents = await Document.getPendingVerifications(req.user.hotelId, {
+        userType,
+        departmentId,
+        priority,
+        limit: parseInt(limit),
+        skip: parseInt(skip)
+      });
 
-    return {
-      status: 'success',
-      results: documents.length,
-      data: { documents }
-    };
+      return {
+        status: 'success',
+        results: documents.length,
+        data: { documents }
+      };
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
+    }
   }
 
   /**
    * Get document requirements for user type
    */
   async getDocumentRequirements(req, res) {
-    const { userType } = req.params;
-    const { departmentId, bookingType, mandatory } = req.query;
+    try {
+      const { userType } = req.params;
+      const { departmentId, bookingType, mandatory } = req.query;
 
-    if (!['guest', 'staff'].includes(userType)) {
-      throw new ApplicationError('Invalid user type. Must be guest or staff', 400);
+      if (!['guest', 'staff'].includes(userType)) {
+        throw new ApplicationError('Invalid user type. Must be guest or staff', 400);
+      }
+
+      const additionalContext = {
+        departmentId,
+        bookingType,
+        employmentType: req.query.employmentType,
+        jobRole: req.query.jobRole
+      };
+
+      let requirements = await DocumentRequirement.getRequirementsForUser(
+        req.user.hotelId,
+        userType,
+        additionalContext
+      );
+
+      // Filter applicable requirements
+      requirements = requirements.filter(req => req.isApplicableForUser(
+        { role: userType, departmentId, ...req.user },
+        additionalContext
+      ));
+
+      // Filter by mandatory if requested
+      if (mandatory === 'true') {
+        requirements = requirements.filter(req => req.isMandatory);
+      }
+
+      return {
+        status: 'success',
+        results: requirements.length,
+        data: { requirements }
+      };
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
     }
-
-    const additionalContext = {
-      departmentId,
-      bookingType,
-      employmentType: req.query.employmentType,
-      jobRole: req.query.jobRole
-    };
-
-    let requirements = await DocumentRequirement.getRequirementsForUser(
-      req.user.hotelId,
-      userType,
-      additionalContext
-    );
-
-    // Filter applicable requirements
-    requirements = requirements.filter(req => req.isApplicableForUser(
-      { role: userType, departmentId, ...req.user },
-      additionalContext
-    ));
-
-    // Filter by mandatory if requested
-    if (mandatory === 'true') {
-      requirements = requirements.filter(req => req.isMandatory);
-    }
-
-    return {
-      status: 'success',
-      results: requirements.length,
-      data: { requirements }
-    };
   }
 
   /**
    * Get document compliance analytics (Admin only)
    */
   async getComplianceAnalytics(req, res) {
-    const {
-      userType,
-      departmentId,
-      startDate,
-      endDate
-    } = req.query;
+    try {
+      const {
+        userType,
+        departmentId,
+        startDate,
+        endDate
+      } = req.query;
 
-    const stats = await Document.getComplianceStats(req.user.hotelId, {
-      userType,
-      departmentId,
-      startDate,
-      endDate
-    });
+      const stats = await Document.getComplianceStats(req.user.hotelId, {
+        userType,
+        departmentId,
+        startDate,
+        endDate
+      });
 
-    // Get expiring documents
-    const expiringDocuments = await Document.getExpiringDocuments(req.user.hotelId, 30);
+      // Get expiring documents
+      const expiringDocuments = await Document.getExpiringDocuments(req.user.hotelId, 30);
 
-    // Get department-wise statistics if no specific department requested
-    let departmentStats = [];
-    if (!departmentId && userType === 'staff') {
-      const departments = await Department.find({ hotelId: req.user.hotelId, status: 'active' });
+      // Get department-wise statistics if no specific department requested
+      let departmentStats = [];
+      if (!departmentId && userType === 'staff') {
+        const departments = await Department.find({ hotelId: req.user.hotelId, status: 'active' }).lean().limit(1000);
 
-      for (const dept of departments) {
-        const deptStats = await Document.getComplianceStats(req.user.hotelId, {
-          userType: 'staff',
-          departmentId: dept._id,
-          startDate,
-          endDate
-        });
-
-        departmentStats.push({
-          department: dept,
-          stats: deptStats[0] || {}
-        });
-      }
-    }
-
-    return {
-      status: 'success',
-      data: {
-        complianceStats: stats[0] || {},
-        expiringDocuments,
-        departmentStats,
-        summary: {
-          totalExpiring: expiringDocuments.length,
-          analysisPeriod: {
+        for (const dept of departments) {
+          const deptStats = await Document.getComplianceStats(req.user.hotelId, {
+            userType: 'staff',
+            departmentId: dept._id,
             startDate,
-            endDate,
-            userType,
-            departmentId
-          }
+            endDate
+          });
+
+          departmentStats.push({
+            department: dept,
+            stats: deptStats[0] || {}
+          });
         }
       }
-    };
+
+      return {
+        status: 'success',
+        data: {
+          complianceStats: stats[0] || {},
+          expiringDocuments,
+          departmentStats,
+          summary: {
+            totalExpiring: expiringDocuments.length,
+            analysisPeriod: {
+              startDate,
+              endDate,
+              userType,
+              departmentId
+            }
+          }
+        }
+      };
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
+    }
   }
 
   // Helper methods
@@ -687,69 +782,87 @@ class DocumentController {
    * Validate document against requirements
    */
   async validateDocumentAgainstRequirements(hotelId, userType, category, documentType, context) {
-    const requirements = await DocumentRequirement.find({
-      hotelId,
-      userType,
-      category,
-      isActive: true
-    });
+    try {
+      const requirements = await DocumentRequirement.find({
+        hotelId,
+        userType,
+        category,
+        isActive: true
+      }).lean().limit(1000);
 
-    for (const requirement of requirements) {
-      if (requirement.documentType === documentType ||
-          requirement.alternativeTypes.includes(documentType)) {
-        // Document matches requirement - could add additional validation here
-        return true;
+      for (const requirement of requirements) {
+        if (requirement.documentType === documentType ||
+            requirement.alternativeTypes.includes(documentType)) {
+          // Document matches requirement - could add additional validation here
+          return true;
+        }
       }
-    }
 
-    // If no specific requirement found, allow upload but log it
-    console.log(`No specific requirement found for ${userType} document: ${category}/${documentType}`);
-    return true;
+      // If no specific requirement found, allow upload but log it
+      console.log(`No specific requirement found for ${userType} document: ${category}/${documentType}`);
+      return true;
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
+    }
   }
 
   /**
    * Validate booking access for guest documents
    */
   async validateBookingAccess(userId, bookingId) {
-    const booking = await Booking.findById(bookingId);
-    if (!booking) {
-      throw new ApplicationError('Booking not found', 404);
-    }
+    try {
+      const booking = await Booking.findById(bookingId).lean();
+      if (!booking) {
+        throw new ApplicationError('Booking not found', 404);
+      }
 
-    if (booking.userId.toString() !== userId.toString()) {
-      throw new ApplicationError('You can only upload documents for your own bookings', 403);
-    }
+      if (booking.userId.toString() !== userId.toString()) {
+        throw new ApplicationError('You can only upload documents for your own bookings', 403);
+      }
 
-    return booking;
+      return booking;
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
+    }
   }
 
   /**
    * Validate department access for staff documents
    */
   async validateDepartmentAccess(userId, providedDepartmentId) {
-    const user = await User.findById(userId);
+    try {
+      const user = await User.findById(userId).lean();
 
-    // Use provided department ID or user's default department
-    const departmentId = providedDepartmentId || user.departmentId;
+      // Use provided department ID or user's default department
+      const departmentId = providedDepartmentId || user.departmentId;
 
-    if (!departmentId) {
-      throw new ApplicationError('Department ID is required for staff documents', 400);
-    }
-
-    // Verify department exists
-    const department = await Department.findById(departmentId);
-    if (!department) {
-      throw new ApplicationError('Department not found', 404);
-    }
-
-    // If a different department is provided, verify user has access
-    if (providedDepartmentId && providedDepartmentId !== user.departmentId?.toString()) {
-      if (user.role !== 'admin') {
-        throw new ApplicationError('You can only upload documents to your own department', 403);
+      if (!departmentId) {
+        throw new ApplicationError('Department ID is required for staff documents', 400);
       }
-    }
 
-    return departmentId;
+      // Verify department exists
+      const department = await Department.findById(departmentId).lean();
+      if (!department) {
+        throw new ApplicationError('Department not found', 404);
+      }
+
+      // If a different department is provided, verify user has access
+      if (providedDepartmentId && providedDepartmentId !== user.departmentId?.toString()) {
+        if (user.role !== 'admin') {
+          throw new ApplicationError('You can only upload documents to your own department', 403);
+        }
+      }
+
+      return departmentId;
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
+    }
   }
 
   /**

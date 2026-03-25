@@ -80,36 +80,56 @@ interface ApiResponse<T> {
 
 class GuestServiceService {
   async createServiceRequest(data: CreateServiceRequestData): Promise<ApiResponse<{ serviceRequest: GuestServiceRequest }>> {
-    const response = await api.post('/guest-services', data);
-    return response.data;
+    try {
+      const response = await api.post('/guest-services', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getServiceRequests(filters: ServiceRequestFilters = {}): Promise<ApiResponse<{ serviceRequests: GuestServiceRequest[] }>> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/guest-services?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/guest-services?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getServiceRequestById(id: string): Promise<ApiResponse<{ serviceRequest: GuestServiceRequest }>> {
-    const response = await api.get(`/guest-services/${id}`);
-    return response.data;
+    try {
+      const response = await api.get(`/guest-services/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateServiceRequest(id: string, updates: Partial<GuestServiceRequest>): Promise<ApiResponse<{ serviceRequest: GuestServiceRequest }>> {
-    const response = await api.patch(`/guest-services/${id}`, updates);
-    return response.data;
+    try {
+      const response = await api.patch(`/guest-services/${id}`, updates);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async cancelServiceRequest(id: string, reason?: string): Promise<ApiResponse<{ serviceRequest: GuestServiceRequest }>> {
-    const response = await api.patch(`/guest-services/${id}/cancel`, { reason });
-    return response.data;
+    try {
+      const response = await api.patch(`/guest-services/${id}/cancel`, { reason });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

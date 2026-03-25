@@ -200,7 +200,7 @@ const BulkPricingCalculator: React.FC<BulkPricingCalculatorProps> = ({
               </p>
             </div>
           </div>
-          <button
+          <button aria-label="Expand"
             onClick={() => setIsExpanded(!isExpanded)}
             className="p-2 hover:bg-white/20 rounded-lg transition-colors"
           >
@@ -400,7 +400,7 @@ const BulkPricingCalculator: React.FC<BulkPricingCalculatorProps> = ({
               </div>
 
               {/* Recalculate Button */}
-              <button
+              <button aria-label="Refresh"
                 onClick={calculatePricing}
                 disabled={isCalculating}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

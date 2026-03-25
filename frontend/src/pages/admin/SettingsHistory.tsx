@@ -50,6 +50,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useProperty } from '../../context/PropertyContext';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface AuditLogEntry {
   _id: string;
@@ -93,7 +94,7 @@ const SETTING_TYPES = [
   'notification_settings'
 ];
 
-export default function SettingsHistory() {
+function SettingsHistory() {
   const queryClient = useQueryClient();
   const { properties } = useProperty();
 
@@ -782,3 +783,6 @@ export default function SettingsHistory() {
     </div>
   );
 }
+
+
+export default withErrorBoundary(SettingsHistory, { level: 'page' });

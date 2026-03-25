@@ -394,7 +394,7 @@ const UserBillingManagement: React.FC = () => {
                       {user.billingDetails?.gstNumber || '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button
+                      <button aria-label="View"
                         onClick={() => handleViewUser(user)}
                         className="text-blue-600 hover:text-blue-900 mr-3"
                       >
@@ -439,7 +439,7 @@ const UserBillingManagement: React.FC = () => {
                   {Array.from({ length: Math.min(5, pagination.pages) }, (_, i) => {
                     const page = i + 1;
                     return (
-                      <button
+                      <button aria-label="Previous"
                         key={page}
                         onClick={() => setPagination(prev => ({ ...prev, current: page }))}
                         className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
@@ -463,14 +463,14 @@ const UserBillingManagement: React.FC = () => {
       {showUserManagement && selectedUser && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-            <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setShowUserManagement(false)} />
+            <div aria-hidden="true" className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setShowUserManagement(false)} />
 
             <div className="inline-block w-full max-w-4xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-medium text-gray-900">
                   User Management - {selectedUser.name}
                 </h3>
-                <button
+                <button aria-label="View"
                   onClick={() => setShowUserManagement(false)}
                   className="text-gray-400 hover:text-gray-600"
                 >

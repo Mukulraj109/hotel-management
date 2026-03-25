@@ -26,7 +26,7 @@ class ResourceSharingService {
     try {
       // Validate property group membership
       const property = await Hotel.findById(resourceData.ownerPropertyId)
-        .populate('propertyGroupId');
+        .populate('propertyGroupId').lean();
       
       if (!property || !property.propertyGroupId) {
         throw new Error('Property must belong to a property group to share resources');
@@ -126,7 +126,7 @@ class ResourceSharingService {
   async requestResourceAccess(resourceId, requestingPropertyId, userId, requestDetails) {
     try {
       const resource = await SharedResource.findById(resourceId)
-        .populate('ownerPropertyId', 'name');
+        .populate('ownerPropertyId', 'name').lean();
 
       if (!resource) {
         throw new Error('Resource not found');
@@ -275,7 +275,7 @@ class ResourceSharingService {
     try {
       const resource = await SharedResource.findById(resourceId)
         .populate('ownerPropertyId', 'name')
-        .populate('location.currentPropertyId', 'name address');
+        .populate('location.currentPropertyId', 'name address').lean();
 
       if (!resource) {
         throw new Error('Resource not found');
@@ -421,7 +421,7 @@ class ResourceSharingService {
    */
   async endResourceUsage(resourceId, userId, usageData = {}) {
     try {
-      const resource = await SharedResource.findById(resourceId);
+      const resource = await SharedResource.findById(resourceId).lean();
       if (!resource) {
         throw new Error('Resource not found');
       }
@@ -529,7 +529,7 @@ class ResourceSharingService {
     try {
       const resource = await SharedResource.findById(resourceId)
         .populate('ownerPropertyId', 'name address')
-        .populate('location.currentPropertyId', 'name address');
+        .populate('location.currentPropertyId', 'name address').lean();
 
       if (!resource) {
         throw new Error('Resource not found');
@@ -819,8 +819,8 @@ class ResourceSharingService {
 
   async createLogisticsPlan(resource, targetPropertyId, requiredBy) {
     try {
-      const targetProperty = await Hotel.findById(targetPropertyId).select('name address');
-      const currentProperty = await Hotel.findById(resource.location.currentPropertyId).select('name address');
+      const targetProperty = await Hotel.findById(targetPropertyId).select('name address').lean();
+      const currentProperty = await Hotel.findById(resource.location.currentPropertyId).select('name address').lean();
 
       return {
         resourceId: resource._id,
@@ -844,49 +844,69 @@ class ResourceSharingService {
   }
 
   async notifyResourceOwner(resource, requestingPropertyId, userId, requestDetails) {
-    // Implementation would send notification to resource owner
-    logger.info(`Notification sent to resource owner`, {
-      resourceId: resource._id,
-      ownerPropertyId: resource.ownerPropertyId,
-      requestingPropertyId
-    });
+    try {
+      // Implementation would send notification to resource owner
+      logger.info(`Notification sent to resource owner`, {
+        resourceId: resource._id,
+        ownerPropertyId: resource.ownerPropertyId,
+        requestingPropertyId
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async notifyRequestingProperty(resource, request, action, options) {
-    // Implementation would notify requesting property of decision
-    logger.info(`Notification sent to requesting property`, {
-      resourceId: resource._id,
-      requestingPropertyId: request.requestingPropertyId,
-      action
-    });
+    try {
+      // Implementation would notify requesting property of decision
+      logger.info(`Notification sent to requesting property`, {
+        resourceId: resource._id,
+        requestingPropertyId: request.requestingPropertyId,
+        action
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async notifyResourceBooking(resource, propertyId, userId, bookingDetails, estimatedCost) {
-    // Implementation would notify relevant parties of booking
-    logger.info(`Booking notification sent`, {
-      resourceId: resource._id,
-      propertyId,
-      estimatedCost
-    });
+    try {
+      // Implementation would notify relevant parties of booking
+      logger.info(`Booking notification sent`, {
+        resourceId: resource._id,
+        propertyId,
+        estimatedCost
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async notifyResourceTransfer(resource, fromPropertyId, toPropertyId, userId, transferPlan) {
-    // Implementation would notify both properties of transfer
-    logger.info(`Transfer notification sent`, {
-      resourceId: resource._id,
-      fromPropertyId,
-      toPropertyId
-    });
+    try {
+      // Implementation would notify both properties of transfer
+      logger.info(`Transfer notification sent`, {
+        resourceId: resource._id,
+        fromPropertyId,
+        toPropertyId
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async generateResourceUsageInvoice(resource, propertyId, cost, duration) {
-    // Implementation would generate invoice for resource usage
-    logger.info(`Invoice generated for resource usage`, {
-      resourceId: resource._id,
-      propertyId,
-      cost,
-      duration
-    });
+    try {
+      // Implementation would generate invoice for resource usage
+      logger.info(`Invoice generated for resource usage`, {
+        resourceId: resource._id,
+        propertyId,
+        cost,
+        duration
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getTopResourceUsers(propertyGroupId, startDate, endDate) {

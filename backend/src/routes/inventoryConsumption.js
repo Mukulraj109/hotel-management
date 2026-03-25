@@ -96,7 +96,7 @@ router.post('/', authenticate, async (req, res) => {
       }
 
       // Get guest service details to extract guest and booking info
-      const guestService = await GuestService.findById(guestServiceId);
+      const guestService = await GuestService.findById(guestServiceId).lean();
       if (!guestService) {
         return res.status(404).json({
           success: false,
@@ -656,7 +656,7 @@ router.get('/:id', authenticate, async (req, res) => {
       .populate('roomId', 'roomNumber floor')
       .populate('bookingId', 'bookingNumber checkInDate checkOutDate')
       .populate('guestServiceId', 'serviceType title status')
-      .populate('housekeepingTaskId', 'tasks status priority');
+      .populate('housekeepingTaskId', 'tasks status priority').lean();
 
     if (!consumption) {
       return res.status(404).json({
@@ -714,26 +714,43 @@ router.put('/:id/billing', authenticate, async (req, res) => {
   try {
     const { invoiceId, billed = true } = req.body;
 
-    const consumption = await InventoryConsumption.findOne({
-      _id: req.params.id,
-      hotelId: req.user.hotelId
-    });
+    let consumption;
+
+    if (billed) {
+      // Atomic update for marking as billed
+      consumption = await InventoryConsumption.findOneAndUpdate(
+        { _id: req.params.id, hotelId: req.user.hotelId },
+        {
+          $set: {
+            billed: true,
+            billedAt: new Date(),
+            invoiceId: invoiceId,
+            status: 'billed'
+          }
+        },
+        { new: true }
+      );
+    } else {
+      // Atomic update for reversing billing
+      consumption = await InventoryConsumption.findOneAndUpdate(
+        { _id: req.params.id, hotelId: req.user.hotelId },
+        {
+          $set: {
+            billed: false,
+            billedAt: null,
+            invoiceId: null,
+            status: 'approved'
+          }
+        },
+        { new: true }
+      );
+    }
 
     if (!consumption) {
       return res.status(404).json({
         success: false,
         message: 'Consumption record not found'
       });
-    }
-
-    if (billed) {
-      await consumption.markAsBilled(invoiceId);
-    } else {
-      consumption.billed = false;
-      consumption.billedAt = null;
-      consumption.invoiceId = null;
-      consumption.status = 'approved';
-      await consumption.save();
     }
 
     res.json({

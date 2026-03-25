@@ -61,11 +61,17 @@ const apiManagementController = {
     if (includeUsage === 'true') {
       keysWithUsage = await Promise.all(
         keysWithUsage.map(async (key) => {
-          const usage = await apiMetricsService.getAPIKeyUsage(hotelId, key.keyId);
-          return {
-            ...key,
-            usage
-          };
+          try {
+            const usage = await apiMetricsService.getAPIKeyUsage(hotelId, key.keyId);
+            return {
+              ...key,
+              usage
+            };
+        
+          } catch (error) {
+            console.error('Operation failed:', error.message);
+            throw error;
+          }
         })
       );
     }
@@ -194,14 +200,23 @@ const apiManagementController = {
     const { id } = req.params;
     const { hotelId } = req.user;
 
-    const apiKey = await APIKey.findOne({ _id: id, hotelId });
-    
-    if (!apiKey) {
+    // Read current state to determine the toggle direction
+    const existing = await APIKey.findOne({ _id: id, hotelId }).lean();
+
+    if (!existing) {
       throw new ApplicationError('API key not found', 404);
     }
 
-    apiKey.isActive = !apiKey.isActive;
-    await apiKey.save();
+    // Atomically toggle using the known current value as a guard
+    const apiKey = await APIKey.findOneAndUpdate(
+      { _id: id, hotelId, isActive: existing.isActive },
+      { $set: { isActive: !existing.isActive } },
+      { new: true }
+    );
+
+    if (!apiKey) {
+      throw new ApplicationError('API key was modified concurrently, please retry', 409);
+    }
 
     logger.info('API key status toggled', {
       keyId: apiKey.keyId.substring(0, 10) + '...',
@@ -372,7 +387,7 @@ const apiManagementController = {
     const { id } = req.params;
     const { hotelId } = req.user;
 
-    const webhook = await WebhookEndpoint.findOne({ _id: id, hotelId });
+    const webhook = await WebhookEndpoint.findOne({ _id: id, hotelId }).lean();
     
     if (!webhook) {
       throw new ApplicationError('Webhook endpoint not found', 404);
@@ -394,14 +409,18 @@ const apiManagementController = {
     const { id } = req.params;
     const { hotelId } = req.user;
 
-    const webhook = await WebhookEndpoint.findOne({ _id: id, hotelId });
-    
+    const newSecret = WebhookEndpoint.generateSecret();
+
+    // Atomically set the new secret
+    const webhook = await WebhookEndpoint.findOneAndUpdate(
+      { _id: id, hotelId },
+      { $set: { secret: newSecret } },
+      { new: true }
+    );
+
     if (!webhook) {
       throw new ApplicationError('Webhook endpoint not found', 404);
     }
-
-    webhook.secret = WebhookEndpoint.generateSecret();
-    await webhook.save();
 
     logger.info('Webhook secret regenerated', {
       webhookId: webhook._id,
@@ -501,11 +520,17 @@ const apiManagementController = {
       if (includeUsage === 'true') {
         endpointsWithUsage = await Promise.all(
           endpoints.map(async (endpoint) => {
-            const usage = await APIMetrics.getEndpointUsage(hotelId, endpoint.method, endpoint.path);
-            return {
-              ...endpoint,
-              usage
-            };
+            try {
+              const usage = await APIMetrics.getEndpointUsage(hotelId, endpoint.method, endpoint.path);
+              return {
+                ...endpoint,
+                usage
+              };
+          
+            } catch (error) {
+              console.error('Operation failed:', error.message);
+              throw error;
+            }
           })
         );
       }
@@ -577,7 +602,7 @@ const apiManagementController = {
       'endpoint.path': path,
       period,
       timestamp: { $gte: startTime, $lte: endTime }
-    }).sort({ timestamp: 1 });
+    }).sort({ timestamp: 1 }).lean().limit(1000);
 
     res.json({
       success: true,
@@ -674,7 +699,7 @@ const apiManagementController = {
     const { hotelId } = req.user;
 
     const webhooks = await WebhookEndpoint.find({ hotelId })
-      .select('name url stats health events');
+      .select('name url stats health events').lean().limit(1000);
 
     // Calculate totals
     const totalStats = webhooks.reduce((acc, webhook) => ({
@@ -730,7 +755,7 @@ const apiManagementController = {
 
     const logs = await APIMetrics.find(filter)
       .sort({ timestamp: -1 })
-      .limit(10000); // Limit to prevent memory issues
+      .limit(10000).lean(); // Limit to prevent memory issues
 
     if (format === 'csv') {
       // Convert to CSV format

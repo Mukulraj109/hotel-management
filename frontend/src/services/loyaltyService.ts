@@ -96,25 +96,37 @@ class LoyaltyService {
    * Get user's loyalty dashboard
    */
   async getDashboard(): Promise<LoyaltyDashboard> {
-    const response = await api.get('/loyalty/dashboard');
-    return response.data.data;
+    try {
+      const response = await api.get('/loyalty/dashboard');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get available loyalty offers
    */
   async getOffers(category?: string): Promise<Offer[]> {
-    const params = category ? { category } : {};
-    const response = await api.get('/loyalty/offers', { params });
-    return response.data.data;
+    try {
+      const params = category ? { category } : {};
+      const response = await api.get('/loyalty/offers', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get specific offer details
    */
   async getOfferDetails(offerId: string): Promise<OfferDetails> {
-    const response = await api.get(`/loyalty/offers/${offerId}`);
-    return response.data.data;
+    try {
+      const response = await api.get(`/loyalty/offers/${offerId}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -126,14 +138,18 @@ class LoyaltyService {
     nextTier: string | null;
     pointsToNextTier: number;
   }> {
-    const response = await api.get('/loyalty/dashboard');
-    const dashboardData = response.data.data;
-    return {
-      points: dashboardData.user.points,
-      tier: dashboardData.user.tier,
-      nextTier: dashboardData.user.nextTier,
-      pointsToNextTier: dashboardData.user.pointsToNextTier
-    };
+    try {
+      const response = await api.get('/loyalty/dashboard');
+      const dashboardData = response.data.data;
+      return {
+        points: dashboardData.user.points,
+        tier: dashboardData.user.tier,
+        nextTier: dashboardData.user.nextTier,
+        pointsToNextTier: dashboardData.user.pointsToNextTier
+      };
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -270,19 +286,27 @@ class LoyaltyService {
    * Get transaction history
    */
   async getHistory(page = 1, limit = 20, type?: string): Promise<TransactionHistory> {
-    const params: Record<string, unknown> = { page, limit };
-    if (type) params.type = type;
+    try {
+      const params: Record<string, unknown> = { page, limit };
+      if (type) params.type = type;
     
-    const response = await api.get('/loyalty/history', { params });
-    return response.data.data;
+      const response = await api.get('/loyalty/history', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get user's current points and tier
    */
   async getPoints(): Promise<LoyaltyPoints> {
-    const response = await api.get('/loyalty/points');
-    return response.data.data;
+    try {
+      const response = await api.get('/loyalty/points');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**

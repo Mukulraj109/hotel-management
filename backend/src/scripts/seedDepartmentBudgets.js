@@ -11,7 +11,7 @@ console.log('🏦 Seeding Department Budgets...');
 
 try {
   // Get all hotels
-  const hotels = await Hotel.find();
+  const hotels = await Hotel.find().lean().limit(1000);
 
   if (hotels.length === 0) {
     console.log('❌ No hotels found. Please seed hotels first.');
@@ -246,7 +246,7 @@ try {
   const sampleBudgets = await DepartmentBudget.find({
     'budgetPeriod.year': currentYear,
     'budgetPeriod.month': currentMonth
-  }).limit(5);
+  }).limit(5).lean();
 
   console.log(`\n📋 Sample Budget Utilization:`);
   sampleBudgets.forEach((budget, index) => {

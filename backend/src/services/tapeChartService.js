@@ -36,7 +36,7 @@ class TapeChartService {
       if (filters.wing) query.wing = filters.wing;
       if (filters.isActive !== undefined) query.isActive = filters.isActive;
 
-      return await RoomConfiguration.find(query).sort({ floor: 1, sortOrder: 1 });
+      return await RoomConfiguration.find(query).sort({ floor: 1, sortOrder: 1 }).lean().limit(1000);
     } catch (error) {
       throw new Error(`Failed to fetch room configurations: ${error.message}`);
     }
@@ -56,40 +56,53 @@ class TapeChartService {
 
   // Room Status Management
   async updateRoomStatus(roomId, statusData, userId) {
+    const session = await mongoose.startSession();
     try {
-      const room = await Room.findById(roomId);
-      if (!room) {
-        throw new Error('Room not found');
-      }
+      let result;
+      await session.withTransaction(async () => {
+        try {
+          const room = await Room.findById(roomId).session(session);
+          if (!room) {
+            throw new Error('Room not found');
+          }
 
-      const previousStatus = room.status;
+          const previousStatus = room.status;
+
+          // Create status history entry
+          const historyEntry = new RoomStatusHistory({
+            roomId,
+            date: new Date(),
+            status: statusData.status,
+            previousStatus,
+            bookingId: statusData.bookingId,
+            guestName: statusData.guestName,
+            checkIn: statusData.checkIn,
+            checkOut: statusData.checkOut,
+            notes: statusData.notes,
+            changedBy: userId,
+            changeReason: statusData.changeReason,
+            priority: statusData.priority || 'medium'
+          });
+
+          await historyEntry.save({ session });
+
+          // Update room status
+          room.status = statusData.status;
+          room.lastUpdated = new Date();
+          await room.save({ session });
+
+          result = { room, history: historyEntry };
       
-      // Create status history entry
-      const historyEntry = new RoomStatusHistory({
-        roomId,
-        date: new Date(),
-        status: statusData.status,
-        previousStatus,
-        bookingId: statusData.bookingId,
-        guestName: statusData.guestName,
-        checkIn: statusData.checkIn,
-        checkOut: statusData.checkOut,
-        notes: statusData.notes,
-        changedBy: userId,
-        changeReason: statusData.changeReason,
-        priority: statusData.priority || 'medium'
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
+        }
       });
-
-      await historyEntry.save();
-
-      // Update room status
-      room.status = statusData.status;
-      room.lastUpdated = new Date();
-      await room.save();
-
-      return { room, history: historyEntry };
+      return result;
     } catch (error) {
       throw new Error(`Failed to update room status: ${error.message}`);
+    } finally {
+      session.endSession();
     }
   }
 
@@ -108,7 +121,7 @@ class TapeChartService {
         .populate('roomId', 'roomNumber roomType')
         .populate('bookingId', 'bookingNumber guestName')
         .populate('changedBy', 'name email')
-        .sort({ date: -1 });
+        .sort({ date: -1 }).lean().limit(1000);
     } catch (error) {
       throw new Error(`Failed to fetch room status history: ${error.message}`);
     }
@@ -125,7 +138,7 @@ class TapeChartService {
       if (guestCount) roomQuery.capacity = { $gte: guestCount };
 
       // Get all rooms matching criteria
-      const rooms = await Room.find(roomQuery);
+      const rooms = await Room.find(roomQuery).lean().limit(1000);
 
       // If dates are provided, filter out rooms that are already booked
       if (checkIn && checkOut) {
@@ -243,15 +256,21 @@ class TapeChartService {
       if (blockData.rooms && blockData.rooms.length > 0) {
         await Promise.all(
           blockData.rooms.map(async (room) => {
-            await this.updateRoomStatus(
-              room.roomId,
-              {
-                status: 'reserved',
-                notes: `Blocked for group: ${blockData.groupName}`,
-                changeReason: 'group_block'
-              },
-              userId
-            );
+            try {
+              await this.updateRoomStatus(
+                room.roomId,
+                {
+                  status: 'reserved',
+                  notes: `Blocked for group: ${blockData.groupName}`,
+                  changeReason: 'group_block'
+                },
+                userId
+              );
+          
+            } catch (error) {
+              console.error('Operation failed:', error.message);
+              throw error;
+            }
           })
         );
       }
@@ -289,7 +308,7 @@ class TapeChartService {
         .populate('rooms.roomId', 'roomNumber roomType')
         .populate('corporateId', 'companyName')
         .populate('createdBy', 'name email')
-        .sort({ startDate: 1 });
+        .sort({ startDate: 1 }).lean().limit(1000);
     } catch (error) {
       throw new Error(`Failed to fetch room blocks: ${error.message}`);
     }
@@ -317,16 +336,22 @@ class TapeChartService {
       // Release all blocked rooms
       await Promise.all(
         block.rooms.map(async (room) => {
-          if (room.status === 'blocked') {
-            await this.updateRoomStatus(
-              room.roomId,
-              {
-                status: 'available',
-                notes: `Released from block: ${block.groupName}`,
-                changeReason: 'block_release'
-              },
-              userId
-            );
+          try {
+            if (room.status === 'blocked') {
+              await this.updateRoomStatus(
+                room.roomId,
+                {
+                  status: 'available',
+                  notes: `Released from block: ${block.groupName}`,
+                  changeReason: 'block_release'
+                },
+                userId
+              );
+            }
+        
+          } catch (error) {
+            console.error('Operation failed:', error.message);
+            throw error;
           }
         })
       );
@@ -370,7 +395,7 @@ class TapeChartService {
         .populate('bookingId', 'bookingNumber guestName checkIn checkOut')
         .populate('roomAssignments.roomId', 'roomNumber roomType')
         .populate('roomAssignments.assignedBy', 'name')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 }).lean().limit(1000);
     } catch (error) {
       throw new Error(`Failed to fetch advanced reservations: ${error.message}`);
     }
@@ -418,7 +443,7 @@ class TapeChartService {
     return await withDistributedLock(lockKey, async () => {
       try {
         const reservation = await AdvancedReservation.findById(reservationId)
-          .populate('bookingId');
+          .populate('bookingId').lean();
 
         if (!reservation) {
           throw new Error('Reservation not found');
@@ -535,7 +560,7 @@ class TapeChartService {
           { createdBy: userId },
           { isSystemDefault: true }
         ]
-      }).sort({ isSystemDefault: -1, viewName: 1 });
+      }).sort({ isSystemDefault: -1, viewName: 1 }).lean().limit(1000);
 
       // Create default view if none exist
       if (views.length === 0) {
@@ -600,7 +625,7 @@ class TapeChartService {
   // Generate Tape Chart Data
   async generateTapeChartData(viewId, dateRange) {
     try {
-      const view = await TapeChartView.findById(viewId);
+      const view = await TapeChartView.findById(viewId).lean();
       if (!view) {
         throw new Error('Tape chart view not found');
       }
@@ -616,7 +641,7 @@ class TapeChartService {
 
       // If no room configurations exist, create them from existing rooms
       if (!roomConfigs || roomConfigs.length === 0) {
-        const rooms = await Room.find({ isActive: true }).sort({ roomNumber: 1 });
+        const rooms = await Room.find({ isActive: true }).sort({ roomNumber: 1 }).lean().limit(1000);
         roomConfigs = [];
 
         for (const room of rooms) {
@@ -662,7 +687,7 @@ class TapeChartService {
         ]
       })
       .populate('rooms.roomId', 'roomNumber type')
-      .populate('userId', 'name email phone');
+      .populate('userId', 'name email phone').lean().limit(1000);
 
       
       // Filter bookings by status in application logic - INCLUDE ALL ACTIVE statuses for TapeChart
@@ -698,15 +723,22 @@ class TapeChartService {
         }
       };
 
+      // Batch: fetch all rooms in a single query
+      const roomNumbers = roomConfigs.filter(c => c.roomNumber).map(c => c.roomNumber);
+      const roomIds = roomConfigs.filter(c => c.roomId).map(c => c.roomId);
+      const allRooms = await Room.find({
+        $or: [
+          ...(roomNumbers.length > 0 ? [{ roomNumber: { $in: roomNumbers } }] : []),
+          ...(roomIds.length > 0 ? [{ _id: { $in: roomIds } }] : [])
+        ],
+        isActive: true
+      }).limit(1000).lean();
+      const roomByNumber = new Map(allRooms.map(r => [r.roomNumber, r]));
+      const roomById = new Map(allRooms.map(r => [r._id.toString(), r]));
+
       // Process each room
       for (const config of roomConfigs) {
-        const room = await Room.findOne({ 
-          $or: [
-            { roomNumber: config.roomNumber },
-            { _id: config.roomId }
-          ],
-          isActive: true
-        });
+        const room = roomByNumber.get(config.roomNumber) || roomById.get(config.roomId?.toString());
         if (!room) continue;
 
         const roomBookings = bookings.filter(b => b.rooms && b.rooms.some(r => r.roomId && r.roomId._id.toString() === room._id.toString()));
@@ -900,7 +932,7 @@ class TapeChartService {
 
       return await RoomAssignmentRules.find(query)
         .populate('createdBy lastModifiedBy', 'name email')
-        .sort({ priority: 1, ruleName: 1 });
+        .sort({ priority: 1, ruleName: 1 }).lean().limit(1000);
     } catch (error) {
       throw new Error(`Failed to fetch assignment rules: ${error.message}`);
     }
@@ -909,7 +941,7 @@ class TapeChartService {
   async getApplicableRules(reservation) {
     try {
       const rules = await RoomAssignmentRules.find({ isActive: true })
-        .sort({ priority: 1 });
+        .sort({ priority: 1 }).lean().limit(1000);
 
       return rules.filter(rule => {
         // Check if rule applies to this reservation
@@ -962,14 +994,14 @@ class TapeChartService {
           }
         ],
         status: { $in: ['confirmed', 'checked_in'] }
-      });
+      }).lean().limit(1000);
 
       const unavailableRoomIds = conflictingBookings.map(b => b.roomId.toString());
       if (unavailableRoomIds.length > 0) {
         query._id = { $nin: unavailableRoomIds };
       }
 
-      return await Room.find(query).sort({ floor: 1, roomNumber: 1 });
+      return await Room.find(query).sort({ floor: 1, roomNumber: 1 }).lean().limit(1000);
     } catch (error) {
       throw new Error(`Failed to find available rooms: ${error.message}`);
     }
@@ -1061,7 +1093,7 @@ class TapeChartService {
         'waitlistInfo.waitlistPosition': { $exists: true, $ne: null }
       })
       .populate('bookingId')
-      .sort({ 'waitlistInfo.waitlistPosition': 1 });
+      .sort({ 'waitlistInfo.waitlistPosition': 1 }).lean().limit(1000);
 
       const processed = [];
 
@@ -1308,12 +1340,12 @@ class TapeChartService {
       const todayBookings = await Booking.find({
         checkInDate: { $gte: today, $lt: tomorrow },
         status: { $in: ['confirmed', 'checked_in'] }
-      });
+      }).lean().limit(1000);
 
       const checkouts = await Booking.find({
         checkOut: { $gte: today, $lt: tomorrow },
         status: 'checked_in'
-      });
+      }).lean().limit(1000);
 
       // Calculate reserved rooms from confirmed bookings
       const reservedRoomsCount = await Booking.aggregate([
@@ -1553,7 +1585,7 @@ class TapeChartService {
       .populate('roomId', 'roomNumber roomType')
       .populate('changedBy', 'name')
       .sort({ createdAt: -1 })
-      .limit(50);
+      .limit(50).lean();
 
       return {
         since: sinceDate,
@@ -1692,7 +1724,7 @@ class TapeChartService {
       const housekeepingTasks = await Housekeeping.find({
         roomId: { $in: rooms.map(r => r._id) },
         status: { $in: ['pending', 'in_progress'] }
-      }).select('roomId status');
+      }).select('roomId status').lean().limit(1000);
       logger.debug('🔧 TAPECHART DEBUG - Housekeeping tasks found:', housekeepingTasks.length);
       housekeepingTasks.forEach(task => {
         const room = rooms.find(r => r._id.toString() === task.roomId.toString());
@@ -1706,7 +1738,7 @@ class TapeChartService {
           { checkIn: { $lte: endOfDay }, checkOut: { $gte: startOfDay } },
           { status: { $in: ['confirmed', 'checked_in'] } }
         ]
-      }).populate('rooms.roomId');
+      }).populate('rooms.roomId').lean().limit(1000);
 
       // Calculate room statistics using computedStatus (real-time status)
       const totalRooms = rooms.length;
@@ -1764,7 +1796,7 @@ class TapeChartService {
         status: 'active',
         startDate: { $lte: endOfDay },
         endDate: { $gte: startOfDay }
-      });
+      }).lean().limit(1000);
 
       // Reservation statistics
       const reservationsToday = bookings.filter(b =>
@@ -1884,18 +1916,19 @@ class TapeChartService {
       const waitlistEntries = await WaitingList.find({
         hotelId: new mongoose.Types.ObjectId(hotelId),
         status: { $in: ['waiting', 'active'] }
-      });
+      }).lean().limit(1000);
+
+      // Batch: get counts for all room types at once using aggregation
+      const roomTypes = [...new Set(waitlistEntries.map(e => e.roomType))];
+      const vacantCounts = await Room.aggregate([
+        { $match: { hotelId: new mongoose.Types.ObjectId(hotelId), type: { $in: roomTypes }, status: 'vacant' } },
+        { $group: { _id: '$type', count: { $sum: 1 } } }
+      ]);
+      const vacantByType = new Map(vacantCounts.map(v => [v._id, v.count]));
 
       let matches = 0;
       for (const entry of waitlistEntries) {
-        // Check if there are available rooms for their preferred dates
-        const availableRooms = await Room.countDocuments({
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          type: entry.roomType,
-          status: 'vacant'
-        });
-
-        if (availableRooms > 0) {
+        if ((vacantByType.get(entry.roomType) || 0) > 0) {
           matches++;
         }
       }
@@ -1915,13 +1948,13 @@ class TapeChartService {
         checkIn: { $lte: date },
         checkOut: { $gte: date },
         status: { $in: ['confirmed', 'checked_in'] }
-      }).populate('rooms.roomId', 'type');
+      }).populate('rooms.roomId', 'type').lean().limit(1000);
 
       // Get available higher-tier rooms for upgrades
       const availableUpgradeRooms = await Room.find({
         hotelId: new mongoose.Types.ObjectId(hotelId),
         status: 'vacant'
-      });
+      }).lean().limit(1000);
 
       let upgradeCount = 0;
       for (const booking of todayBookings) {
@@ -1971,7 +2004,7 @@ class TapeChartService {
         checkIn: { $lte: endDate },
         checkOut: { $gte: startDate },
         status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-      });
+      }).lean().limit(1000);
 
       if (bookings.length === 0) return 0;
 
@@ -2020,7 +2053,7 @@ class TapeChartService {
       const recentBookings = await Booking.find({
         hotelId: new mongoose.Types.ObjectId(hotelId),
         createdAt: { $gte: new Date(Date.now() - 2 * 60 * 60 * 1000) } // Last 2 hours
-      }).sort({ createdAt: -1 }).limit(5).populate('userId', 'username email');
+      }).sort({ createdAt: -1 }).limit(5).populate('userId', 'username email').lean();
 
       const activities = [];
 

@@ -46,7 +46,7 @@ class POSSettlementIntegrationService {
       // Check if settlement already exists for this booking
       let settlement = null;
       if (billingSession.bookingId) {
-        settlement = await Settlement.findOne({ bookingId: billingSession.bookingId });
+        settlement = await Settlement.findOne({ bookingId: billingSession.bookingId }).lean();
       }
 
       // If no existing settlement, create new one
@@ -85,55 +85,59 @@ class POSSettlementIntegrationService {
    * @private
    */
   async _createNewSettlementFromSession(billingSession, userContext) {
-    // Get guest details
-    let guestDetails = {
-      guestName: billingSession.guestName,
-      guestEmail: null,
-      guestPhone: null
-    };
+    try {
+      // Get guest details
+      let guestDetails = {
+        guestName: billingSession.guestName,
+        guestEmail: null,
+        guestPhone: null
+      };
 
-    // Try to get more guest details from booking
-    if (billingSession.bookingId && billingSession.bookingId.userId) {
-      const user = await User.findById(billingSession.bookingId.userId);
-      if (user) {
-        guestDetails = {
-          guestId: user._id,
-          guestName: user.name || billingSession.guestName,
-          guestEmail: user.email,
-          guestPhone: user.phone
-        };
+      // Try to get more guest details from booking
+      if (billingSession.bookingId && billingSession.bookingId.userId) {
+        const user = await User.findById(billingSession.bookingId.userId).lean();
+        if (user) {
+          guestDetails = {
+            guestId: user._id,
+            guestName: user.name || billingSession.guestName,
+            guestEmail: user.email,
+            guestPhone: user.phone
+          };
+        }
       }
+
+      // Create settlement data
+      const settlementData = {
+        hotelId: billingSession.hotelId._id || billingSession.hotelId,
+        bookingId: billingSession.bookingId?._id,
+        originalAmount: billingSession.bookingId?.totalAmount || 0,
+        finalAmount: billingSession.grandTotal,
+        guestDetails,
+        bookingDetails: billingSession.bookingId ? {
+          bookingNumber: billingSession.bookingId.bookingNumber,
+          checkInDate: billingSession.bookingId.checkIn,
+          checkOutDate: billingSession.bookingId.checkOut,
+          roomNumbers: [billingSession.roomNumber],
+          nights: this._calculateNights(billingSession.bookingId.checkIn, billingSession.bookingId.checkOut)
+        } : {
+          bookingNumber: `POS-${billingSession.sessionId}`,
+          roomNumbers: [billingSession.roomNumber]
+        },
+        adjustments: this._convertPOSItemsToAdjustments(billingSession.items, userContext),
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+        notes: `Settlement created from POS billing session: ${billingSession.sessionId}`,
+        createdBy: userContext.userId,
+        tags: ['pos_integration', 'auto_created']
+      };
+
+      const settlement = new Settlement(settlementData);
+      settlement.isNewRecord = true; // Flag for response
+      await settlement.save();
+
+      return settlement;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Create settlement data
-    const settlementData = {
-      hotelId: billingSession.hotelId._id || billingSession.hotelId,
-      bookingId: billingSession.bookingId?._id,
-      originalAmount: billingSession.bookingId?.totalAmount || 0,
-      finalAmount: billingSession.grandTotal,
-      guestDetails,
-      bookingDetails: billingSession.bookingId ? {
-        bookingNumber: billingSession.bookingId.bookingNumber,
-        checkInDate: billingSession.bookingId.checkIn,
-        checkOutDate: billingSession.bookingId.checkOut,
-        roomNumbers: [billingSession.roomNumber],
-        nights: this._calculateNights(billingSession.bookingId.checkIn, billingSession.bookingId.checkOut)
-      } : {
-        bookingNumber: `POS-${billingSession.sessionId}`,
-        roomNumbers: [billingSession.roomNumber]
-      },
-      adjustments: this._convertPOSItemsToAdjustments(billingSession.items, userContext),
-      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
-      notes: `Settlement created from POS billing session: ${billingSession.sessionId}`,
-      createdBy: userContext.userId,
-      tags: ['pos_integration', 'auto_created']
-    };
-
-    const settlement = new Settlement(settlementData);
-    settlement.isNewRecord = true; // Flag for response
-    await settlement.save();
-
-    return settlement;
   }
 
   /**
@@ -141,21 +145,25 @@ class POSSettlementIntegrationService {
    * @private
    */
   async _addPOSItemsToExistingSettlement(settlement, billingSession, userContext) {
-    const posAdjustments = this._convertPOSItemsToAdjustments(billingSession.items, userContext);
+    try {
+      const posAdjustments = this._convertPOSItemsToAdjustments(billingSession.items, userContext);
 
-    // Add each POS item as an adjustment
-    for (const adjustment of posAdjustments) {
-      settlement.addAdjustment({
-        ...adjustment,
-        description: `${adjustment.description} (from POS session: ${billingSession.sessionId})`
-      }, userContext);
+      // Add each POS item as an adjustment
+      for (const adjustment of posAdjustments) {
+        settlement.addAdjustment({
+          ...adjustment,
+          description: `${adjustment.description} (from POS session: ${billingSession.sessionId})`
+        }, userContext);
+      }
+
+      // Update settlement notes
+      const existingNotes = settlement.notes || '';
+      settlement.notes = `${existingNotes}\n\nPOS charges added from billing session: ${billingSession.sessionId} on ${new Date().toISOString()}`;
+
+      await settlement.save();
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Update settlement notes
-    const existingNotes = settlement.notes || '';
-    settlement.notes = `${existingNotes}\n\nPOS charges added from billing session: ${billingSession.sessionId} on ${new Date().toISOString()}`;
-
-    await settlement.save();
   }
 
   /**
@@ -200,13 +208,13 @@ class POSSettlementIntegrationService {
       // Find or create settlement
       let settlement;
       if (settlementId) {
-        settlement = await Settlement.findById(settlementId);
+        settlement = await Settlement.findById(settlementId).lean();
         if (!settlement) {
           throw new ApplicationError('Settlement not found', 404);
         }
       } else {
         // Find existing settlement by booking
-        settlement = await Settlement.findOne({ bookingId: checkoutInventory.bookingId });
+        settlement = await Settlement.findOne({ bookingId: checkoutInventory.bookingId }).lean();
 
         if (!settlement) {
           // Create new settlement for checkout charges
@@ -246,40 +254,48 @@ class POSSettlementIntegrationService {
    * @private
    */
   async _createSettlementFromCheckoutInventory(checkoutInventory, userContext) {
-    // Get guest details from booking
-    const booking = await Booking.findById(checkoutInventory.bookingId)
-      .populate('userId', 'name email phone');
+    try {
+      // Get guest details from booking
+      const booking = await Booking.findById(checkoutInventory.bookingId)
+        .populate('userId', 'name email phone').lean();
 
-    const guestDetails = {
-      guestId: booking.userId?._id,
-      guestName: booking.userId?.name || 'Unknown Guest',
-      guestEmail: booking.userId?.email,
-      guestPhone: booking.userId?.phone
-    };
+      if (!booking) {
+        throw new Error('Booking not found for checkout inventory');
+      }
 
-    const settlementData = {
-      hotelId: booking.hotelId,
-      bookingId: checkoutInventory.bookingId,
-      originalAmount: booking.totalAmount,
-      finalAmount: checkoutInventory.totalAmount, // Will be updated when items are added
-      guestDetails,
-      bookingDetails: {
-        bookingNumber: booking.bookingNumber,
-        checkInDate: booking.checkIn,
-        checkOutDate: booking.checkOut,
-        roomNumbers: [checkoutInventory.roomId.roomNumber],
-        nights: this._calculateNights(booking.checkIn, booking.checkOut)
-      },
-      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      notes: `Settlement created from checkout inventory for damages/missing items`,
-      createdBy: userContext.userId,
-      tags: ['checkout_integration', 'damage_charges', 'auto_created']
-    };
+      const guestDetails = {
+        guestId: booking.userId?._id,
+        guestName: booking.userId?.name || 'Unknown Guest',
+        guestEmail: booking.userId?.email,
+        guestPhone: booking.userId?.phone
+      };
 
-    const settlement = new Settlement(settlementData);
-    await settlement.save();
+      const settlementData = {
+        hotelId: booking.hotelId,
+        bookingId: checkoutInventory.bookingId,
+        originalAmount: booking.totalAmount,
+        finalAmount: checkoutInventory.totalAmount, // Will be updated when items are added
+        guestDetails,
+        bookingDetails: {
+          bookingNumber: booking.bookingNumber,
+          checkInDate: booking.checkIn,
+          checkOutDate: booking.checkOut,
+          roomNumbers: [checkoutInventory.roomId.roomNumber],
+          nights: this._calculateNights(booking.checkIn, booking.checkOut)
+        },
+        dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        notes: `Settlement created from checkout inventory for damages/missing items`,
+        createdBy: userContext.userId,
+        tags: ['checkout_integration', 'damage_charges', 'auto_created']
+      };
 
-    return settlement;
+      const settlement = new Settlement(settlementData);
+      await settlement.save();
+
+      return settlement;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -287,34 +303,38 @@ class POSSettlementIntegrationService {
    * @private
    */
   async _addCheckoutItemsToSettlement(settlement, checkoutInventory, userContext) {
-    const chargeableItems = checkoutInventory.items.filter(item =>
-      item.status === 'damaged' || item.status === 'missing'
-    );
+    try {
+      const chargeableItems = checkoutInventory.items.filter(item =>
+        item.status === 'damaged' || item.status === 'missing'
+      );
 
-    for (const item of chargeableItems) {
-      const adjustmentType = item.status === 'damaged' ? 'damage_charge' : 'other';
-      const description = `${item.itemName} - ${item.status} (${item.quantity}x₹${item.unitPrice})${item.notes ? ` - ${item.notes}` : ''}`;
+      for (const item of chargeableItems) {
+        const adjustmentType = item.status === 'damaged' ? 'damage_charge' : 'other';
+        const description = `${item.itemName} - ${item.status} (${item.quantity}x₹${item.unitPrice})${item.notes ? ` - ${item.notes}` : ''}`;
 
-      settlement.addAdjustment({
-        type: adjustmentType,
-        amount: item.totalPrice,
-        description,
-        category: 'damages',
-        taxable: true,
-        taxAmount: Math.round(item.totalPrice * 0.18), // 18% GST
-        appliedBy: {
-          userId: userContext.userId,
-          userName: userContext.userName,
-          userRole: userContext.userRole
-        }
-      }, userContext);
+        settlement.addAdjustment({
+          type: adjustmentType,
+          amount: item.totalPrice,
+          description,
+          category: 'damages',
+          taxable: true,
+          taxAmount: Math.round(item.totalPrice * 0.18), // 18% GST
+          appliedBy: {
+            userId: userContext.userId,
+            userName: userContext.userName,
+            userRole: userContext.userRole
+          }
+        }, userContext);
+      }
+
+      // Update settlement notes
+      const existingNotes = settlement.notes || '';
+      settlement.notes = `${existingNotes}\n\nCheckout charges added: ${chargeableItems.length} items totaling ₹${checkoutInventory.totalAmount}`;
+
+      await settlement.save();
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Update settlement notes
-    const existingNotes = settlement.notes || '';
-    settlement.notes = `${existingNotes}\n\nCheckout charges added: ${chargeableItems.length} items totaling ₹${checkoutInventory.totalAmount}`;
-
-    await settlement.save();
   }
 
   /**
@@ -326,6 +346,33 @@ class POSSettlementIntegrationService {
    */
   async processUnifiedPayment(settlementId, paymentData, userContext) {
     try {
+      // Idempotency check: if an idempotencyKey is provided, detect duplicate payment
+      if (paymentData.idempotencyKey) {
+        const existingSettlement = await Settlement.findOne({
+          _id: settlementId,
+          'payments.idempotencyKey': paymentData.idempotencyKey
+        }).lean();
+
+        if (existingSettlement) {
+          logger.info('Duplicate payment detected via idempotency key', {
+            settlementId,
+            idempotencyKey: paymentData.idempotencyKey
+          });
+          const existingPayment = existingSettlement.payments?.find(
+            p => p.idempotencyKey === paymentData.idempotencyKey
+          );
+          return {
+            settlement: existingSettlement,
+            payment: existingPayment,
+            integration: {
+              type: 'duplicate_payment_skipped',
+              idempotencyKey: paymentData.idempotencyKey,
+              message: 'Payment already processed with this idempotency key'
+            }
+          };
+        }
+      }
+
       const settlement = await Settlement.findById(settlementId);
       if (!settlement) {
         throw new ApplicationError('Settlement not found', 404);
@@ -336,8 +383,11 @@ class POSSettlementIntegrationService {
         throw new ApplicationError('Payment amount cannot exceed outstanding balance', 400);
       }
 
-      // Add payment to settlement
+      // Add payment to settlement (include idempotency key for future dedup)
       const payment = settlement.addPayment(paymentData, userContext);
+      if (paymentData.idempotencyKey && payment) {
+        payment.idempotencyKey = paymentData.idempotencyKey;
+      }
       await settlement.save();
 
       // If settlement is fully paid, mark any related billing sessions as settled
@@ -373,24 +423,24 @@ class POSSettlementIntegrationService {
     try {
       const booking = await Booking.findById(bookingId)
         .populate('userId', 'name email phone')
-        .populate('hotelId', 'name');
+        .populate('hotelId', 'name').lean();
 
       if (!booking) {
         throw new ApplicationError('Booking not found', 404);
       }
 
       // Check for existing settlement
-      const existingSettlement = await Settlement.findOne({ bookingId });
+      const existingSettlement = await Settlement.findOne({ bookingId }).lean();
 
       // Get related POS billing sessions
       const billingSessions = await BillingSession.find({
         bookingId,
         status: { $in: ['room_charged', 'paid'] }
-      });
+      }).lean().limit(1000);
 
       // Get checkout inventory
       const checkoutInventory = await CheckoutInventory.findOne({ bookingId })
-        .populate('roomId', 'roomNumber');
+        .populate('roomId', 'roomNumber').lean();
 
       // Calculate preview totals
       let preview = {
@@ -455,7 +505,7 @@ class POSSettlementIntegrationService {
   async syncGuestDataAcrossSystems(bookingId) {
     try {
       const booking = await Booking.findById(bookingId)
-        .populate('userId', 'name email phone');
+        .populate('userId', 'name email phone').lean();
 
       if (!booking) {
         throw new ApplicationError('Booking not found', 404);
@@ -471,7 +521,7 @@ class POSSettlementIntegrationService {
       const updates = [];
 
       // Update billing sessions
-      const billingSessions = await BillingSession.find({ bookingId });
+      const billingSessions = await BillingSession.find({ bookingId }).lean().limit(1000);
       for (const session of billingSessions) {
         if (session.guestName !== guestData.guestName) {
           session.guestName = guestData.guestName;
@@ -564,20 +614,24 @@ class POSSettlementIntegrationService {
    * @private
    */
   async _markRelatedBillingSessionsAsSettled(settlement) {
-    if (!settlement.bookingId) return;
+    try {
+      if (!settlement.bookingId) return;
 
-    await BillingSession.updateMany(
-      {
-        bookingId: settlement.bookingId,
-        status: { $in: ['room_charged', 'paid'] }
-      },
-      {
-        $set: {
-          settlementStatus: 'settled',
-          settledAt: new Date()
+      await BillingSession.updateMany(
+        {
+          bookingId: settlement.bookingId,
+          status: { $in: ['room_charged', 'paid'] }
+        },
+        {
+          $set: {
+            settlementStatus: 'settled',
+            settledAt: new Date()
+          }
         }
-      }
-    );
+      );
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 

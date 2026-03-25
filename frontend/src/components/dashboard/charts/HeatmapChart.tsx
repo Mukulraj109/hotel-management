@@ -59,7 +59,7 @@ export function HeatmapChart({
               {floorData.rooms.map((room) => {
                 const color = room.color || getStatusColor(room.status);
                 return (
-                  <div
+                  <div role="button" tabIndex={0}
                     key={room.roomNumber}
                     className={cn(
                       'flex items-center justify-center text-xs font-medium rounded cursor-pointer transition-all duration-200',
@@ -74,7 +74,7 @@ export function HeatmapChart({
                     }}
                     onClick={() => onRoomClick && onRoomClick(room)}
                     title={`Room ${room.roomNumber} - ${room.status.replace('_', ' ')}`}
-                  >
+                   onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => onRoomClick && onRoomClick(room); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                     {room.roomNumber}
                   </div>
                 );

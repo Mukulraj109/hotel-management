@@ -347,22 +347,30 @@ serviceTypeSchema.virtual('completionRate').get(function() {
 
 // Static method to get service types by hotel
 serviceTypeSchema.statics.getByHotel = async function(hotelId, options = {}) {
-  const filter = { hotelId };
+  try {
+    const filter = { hotelId };
 
-  if (options.activeOnly !== false) {
-    filter.isActive = true;
+    if (options.activeOnly !== false) {
+      filter.isActive = true;
+    }
+
+    if (options.type) {
+      filter.type = options.type;
+    }
+
+    return await this.find(filter).sort({ type: 1, name: 1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  if (options.type) {
-    filter.type = options.type;
-  }
-
-  return await this.find(filter).sort({ type: 1, name: 1 });
 };
 
 // Static method to get service type by type and hotel
 serviceTypeSchema.statics.getByTypeAndHotel = async function(type, hotelId) {
-  return await this.findOne({ type, hotelId, isActive: true });
+  try {
+    return await this.findOne({ type, hotelId, isActive: true }).lean();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance method to calculate price with variations

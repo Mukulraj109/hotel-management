@@ -3,6 +3,7 @@ import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
 import { api } from '../../services/api';
 import { toast } from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 import {
   Edit,
   Save,
@@ -390,7 +391,7 @@ const AdminRoomPricing: React.FC = () => {
         <div className="bg-white rounded-lg shadow-md border border-gray-200 p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-medium text-gray-900">Bulk Price Update</h3>
-            <button
+            <button aria-label="Close"
               onClick={() => setBulkUpdateMode(false)}
               className="text-gray-400 hover:text-gray-600"
             >
@@ -583,13 +584,13 @@ const AdminRoomPricing: React.FC = () => {
                     <div className="flex items-center space-x-2">
                       {editingRoom === room._id ? (
                         <>
-                          <button
+                          <button aria-label="Save"
                             onClick={() => handleSaveRoom(room._id)}
                             className="text-green-600 hover:text-green-700"
                           >
                             <Save className="w-4 h-4" />
                           </button>
-                          <button
+                          <button aria-label="Edit"
                             onClick={() => handleCancelEdit(room._id)}
                             className="text-red-600 hover:text-red-700"
                           >
@@ -598,13 +599,13 @@ const AdminRoomPricing: React.FC = () => {
                         </>
                       ) : (
                         <>
-                          <button
+                          <button aria-label="Edit"
                             onClick={() => handleEditRoom(room._id)}
                             className="text-blue-600 hover:text-blue-700"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
-                          <button
+                          <button aria-label="Close"
                             onClick={() => {
                               setShowHistory(room._id);
                               fetchPriceHistory(room._id);
@@ -637,14 +638,14 @@ const AdminRoomPricing: React.FC = () => {
       {showHistory && (
         <div className="fixed inset-0 z-50 overflow-y-auto">
           <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center">
-            <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setShowHistory(null)} />
+            <div aria-hidden="true" className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setShowHistory(null)} />
 
             <div className="inline-block w-full max-w-2xl p-6 my-8 overflow-hidden text-left align-middle transition-all transform bg-white shadow-xl rounded-lg">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-gray-900">
                   Price History - Room {rooms.find(r => r._id === showHistory)?.roomNumber}
                 </h3>
-                <button
+                <button aria-label="Close"
                   onClick={() => setShowHistory(null)}
                   className="text-gray-400 hover:text-gray-600"
                 >
@@ -693,4 +694,4 @@ const AdminRoomPricing: React.FC = () => {
   );
 };
 
-export default AdminRoomPricing;
+export default withErrorBoundary(AdminRoomPricing, { level: 'page' });

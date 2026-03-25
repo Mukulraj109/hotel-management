@@ -4,10 +4,12 @@ import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validateRequest } from '../middleware/validation.js';
 import { body, param, query } from 'express-validator';
+import financialRateLimiter from '../middleware/financialRateLimiter.js';
 
 const router = express.Router();
 
-// All routes require authentication
+// All routes require rate limiting and authentication
+router.use(financialRateLimiter);
 router.use(authenticate);
 router.use(ensurePropertyAccess);
 

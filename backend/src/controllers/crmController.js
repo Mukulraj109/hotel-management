@@ -11,7 +11,7 @@ export const getGuestProfile = catchAsync(async (req, res, next) => {
 
   const profile = await GuestCRMProfile.findOne({ userId, hotelId })
     .populate('userId', 'firstName lastName email phone')
-    .populate('hotelId', 'name');
+    .populate('hotelId', 'name').lean();
 
   if (!profile) {
     return next(new AppError('Guest profile not found', 404));
@@ -155,13 +155,13 @@ export const getCRMAnalytics = catchAsync(async (req, res, next) => {
   const topCustomers = await GuestCRMProfile.find({ hotelId })
     .populate('userId', 'firstName lastName email')
     .sort({ 'engagementMetrics.totalSpending': -1 })
-    .limit(10);
+    .limit(10).lean();
 
   // Get recent activity
   const recentActivity = await GuestBehavior.find({ hotelId })
     .populate('userId', 'firstName lastName')
     .sort({ timestamp: -1 })
-    .limit(20);
+    .limit(20).lean();
 
   // Calculate overall metrics
   const overallMetrics = await GuestCRMProfile.aggregate([
@@ -210,7 +210,7 @@ export const refreshGuestMetrics = catchAsync(async (req, res, next) => {
 export const bulkUpdateMetrics = catchAsync(async (req, res, next) => {
   const hotelId = req.user.hotelId;
 
-  const profiles = await GuestCRMProfile.find({ hotelId });
+  const profiles = await GuestCRMProfile.find({ hotelId }).lean().limit(1000);
 
   let updated = 0;
   for (const profile of profiles) {
@@ -237,7 +237,7 @@ export const getPersonalizationData = catchAsync(async (req, res, next) => {
   const { userId } = req.params;
   const hotelId = req.user.hotelId;
 
-  const profile = await GuestCRMProfile.findOne({ userId, hotelId });
+  const profile = await GuestCRMProfile.findOne({ userId, hotelId }).lean();
   if (!profile) {
     return next(new AppError('Guest profile not found', 404));
   }
@@ -247,7 +247,7 @@ export const getPersonalizationData = catchAsync(async (req, res, next) => {
     userId,
     hotelId,
     timestamp: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
-  }).sort({ timestamp: -1 }).limit(50);
+  }).sort({ timestamp: -1 }).limit(50).lean();
 
   // Extract personalization insights
   const roomTypePreferences = {};

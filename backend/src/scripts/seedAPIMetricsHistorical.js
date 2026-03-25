@@ -27,8 +27,8 @@ class HistoricalMetricsSeeder {
       console.log('✅ Connected to MongoDB for metrics seeding');
 
       // Get existing data
-      this.hotels = await Hotel.find({}).select('_id name');
-      this.apiKeys = await APIKey.find({}).select('_id keyId type hotelId');
+      this.hotels = await Hotel.find({}).select('_id name').lean().limit(1000);
+      this.apiKeys = await APIKey.find({}).select('_id keyId type hotelId').lean().limit(1000);
 
       // Get endpoint catalog
       await endpointRegistryService.scanRoutes();

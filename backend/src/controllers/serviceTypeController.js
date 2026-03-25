@@ -50,7 +50,7 @@ export const getServiceTypes = asyncHandler(async (req, res) => {
   }
 
   // Verify hotel exists and user has access
-  const hotel = await Hotel.findById(targetHotelId);
+  const hotel = await Hotel.findById(targetHotelId).lean();
   if (!hotel) {
     throw new ApiError(404, 'Hotel not found');
   }
@@ -101,7 +101,7 @@ export const getServiceTypes = asyncHandler(async (req, res) => {
 export const getServiceTypeById = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const serviceType = await ServiceType.findById(id);
+  const serviceType = await ServiceType.findById(id).lean();
   if (!serviceType) {
     throw new ApiError(404, 'Service type not found');
   }
@@ -191,7 +191,7 @@ export const createServiceType = asyncHandler(async (req, res) => {
   }
 
   // Verify hotel exists
-  const hotel = await Hotel.findById(targetHotelId);
+  const hotel = await Hotel.findById(targetHotelId).lean();
   if (!hotel) {
     throw new ApiError(404, 'Hotel not found');
   }
@@ -200,7 +200,7 @@ export const createServiceType = asyncHandler(async (req, res) => {
   const existingServiceType = await ServiceType.findOne({
     hotelId: targetHotelId,
     type
-  });
+  }).lean();
 
   if (existingServiceType) {
     throw new ApiError(400, `Service type '${type}' already exists for this hotel`);
@@ -613,7 +613,7 @@ export const getServiceTypeStats = asyncHandler(async (req, res) => {
     throw new ApiError(403, 'Access denied');
   }
 
-  const serviceTypes = await ServiceType.find({ hotelId: targetHotelId, isActive: true });
+  const serviceTypes = await ServiceType.find({ hotelId: targetHotelId, isActive: true }).lean().limit(1000);
 
   const stats = {
     totalServiceTypes: serviceTypes.length,

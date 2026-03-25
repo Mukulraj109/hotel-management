@@ -243,16 +243,20 @@ financialInvoiceSchema.virtual('daysOverdue').get(function() {
 
 // Generate invoice number
 financialInvoiceSchema.statics.generateInvoiceNumber = async function(hotelId) {
-  const year = new Date().getFullYear();
-  const count = await this.countDocuments({
-    hotelId,
-    createdAt: {
-      $gte: new Date(year, 0, 1),
-      $lt: new Date(year + 1, 0, 1)
-    }
-  });
+  try {
+    const year = new Date().getFullYear();
+    const count = await this.countDocuments({
+      hotelId,
+      createdAt: {
+        $gte: new Date(year, 0, 1),
+        $lt: new Date(year + 1, 0, 1)
+      }
+    });
   
-  return `INV-${year}-${String(count + 1).padStart(4, '0')}`;
+    return `INV-${year}-${String(count + 1).padStart(4, '0')}`;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 const FinancialInvoice = mongoose.model('FinancialInvoice', financialInvoiceSchema);

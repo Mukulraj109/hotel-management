@@ -84,43 +84,71 @@ class StaffDashboardService {
   private baseURL = '/staff-dashboard';
 
   async getTodayOverview(): Promise<ApiResponse<{ today: StaffTodayData; lastUpdated: string }>> {
-    // Add timestamp to prevent caching issues
-    const timestamp = new Date().getTime();
-    const response = await api.get(`${this.baseURL}/today?t=${timestamp}`);
-    return response.data;
+    try {
+      // Add timestamp to prevent caching issues
+      const timestamp = new Date().getTime();
+      const response = await api.get(`${this.baseURL}/today?t=${timestamp}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getRoomStatus(): Promise<ApiResponse<RoomStatusData>> {
-    const response = await api.get(`${this.baseURL}/rooms/status`);
-    return response.data;
+    try {
+      const response = await api.get(`${this.baseURL}/rooms/status`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getInventorySummary(): Promise<ApiResponse<StaffInventoryData>> {
-    const response = await api.get(`${this.baseURL}/inventory/summary`);
-    return response.data;
+    try {
+      const response = await api.get(`${this.baseURL}/inventory/summary`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getRecentActivity(): Promise<ApiResponse<StaffActivityData>> {
-    const response = await api.get(`${this.baseURL}/activity`);
-    return response.data;
+    try {
+      const response = await api.get(`${this.baseURL}/activity`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Room status update
   async updateRoomStatus(roomId: string, status: string): Promise<ApiResponse<unknown>> {
-    const response = await api.patch(`/rooms/${roomId}/status`, { status });
-    return response.data;
+    try {
+      const response = await api.patch(`/rooms/${roomId}/status`, { status });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Mark room as inspected
   async markRoomInspected(roomId: string): Promise<ApiResponse<unknown>> {
-    const response = await api.patch(`${this.baseURL}/rooms/${roomId}/inspect`);
-    return response.data;
+    try {
+      const response = await api.patch(`${this.baseURL}/rooms/${roomId}/inspect`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Order inventory item
   async orderInventoryItem(itemId: string, quantity: number = 50): Promise<ApiResponse<unknown>> {
-    const response = await api.post(`${this.baseURL}/inventory/${itemId}/order`, { quantity });
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseURL}/inventory/${itemId}/order`, { quantity });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

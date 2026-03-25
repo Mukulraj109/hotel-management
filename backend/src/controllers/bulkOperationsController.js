@@ -82,10 +82,14 @@ const processBulkStatusUpdateSync = async (roomIds, status, reason, user, hotelI
   const failedUpdates = [];
   const conflicts = [];
 
+  // Batch-fetch all rooms upfront to avoid N+1 queries
+  const allRooms = await Room.find({ _id: { $in: roomIds }, hotelId }).limit(1000).lean();
+  const roomsMap = new Map(allRooms.map(r => [r._id.toString(), r]));
+
   for (const roomId of roomIds) {
     try {
-      // Check if room exists and belongs to hotel
-      const room = await Room.findOne({ _id: roomId, hotelId });
+      // Check if room exists and belongs to hotel (using pre-fetched map)
+      const room = roomsMap.get(roomId.toString());
       if (!room) {
         failedUpdates.push({
           roomId,
@@ -317,6 +321,24 @@ const processBulkAssignmentSync = async (assignments, user, hotelId, confirmOver
         }
       }
 
+      // Validate room status transition before assignment
+      const allowedRoomTransitions = {
+        available: ['occupied', 'blocked', 'maintenance'],
+        occupied: ['available', 'maintenance'],
+        blocked: ['available'],
+        maintenance: ['available'],
+        dirty: ['available', 'maintenance']
+      };
+      const allowedTargets = allowedRoomTransitions[room.status] || [];
+      if (!allowedTargets.includes('occupied')) {
+        failedAssignments.push({
+          roomId,
+          bookingId,
+          error: `Cannot transition room from '${room.status}' to 'occupied'`
+        });
+        continue;
+      }
+
       // Perform assignment
       booking.roomId = roomId;
       booking.roomAssignedAt = new Date();
@@ -408,7 +430,7 @@ const bulkRoomBlock = catchAsync(async (req, res, next) => {
     const rooms = await Room.find({
       _id: { $in: roomIds },
       hotelId
-    });
+    }).lean().limit(1000);
 
     if (rooms.length !== roomIds.length) {
       return next(new ApplicationError('One or more rooms not found', 404));
@@ -507,7 +529,7 @@ const bulkRoomRelease = catchAsync(async (req, res, next) => {
       _id: { $in: roomIds },
       hotelId,
       status: 'blocked'
-    });
+    }).lean().limit(1000);
 
     if (rooms.length === 0) {
       return next(new ApplicationError('No blocked rooms found to release', 404));

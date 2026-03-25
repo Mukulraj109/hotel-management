@@ -404,88 +404,99 @@ inventoryTransactionSchema.statics.getGuestCharges = function(bookingId) {
 
 // Static method to get cost analytics
 inventoryTransactionSchema.statics.getCostAnalytics = async function(hotelId, startDate, endDate) {
-  const matchQuery = {
-    hotelId: new mongoose.Types.ObjectId(hotelId),
-    status: 'completed'
-  };
+  try {
+    const matchQuery = {
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      status: 'completed'
+    };
   
-  if (startDate || endDate) {
-    matchQuery.processedAt = {};
-    if (startDate) matchQuery.processedAt.$gte = new Date(startDate);
-    if (endDate) matchQuery.processedAt.$lte = new Date(endDate);
-  }
-  
-  const pipeline = [
-    { $match: matchQuery },
-    { $unwind: '$items' },
-    {
-      $group: {
-        _id: {
-          transactionType: '$transactionType',
-          category: '$items.category'
-        },
-        totalCost: { $sum: '$items.totalCost' },
-        totalQuantity: { $sum: { $abs: '$items.quantityChanged' } },
-        count: { $sum: 1 }
-      }
-    },
-    {
-      $group: {
-        _id: '$_id.transactionType',
-        categories: {
-          $push: {
-            category: '$_id.category',
-            totalCost: '$totalCost',
-            totalQuantity: '$totalQuantity',
-            count: '$count'
-          }
-        },
-        totalTransactionCost: { $sum: '$totalCost' },
-        totalTransactionQuantity: { $sum: '$totalQuantity' },
-        totalTransactionCount: { $sum: '$count' }
-      }
+    if (startDate || endDate) {
+      matchQuery.processedAt = {};
+      if (startDate) matchQuery.processedAt.$gte = new Date(startDate);
+      if (endDate) matchQuery.processedAt.$lte = new Date(endDate);
     }
-  ];
   
-  return await this.aggregate(pipeline);
+    const pipeline = [
+      { $match: matchQuery },
+      { $unwind: '$items' },
+      {
+        $group: {
+          _id: {
+            transactionType: '$transactionType',
+            category: '$items.category'
+          },
+          totalCost: { $sum: '$items.totalCost' },
+          totalQuantity: { $sum: { $abs: '$items.quantityChanged' } },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.transactionType',
+          categories: {
+            $push: {
+              category: '$_id.category',
+              totalCost: '$totalCost',
+              totalQuantity: '$totalQuantity',
+              count: '$count'
+            }
+          },
+          totalTransactionCost: { $sum: '$totalCost' },
+          totalTransactionQuantity: { $sum: '$totalQuantity' },
+          totalTransactionCount: { $sum: '$count' }
+        }
+      }
+    ];
+  
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to create damage transaction
 inventoryTransactionSchema.statics.createDamageTransaction = async function(data) {
-  const {
-    hotelId,
-    roomId,
-    bookingId,
-    guestId,
-    damagedItems,
-    processedBy,
-    notes
-  } = data;
+  try {
+    const {
+      hotelId,
+      roomId,
+      bookingId,
+      guestId,
+      damagedItems,
+      processedBy,
+      notes
+    } = data;
   
-  return await this.create({
-    hotelId,
-    roomId,
-    bookingId,
-    guestId,
-    transactionType: 'damage',
-    items: damagedItems.map(item => ({
-      itemId: item.itemId,
-      name: item.name,
-      category: item.category,
-      quantityChanged: -Math.abs(item.quantity), // Negative for damaged
-      unitPrice: item.replacementPrice || item.unitPrice,
-      totalCost: (item.replacementPrice || item.unitPrice) * item.quantity,
-      condition: 'damaged',
-      reason: 'damaged_by_guest',
-      isChargeable: true,
-      chargeType: 'damage',
-      notes: item.notes
-    })),
-    chargedToGuest: true,
-    processedBy,
-    status: 'approved',
-    notes
-  });
+    return await this.create({
+      hotelId,
+      roomId,
+      bookingId,
+      guestId,
+      transactionType: 'damage',
+      items: damagedItems.map(item => ({
+        itemId: item.itemId,
+        name: item.name,
+        category: item.category,
+        quantityChanged: -Math.abs(item.quantity), // Negative for damaged
+        unitPrice: item.replacementPrice || item.unitPrice,
+        totalCost: (item.replacementPrice || item.unitPrice) * item.quantity,
+        condition: 'damaged',
+        reason: 'damaged_by_guest',
+        isChargeable: true,
+        chargeType: 'damage',
+        notes: item.notes
+      })),
+      chargedToGuest: true,
+      processedBy,
+      status: 'approved',
+      notes
+    });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
+
+// Data retention TTL: auto-delete inventory transactions after 2 years
+inventoryTransactionSchema.index({ createdAt: 1 }, { expireAfterSeconds: 730 * 24 * 60 * 60 });
 
 export default mongoose.model('InventoryTransaction', inventoryTransactionSchema);

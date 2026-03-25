@@ -199,13 +199,21 @@ export interface ValidationResult {
 
 class AllotmentSettingsService {
   async getHotelSettings(): Promise<HotelAllotmentSettings> {
-    const response = await api.get('/allotments/settings/hotel');
-    return response.data.data;
+    try {
+      const response = await api.get('/allotments/settings/hotel');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getSettingsSummary(): Promise<SettingsSummary> {
-    const response = await api.get('/allotments/settings/summary');
-    return response.data.data;
+    try {
+      const response = await api.get('/allotments/settings/summary');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateGlobalSettings(settings: Partial<HotelAllotmentSettings>): Promise<HotelAllotmentSettings> {

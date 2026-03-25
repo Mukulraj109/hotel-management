@@ -162,13 +162,13 @@ export const NotificationOverviewWidget: React.FC<NotificationOverviewWidgetProp
           {metrics.map((metric) => {
             const Icon = metric.icon;
             return (
-              <div
+              <div role="button" tabIndex={0}
                 key={metric.key}
                 className={`${metric.bgColor} rounded-lg p-4 cursor-pointer transition-all ${
                   selectedMetric === metric.key ? 'ring-2 ring-blue-500' : ''
                 }`}
                 onClick={() => showChart && setSelectedMetric(metric.key)}
-              >
+               onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => showChart && setSelectedMetric(metric.key); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                 <div className="flex items-center gap-3">
                   <div className={`p-2 rounded-lg bg-white ${metric.color}`}>
                     <Icon className="w-5 h-5" />
@@ -191,7 +191,7 @@ export const NotificationOverviewWidget: React.FC<NotificationOverviewWidgetProp
               <h4 className="text-sm font-semibold text-gray-900">Trend Analysis</h4>
               <div className="flex items-center gap-4">
                 {(['sent', 'read', 'urgent'] as const).map((metric) => (
-                  <button
+                  <button aria-label="Close"
                     key={metric}
                     onClick={() => setSelectedMetric(metric)}
                     className={`text-sm px-3 py-1 rounded-full transition-colors ${

@@ -298,7 +298,7 @@ const MultiCriteriaFilter: React.FC<MultiCriteriaFilterProps> = ({
                     Clear All
                   </button>
                 )}
-                <button
+                <button aria-label="Close"
                   onClick={() => setIsOpen(false)}
                   className="text-gray-400 hover:text-gray-600"
                 >
@@ -363,7 +363,7 @@ const MultiCriteriaFilter: React.FC<MultiCriteriaFilterProps> = ({
                         ))}
                       </select>
 
-                      <button
+                      <button aria-label="Delete"
                         onClick={() => removeCriteria(index)}
                         className="p-2 text-gray-400 hover:text-red-600 transition-colors"
                       >
@@ -414,7 +414,7 @@ const MultiCriteriaFilter: React.FC<MultiCriteriaFilterProps> = ({
       )}
 
       {isOpen && (
-        <div
+        <div aria-hidden="true"
           className="fixed inset-0 z-40"
           onClick={() => setIsOpen(false)}
         />

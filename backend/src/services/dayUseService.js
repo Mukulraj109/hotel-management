@@ -91,7 +91,7 @@ class DayUseService {
       const slots = await DayUseSlot.find(query)
         .populate('createdBy', 'firstName lastName')
         .populate('updatedBy', 'firstName lastName')
-        .sort({ 'timeSlot.startTime': 1, roomType: 1 });
+        .sort({ 'timeSlot.startTime': 1, roomType: 1 }).lean().limit(1000);
       
       return slots;
     } catch (error) {
@@ -131,7 +131,7 @@ class DayUseService {
   
   async getSlotAvailability(slotId, date) {
     try {
-      const slot = await DayUseSlot.findById(slotId);
+      const slot = await DayUseSlot.findById(slotId).lean();
       if (!slot) {
         throw new Error('Slot not found');
       }
@@ -141,7 +141,7 @@ class DayUseService {
         'bookingDetails.slotId': slotId,
         'bookingDetails.bookingDate': new Date(date),
         'status.bookingStatus': { $nin: ['cancelled', 'no_show'] }
-      });
+      }).lean().limit(1000);
       
       const totalBooked = bookings.reduce((sum, booking) => sum + booking.guestInfo.totalGuests, 0);
       const availableCapacity = Math.max(0, slot.capacity.maxGuests - totalBooked);
@@ -183,7 +183,7 @@ class DayUseService {
         'bookingDetails.slotId': bookingData.bookingDetails.slotId,
         'bookingDetails.bookingDate': new Date(bookingData.bookingDetails.bookingDate),
         'status.bookingStatus': { $nin: ['cancelled', 'no_show'] }
-      }).session(session);
+      }).session(session).limit(1000);
 
       const totalBooked = existingBookings.reduce((sum, booking) => sum + booking.guestInfo.totalGuests, 0);
       const availableCapacity = Math.max(0, slot.capacity.maxGuests - totalBooked);
@@ -265,7 +265,7 @@ class DayUseService {
       if (updateData.guestInfo?.totalGuests || updateData.bookingDetails?.slotId) {
         const slot = await DayUseSlot.findById(
           updateData.bookingDetails?.slotId || booking.bookingDetails.slotId
-        );
+        ).lean();
         const pricing = await this.calculateBookingPricing(
           { ...booking.toObject(), ...updateData },
           slot
@@ -326,7 +326,7 @@ class DayUseService {
   
   async checkInBooking(bookingId, roomAssignment, staffId) {
     try {
-      const booking = await DayUseBooking.findById(bookingId);
+      const booking = await DayUseBooking.findById(bookingId).lean();
       if (!booking) {
         throw new Error('Booking not found');
       }
@@ -368,7 +368,7 @@ class DayUseService {
   
   async checkOutBooking(bookingId, staffId) {
     try {
-      const booking = await DayUseBooking.findById(bookingId);
+      const booking = await DayUseBooking.findById(bookingId).lean();
       if (!booking) {
         throw new Error('Booking not found');
       }
@@ -399,9 +399,9 @@ class DayUseService {
         'bookingDetails.slotId': slotId,
         'bookingDetails.bookingDate': { $gte: startDate, $lte: endDate },
         'status.bookingStatus': { $nin: ['cancelled'] }
-      });
+      }).lean().limit(1000);
       
-      const slot = await DayUseSlot.findById(slotId);
+      const slot = await DayUseSlot.findById(slotId).lean();
       
       const totalDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
       const totalCapacity = slot.capacity.maxGuests * totalDays;
@@ -570,26 +570,30 @@ class DayUseService {
   }
   
   async checkSlotOverlap(roomType, startTime, endTime, operationalDays) {
-    const existingSlots = await DayUseSlot.find({
-      roomType,
-      isActive: true,
-      $or: [
-        {
-          'timeSlot.startTime': { $lt: endTime },
-          'timeSlot.endTime': { $gt: startTime }
-        }
-      ]
-    });
+    try {
+      const existingSlots = await DayUseSlot.find({
+        roomType,
+        isActive: true,
+        $or: [
+          {
+            'timeSlot.startTime': { $lt: endTime },
+            'timeSlot.endTime': { $gt: startTime }
+          }
+        ]
+      }).lean().limit(1000);
     
-    // Check if any operational days overlap
-    return existingSlots.filter(slot => {
-      for (let i = 0; i < 7; i++) {
-        if (slot.operationalDays[i]?.enabled && operationalDays[i]?.enabled) {
-          return true;
+      // Check if any operational days overlap
+      return existingSlots.filter(slot => {
+        for (let i = 0; i < 7; i++) {
+          if (slot.operationalDays[i]?.enabled && operationalDays[i]?.enabled) {
+            return true;
+          }
         }
-      }
-      return false;
-    });
+        return false;
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   getDayIndex(dayName) {
@@ -598,55 +602,67 @@ class DayUseService {
   }
   
   async getFutureBookingsForSlot(slotId) {
-    const today = new Date();
-    return DayUseBooking.find({
-      'bookingDetails.slotId': slotId,
-      'bookingDetails.bookingDate': { $gte: today },
-      'status.bookingStatus': { $nin: ['cancelled', 'no_show'] }
-    });
+    try {
+      const today = new Date();
+      return DayUseBooking.find({
+        'bookingDetails.slotId': slotId,
+        'bookingDetails.bookingDate': { $gte: today },
+        'status.bookingStatus': { $nin: ['cancelled', 'no_show'] }
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   async updateSlotAnalytics(slotId, updates, session = null) {
-    const updateQuery = {};
+    try {
+      const updateQuery = {};
     
-    if (updates.totalBookings) {
-      updateQuery['$inc'] = updateQuery['$inc'] || {};
-      updateQuery['$inc']['analytics.totalBookings'] = updates.totalBookings;
+      if (updates.totalBookings) {
+        updateQuery['$inc'] = updateQuery['$inc'] || {};
+        updateQuery['$inc']['analytics.totalBookings'] = updates.totalBookings;
+      }
+    
+      if (updates.totalRevenue) {
+        updateQuery['$inc'] = updateQuery['$inc'] || {};
+        updateQuery['$inc']['analytics.totalRevenue'] = updates.totalRevenue;
+      }
+    
+      const options = session ? { session } : {};
+      return DayUseSlot.updateOne({ _id: slotId }, updateQuery, options);
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    if (updates.totalRevenue) {
-      updateQuery['$inc'] = updateQuery['$inc'] || {};
-      updateQuery['$inc']['analytics.totalRevenue'] = updates.totalRevenue;
-    }
-    
-    const options = session ? { session } : {};
-    return DayUseSlot.updateOne({ _id: slotId }, updateQuery, options);
   }
   
   async getHistoricalOccupancy(slotId, date) {
-    // Get occupancy for the same day of week in the past 4 weeks
-    const dayOfWeek = date.getDay();
-    const pastDates = [];
+    try {
+      // Get occupancy for the same day of week in the past 4 weeks
+      const dayOfWeek = date.getDay();
+      const pastDates = [];
     
-    for (let i = 1; i <= 4; i++) {
-      const pastDate = new Date(date);
-      pastDate.setDate(pastDate.getDate() - (i * 7));
-      pastDates.push(pastDate);
+      for (let i = 1; i <= 4; i++) {
+        const pastDate = new Date(date);
+        pastDate.setDate(pastDate.getDate() - (i * 7));
+        pastDates.push(pastDate);
+      }
+    
+      const bookings = await DayUseBooking.find({
+        'bookingDetails.slotId': slotId,
+        'bookingDetails.bookingDate': { $in: pastDates },
+        'status.bookingStatus': { $nin: ['cancelled', 'no_show'] }
+      }).lean().limit(1000);
+    
+      if (bookings.length === 0) return 0;
+    
+      const slot = await DayUseSlot.findById(slotId).lean();
+      const totalGuests = bookings.reduce((sum, b) => sum + b.guestInfo.totalGuests, 0);
+      const totalCapacity = slot.capacity.maxGuests * pastDates.length;
+    
+      return totalGuests / totalCapacity;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    const bookings = await DayUseBooking.find({
-      'bookingDetails.slotId': slotId,
-      'bookingDetails.bookingDate': { $in: pastDates },
-      'status.bookingStatus': { $nin: ['cancelled', 'no_show'] }
-    });
-    
-    if (bookings.length === 0) return 0;
-    
-    const slot = await DayUseSlot.findById(slotId);
-    const totalGuests = bookings.reduce((sum, b) => sum + b.guestInfo.totalGuests, 0);
-    const totalCapacity = slot.capacity.maxGuests * pastDates.length;
-    
-    return totalGuests / totalCapacity;
   }
   
   groupAnalyticsByRoomType(bookings) {
@@ -704,22 +720,30 @@ class DayUseService {
   }
   
   async calculateSlotTrends(slotId, startDate, endDate) {
-    // Implementation for trend calculations would go here
-    // This would typically involve daily/weekly comparisons
-    return {
-      occupancyTrend: 'stable',
-      revenueTrend: 'increasing',
-      guestCountTrend: 'stable'
-    };
+    try {
+      // Implementation for trend calculations would go here
+      // This would typically involve daily/weekly comparisons
+      return {
+        occupancyTrend: 'stable',
+        revenueTrend: 'increasing',
+        guestCountTrend: 'stable'
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   async calculateOverallTrends(startDate, endDate) {
-    // Implementation for overall trend calculations
-    return {
-      bookingsTrend: 'increasing',
-      revenueTrend: 'stable',
-      occupancyTrend: 'increasing'
-    };
+    try {
+      // Implementation for overall trend calculations
+      return {
+        bookingsTrend: 'increasing',
+        revenueTrend: 'stable',
+        occupancyTrend: 'increasing'
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 

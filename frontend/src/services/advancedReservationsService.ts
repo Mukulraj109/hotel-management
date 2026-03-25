@@ -183,47 +183,67 @@ class AdvancedReservationsService {
       total: number;
     };
   }> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    if (filters?.reservationType) params.append('reservationType', filters.reservationType);
-    if (filters?.priority) params.append('priority', filters.priority);
-    if (filters?.hasWaitlist !== undefined) params.append('hasWaitlist', filters.hasWaitlist.toString());
-    if (filters?.search) params.append('search', filters.search);
-    if (filters?.page) params.append('page', filters.page.toString());
-    if (filters?.limit) params.append('limit', filters.limit.toString());
-    if (filters?.sortBy) params.append('sortBy', filters.sortBy);
-    if (filters?.sortOrder) params.append('sortOrder', filters.sortOrder);
+      if (filters?.reservationType) params.append('reservationType', filters.reservationType);
+      if (filters?.priority) params.append('priority', filters.priority);
+      if (filters?.hasWaitlist !== undefined) params.append('hasWaitlist', filters.hasWaitlist.toString());
+      if (filters?.search) params.append('search', filters.search);
+      if (filters?.page) params.append('page', filters.page.toString());
+      if (filters?.limit) params.append('limit', filters.limit.toString());
+      if (filters?.sortBy) params.append('sortBy', filters.sortBy);
+      if (filters?.sortOrder) params.append('sortOrder', filters.sortOrder);
 
-    const response = await api.get(`${this.baseURL}?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseURL}?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get advanced reservation by ID
   async getAdvancedReservation(id: string): Promise<AdvancedReservation> {
-    const response = await api.get(`${this.baseURL}/${id}`);
-    return response.data.data;
+    try {
+      const response = await api.get(`${this.baseURL}/${id}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Create new advanced reservation
   async createAdvancedReservation(data: CreateAdvancedReservationData): Promise<AdvancedReservation> {
-    const response = await api.post(this.baseURL, data);
-    return response.data.data;
+    try {
+      const response = await api.post(this.baseURL, data);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Update advanced reservation
   async updateAdvancedReservation(id: string, data: Partial<CreateAdvancedReservationData>): Promise<AdvancedReservation> {
-    const response = await api.put(`${this.baseURL}/${id}`, data);
-    return response.data.data;
+    try {
+      const response = await api.put(`${this.baseURL}/${id}`, data);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Assign room to reservation
   async assignRoom(id: string, roomId: string, assignmentType?: string, notes?: string): Promise<AdvancedReservation> {
-    const response = await api.post(`${this.baseURL}/${id}/assign-room`, {
-      roomId,
-      assignmentType,
-      notes
-    });
-    return response.data.data;
+    try {
+      const response = await api.post(`${this.baseURL}/${id}/assign-room`, {
+        roomId,
+        assignmentType,
+        notes
+      });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Add upgrade
@@ -234,8 +254,12 @@ class AdvancedReservationsService {
     upgradeReason?: string;
     additionalCharge?: number;
   }): Promise<AdvancedReservation> {
-    const response = await api.post(`${this.baseURL}/${id}/add-upgrade`, upgrade);
-    return response.data.data;
+    try {
+      const response = await api.post(`${this.baseURL}/${id}/add-upgrade`, upgrade);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Add reservation flag
@@ -245,8 +269,12 @@ class AdvancedReservationsService {
     description?: string;
     expiryDate?: string;
   }): Promise<AdvancedReservation['reservationFlags']> {
-    const response = await api.post(`${this.baseURL}/${id}/add-flag`, flag);
-    return response.data.data;
+    try {
+      const response = await api.post(`${this.baseURL}/${id}/add-flag`, flag);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get advanced reservations statistics

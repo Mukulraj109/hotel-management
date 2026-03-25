@@ -146,227 +146,251 @@ class RateLimiter {
    * Check hotel-wide rate limits
    */
   async checkHotelLimits(hotelId) {
-    const [minuteCount, hourCount, dayCount] = await Promise.all([
-      this.getCounter(RATE_LIMIT_KEYS.HOTEL_MINUTE(hotelId)),
-      this.getCounter(RATE_LIMIT_KEYS.HOTEL_HOUR(hotelId)),
-      this.getCounter(RATE_LIMIT_KEYS.HOTEL_DAY(hotelId))
-    ]);
+    try {
+      const [minuteCount, hourCount, dayCount] = await Promise.all([
+        this.getCounter(RATE_LIMIT_KEYS.HOTEL_MINUTE(hotelId)),
+        this.getCounter(RATE_LIMIT_KEYS.HOTEL_HOUR(hotelId)),
+        this.getCounter(RATE_LIMIT_KEYS.HOTEL_DAY(hotelId))
+      ]);
 
-    if (minuteCount >= RATE_LIMITS.HOTEL_PER_MINUTE) {
-      return {
-        allowed: false,
-        type: 'hotel_minute',
-        reason: 'Hotel minute limit exceeded',
-        current: minuteCount,
-        limit: RATE_LIMITS.HOTEL_PER_MINUTE,
-        resetTime: this.getResetTime(TIME_WINDOWS.MINUTE)
-      };
+      if (minuteCount >= RATE_LIMITS.HOTEL_PER_MINUTE) {
+        return {
+          allowed: false,
+          type: 'hotel_minute',
+          reason: 'Hotel minute limit exceeded',
+          current: minuteCount,
+          limit: RATE_LIMITS.HOTEL_PER_MINUTE,
+          resetTime: this.getResetTime(TIME_WINDOWS.MINUTE)
+        };
+      }
+
+      if (hourCount >= RATE_LIMITS.HOTEL_PER_HOUR) {
+        return {
+          allowed: false,
+          type: 'hotel_hour',
+          reason: 'Hotel hourly limit exceeded',
+          current: hourCount,
+          limit: RATE_LIMITS.HOTEL_PER_HOUR,
+          resetTime: this.getResetTime(TIME_WINDOWS.HOUR)
+        };
+      }
+
+      if (dayCount >= RATE_LIMITS.HOTEL_PER_DAY) {
+        return {
+          allowed: false,
+          type: 'hotel_day',
+          reason: 'Hotel daily limit exceeded',
+          current: dayCount,
+          limit: RATE_LIMITS.HOTEL_PER_DAY,
+          resetTime: this.getResetTime(TIME_WINDOWS.DAY)
+        };
+      }
+
+      return { allowed: true };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    if (hourCount >= RATE_LIMITS.HOTEL_PER_HOUR) {
-      return {
-        allowed: false,
-        type: 'hotel_hour',
-        reason: 'Hotel hourly limit exceeded',
-        current: hourCount,
-        limit: RATE_LIMITS.HOTEL_PER_HOUR,
-        resetTime: this.getResetTime(TIME_WINDOWS.HOUR)
-      };
-    }
-
-    if (dayCount >= RATE_LIMITS.HOTEL_PER_DAY) {
-      return {
-        allowed: false,
-        type: 'hotel_day',
-        reason: 'Hotel daily limit exceeded',
-        current: dayCount,
-        limit: RATE_LIMITS.HOTEL_PER_DAY,
-        resetTime: this.getResetTime(TIME_WINDOWS.DAY)
-      };
-    }
-
-    return { allowed: true };
   }
 
   /**
    * Check per-user rate limits
    */
   async checkUserLimits(userId) {
-    const [minuteCount, hourCount, dayCount] = await Promise.all([
-      this.getCounter(RATE_LIMIT_KEYS.USER_MINUTE(userId)),
-      this.getCounter(RATE_LIMIT_KEYS.USER_HOUR(userId)),
-      this.getCounter(RATE_LIMIT_KEYS.USER_DAY(userId))
-    ]);
+    try {
+      const [minuteCount, hourCount, dayCount] = await Promise.all([
+        this.getCounter(RATE_LIMIT_KEYS.USER_MINUTE(userId)),
+        this.getCounter(RATE_LIMIT_KEYS.USER_HOUR(userId)),
+        this.getCounter(RATE_LIMIT_KEYS.USER_DAY(userId))
+      ]);
 
-    if (minuteCount >= RATE_LIMITS.USER_PER_MINUTE) {
-      return {
-        allowed: false,
-        type: 'user_minute',
-        reason: 'User minute limit exceeded',
-        current: minuteCount,
-        limit: RATE_LIMITS.USER_PER_MINUTE,
-        resetTime: this.getResetTime(TIME_WINDOWS.MINUTE)
-      };
+      if (minuteCount >= RATE_LIMITS.USER_PER_MINUTE) {
+        return {
+          allowed: false,
+          type: 'user_minute',
+          reason: 'User minute limit exceeded',
+          current: minuteCount,
+          limit: RATE_LIMITS.USER_PER_MINUTE,
+          resetTime: this.getResetTime(TIME_WINDOWS.MINUTE)
+        };
+      }
+
+      if (hourCount >= RATE_LIMITS.USER_PER_HOUR) {
+        return {
+          allowed: false,
+          type: 'user_hour',
+          reason: 'User hourly limit exceeded',
+          current: hourCount,
+          limit: RATE_LIMITS.USER_PER_HOUR,
+          resetTime: this.getResetTime(TIME_WINDOWS.HOUR)
+        };
+      }
+
+      if (dayCount >= RATE_LIMITS.USER_PER_DAY) {
+        return {
+          allowed: false,
+          type: 'user_day',
+          reason: 'User daily limit exceeded',
+          current: dayCount,
+          limit: RATE_LIMITS.USER_PER_DAY,
+          resetTime: this.getResetTime(TIME_WINDOWS.DAY)
+        };
+      }
+
+      return { allowed: true };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    if (hourCount >= RATE_LIMITS.USER_PER_HOUR) {
-      return {
-        allowed: false,
-        type: 'user_hour',
-        reason: 'User hourly limit exceeded',
-        current: hourCount,
-        limit: RATE_LIMITS.USER_PER_HOUR,
-        resetTime: this.getResetTime(TIME_WINDOWS.HOUR)
-      };
-    }
-
-    if (dayCount >= RATE_LIMITS.USER_PER_DAY) {
-      return {
-        allowed: false,
-        type: 'user_day',
-        reason: 'User daily limit exceeded',
-        current: dayCount,
-        limit: RATE_LIMITS.USER_PER_DAY,
-        resetTime: this.getResetTime(TIME_WINDOWS.DAY)
-      };
-    }
-
-    return { allowed: true };
   }
 
   /**
    * Check template-specific rate limits
    */
   async checkTemplateLimits(templateId) {
-    if (!templateId) return { allowed: true };
+    try {
+      if (!templateId) return { allowed: true };
 
-    const [hourCount, dayCount] = await Promise.all([
-      this.getCounter(RATE_LIMIT_KEYS.TEMPLATE_HOUR(templateId)),
-      this.getCounter(RATE_LIMIT_KEYS.TEMPLATE_DAY(templateId))
-    ]);
+      const [hourCount, dayCount] = await Promise.all([
+        this.getCounter(RATE_LIMIT_KEYS.TEMPLATE_HOUR(templateId)),
+        this.getCounter(RATE_LIMIT_KEYS.TEMPLATE_DAY(templateId))
+      ]);
 
-    if (hourCount >= RATE_LIMITS.TEMPLATE_PER_HOUR) {
-      return {
-        allowed: false,
-        type: 'template_hour',
-        reason: 'Template hourly limit exceeded',
-        current: hourCount,
-        limit: RATE_LIMITS.TEMPLATE_PER_HOUR,
-        resetTime: this.getResetTime(TIME_WINDOWS.HOUR)
-      };
+      if (hourCount >= RATE_LIMITS.TEMPLATE_PER_HOUR) {
+        return {
+          allowed: false,
+          type: 'template_hour',
+          reason: 'Template hourly limit exceeded',
+          current: hourCount,
+          limit: RATE_LIMITS.TEMPLATE_PER_HOUR,
+          resetTime: this.getResetTime(TIME_WINDOWS.HOUR)
+        };
+      }
+
+      if (dayCount >= RATE_LIMITS.TEMPLATE_PER_DAY) {
+        return {
+          allowed: false,
+          type: 'template_day',
+          reason: 'Template daily limit exceeded',
+          current: dayCount,
+          limit: RATE_LIMITS.TEMPLATE_PER_DAY,
+          resetTime: this.getResetTime(TIME_WINDOWS.DAY)
+        };
+      }
+
+      return { allowed: true };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    if (dayCount >= RATE_LIMITS.TEMPLATE_PER_DAY) {
-      return {
-        allowed: false,
-        type: 'template_day',
-        reason: 'Template daily limit exceeded',
-        current: dayCount,
-        limit: RATE_LIMITS.TEMPLATE_PER_DAY,
-        resetTime: this.getResetTime(TIME_WINDOWS.DAY)
-      };
-    }
-
-    return { allowed: true };
   }
 
   /**
    * Check category-specific rate limits
    */
   async checkCategoryLimits(hotelId, category) {
-    const [hourCount, dayCount] = await Promise.all([
-      this.getCounter(RATE_LIMIT_KEYS.CATEGORY_HOUR(hotelId, category)),
-      this.getCounter(RATE_LIMIT_KEYS.CATEGORY_DAY(hotelId, category))
-    ]);
+    try {
+      const [hourCount, dayCount] = await Promise.all([
+        this.getCounter(RATE_LIMIT_KEYS.CATEGORY_HOUR(hotelId, category)),
+        this.getCounter(RATE_LIMIT_KEYS.CATEGORY_DAY(hotelId, category))
+      ]);
 
-    // Special limits for promotional notifications
-    if (category === 'promotional' && dayCount >= RATE_LIMITS.PROMOTIONAL_PER_DAY) {
-      return {
-        allowed: false,
-        type: 'promotional_day',
-        reason: 'Daily promotional limit exceeded',
-        current: dayCount,
-        limit: RATE_LIMITS.PROMOTIONAL_PER_DAY,
-        resetTime: this.getResetTime(TIME_WINDOWS.DAY)
-      };
+      // Special limits for promotional notifications
+      if (category === 'promotional' && dayCount >= RATE_LIMITS.PROMOTIONAL_PER_DAY) {
+        return {
+          allowed: false,
+          type: 'promotional_day',
+          reason: 'Daily promotional limit exceeded',
+          current: dayCount,
+          limit: RATE_LIMITS.PROMOTIONAL_PER_DAY,
+          resetTime: this.getResetTime(TIME_WINDOWS.DAY)
+        };
+      }
+
+      // Special limits for emergency notifications
+      if (category === 'emergency' && hourCount >= RATE_LIMITS.EMERGENCY_PER_HOUR) {
+        return {
+          allowed: false,
+          type: 'emergency_hour',
+          reason: 'Hourly emergency limit exceeded',
+          current: hourCount,
+          limit: RATE_LIMITS.EMERGENCY_PER_HOUR,
+          resetTime: this.getResetTime(TIME_WINDOWS.HOUR)
+        };
+      }
+
+      return { allowed: true };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Special limits for emergency notifications
-    if (category === 'emergency' && hourCount >= RATE_LIMITS.EMERGENCY_PER_HOUR) {
-      return {
-        allowed: false,
-        type: 'emergency_hour',
-        reason: 'Hourly emergency limit exceeded',
-        current: hourCount,
-        limit: RATE_LIMITS.EMERGENCY_PER_HOUR,
-        resetTime: this.getResetTime(TIME_WINDOWS.HOUR)
-      };
-    }
-
-    return { allowed: true };
   }
 
   /**
    * Check channel-specific rate limits
    */
   async checkChannelLimits(userId, channels) {
-    for (const channel of channels) {
-      const [minuteCount, hourCount, dayCount] = await Promise.all([
-        this.getCounter(RATE_LIMIT_KEYS.CHANNEL_MINUTE(userId, channel)),
-        this.getCounter(RATE_LIMIT_KEYS.CHANNEL_HOUR(userId, channel)),
-        this.getCounter(RATE_LIMIT_KEYS.CHANNEL_DAY(userId, channel))
-      ]);
+    try {
+      for (const channel of channels) {
+        const [minuteCount, hourCount, dayCount] = await Promise.all([
+          this.getCounter(RATE_LIMIT_KEYS.CHANNEL_MINUTE(userId, channel)),
+          this.getCounter(RATE_LIMIT_KEYS.CHANNEL_HOUR(userId, channel)),
+          this.getCounter(RATE_LIMIT_KEYS.CHANNEL_DAY(userId, channel))
+        ]);
 
-      // SMS limits
-      if (channel === 'sms' && dayCount >= RATE_LIMITS.SMS_PER_DAY) {
-        return {
-          allowed: false,
-          type: 'sms_day',
-          reason: 'Daily SMS limit exceeded',
-          current: dayCount,
-          limit: RATE_LIMITS.SMS_PER_DAY,
-          resetTime: this.getResetTime(TIME_WINDOWS.DAY)
-        };
+        // SMS limits
+        if (channel === 'sms' && dayCount >= RATE_LIMITS.SMS_PER_DAY) {
+          return {
+            allowed: false,
+            type: 'sms_day',
+            reason: 'Daily SMS limit exceeded',
+            current: dayCount,
+            limit: RATE_LIMITS.SMS_PER_DAY,
+            resetTime: this.getResetTime(TIME_WINDOWS.DAY)
+          };
+        }
+
+        // Email limits
+        if (channel === 'email' && hourCount >= RATE_LIMITS.EMAIL_PER_HOUR) {
+          return {
+            allowed: false,
+            type: 'email_hour',
+            reason: 'Hourly email limit exceeded',
+            current: hourCount,
+            limit: RATE_LIMITS.EMAIL_PER_HOUR,
+            resetTime: this.getResetTime(TIME_WINDOWS.HOUR)
+          };
+        }
+
+        // Push notification limits
+        if (channel === 'push' && minuteCount >= RATE_LIMITS.PUSH_PER_MINUTE) {
+          return {
+            allowed: false,
+            type: 'push_minute',
+            reason: 'Push notification minute limit exceeded',
+            current: minuteCount,
+            limit: RATE_LIMITS.PUSH_PER_MINUTE,
+            resetTime: this.getResetTime(TIME_WINDOWS.MINUTE)
+          };
+        }
       }
 
-      // Email limits
-      if (channel === 'email' && hourCount >= RATE_LIMITS.EMAIL_PER_HOUR) {
-        return {
-          allowed: false,
-          type: 'email_hour',
-          reason: 'Hourly email limit exceeded',
-          current: hourCount,
-          limit: RATE_LIMITS.EMAIL_PER_HOUR,
-          resetTime: this.getResetTime(TIME_WINDOWS.HOUR)
-        };
-      }
-
-      // Push notification limits
-      if (channel === 'push' && minuteCount >= RATE_LIMITS.PUSH_PER_MINUTE) {
-        return {
-          allowed: false,
-          type: 'push_minute',
-          reason: 'Push notification minute limit exceeded',
-          current: minuteCount,
-          limit: RATE_LIMITS.PUSH_PER_MINUTE,
-          resetTime: this.getResetTime(TIME_WINDOWS.MINUTE)
-        };
-      }
+      return { allowed: true };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return { allowed: true };
   }
 
   /**
    * Check for priority overrides (urgent notifications can bypass some limits)
    */
   async checkPriorityOverrides(priority) {
-    // Urgent notifications bypass user and template limits but not hotel limits
-    if (priority === 'urgent') {
-      return { allowed: true, override: true };
-    }
+    try {
+      // Urgent notifications bypass user and template limits but not hotel limits
+      if (priority === 'urgent') {
+        return { allowed: true, override: true };
+      }
 
-    return { allowed: true };
+      return { allowed: true };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -430,31 +454,39 @@ class RateLimiter {
   }
 
   async getHotelStats(hotelId) {
-    const [minuteCount, hourCount, dayCount] = await Promise.all([
-      this.getCounter(RATE_LIMIT_KEYS.HOTEL_MINUTE(hotelId)),
-      this.getCounter(RATE_LIMIT_KEYS.HOTEL_HOUR(hotelId)),
-      this.getCounter(RATE_LIMIT_KEYS.HOTEL_DAY(hotelId))
-    ]);
+    try {
+      const [minuteCount, hourCount, dayCount] = await Promise.all([
+        this.getCounter(RATE_LIMIT_KEYS.HOTEL_MINUTE(hotelId)),
+        this.getCounter(RATE_LIMIT_KEYS.HOTEL_HOUR(hotelId)),
+        this.getCounter(RATE_LIMIT_KEYS.HOTEL_DAY(hotelId))
+      ]);
 
-    return {
-      minute: { current: minuteCount, limit: RATE_LIMITS.HOTEL_PER_MINUTE },
-      hour: { current: hourCount, limit: RATE_LIMITS.HOTEL_PER_HOUR },
-      day: { current: dayCount, limit: RATE_LIMITS.HOTEL_PER_DAY }
-    };
+      return {
+        minute: { current: minuteCount, limit: RATE_LIMITS.HOTEL_PER_MINUTE },
+        hour: { current: hourCount, limit: RATE_LIMITS.HOTEL_PER_HOUR },
+        day: { current: dayCount, limit: RATE_LIMITS.HOTEL_PER_DAY }
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getUserStats(userId) {
-    const [minuteCount, hourCount, dayCount] = await Promise.all([
-      this.getCounter(RATE_LIMIT_KEYS.USER_MINUTE(userId)),
-      this.getCounter(RATE_LIMIT_KEYS.USER_HOUR(userId)),
-      this.getCounter(RATE_LIMIT_KEYS.USER_DAY(userId))
-    ]);
+    try {
+      const [minuteCount, hourCount, dayCount] = await Promise.all([
+        this.getCounter(RATE_LIMIT_KEYS.USER_MINUTE(userId)),
+        this.getCounter(RATE_LIMIT_KEYS.USER_HOUR(userId)),
+        this.getCounter(RATE_LIMIT_KEYS.USER_DAY(userId))
+      ]);
 
-    return {
-      minute: { current: minuteCount, limit: RATE_LIMITS.USER_PER_MINUTE },
-      hour: { current: hourCount, limit: RATE_LIMITS.USER_PER_HOUR },
-      day: { current: dayCount, limit: RATE_LIMITS.USER_PER_DAY }
-    };
+      return {
+        minute: { current: minuteCount, limit: RATE_LIMITS.USER_PER_MINUTE },
+        hour: { current: hourCount, limit: RATE_LIMITS.USER_PER_HOUR },
+        day: { current: dayCount, limit: RATE_LIMITS.USER_PER_DAY }
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

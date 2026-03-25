@@ -154,7 +154,7 @@ class SearchController {
       const rooms = await Room.find(roomQuery)
         .sort(roomSort)
         .limit(pagination.limit)
-        .skip((pagination.page - 1) * pagination.limit);
+        .skip((pagination.page - 1) * pagination.limit).lean();
 
       searchResults.rooms = rooms;
       searchResults.roomsPagination = {
@@ -198,7 +198,7 @@ class SearchController {
         .populate('roomId', 'roomNumber type')
         .sort({ createdAt: -1 })
         .limit(pagination.limit)
-        .skip((pagination.page - 1) * pagination.limit);
+        .skip((pagination.page - 1) * pagination.limit).lean();
 
       searchResults.bookings = bookings;
       searchResults.bookingsPagination = {
@@ -281,7 +281,7 @@ class SearchController {
         results = await Room.find(roomQuery)
           .sort(sortOrder)
           .limit(pagination.limit)
-          .skip((pagination.page - 1) * pagination.limit);
+          .skip((pagination.page - 1) * pagination.limit).lean();
         break;
       }
 
@@ -311,7 +311,7 @@ class SearchController {
           .populate('roomId', 'roomNumber type')
           .sort({ createdAt: -1 })
           .limit(pagination.limit)
-          .skip((pagination.page - 1) * pagination.limit);
+          .skip((pagination.page - 1) * pagination.limit).lean();
         break;
       }
 

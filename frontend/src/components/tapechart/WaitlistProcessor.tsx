@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { withErrorBoundary } from '../ErrorBoundary';
 import {
   BarChart3,
   UserCheckIcon,
@@ -821,3 +822,5 @@ export const WaitlistProcessor: React.FC = () => {
     </Dialog>
   );
 };
+
+export default withErrorBoundary(WaitlistProcessor, { level: 'component' });

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { withErrorBoundary } from '../ErrorBoundary';
 import {
   AlertTriangle,
   AlertCircle,
@@ -684,7 +685,7 @@ const InventoryAlertsCenter: React.FC = () => {
                             </button>
                           </>
                         )}
-                        <button
+                        <button aria-label="View"
                           onClick={() => {
                             setSelectedAlert(alert);
                             setShowDetailModal(true);
@@ -809,7 +810,7 @@ const InventoryAlertsCenter: React.FC = () => {
             <div className="border-b border-gray-200 px-6 py-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-gray-900">Alert Details</h2>
-                <button
+                <button aria-label="Close"
                   onClick={() => setShowDetailModal(false)}
                   className="p-2 text-gray-400 hover:text-gray-600 rounded transition-colors"
                 >
@@ -912,4 +913,4 @@ const InventoryAlertsCenter: React.FC = () => {
   );
 };
 
-export default InventoryAlertsCenter;
+export default withErrorBoundary(InventoryAlertsCenter, { level: 'component' });

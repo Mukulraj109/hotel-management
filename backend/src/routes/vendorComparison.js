@@ -31,19 +31,29 @@ router.use(ensurePropertyAccess);
  *         description: Category of the item
  */
 router.get('/', catchAsync(async (req, res) => {
-  const { itemName, category } = req.query;
+  const { itemName, category, page = 1, limit = 50 } = req.query;
   const { hotelId } = req.user;
 
   if (!itemName || !category) {
     throw new ApplicationError('Item name and category are required', 400);
   }
 
+  const sanitizedLimit = Math.min(Math.max(parseInt(limit), 1), 100);
+  const skip = (Math.max(parseInt(page), 1) - 1) * sanitizedLimit;
+
   // Get vendors that specialize in this category
-  const vendors = await Vendor.find({
-    hotelId,
-    categories: { $in: [category] },
-    isActive: true
-  }).sort({ rating: -1, totalOrders: -1 });
+  const [vendors, totalVendors] = await Promise.all([
+    Vendor.find({
+      hotelId,
+      categories: { $in: [category] },
+      isActive: true
+    }).sort({ rating: -1, totalOrders: -1 }).skip(skip).limit(sanitizedLimit).lean(),
+    Vendor.countDocuments({
+      hotelId,
+      categories: { $in: [category] },
+      isActive: true
+    })
+  ]);
 
   // Get historical data for this item from supply requests
   const historicalData = await SupplyRequest.aggregate([
@@ -136,12 +146,18 @@ router.get('/', catchAsync(async (req, res) => {
       itemName,
       category,
       vendors: vendorComparisons,
-      totalVendors: vendorComparisons.length,
+      totalVendors: totalVendors,
       comparisonCriteria: {
         qualityWeight: '30%',
         deliveryWeight: '30%',
         costWeight: '40%'
       }
+    },
+    pagination: {
+      currentPage: Math.max(parseInt(page), 1),
+      totalPages: Math.ceil(totalVendors / sanitizedLimit),
+      totalCount: totalVendors,
+      limit: sanitizedLimit
     }
   });
 }));
@@ -273,7 +289,7 @@ router.post('/cost-optimization', catchAsync(async (req, res) => {
       hotelId,
       categories: { $in: [item.category] },
       isActive: true
-    }).sort({ rating: -1 });
+    }).sort({ rating: -1 }).lean().limit(100);
 
     if (vendors.length > 1) {
       // Calculate potential savings from switching vendors

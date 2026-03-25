@@ -10,7 +10,7 @@ export const getSettings = catchAsync(async (req, res, next) => {
   const { category } = req.params;
   const userId = req.user._id;
 
-  let settings = await UserSettings.findOne({ userId }).populate('userId', 'name email role');
+  let settings = await UserSettings.findOne({ userId }).populate('userId', 'name email role').lean();
 
   // Create default settings if none exist
   if (!settings) {
@@ -132,7 +132,7 @@ export const exportSettings = catchAsync(async (req, res, next) => {
   const userId = req.user._id;
   const { format = 'json' } = req.query;
 
-  const settings = await UserSettings.findOne({ userId }).populate('userId', 'name email role');
+  const settings = await UserSettings.findOne({ userId }).populate('userId', 'name email role').lean();
 
   if (!settings) {
     return next(new AppError('Settings not found', 404));
@@ -218,7 +218,7 @@ export const getHotelSettings = catchAsync(async (req, res, next) => {
   }
 
   const userId = req.user._id;
-  let settings = await UserSettings.findOne({ userId });
+  let settings = await UserSettings.findOne({ userId }).lean();
 
   if (!settings || !settings.hotel) {
     return next(new AppError('Hotel settings not found', 404));
@@ -242,17 +242,34 @@ export const updateHotelSettings = catchAsync(async (req, res, next) => {
   const userId = req.user._id;
   const hotelData = req.body;
 
-  let settings = await UserSettings.findOne({ userId });
-
-  if (!settings) {
-    settings = await UserSettings.createDefaultSettings(userId, 'admin');
+  // Build $set fields for nested hotel properties
+  const setFields = { lastModified: new Date() };
+  for (const [key, value] of Object.entries(hotelData)) {
+    setFields[`hotel.${key}`] = value;
   }
 
-  settings.hotel = { ...settings.hotel?.toObject?.() || settings.hotel, ...hotelData };
-  settings.lastModified = new Date();
-  settings.version += 1;
+  const settings = await UserSettings.findOneAndUpdate(
+    { userId },
+    { $set: setFields, $inc: { version: 1 } },
+    { new: true, upsert: false }
+  );
 
-  await settings.save();
+  if (!settings) {
+    // Create defaults then apply update
+    const newSettings = await UserSettings.createDefaultSettings(userId, 'admin');
+    newSettings.hotel = { ...newSettings.hotel?.toObject?.() || newSettings.hotel, ...hotelData };
+    newSettings.lastModified = new Date();
+    newSettings.version += 1;
+    await newSettings.save();
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        hotel: newSettings.hotel,
+        message: 'Hotel settings updated successfully'
+      }
+    });
+  }
 
   logger.info(`Hotel settings updated by admin ${userId}`, {
     userId,
@@ -275,7 +292,7 @@ export const getHotelPolicies = catchAsync(async (req, res, next) => {
   }
 
   const userId = req.user._id;
-  const settings = await UserSettings.findOne({ userId });
+  const settings = await UserSettings.findOne({ userId }).lean();
 
   if (!settings || !settings.hotel?.policies) {
     return next(new AppError('Hotel policies not found', 404));
@@ -299,21 +316,34 @@ export const updateHotelPolicies = catchAsync(async (req, res, next) => {
   const userId = req.user._id;
   const policyData = req.body;
 
-  let settings = await UserSettings.findOne({ userId });
+  // Build $set fields for nested hotel.policies properties
+  const setFields = { lastModified: new Date() };
+  for (const [key, value] of Object.entries(policyData)) {
+    setFields[`hotel.policies.${key}`] = value;
+  }
+
+  const settings = await UserSettings.findOneAndUpdate(
+    { userId },
+    { $set: setFields, $inc: { version: 1 } },
+    { new: true, upsert: false }
+  );
 
   if (!settings) {
-    settings = await UserSettings.createDefaultSettings(userId, 'admin');
+    const newSettings = await UserSettings.createDefaultSettings(userId, 'admin');
+    if (!newSettings.hotel) newSettings.hotel = {};
+    newSettings.hotel.policies = { ...newSettings.hotel.policies?.toObject?.() || newSettings.hotel.policies, ...policyData };
+    newSettings.lastModified = new Date();
+    newSettings.version += 1;
+    await newSettings.save();
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        policies: newSettings.hotel.policies,
+        message: 'Hotel policies updated successfully'
+      }
+    });
   }
-
-  if (!settings.hotel) {
-    settings.hotel = {};
-  }
-
-  settings.hotel.policies = { ...settings.hotel.policies?.toObject?.() || settings.hotel.policies, ...policyData };
-  settings.lastModified = new Date();
-  settings.version += 1;
-
-  await settings.save();
 
   logger.info(`Hotel policies updated by admin ${userId}`, {
     userId,
@@ -332,7 +362,7 @@ export const updateHotelPolicies = catchAsync(async (req, res, next) => {
 // Get user's notification preferences
 export const getNotificationPreferences = catchAsync(async (req, res, next) => {
   const userId = req.user._id;
-  let settings = await UserSettings.findOne({ userId });
+  let settings = await UserSettings.findOne({ userId }).lean();
 
   if (!settings) {
     settings = await UserSettings.createDefaultSettings(userId, req.user.role);
@@ -353,17 +383,33 @@ export const updateNotificationPreferences = catchAsync(async (req, res, next) =
   const userId = req.user._id;
   const preferences = req.body;
 
-  let settings = await UserSettings.findOne({ userId });
-
-  if (!settings) {
-    settings = await UserSettings.createDefaultSettings(userId, req.user.role);
+  // Build $set fields for nested notifications properties
+  const setFields = { lastModified: new Date() };
+  for (const [key, value] of Object.entries(preferences)) {
+    setFields[`notifications.${key}`] = value;
   }
 
-  settings.notifications = { ...settings.notifications?.toObject?.() || settings.notifications, ...preferences };
-  settings.lastModified = new Date();
-  settings.version += 1;
+  const settings = await UserSettings.findOneAndUpdate(
+    { userId },
+    { $set: setFields, $inc: { version: 1 } },
+    { new: true, upsert: false }
+  );
 
-  await settings.save();
+  if (!settings) {
+    const newSettings = await UserSettings.createDefaultSettings(userId, req.user.role);
+    newSettings.notifications = { ...newSettings.notifications?.toObject?.() || newSettings.notifications, ...preferences };
+    newSettings.lastModified = new Date();
+    newSettings.version += 1;
+    await newSettings.save();
+
+    return res.status(200).json({
+      status: 'success',
+      data: {
+        preferences: newSettings.notifications,
+        message: 'Notification preferences updated successfully'
+      }
+    });
+  }
 
   logger.info(`Notification preferences updated for user ${userId}`, {
     userId,
@@ -386,7 +432,10 @@ export const getSettingsStats = catchAsync(async (req, res, next) => {
     return next(new AppError('Only admins can access settings statistics', 403));
   }
 
+  const hotelId = req.user?.hotelId;
+  const settingsMatch = hotelId ? { $match: { hotelId } } : { $match: {} };
   const stats = await UserSettings.aggregate([
+    settingsMatch,
     {
       $group: {
         _id: '$role',
@@ -406,7 +455,7 @@ export const getSettingsStats = catchAsync(async (req, res, next) => {
     }
   ]);
 
-  const totalUsers = await UserSettings.countDocuments();
+  const totalUsers = await UserSettings.estimatedDocumentCount();
 
   res.status(200).json({
     status: 'success',

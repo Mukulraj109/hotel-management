@@ -175,35 +175,43 @@ approvalRequestSchema.methods.isExpired = function() {
 
 // Static method to get pending requests count for a hotel
 approvalRequestSchema.statics.getPendingCount = async function(hotelId) {
-  return await this.countDocuments({ hotelId, status: 'pending' });
+  try {
+    return await this.countDocuments({ hotelId, status: 'pending' });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get approval statistics
 approvalRequestSchema.statics.getApprovalStats = async function(hotelId, startDate, endDate) {
-  const match = { hotelId };
+  try {
+    const match = { hotelId };
 
-  if (startDate || endDate) {
-    match.createdAt = {};
-    if (startDate) match.createdAt.$gte = new Date(startDate);
-    if (endDate) match.createdAt.$lte = new Date(endDate);
-  }
-
-  const stats = await this.aggregate([
-    { $match: match },
-    {
-      $group: {
-        _id: '$status',
-        count: { $sum: 1 }
-      }
+    if (startDate || endDate) {
+      match.createdAt = {};
+      if (startDate) match.createdAt.$gte = new Date(startDate);
+      if (endDate) match.createdAt.$lte = new Date(endDate);
     }
-  ]);
 
-  return {
-    total: stats.reduce((sum, item) => sum + item.count, 0),
-    pending: stats.find(s => s._id === 'pending')?.count || 0,
-    approved: stats.find(s => s._id === 'approved')?.count || 0,
-    rejected: stats.find(s => s._id === 'rejected')?.count || 0
-  };
+    const stats = await this.aggregate([
+      { $match: match },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    return {
+      total: stats.reduce((sum, item) => sum + item.count, 0),
+      pending: stats.find(s => s._id === 'pending')?.count || 0,
+      approved: stats.find(s => s._id === 'approved')?.count || 0,
+      rejected: stats.find(s => s._id === 'rejected')?.count || 0
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Pre-save middleware to validate status transitions

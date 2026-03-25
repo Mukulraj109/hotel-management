@@ -83,7 +83,7 @@ const allotmentController = {
         .populate('updatedBy', 'name email')
         .sort(sort)
         .skip(skip)
-        .limit(parseInt(limit));
+        .limit(parseInt(limit)).lean();
 
       const total = await RoomTypeAllotment.countDocuments(filter);
 
@@ -121,7 +121,7 @@ const allotmentController = {
       })
       .populate('roomTypeId', 'name code maxOccupancy baseRate')
       .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email');
+      .populate('updatedBy', 'name email').lean();
 
       if (!allotment) {
         return res.status(404).json({
@@ -253,7 +253,7 @@ const allotmentController = {
 
       const allotments = await RoomTypeAllotment.find(filter)
         .populate('roomTypeId', 'name code')
-        .lean();
+        .lean().limit(1000);
 
       // Filter and format daily allotments for the date range
       const start = new Date(startDate);
@@ -302,7 +302,7 @@ const allotmentController = {
       const allotment = await RoomTypeAllotment.findOne({
         _id: id,
         hotelId: req.user.hotelId
-      });
+      }).lean();
 
       if (!allotment) {
         return res.status(404).json({
@@ -351,32 +351,38 @@ const allotmentController = {
       const { channelId, date, allocated, sold, blocked } = req.body;
 
       const result = await withTransaction(async (session) => {
-        const allotment = await RoomTypeAllotment.findOne({
-          _id: id,
-          hotelId: req.user.hotelId
-        }).session(session);
+        try {
+          const allotment = await RoomTypeAllotment.findOne({
+            _id: id,
+            hotelId: req.user.hotelId
+          }).session(session);
 
-        if (!allotment) {
-          return null;
+          if (!allotment) {
+            return null;
+          }
+
+          // Update the allocation
+          const allocation = {};
+          if (allocated !== undefined) allocation.allocated = allocated;
+          if (sold !== undefined) allocation.sold = sold;
+          if (blocked !== undefined) allocation.blocked = blocked;
+
+          allotment.updateChannelAllocation(channelId, date, allocation);
+          await allotment.save({ session });
+
+          // Log the update
+          await allotmentService.logAction(id, req.user.id, 'updated', {
+            channelId,
+            date,
+            allocation
+          });
+
+          return allotment.getAllotmentForDate(date);
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
         }
-
-        // Update the allocation
-        const allocation = {};
-        if (allocated !== undefined) allocation.allocated = allocated;
-        if (sold !== undefined) allocation.sold = sold;
-        if (blocked !== undefined) allocation.blocked = blocked;
-
-        allotment.updateChannelAllocation(channelId, date, allocation);
-        await allotment.save({ session });
-
-        // Log the update
-        await allotmentService.logAction(id, req.user.id, 'updated', {
-          channelId,
-          date,
-          allocation
-        });
-
-        return allotment.getAllotmentForDate(date);
       });
 
       if (!result) {
@@ -421,7 +427,13 @@ const allotmentController = {
       };
 
       const result = await withTransaction(async (session) => {
-        return await allotmentService.processBooking(bookingData, { session });
+        try {
+          return await allotmentService.processBooking(bookingData, { session });
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
+        }
       });
 
       res.json({
@@ -493,7 +505,7 @@ const allotmentController = {
       const allotment = await RoomTypeAllotment.findOne({
         _id: id,
         hotelId: hotelId
-      });
+      }).lean();
 
       if (!allotment) {
         return res.status(404).json({
@@ -627,7 +639,7 @@ const allotmentController = {
       const allotment = await RoomTypeAllotment.findOne({
         _id: id,
         hotelId: req.user.hotelId
-      });
+      }).lean();
 
       if (!allotment) {
         return res.status(404).json({
@@ -686,7 +698,7 @@ const allotmentController = {
       const allotment = await RoomTypeAllotment.findOne({
         _id: id,
         hotelId: req.user.hotelId
-      });
+      }).lean();
 
       if (!allotment) {
         return res.status(404).json({
@@ -730,7 +742,7 @@ const allotmentController = {
         hotelId: req.user.hotelId,
         roomTypeId,
         status: 'active'
-      });
+      }).lean();
 
       if (!allotment) {
         return res.status(404).json({
@@ -859,7 +871,7 @@ const allotmentController = {
         hotelId: req.user.hotelId
       })
       .populate('roomTypeId', 'name code')
-      .lean();
+      ;
 
       if (!allotment) {
         return res.status(404).json({
@@ -971,7 +983,7 @@ const allotmentController = {
       // Get all allotments for the hotel
       const allotments = await RoomTypeAllotment.find({ hotelId })
         .populate('roomTypeId', 'name code baseRate')
-        .lean();
+        .lean().limit(1000);
 
       console.log('📊 Found allotments:', allotments.length);
 
@@ -1197,7 +1209,7 @@ const allotmentController = {
         console.log('🔍 Room type exists in any hotel:', !!roomTypeExists);
 
         // Check all allotments for this hotel
-        const allAllocations = await RoomTypeAllotment.find({ hotelId }).lean();
+        const allAllocations = await RoomTypeAllotment.find({ hotelId }).lean().limit(1000);
         console.log('📊 Total allotments for hotel:', allAllocations.length);
         if (allAllocations.length > 0) {
           console.log('📊 Available room types in hotel:', allAllocations.map(a => a.roomTypeId));

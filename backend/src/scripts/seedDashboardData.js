@@ -26,7 +26,7 @@ const seedDashboardData = async () => {
     logger.info('🌱 Starting dashboard data seeding...');
 
     // Get or create hotel
-    let hotel = await Hotel.findOne({ name: 'THE PENTOUZ' });
+    let hotel = await Hotel.findOne({ name: 'THE PENTOUZ' }).lean();
     if (!hotel) {
       hotel = await Hotel.create({
         name: 'THE PENTOUZ',
@@ -54,7 +54,7 @@ const seedDashboardData = async () => {
     }
 
     // Get or create admin user
-    let adminUser = await User.findOne({ email: 'admin@hotel.com' });
+    let adminUser = await User.findOne({ email: 'admin@hotel.com' }).lean();
     if (!adminUser) {
       const hashedPassword = await bcrypt.hash('admin123', 12);
       adminUser = await User.create({

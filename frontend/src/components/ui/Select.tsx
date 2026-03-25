@@ -65,7 +65,7 @@ export const SelectTrigger: React.FC<SelectTriggerProps> = ({ children, classNam
   if (!context) throw new Error('SelectTrigger must be used within Select');
 
   return (
-    <button
+    <button aria-label="Expand"
       type="button"
       onClick={() => context.setOpen(!context.open)}
       className={cn(
@@ -129,14 +129,14 @@ export const SelectItem: React.FC<SelectItemProps> = ({ children, value, classNa
   if (!context) throw new Error('SelectItem must be used within Select');
 
   return (
-    <div
+    <div role="button" tabIndex={0}
       onClick={() => context.onValueChange(value)}
       className={cn(
         'relative cursor-default select-none py-2 pl-3 pr-9 text-gray-900 hover:bg-gray-100',
         context.value === value && 'bg-blue-100 text-blue-900',
         className
       )}
-    >
+     onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => context.onValueChange(value); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
       {children}
     </div>
   );

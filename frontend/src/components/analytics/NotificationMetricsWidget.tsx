@@ -121,7 +121,7 @@ export const NotificationMetricsWidget: React.FC<NotificationMetricsWidgetProps>
         <div className="px-4 py-3 border-b border-gray-200">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900">Notification Metrics</h3>
-            <button
+            <button aria-label="Expand"
               onClick={() => setIsExpanded(!isExpanded)}
               className="text-xs text-blue-600 hover:text-blue-700 font-medium"
             >

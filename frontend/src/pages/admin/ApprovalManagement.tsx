@@ -140,7 +140,7 @@ const ApprovalManagement: React.FC = () => {
             <div className="flex gap-2 flex-wrap">
               {(['all', 'pending', 'approved', 'rejected'] as StatusFilter[]).map(
                 (status) => (
-                  <button
+                  <button aria-label="Filter"
                     key={status}
                     onClick={() => setStatusFilter(status)}
                     className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
@@ -171,7 +171,7 @@ const ApprovalManagement: React.FC = () => {
                   'discount',
                 ] as RequestTypeFilter[]
               ).map((type) => (
-                <button
+                <button aria-label="Filter"
                   key={type}
                   onClick={() => setRequestTypeFilter(type)}
                   className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${

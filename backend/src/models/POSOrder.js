@@ -158,15 +158,19 @@ const posOrderSchema = new mongoose.Schema({
 
 // Generate order number
 posOrderSchema.pre('save', async function(next) {
-  if (!this.orderNumber) {
-    const today = new Date();
-    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
-    const count = await this.constructor.countDocuments({
-      orderNumber: new RegExp(`^${dateStr}`)
-    });
-    this.orderNumber = `${dateStr}${(count + 1).toString().padStart(4, '0')}`;
+  try {
+    if (!this.orderNumber) {
+      const today = new Date();
+      const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+      const count = await this.constructor.countDocuments({
+        orderNumber: new RegExp(`^${dateStr}`)
+      });
+      this.orderNumber = `${dateStr}${(count + 1).toString().padStart(4, '0')}`;
+    }
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  next();
 });
 
 // Performance indexes

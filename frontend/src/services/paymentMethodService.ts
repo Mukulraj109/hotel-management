@@ -319,62 +319,94 @@ export interface BulkUpdateItem {
 
 class PaymentMethodService {
   async getPaymentMethods(filters: PaymentMethodFilters = {}) {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/payment-methods?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/payment-methods?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getPaymentMethodById(id: string, options: { populate?: boolean; includeAnalytics?: boolean } = {}) {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    if (options.populate) params.append('populate', 'true');
-    if (options.includeAnalytics) params.append('includeAnalytics', 'true');
+      if (options.populate) params.append('populate', 'true');
+      if (options.includeAnalytics) params.append('includeAnalytics', 'true');
 
-    const response = await api.get(`/payment-methods/${id}?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/payment-methods/${id}?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async createPaymentMethod(paymentMethodData: CreatePaymentMethodData) {
-    const response = await api.post('/payment-methods', paymentMethodData);
-    return response.data;
+    try {
+      const response = await api.post('/payment-methods', paymentMethodData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updatePaymentMethod(id: string, paymentMethodData: UpdatePaymentMethodData) {
-    const response = await api.put(`/payment-methods/${id}`, paymentMethodData);
-    return response.data;
+    try {
+      const response = await api.put(`/payment-methods/${id}`, paymentMethodData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async deletePaymentMethod(id: string) {
-    const response = await api.delete(`/payment-methods/${id}`);
-    return response.data;
+    try {
+      const response = await api.delete(`/payment-methods/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getPaymentMethodsByType(type: string, options: { includeInactive?: boolean } = {}) {
-    const params = new URLSearchParams();
-    if (options.includeInactive) params.append('includeInactive', 'true');
+    try {
+      const params = new URLSearchParams();
+      if (options.includeInactive) params.append('includeInactive', 'true');
 
-    const response = await api.get(`/payment-methods/type/${type}?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/payment-methods/type/${type}?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getAvailablePaymentMethods(dateTime?: Date) {
-    const params = new URLSearchParams();
-    if (dateTime) params.append('dateTime', dateTime.toISOString());
+    try {
+      const params = new URLSearchParams();
+      if (dateTime) params.append('dateTime', dateTime.toISOString());
 
-    const response = await api.get(`/payment-methods/available?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/payment-methods/available?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async testGatewayConnection(paymentMethodId: string) {
-    const response = await api.post(`/payment-methods/${paymentMethodId}/test-gateway`);
-    return response.data;
+    try {
+      const response = await api.post(`/payment-methods/${paymentMethodId}/test-gateway`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateAnalytics(paymentMethodId: string, transactionData: {
@@ -384,101 +416,153 @@ class PaymentMethodService {
     refunded?: boolean;
     refundAmount?: number;
   }) {
-    const response = await api.put(`/payment-methods/${paymentMethodId}/analytics`, transactionData);
-    return response.data;
+    try {
+      const response = await api.put(`/payment-methods/${paymentMethodId}/analytics`, transactionData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getPaymentMethodAnalytics(paymentMethodId: string, period: '7d' | '30d' | '90d' | '1y' = '30d'): Promise<{ success: boolean; data: PaymentMethodAnalytics }> {
-    const response = await api.get(`/payment-methods/${paymentMethodId}/analytics?period=${period}`);
-    return response.data;
+    try {
+      const response = await api.get(`/payment-methods/${paymentMethodId}/analytics?period=${period}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async searchPaymentMethods(query: string, options: { type?: string; userRole?: string; limit?: number } = {}) {
-    const params = new URLSearchParams({ q: query });
+    try {
+      const params = new URLSearchParams({ q: query });
     
-    if (options.type) params.append('type', options.type);
-    if (options.userRole) params.append('userRole', options.userRole);
-    if (options.limit) params.append('limit', options.limit.toString());
+      if (options.type) params.append('type', options.type);
+      if (options.userRole) params.append('userRole', options.userRole);
+      if (options.limit) params.append('limit', options.limit.toString());
 
-    const response = await api.get(`/payment-methods/search?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/payment-methods/search?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async bulkUpdatePaymentMethods(updates: BulkUpdateItem[]) {
-    const response = await api.put('/payment-methods/bulk-update', { updates });
-    return response.data;
+    try {
+      const response = await api.put('/payment-methods/bulk-update', { updates });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async exportPaymentMethods(format: 'json' | 'csv' = 'json') {
-    const response = await api.get(`/payment-methods/export?format=${format}`);
+    try {
+      const response = await api.get(`/payment-methods/export?format=${format}`);
     
-    if (format === 'csv') {
-      // Handle CSV download
-      const blob = new Blob([response.data], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'payment-methods.csv');
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      return { success: true, message: 'Export started' };
+      if (format === 'csv') {
+        // Handle CSV download
+        const blob = new Blob([response.data], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', 'payment-methods.csv');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        return { success: true, message: 'Export started' };
+      }
+    
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-    
-    return response.data;
   }
 
   async getPaymentMethodStats(): Promise<{ success: boolean; data: PaymentMethodStats }> {
-    const response = await api.get('/payment-methods/stats');
-    return response.data;
+    try {
+      const response = await api.get('/payment-methods/stats');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async calculateFees(paymentMethodId: string, amount: number, currency = 'USD') {
-    const params = new URLSearchParams({ 
-      amount: amount.toString(),
-      currency 
-    });
+    try {
+      const params = new URLSearchParams({ 
+        amount: amount.toString(),
+        currency 
+      });
 
-    const response = await api.get(`/payment-methods/${paymentMethodId}/calculate-fees?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/payment-methods/${paymentMethodId}/calculate-fees?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async validatePaymentMethodUsage(paymentMethodId: string, amount: number, currency = 'USD', dateTime?: Date): Promise<{ success: boolean; data: PaymentMethodValidation }> {
-    const params = new URLSearchParams({ 
-      amount: amount.toString(),
-      currency 
-    });
+    try {
+      const params = new URLSearchParams({ 
+        amount: amount.toString(),
+        currency 
+      });
     
-    if (dateTime) params.append('dateTime', dateTime.toISOString());
+      if (dateTime) params.append('dateTime', dateTime.toISOString());
 
-    const response = await api.get(`/payment-methods/${paymentMethodId}/validate?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/payment-methods/${paymentMethodId}/validate?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getPaymentMethodTypes(): Promise<{ success: boolean; data: PaymentMethodType[] }> {
-    const response = await api.get('/payment-methods/types');
-    return response.data;
+    try {
+      const response = await api.get('/payment-methods/types');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getGatewayProviders(): Promise<{ success: boolean; data: GatewayProvider[] }> {
-    const response = await api.get('/payment-methods/gateway-providers');
-    return response.data;
+    try {
+      const response = await api.get('/payment-methods/gateway-providers');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async clonePaymentMethod(paymentMethodId: string, newName: string, newCode: string) {
-    const response = await api.post(`/payment-methods/${paymentMethodId}/clone`, { newName, newCode });
-    return response.data;
+    try {
+      const response = await api.post(`/payment-methods/${paymentMethodId}/clone`, { newName, newCode });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updatePaymentMethodStatus(paymentMethodId: string, isActive: boolean, reason?: string) {
-    const response = await api.patch(`/payment-methods/${paymentMethodId}/status`, { isActive, reason });
-    return response.data;
+    try {
+      const response = await api.patch(`/payment-methods/${paymentMethodId}/status`, { isActive, reason });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateDisplayOrder(updates: Array<{ id: string; order: number }>) {
-    const response = await api.put('/payment-methods/display-order', { updates });
-    return response.data;
+    try {
+      const response = await api.put('/payment-methods/display-order', { updates });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Helper methods for frontend

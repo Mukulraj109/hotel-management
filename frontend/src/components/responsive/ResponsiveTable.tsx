@@ -176,7 +176,7 @@ const ResponsiveTable: React.FC<ResponsiveTableProps> = ({
                   {actions.map((action) => {
                     const Icon = action.icon || getActionIcon(action.key);
                     return (
-                      <button
+                      <button aria-label="Close"
                         key={action.key}
                         onClick={() => action.onClick(row)}
                         className={`p-2 rounded-full transition-colors ${getActionVariant(action.variant)}`}
@@ -209,7 +209,7 @@ const ResponsiveTable: React.FC<ResponsiveTableProps> = ({
             {/* Expandable content for hidden columns */}
             {columns.some(col => col.mobileHidden) && (
               <div className="mt-3 pt-3 border-t border-gray-200">
-                <button
+                <button aria-label="Toggle"
                   onClick={() => toggleRowExpansion(row[rowKey])}
                   className="flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-800"
                 >
@@ -284,7 +284,7 @@ const ResponsiveTable: React.FC<ResponsiveTableProps> = ({
                   className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
                   {column.sortable ? (
-                    <button
+                    <button aria-label="Sort"
                       onClick={() => handleSort(column.key)}
                       className="flex items-center gap-1 hover:text-gray-700"
                     >
@@ -346,7 +346,7 @@ const ResponsiveTable: React.FC<ResponsiveTableProps> = ({
                       {actions.map((action) => {
                         const Icon = action.icon || getActionIcon(action.key);
                         return (
-                          <button
+                          <button aria-label="Close"
                             key={action.key}
                             onClick={() => action.onClick(row)}
                             className={`p-1 rounded transition-colors ${getActionVariant(action.variant)}`}

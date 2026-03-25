@@ -258,13 +258,13 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
             ) : results.length > 0 ? (
               <div className="divide-y divide-gray-100">
                 {results.map((result, index) => (
-                  <div
+                  <div role="button" tabIndex={0}
                     key={result.id}
                     className={`p-3 cursor-pointer transition-colors ${
                       index === selectedIndex ? 'bg-blue-50 border-l-4 border-l-blue-500' : 'hover:bg-gray-50'
                     }`}
                     onClick={() => handleResultClick(result)}
-                  >
+                   onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => handleResultClick(result); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                     <div className="flex items-start gap-3">
                       <div className="mt-1 text-gray-400">
                         {getResultIcon(result.type)}

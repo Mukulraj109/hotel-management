@@ -63,5 +63,7 @@ const syncHistorySchema = new mongoose.Schema({
 syncHistorySchema.index({ hotelId: 1, startedAt: -1 });
 syncHistorySchema.index({ provider: 1, status: 1 });
 // Note: syncId already has unique: true, no need for separate index
+// Data retention TTL: auto-delete sync history records after 90 days
+syncHistorySchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
 
 export default mongoose.model('SyncHistory', syncHistorySchema);

@@ -7,10 +7,12 @@ import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import financialRateLimiter from '../middleware/financialRateLimiter.js';
 
 const router = express.Router();
 
-// All routes require authentication
+// All routes require rate limiting and authentication
+router.use(financialRateLimiter);
 router.use(authenticate);
 router.use(ensurePropertyAccess);
 
@@ -179,7 +181,7 @@ router.get('/outlet-performance', authorize('admin', 'staff'), catchAsync(async 
   const outletDetails = await POSOutlet.find({
     hotelId: req.user.role === 'staff' ? req.user.hotelId : hotelId,
     isActive: true
-  }).select('name type location outletId');
+  }).select('name type location outletId').lean().limit(1000);
 
   // Merge outlet details with results
   const enrichedResults = results.map(result => {

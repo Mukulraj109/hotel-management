@@ -224,7 +224,7 @@ const MultiBooking: React.FC = () => {
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <button
+              <button aria-label="Previous"
                 onClick={() => navigate('/travel-agent')}
                 className="p-2 text-gray-600 hover:text-indigo-600 transition-colors"
               >
@@ -317,6 +317,7 @@ const MultiBooking: React.FC = () => {
                             });
                           }}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-transparent"
+                          required
                         />
                       </div>
                       <div>
@@ -337,6 +338,7 @@ const MultiBooking: React.FC = () => {
                             });
                           }}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-transparent"
+                          required
                         />
                       </div>
                       <div className="flex items-end">
@@ -419,7 +421,7 @@ const MultiBooking: React.FC = () => {
                         { key: 'invoice', label: 'Invoice', desc: 'Request invoice for later payment' },
                         { key: 'deposit', label: 'Deposit', desc: 'Pay partial amount now' }
                       ].map(({ key, label, desc }) => (
-                        <button
+                        <button aria-label="Close"
                           key={key}
                           onClick={() => setPaymentMethod(key as typeof paymentMethod)}
                           className={`p-4 border-2 rounded-lg text-left transition-colors ${
@@ -518,7 +520,7 @@ const MultiBooking: React.FC = () => {
 
                   {currentStep === 'review' && (
                     <div className="space-y-3">
-                      <button
+                      <button aria-label="Close"
                         onClick={handleSubmitBooking}
                         disabled={loading}
                         className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"

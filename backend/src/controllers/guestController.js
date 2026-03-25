@@ -84,47 +84,53 @@ export const getAllGuests = catchAsync(async (req, res) => {
     .select('-password -passwordResetToken -passwordResetExpires')
     .sort(sort)
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   const total = await User.countDocuments(query);
 
   // Get additional data for each guest
   const guestsWithStats = await Promise.all(
     guests.map(async (guest) => {
-      const [bookingStats, reviewStats] = await Promise.all([
-        // Booking statistics
-        Booking.aggregate([
-          { $match: { userId: guest._id, hotelId: guest.hotelId } },
-          {
-            $group: {
-              _id: null,
-              totalBookings: { $sum: 1 },
-              totalNights: { $sum: { $subtract: ['$checkOut', '$checkIn'] } },
-              totalSpent: { $sum: '$totalAmount' },
-              lastStay: { $max: '$checkOut' }
+      try {
+        const [bookingStats, reviewStats] = await Promise.all([
+          // Booking statistics
+          Booking.aggregate([
+            { $match: { userId: guest._id, hotelId: guest.hotelId } },
+            {
+              $group: {
+                _id: null,
+                totalBookings: { $sum: 1 },
+                totalNights: { $sum: { $subtract: ['$checkOut', '$checkIn'] } },
+                totalSpent: { $sum: '$totalAmount' },
+                lastStay: { $max: '$checkOut' }
+              }
             }
-          }
-        ]),
-        // Review statistics
-        Review.aggregate([
-          { $match: { userId: guest._id, hotelId: guest.hotelId } },
-          {
-            $group: {
-              _id: null,
-              totalReviews: { $sum: 1 },
-              averageRating: { $avg: '$rating' }
+          ]),
+          // Review statistics
+          Review.aggregate([
+            { $match: { userId: guest._id, hotelId: guest.hotelId } },
+            {
+              $group: {
+                _id: null,
+                totalReviews: { $sum: 1 },
+                averageRating: { $avg: '$rating' }
+              }
             }
-          }
-        ])
-      ]);
+          ])
+        ]);
 
-      return {
-        ...guest.toObject(),
-        stats: {
-          bookings: bookingStats[0] || { totalBookings: 0, totalNights: 0, totalSpent: 0, lastStay: null },
-          reviews: reviewStats[0] || { totalReviews: 0, averageRating: 0 }
-        }
-      };
+        return {
+          ...guest.toObject(),
+          stats: {
+            bookings: bookingStats[0] || { totalBookings: 0, totalNights: 0, totalSpent: 0, lastStay: null },
+            reviews: reviewStats[0] || { totalReviews: 0, averageRating: 0 }
+          }
+        };
+    
+      } catch (error) {
+        console.error('Operation failed:', error.message);
+        throw error;
+      }
     })
   );
 
@@ -144,7 +150,7 @@ export const getAllGuests = catchAsync(async (req, res) => {
 export const getGuest = catchAsync(async (req, res) => {
   const guest = await User.findById(req.params.id)
     .populate('salutationId', 'title fullForm')
-    .select('-password -passwordResetToken -passwordResetExpires');
+    .select('-password -passwordResetToken -passwordResetExpires').lean();
 
   if (!guest || guest.role !== 'guest') {
     throw new ApplicationError('Guest not found', 404);
@@ -239,7 +245,7 @@ export const updateGuest = catchAsync(async (req, res) => {
 
 // Delete guest
 export const deleteGuest = catchAsync(async (req, res) => {
-  const guest = await User.findById(req.params.id);
+  const guest = await User.findById(req.params.id).lean();
 
   if (!guest || guest.role !== 'guest') {
     throw new ApplicationError('Guest not found', 404);
@@ -399,7 +405,7 @@ export const searchGuests = catchAsync(async (req, res) => {
     .select('-password -passwordResetToken -passwordResetExpires')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   const total = await User.countDocuments(query);
 
@@ -425,7 +431,7 @@ export const exportGuests = catchAsync(async (req, res) => {
   const guests = await User.find(query)
     .populate('salutationId', 'title fullForm')
     .select('-password -passwordResetToken -passwordResetExpires')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 }).lean().limit(1000);
 
   if (format === 'csv') {
     const csvHeader = 'Name,Email,Phone,Salutation,Loyalty Tier,Guest Type,Created At\n';

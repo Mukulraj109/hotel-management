@@ -195,7 +195,7 @@ export async function verifyRoomTypesMigration() {
   console.log('🔍 Verifying Room Types Migration...');
   
   const legacyRoomTypes = await Room.distinct('type');
-  const migratedRoomTypes = await RoomType.find({ legacyType: { $exists: true } });
+  const migratedRoomTypes = await RoomType.find({ legacyType: { $exists: true } }).lean().limit(1000);
   
   const results = {
     legacyTypesFound: legacyRoomTypes,

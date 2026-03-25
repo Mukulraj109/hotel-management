@@ -180,6 +180,12 @@ class AuditAnalyticsService {
           dateFormat = '%Y-%m-%d';
       }
 
+      // Consider caching this aggregation result for 5 minutes
+
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+
       const timeSeries = await SettingsAuditLog.aggregate([
         { $match: matchStage },
         {
@@ -228,6 +234,12 @@ class AuditAnalyticsService {
           $lte: new Date(endDate)
         };
       }
+
+      // Consider caching this aggregation result for 5 minutes
+
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
 
       const heatmap = await SettingsAuditLog.aggregate([
         { $match: matchStage },
@@ -322,6 +334,10 @@ class AuditAnalyticsService {
       const logs = await SettingsAuditLog.getLogsByUser(userId, { limit, skip });
 
       // Calculate user statistics
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
       const stats = await SettingsAuditLog.aggregate([
         { $match: { userId: userId } },
         {
@@ -372,6 +388,10 @@ class AuditAnalyticsService {
       const logs = await SettingsAuditLog.getLogsByProperty(propertyId, { limit, skip });
 
       // Calculate property statistics
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
       const stats = await SettingsAuditLog.aggregate([
         {
           $match: {
@@ -488,6 +508,12 @@ class AuditAnalyticsService {
           $lte: new Date(endDate)
         };
       }
+
+      // Consider caching this aggregation result for 5 minutes
+
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
 
       const bulkOperations = await SettingsAuditLog.aggregate([
         { $match: matchStage },

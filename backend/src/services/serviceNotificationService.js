@@ -46,7 +46,7 @@ class ServiceNotificationService {
 
       // Notify the guest about status changes
       if (oldStatus !== newStatus && ['assigned', 'in_progress', 'completed', 'cancelled'].includes(newStatus)) {
-        const guest = await User.findById(serviceRequest.userId);
+        const guest = await User.findById(serviceRequest.userId).lean();
 
         if (guest) {
           const statusMessages = {
@@ -121,17 +121,20 @@ class ServiceNotificationService {
         scheduledTime: { $lt: new Date() },
         status: { $in: ['assigned', 'in_progress'] }
       }).populate('assignedTo', 'name email')
-        .populate('hotelId', 'name');
+        .populate('hotelId', 'name').lean().limit(1000);
+
+      // Batch: check recent overdue notifications for all requests in a single query
+      const assignedRequestIds = overdueRequests.filter(r => r.assignedTo).map(r => r._id);
+      const recentNotifications = await Notification.find({
+        'metadata.serviceRequestId': { $in: assignedRequestIds },
+        type: 'service_overdue',
+        createdAt: { $gte: new Date(Date.now() - 2 * 60 * 60 * 1000) }
+      }).select('metadata.serviceRequestId').lean();
+      const recentlyNotifiedIds = new Set(recentNotifications.map(n => n.metadata?.serviceRequestId?.toString()));
 
       for (const request of overdueRequests) {
         if (request.assignedTo) {
-          // Check if we haven't sent an overdue notification in the last 2 hours
-          const recentNotification = await Notification.findOne({
-            userId: request.assignedTo._id,
-            'metadata.serviceRequestId': request._id,
-            type: 'service_overdue',
-            createdAt: { $gte: new Date(Date.now() - 2 * 60 * 60 * 1000) }
-          });
+          const recentNotification = recentlyNotifiedIds.has(request._id.toString());
 
           if (!recentNotification) {
             await Notification.create({
@@ -212,7 +215,7 @@ class ServiceNotificationService {
         hotelId,
         role: { $in: ['admin', 'manager'] },
         isActive: true
-      });
+      }).lean().limit(1000);
 
       const statsMessage = this.formatDailySummary(todayStats, pendingCount, overdueCount);
 

@@ -85,55 +85,87 @@ interface ApiResponse<T> {
 
 class DailyInventoryCheckService {
   async createInventoryCheck(data: CreateInventoryCheckData): Promise<ApiResponse<{ dailyCheck: DailyInventoryCheck }>> {
-    const response = await api.post('/daily-inventory-checks', data);
-    return response.data;
+    try {
+      const response = await api.post('/daily-inventory-checks', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getInventoryChecks(filters: InventoryCheckFilters = {}): Promise<ApiResponse<{ dailyChecks: DailyInventoryCheck[] }>> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/daily-inventory-checks?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/daily-inventory-checks?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getTodayChecks(): Promise<ApiResponse<{ dailyChecks: DailyInventoryCheck[] }>> {
-    const response = await api.get('/daily-inventory-checks/today');
-    return response.data;
+    try {
+      const response = await api.get('/daily-inventory-checks/today');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getOverdueChecks(): Promise<ApiResponse<{ dailyChecks: DailyInventoryCheck[] }>> {
-    const response = await api.get('/daily-inventory-checks/overdue');
-    return response.data;
+    try {
+      const response = await api.get('/daily-inventory-checks/overdue');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getInventoryCheckById(id: string): Promise<ApiResponse<{ dailyCheck: DailyInventoryCheck }>> {
-    const response = await api.get(`/daily-inventory-checks/${id}`);
-    return response.data;
+    try {
+      const response = await api.get(`/daily-inventory-checks/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateInventoryCheck(id: string, updates: UpdateInventoryCheckData): Promise<ApiResponse<{ dailyCheck: DailyInventoryCheck }>> {
-    const response = await api.patch(`/daily-inventory-checks/${id}`, updates);
-    return response.data;
+    try {
+      const response = await api.patch(`/daily-inventory-checks/${id}`, updates);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async completeInventoryCheck(id: string): Promise<ApiResponse<{ dailyCheck: DailyInventoryCheck }>> {
-    const response = await api.patch(`/daily-inventory-checks/${id}/complete`);
-    return response.data;
+    try {
+      const response = await api.patch(`/daily-inventory-checks/${id}/complete`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async addIssue(id: string, itemId: string, issue: string, priority: 'low' | 'medium' | 'high' | 'urgent' = 'medium'): Promise<ApiResponse<{ dailyCheck: DailyInventoryCheck }>> {
-    const response = await api.post(`/daily-inventory-checks/${id}/issues`, {
-      itemId,
-      issue,
-      priority
-    });
-    return response.data;
+    try {
+      const response = await api.post(`/daily-inventory-checks/${id}/issues`, {
+        itemId,
+        issue,
+        priority
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

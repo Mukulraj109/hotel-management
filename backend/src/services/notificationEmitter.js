@@ -36,10 +36,14 @@ class NotificationEmitter extends EventEmitter {
 
   // Send notification to multiple users
   async sendToUsers(userIds, notification) {
-    const results = await Promise.all(
-      userIds.map(userId => this.sendToUser(userId, notification))
-    );
-    return results;
+    try {
+      const results = await Promise.all(
+        userIds.map(userId => this.sendToUser(userId, notification))
+      );
+      return results;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Send notification to users by role
@@ -51,7 +55,7 @@ class NotificationEmitter extends EventEmitter {
         role,
         hotelId,
         isActive: true
-      }).select('_id');
+      }).select('_id').lean().limit(1000);
 
       const userIds = users.map(u => u._id.toString());
       return await this.sendToUsers(userIds, notification);
@@ -415,7 +419,13 @@ class NotificationEmitter extends EventEmitter {
 
     if (delay > 0) {
       setTimeout(async () => {
-        await this.deliverNotification(notification, recipient);
+        try {
+          await this.deliverNotification(notification, recipient);
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
+        }
       }, delay);
 
       logger.info('Notification scheduled', {
@@ -436,26 +446,32 @@ class NotificationEmitter extends EventEmitter {
     let escalationLevel = 0;
 
     const checkAcknowledgment = async () => {
-      // Reload notification to check if it's been read
-      const currentNotification = await Notification.findById(notification._id);
+      try {
+        // Reload notification to check if it's been read
+        const currentNotification = await Notification.findById(notification._id).lean();
 
-      if (currentNotification.readAt || escalationLevel >= maxLevels) {
-        return; // Stop escalation
-      }
+        if (currentNotification.readAt || escalationLevel >= maxLevels) {
+          return; // Stop escalation
+        }
 
-      escalationLevel++;
-      logger.info('Escalating notification', {
-        notificationId: notification._id,
-        escalationLevel,
-        maxLevels
-      });
+        escalationLevel++;
+        logger.info('Escalating notification', {
+          notificationId: notification._id,
+          escalationLevel,
+          maxLevels
+        });
 
-      // Re-send with higher priority channels
-      await this.escalateNotification(currentNotification, recipient, escalationLevel);
+        // Re-send with higher priority channels
+        await this.escalateNotification(currentNotification, recipient, escalationLevel);
 
-      // Schedule next escalation
-      if (escalationLevel < maxLevels) {
-        setTimeout(checkAcknowledgment, delay);
+        // Schedule next escalation
+        if (escalationLevel < maxLevels) {
+          setTimeout(checkAcknowledgment, delay);
+        }
+    
+      } catch (error) {
+        console.error('Operation failed:', error.message);
+        throw error;
       }
     };
 
@@ -495,29 +511,41 @@ class NotificationEmitter extends EventEmitter {
 
   // Placeholder methods for different delivery channels
   async sendPushNotification(notification, recipient) {
-    // This would integrate with a push notification service like FCM
-    logger.info('Push notification sent (placeholder)', {
-      notificationId: notification._id,
-      userId: recipient.userId
-    });
+    try {
+      // This would integrate with a push notification service like FCM
+      logger.info('Push notification sent (placeholder)', {
+        notificationId: notification._id,
+        userId: recipient.userId
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async sendEmailNotification(notification, recipient) {
-    // This would integrate with an email service
-    logger.info('Email notification sent (placeholder)', {
-      notificationId: notification._id,
-      userId: recipient.userId,
-      email: recipient.user.email
-    });
+    try {
+      // This would integrate with an email service
+      logger.info('Email notification sent (placeholder)', {
+        notificationId: notification._id,
+        userId: recipient.userId,
+        email: recipient.user.email
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async sendSMSNotification(notification, recipient) {
-    // This would integrate with an SMS service
-    logger.info('SMS notification sent (placeholder)', {
-      notificationId: notification._id,
-      userId: recipient.userId,
-      phone: recipient.user.phone
-    });
+    try {
+      // This would integrate with an SMS service
+      logger.info('SMS notification sent (placeholder)', {
+        notificationId: notification._id,
+        userId: recipient.userId,
+        phone: recipient.user.phone
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Helper to determine category from notification type

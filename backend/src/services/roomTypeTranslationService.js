@@ -17,7 +17,7 @@ class RoomTypeTranslationService {
    */
   async initializeRoomTypeTranslations(roomTypeId, targetLanguages = [], userId) {
     try {
-      const roomType = await RoomType.findById(roomTypeId);
+      const roomType = await RoomType.findById(roomTypeId).lean();
       if (!roomType) {
         throw new Error('Room type not found');
       }
@@ -151,7 +151,7 @@ class RoomTypeTranslationService {
    */
   async getLocalizedRoomType(roomTypeId, language = 'EN') {
     try {
-      const roomType = await RoomType.findById(roomTypeId);
+      const roomType = await RoomType.findById(roomTypeId).lean();
       if (!roomType) {
         throw new Error('Room type not found');
       }
@@ -190,7 +190,7 @@ class RoomTypeTranslationService {
    */
   async updateTranslation(translationId, translatedText, userId) {
     try {
-      const translation = await Translation.findById(translationId);
+      const translation = await Translation.findById(translationId).lean();
       if (!translation) {
         throw new Error('Translation not found');
       }
@@ -226,7 +226,7 @@ class RoomTypeTranslationService {
    */
   async approveTranslation(translationId, reviewerId, notes = '') {
     try {
-      const translation = await Translation.findById(translationId);
+      const translation = await Translation.findById(translationId).lean();
       if (!translation) {
         throw new Error('Translation not found');
       }
@@ -235,7 +235,7 @@ class RoomTypeTranslationService {
 
       // Update room type translation status
       if (translation.resourceType === 'room_type') {
-        const roomType = await RoomType.findById(translation.resourceId);
+        const roomType = await RoomType.findById(translation.resourceId).lean();
         if (roomType) {
           // Calculate completeness for this language
           const languageTranslations = await Translation.find({
@@ -243,7 +243,7 @@ class RoomTypeTranslationService {
             resourceId: translation.resourceId,
             targetLanguage: translation.targetLanguage,
             isActive: true
-          });
+          }).lean().limit(1000);
 
           const approvedTranslations = languageTranslations.filter(
             t => t.quality.reviewStatus === 'approved'
@@ -285,7 +285,7 @@ class RoomTypeTranslationService {
    */
   async getTranslationProgress(roomTypeId, language = null) {
     try {
-      const roomType = await RoomType.findById(roomTypeId);
+      const roomType = await RoomType.findById(roomTypeId).lean();
       if (!roomType) {
         throw new Error('Room type not found');
       }
@@ -300,7 +300,7 @@ class RoomTypeTranslationService {
         query.targetLanguage = language;
       }
 
-      const translations = await Translation.find(query);
+      const translations = await Translation.find(query).lean().limit(1000);
       
       const progress = {
         total: translations.length,
@@ -455,7 +455,7 @@ class RoomTypeTranslationService {
         targetLanguage: language,
         'quality.reviewStatus': 'approved',
         isActive: true
-      }).lean();
+      }).lean().limit(1000);
 
       // Map translations back to amenities
       const localizedAmenities = amenityCodes.map(amenity => {
@@ -543,18 +543,24 @@ class RoomTypeTranslationService {
       })
       .populate('createdBy updatedBy', 'name email')
       .sort({ rank: 1, category: 1, name: 1 })
-      .lean();
+      .lean().limit(1000);
 
       // Get translation statistics for each room type
       const roomTypesWithStatus = await Promise.all(
         roomTypes.map(async (roomType) => {
-          const progress = await this.getTranslationProgress(roomType._id);
-          return {
-            ...roomType,
-            translationProgress: progress,
-            translationCompleteness: roomType.content?.translations?.length > 0 ? 
-              Math.round(progress.approved / progress.total * 100) : 0
-          };
+          try {
+            const progress = await this.getTranslationProgress(roomType._id);
+            return {
+              ...roomType,
+              translationProgress: progress,
+              translationCompleteness: roomType.content?.translations?.length > 0 ? 
+                Math.round(progress.approved / progress.total * 100) : 0
+            };
+        
+          } catch (error) {
+            console.error('Operation failed:', error.message);
+            throw error;
+          }
         })
       );
 

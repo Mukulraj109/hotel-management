@@ -478,72 +478,76 @@ vendorSchema.methods.getMaskedPII = function(fieldName) {
 
 // Enhanced pre-save middleware
 vendorSchema.pre('save', async function(next) {
-  // Generate vendor code if new document
-  if (this.isNew && !this.vendorCode) {
-    const count = await this.constructor.countDocuments({ hotelId: this.hotelId });
-    this.vendorCode = `VEN${String(count + 1).padStart(6, '0')}`;
-  }
-
-  // Update full address (both new and legacy structures)
-  if (this.contactInfo && this.contactInfo.address) {
-    const addressParts = [
-      this.contactInfo.address.street,
-      this.contactInfo.address.city,
-      this.contactInfo.address.state,
-      this.contactInfo.address.country,
-      this.contactInfo.address.zipCode
-    ].filter(Boolean);
-    this.contactInfo.address.fullAddress = addressParts.join(', ');
-  }
-
-  // Legacy address support
-  if (this.address) {
-    const addressParts = [
-      this.address.street,
-      this.address.city,
-      this.address.state,
-      this.address.country,
-      this.address.zipCode
-    ].filter(Boolean);
-    this.address.fullAddress = addressParts.join(', ');
-  }
-
-  // Update legacy fields from new structure for backward compatibility
-  if (this.contactInfo) {
-    this.email = this.contactInfo.email;
-    this.phone = this.contactInfo.phone;
-    if (this.contactInfo.primaryContact) {
-      this.contactPerson = this.contactInfo.primaryContact.name;
+  try {
+    // Generate vendor code if new document
+    if (this.isNew && !this.vendorCode) {
+      const count = await this.constructor.countDocuments({ hotelId: this.hotelId });
+      this.vendorCode = `VEN${String(count + 1).padStart(6, '0')}`;
     }
+
+    // Update full address (both new and legacy structures)
+    if (this.contactInfo && this.contactInfo.address) {
+      const addressParts = [
+        this.contactInfo.address.street,
+        this.contactInfo.address.city,
+        this.contactInfo.address.state,
+        this.contactInfo.address.country,
+        this.contactInfo.address.zipCode
+      ].filter(Boolean);
+      this.contactInfo.address.fullAddress = addressParts.join(', ');
+    }
+
+    // Legacy address support
+    if (this.address) {
+      const addressParts = [
+        this.address.street,
+        this.address.city,
+        this.address.state,
+        this.address.country,
+        this.address.zipCode
+      ].filter(Boolean);
+      this.address.fullAddress = addressParts.join(', ');
+    }
+
+    // Update legacy fields from new structure for backward compatibility
+    if (this.contactInfo) {
+      this.email = this.contactInfo.email;
+      this.phone = this.contactInfo.phone;
+      if (this.contactInfo.primaryContact) {
+        this.contactPerson = this.contactInfo.primaryContact.name;
+      }
+    }
+
+    // Update average order value and performance metrics
+    if (this.performance.totalOrders > 0) {
+      this.performance.averageOrderValue = this.performance.totalOrderValue / this.performance.totalOrders;
+
+      // Sync legacy fields
+      this.performance.orderCount = this.performance.totalOrders;
+      this.totalOrderValue = this.performance.totalOrderValue;
+    }
+
+    // Update overall rating based on performance metrics
+    if (this.performance.qualityRating > 0) {
+      this.rating = this.performance.qualityRating;
+    }
+
+    // Update status based on new enum values
+    if (this.isActive === false && this.status === 'active') {
+      this.status = 'inactive';
+    } else if (this.isActive === true && this.status === 'inactive') {
+      this.status = 'active';
+    }
+
+    // Set preferred status from legacy field
+    if (this.isPreferred && this.status === 'active') {
+      this.status = 'preferred';
+    }
+
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  // Update average order value and performance metrics
-  if (this.performance.totalOrders > 0) {
-    this.performance.averageOrderValue = this.performance.totalOrderValue / this.performance.totalOrders;
-
-    // Sync legacy fields
-    this.performance.orderCount = this.performance.totalOrders;
-    this.totalOrderValue = this.performance.totalOrderValue;
-  }
-
-  // Update overall rating based on performance metrics
-  if (this.performance.qualityRating > 0) {
-    this.rating = this.performance.qualityRating;
-  }
-
-  // Update status based on new enum values
-  if (this.isActive === false && this.status === 'active') {
-    this.status = 'inactive';
-  } else if (this.isActive === true && this.status === 'inactive') {
-    this.status = 'active';
-  }
-
-  // Set preferred status from legacy field
-  if (this.isPreferred && this.status === 'active') {
-    this.status = 'preferred';
-  }
-
-  next();
 });
 
 // Enhanced instance methods
@@ -608,44 +612,52 @@ vendorSchema.methods.isContractExpiring = function(days = 30) {
 
 // Legacy method maintained for backward compatibility
 vendorSchema.methods.updatePerformance = async function(orderData) {
-  this.performance.orderCount += 1;
-  this.performance.totalOrders += 1;
-  this.totalOrderValue += orderData.amount;
-  this.performance.totalOrderValue += orderData.amount;
-  this.lastOrderDate = new Date();
+  try {
+    this.performance.orderCount += 1;
+    this.performance.totalOrders += 1;
+    this.totalOrderValue += orderData.amount;
+    this.performance.totalOrderValue += orderData.amount;
+    this.lastOrderDate = new Date();
 
-  if (orderData.deliveredOnTime) {
-    const currentOnTime = this.performance.onTimeDelivery;
-    this.performance.onTimeDelivery = ((currentOnTime * (this.performance.orderCount - 1)) + 100) / this.performance.orderCount;
-    this.performance.onTimeDeliveries += 1;
-  } else {
-    const currentOnTime = this.performance.onTimeDelivery;
-    this.performance.onTimeDelivery = (currentOnTime * (this.performance.orderCount - 1)) / this.performance.orderCount;
+    if (orderData.deliveredOnTime) {
+      const currentOnTime = this.performance.onTimeDelivery;
+      this.performance.onTimeDelivery = ((currentOnTime * (this.performance.orderCount - 1)) + 100) / this.performance.orderCount;
+      this.performance.onTimeDeliveries += 1;
+    } else {
+      const currentOnTime = this.performance.onTimeDelivery;
+      this.performance.onTimeDelivery = (currentOnTime * (this.performance.orderCount - 1)) / this.performance.orderCount;
+    }
+
+    if (orderData.deliveryTime) {
+      const currentAvg = this.performance.averageDeliveryTime;
+      this.performance.averageDeliveryTime = ((currentAvg * (this.performance.orderCount - 1)) + orderData.deliveryTime) / this.performance.orderCount;
+    }
+
+    if (orderData.qualityRating) {
+      const currentRating = this.performance.qualityRating;
+      this.performance.qualityRating = ((currentRating * (this.performance.orderCount - 1)) + orderData.qualityRating) / this.performance.orderCount;
+    }
+
+    await this.save();
+    return this;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  if (orderData.deliveryTime) {
-    const currentAvg = this.performance.averageDeliveryTime;
-    this.performance.averageDeliveryTime = ((currentAvg * (this.performance.orderCount - 1)) + orderData.deliveryTime) / this.performance.orderCount;
-  }
-
-  if (orderData.qualityRating) {
-    const currentRating = this.performance.qualityRating;
-    this.performance.qualityRating = ((currentRating * (this.performance.orderCount - 1)) + orderData.qualityRating) / this.performance.orderCount;
-  }
-
-  await this.save();
-  return this;
 };
 
 vendorSchema.methods.addPayment = async function(paymentData) {
-  this.financial.paymentHistory.push(paymentData);
+  try {
+    this.financial.paymentHistory.push(paymentData);
 
-  if (paymentData.status === 'paid') {
-    this.financial.outstandingAmount = Math.max(0, this.financial.outstandingAmount - paymentData.amount);
+    if (paymentData.status === 'paid') {
+      this.financial.outstandingAmount = Math.max(0, this.financial.outstandingAmount - paymentData.amount);
+    }
+
+    await this.save();
+    return this;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  await this.save();
-  return this;
 };
 
 vendorSchema.methods.calculateReliabilityScore = function() {
@@ -717,105 +729,121 @@ vendorSchema.statics.getTopPerformers = function(hotelId, limit = 10) {
 
 // Legacy method enhanced
 vendorSchema.statics.getTopPerformersLegacy = async function(hotelId, limit = 10) {
-  return this.aggregate([
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        $or: [
-          { isActive: true },
-          { status: { $in: ['active', 'preferred'] } }
-        ],
-        $or: [
-          { 'performance.orderCount': { $gt: 0 } },
-          { 'performance.totalOrders': { $gt: 0 } }
-        ]
-      }
-    },
-    {
-      $addFields: {
-        reliabilityScore: {
-          $add: [
-            { $multiply: [{ $divide: ['$performance.onTimeDelivery', 100] }, 30] },
-            { $multiply: [{ $divide: ['$performance.qualityRating', 5] }, 25] },
-            { $multiply: [{ $divide: ['$performance.completionRate', 100] }, 20] },
-            { $multiply: [{ $divide: [{ $ifNull: ['$performance.orderCount', '$performance.totalOrders'] }, 50] }, 15] },
-            { $multiply: [{ $divide: ['$rating', 5] }, 10] }
+  try {
+    return this.aggregate([
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          $or: [
+            { isActive: true },
+            { status: { $in: ['active', 'preferred'] } }
+          ],
+          $or: [
+            { 'performance.orderCount': { $gt: 0 } },
+            { 'performance.totalOrders': { $gt: 0 } }
           ]
         }
-      }
-    },
-    { $sort: { reliabilityScore: -1 } },
-    { $limit: limit }
-  ]);
+      },
+      {
+        $addFields: {
+          reliabilityScore: {
+            $add: [
+              { $multiply: [{ $divide: ['$performance.onTimeDelivery', 100] }, 30] },
+              { $multiply: [{ $divide: ['$performance.qualityRating', 5] }, 25] },
+              { $multiply: [{ $divide: ['$performance.completionRate', 100] }, 20] },
+              { $multiply: [{ $divide: [{ $ifNull: ['$performance.orderCount', '$performance.totalOrders'] }, 50] }, 15] },
+              { $multiply: [{ $divide: ['$rating', 5] }, 10] }
+            ]
+          }
+        }
+      },
+      { $sort: { reliabilityScore: -1 } },
+      { $limit: limit }
+    ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Legacy method with enhanced compatibility
 vendorSchema.statics.getVendorsByCategoryLegacy = async function(hotelId, category) {
-  return this.find({
-    hotelId,
-    $or: [
-      { category: category },
-      { categories: category }
-    ],
-    $or: [
-      { isActive: true },
-      { status: { $in: ['active', 'preferred'] } }
-    ]
-  }).sort({ rating: -1, 'performance.onTimeDelivery': -1 });
+  try {
+    return this.find({
+      hotelId,
+      $or: [
+        { category: category },
+        { categories: category }
+      ],
+      $or: [
+        { isActive: true },
+        { status: { $in: ['active', 'preferred'] } }
+      ]
+    }).sort({ rating: -1, 'performance.onTimeDelivery': -1 });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 vendorSchema.statics.getExpiredContracts = async function(hotelId, daysAhead = 30) {
-  const futureDate = new Date();
-  futureDate.setDate(futureDate.getDate() + daysAhead);
+  try {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + daysAhead);
 
-  return this.find({
-    hotelId,
-    'contract.hasContract': true,
-    'contract.contractEndDate': { $lte: futureDate },
-    isActive: true
-  });
+    return this.find({
+      hotelId,
+      'contract.hasContract': true,
+      'contract.contractEndDate': { $lte: futureDate },
+      isActive: true
+    });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 vendorSchema.statics.getVendorStatistics = async function(hotelId) {
-  const stats = await this.aggregate([
-    { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
-    {
-      $group: {
-        _id: null,
-        totalVendors: { $sum: 1 },
-        activeVendors: { $sum: { $cond: ['$isActive', 1, 0] } },
-        preferredVendors: { $sum: { $cond: ['$isPreferred', 1, 0] } },
-        totalOrderValue: { $sum: '$totalOrderValue' },
-        averageRating: { $avg: '$rating' },
-        averageOnTimeDelivery: { $avg: '$performance.onTimeDelivery' }
+  try {
+    const stats = await this.aggregate([
+      { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
+      {
+        $group: {
+          _id: null,
+          totalVendors: { $sum: 1 },
+          activeVendors: { $sum: { $cond: ['$isActive', 1, 0] } },
+          preferredVendors: { $sum: { $cond: ['$isPreferred', 1, 0] } },
+          totalOrderValue: { $sum: '$totalOrderValue' },
+          averageRating: { $avg: '$rating' },
+          averageOnTimeDelivery: { $avg: '$performance.onTimeDelivery' }
+        }
       }
-    }
-  ]);
+    ]);
 
-  const categoryStats = await this.aggregate([
-    { $match: { hotelId: new mongoose.Types.ObjectId(hotelId), isActive: true } },
-    {
-      $group: {
-        _id: '$category',
-        count: { $sum: 1 },
-        averageRating: { $avg: '$rating' },
-        totalOrderValue: { $sum: '$totalOrderValue' }
-      }
-    },
-    { $sort: { count: -1 } }
-  ]);
+    const categoryStats = await this.aggregate([
+      { $match: { hotelId: new mongoose.Types.ObjectId(hotelId), isActive: true } },
+      {
+        $group: {
+          _id: '$category',
+          count: { $sum: 1 },
+          averageRating: { $avg: '$rating' },
+          totalOrderValue: { $sum: '$totalOrderValue' }
+        }
+      },
+      { $sort: { count: -1 } }
+    ]);
 
-  return {
-    overall: stats[0] || {
-      totalVendors: 0,
-      activeVendors: 0,
-      preferredVendors: 0,
-      totalOrderValue: 0,
-      averageRating: 0,
-      averageOnTimeDelivery: 0
-    },
-    byCategory: categoryStats
-  };
+    return {
+      overall: stats[0] || {
+        totalVendors: 0,
+        activeVendors: 0,
+        preferredVendors: 0,
+        totalOrderValue: 0,
+        averageRating: 0,
+        averageOnTimeDelivery: 0
+      },
+      byCategory: categoryStats
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 const Vendor = mongoose.model('Vendor', vendorSchema);

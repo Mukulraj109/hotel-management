@@ -10,48 +10,52 @@ class StockInventoryService {
    * @returns {Promise<Object>} Update result with transaction
    */
   static async updateStock(updateData) {
-    const {
-      hotelId,
-      inventoryItemId,
-      quantity,
-      reason,
-      performedBy,
-      reference,
-      unitCost = 0,
-      approvedBy = null
-    } = updateData;
+    try {
+      const {
+        hotelId,
+        inventoryItemId,
+        quantity,
+        reason,
+        performedBy,
+        reference,
+        unitCost = 0,
+        approvedBy = null
+      } = updateData;
 
-    // Determine transaction type based on quantity
-    let transactionType;
-    if (quantity > 0) {
-      transactionType = 'ADJUSTMENT';
-    } else {
-      transactionType = 'ADJUSTMENT';
-    }
-
-    // Log the transaction
-    const transaction = await TransactionService.logTransaction({
-      hotelId,
-      inventoryItemId,
-      transactionType,
-      quantity,
-      reason: reason || 'Manual stock adjustment',
-      reference: reference || {
-        type: 'manual',
-        description: 'Manual stock update'
-      },
-      performedBy,
-      approvedBy,
-      unitCost,
-      metadata: {
-        operation: 'manual_update'
+      // Determine transaction type based on quantity
+      let transactionType;
+      if (quantity > 0) {
+        transactionType = 'ADJUSTMENT';
+      } else {
+        transactionType = 'ADJUSTMENT';
       }
-    });
 
-    return {
-      transaction,
-      updatedStock: transaction.newQuantity
-    };
+      // Log the transaction
+      const transaction = await TransactionService.logTransaction({
+        hotelId,
+        inventoryItemId,
+        transactionType,
+        quantity,
+        reason: reason || 'Manual stock adjustment',
+        reference: reference || {
+          type: 'manual',
+          description: 'Manual stock update'
+        },
+        performedBy,
+        approvedBy,
+        unitCost,
+        metadata: {
+          operation: 'manual_update'
+        }
+      });
+
+      return {
+        transaction,
+        updatedStock: transaction.newQuantity
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -60,52 +64,56 @@ class StockInventoryService {
    * @returns {Promise<Object>} Restock result
    */
   static async restockItem(restockData) {
-    const {
-      hotelId,
-      inventoryItemId,
-      quantity,
-      unitCost,
-      supplier,
-      invoiceNumber,
-      deliveryDate,
-      performedBy,
-      notes = 'Item restocked'
-    } = restockData;
-
-    if (quantity <= 0) {
-      throw new Error('Restock quantity must be positive');
-    }
-
-    const transaction = await TransactionService.logTransaction({
-      hotelId,
-      inventoryItemId,
-      transactionType: 'REORDER',
-      quantity,
-      reason: notes,
-      reference: {
-        type: 'delivery',
-        id: invoiceNumber,
-        description: `Delivery from ${supplier?.name || 'Unknown supplier'}`
-      },
-      performedBy,
-      unitCost,
-      supplier: {
-        name: supplier?.name,
-        contact: supplier?.contact,
-        email: supplier?.email,
-        invoiceNumber
-      },
-      metadata: {
+    try {
+      const {
+        hotelId,
+        inventoryItemId,
+        quantity,
+        unitCost,
+        supplier,
+        invoiceNumber,
         deliveryDate,
-        operation: 'restock'
-      }
-    });
+        performedBy,
+        notes = 'Item restocked'
+      } = restockData;
 
-    return {
-      transaction,
-      newStock: transaction.newQuantity,
-      totalCost: quantity * unitCost
-    };
+      if (quantity <= 0) {
+        throw new Error('Restock quantity must be positive');
+      }
+
+      const transaction = await TransactionService.logTransaction({
+        hotelId,
+        inventoryItemId,
+        transactionType: 'REORDER',
+        quantity,
+        reason: notes,
+        reference: {
+          type: 'delivery',
+          id: invoiceNumber,
+          description: `Delivery from ${supplier?.name || 'Unknown supplier'}`
+        },
+        performedBy,
+        unitCost,
+        supplier: {
+          name: supplier?.name,
+          contact: supplier?.contact,
+          email: supplier?.email,
+          invoiceNumber
+        },
+        metadata: {
+          deliveryDate,
+          operation: 'restock'
+        }
+      });
+
+      return {
+        transaction,
+        newStock: transaction.newQuantity,
+        totalCost: quantity * unitCost
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -114,40 +122,44 @@ class StockInventoryService {
    * @returns {Promise<Object>} Consumption result
    */
   static async consumeItem(consumptionData) {
-    const {
-      hotelId,
-      inventoryItemId,
-      quantity,
-      reason,
-      reference,
-      location,
-      performedBy,
-      metadata = {}
-    } = consumptionData;
+    try {
+      const {
+        hotelId,
+        inventoryItemId,
+        quantity,
+        reason,
+        reference,
+        location,
+        performedBy,
+        metadata = {}
+      } = consumptionData;
 
-    if (quantity <= 0) {
-      throw new Error('Consumption quantity must be positive');
-    }
-
-    const transaction = await TransactionService.logTransaction({
-      hotelId,
-      inventoryItemId,
-      transactionType: 'CONSUMPTION',
-      quantity: -quantity, // Negative for consumption
-      reason,
-      reference,
-      location,
-      performedBy,
-      metadata: {
-        ...metadata,
-        operation: 'consumption'
+      if (quantity <= 0) {
+        throw new Error('Consumption quantity must be positive');
       }
-    });
 
-    return {
-      transaction,
-      remainingStock: transaction.newQuantity
-    };
+      const transaction = await TransactionService.logTransaction({
+        hotelId,
+        inventoryItemId,
+        transactionType: 'CONSUMPTION',
+        quantity: -quantity, // Negative for consumption
+        reason,
+        reference,
+        location,
+        performedBy,
+        metadata: {
+          ...metadata,
+          operation: 'consumption'
+        }
+      });
+
+      return {
+        transaction,
+        remainingStock: transaction.newQuantity
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -156,42 +168,46 @@ class StockInventoryService {
    * @returns {Promise<Object>} Transfer result
    */
   static async transferItem(transferData) {
-    const {
-      hotelId,
-      inventoryItemId,
-      quantity,
-      fromLocation,
-      toLocation,
-      reason,
-      performedBy,
-      metadata = {}
-    } = transferData;
+    try {
+      const {
+        hotelId,
+        inventoryItemId,
+        quantity,
+        fromLocation,
+        toLocation,
+        reason,
+        performedBy,
+        metadata = {}
+      } = transferData;
 
-    const transaction = await TransactionService.logTransaction({
-      hotelId,
-      inventoryItemId,
-      transactionType: 'TRANSFER',
-      quantity: 0, // No net change in stock for transfers
-      reason: reason || 'Location transfer',
-      reference: {
-        type: 'manual',
-        description: 'Item location transfer'
-      },
-      location: {
-        from: fromLocation,
-        to: toLocation
-      },
-      performedBy,
-      metadata: {
-        ...metadata,
-        operation: 'transfer'
-      }
-    });
+      const transaction = await TransactionService.logTransaction({
+        hotelId,
+        inventoryItemId,
+        transactionType: 'TRANSFER',
+        quantity: 0, // No net change in stock for transfers
+        reason: reason || 'Location transfer',
+        reference: {
+          type: 'manual',
+          description: 'Item location transfer'
+        },
+        location: {
+          from: fromLocation,
+          to: toLocation
+        },
+        performedBy,
+        metadata: {
+          ...metadata,
+          operation: 'transfer'
+        }
+      });
 
-    return {
-      transaction,
-      transferredQuantity: quantity
-    };
+      return {
+        transaction,
+        transferredQuantity: quantity
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -200,39 +216,43 @@ class StockInventoryService {
    * @returns {Promise<Array>} Array of transactions for delivered items
    */
   static async processDelivery(deliveryData) {
-    const {
-      hotelId,
-      deliveryItems, // Array of { inventoryItemId, quantity, unitCost }
-      supplier,
-      invoiceNumber,
-      deliveryDate,
-      performedBy,
-      notes = 'Delivery processed'
-    } = deliveryData;
-
-    const transactions = [];
-
-    for (const item of deliveryItems) {
-      const transaction = await this.restockItem({
+    try {
+      const {
         hotelId,
-        inventoryItemId: item.inventoryItemId,
-        quantity: item.quantity,
-        unitCost: item.unitCost,
+        deliveryItems, // Array of { inventoryItemId, quantity, unitCost }
         supplier,
         invoiceNumber,
         deliveryDate,
         performedBy,
-        notes: `${notes} - ${item.itemName || 'Item'}`
-      });
+        notes = 'Delivery processed'
+      } = deliveryData;
 
-      transactions.push(transaction);
+      const transactions = [];
+
+      for (const item of deliveryItems) {
+        const transaction = await this.restockItem({
+          hotelId,
+          inventoryItemId: item.inventoryItemId,
+          quantity: item.quantity,
+          unitCost: item.unitCost,
+          supplier,
+          invoiceNumber,
+          deliveryDate,
+          performedBy,
+          notes: `${notes} - ${item.itemName || 'Item'}`
+        });
+
+        transactions.push(transaction);
+      }
+
+      return {
+        transactions,
+        totalItems: deliveryItems.length,
+        totalCost: transactions.reduce((sum, t) => sum + t.totalCost, 0)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return {
-      transactions,
-      totalItems: deliveryItems.length,
-      totalCost: transactions.reduce((sum, t) => sum + t.totalCost, 0)
-    };
   }
 
   /**
@@ -241,55 +261,59 @@ class StockInventoryService {
    * @returns {Promise<Array>} Array of consumption transactions
    */
   static async processHousekeepingConsumption(housekeepingData) {
-    const {
-      hotelId,
-      roomNumber,
-      roomId,
-      items, // Array of { inventoryItemId, quantity, reason }
-      performedBy,
-      taskId,
-      checklistId
-    } = housekeepingData;
+    try {
+      const {
+        hotelId,
+        roomNumber,
+        roomId,
+        items, // Array of { inventoryItemId, quantity, reason }
+        performedBy,
+        taskId,
+        checklistId
+      } = housekeepingData;
 
-    const transactions = [];
+      const transactions = [];
 
-    for (const item of items) {
-      if (item.quantity > 0) {
-        const transaction = await this.consumeItem({
-          hotelId,
-          inventoryItemId: item.inventoryItemId,
-          quantity: item.quantity,
-          reason: item.reason || 'Housekeeping consumption',
-          reference: {
-            type: 'housekeeping',
-            id: taskId || checklistId,
-            description: `Room ${roomNumber} housekeeping`
-          },
-          location: {
-            to: {
-              room: roomNumber,
-              building: 'Main',
-              floor: 'Various'
+      for (const item of items) {
+        if (item.quantity > 0) {
+          const transaction = await this.consumeItem({
+            hotelId,
+            inventoryItemId: item.inventoryItemId,
+            quantity: item.quantity,
+            reason: item.reason || 'Housekeeping consumption',
+            reference: {
+              type: 'housekeeping',
+              id: taskId || checklistId,
+              description: `Room ${roomNumber} housekeeping`
+            },
+            location: {
+              to: {
+                room: roomNumber,
+                building: 'Main',
+                floor: 'Various'
+              }
+            },
+            performedBy,
+            metadata: {
+              roomId,
+              taskId,
+              checklistId,
+              operation: 'housekeeping'
             }
-          },
-          performedBy,
-          metadata: {
-            roomId,
-            taskId,
-            checklistId,
-            operation: 'housekeeping'
-          }
-        });
+          });
 
-        transactions.push(transaction);
+          transactions.push(transaction);
+        }
       }
-    }
 
-    return {
-      transactions,
-      roomNumber,
-      totalItemsConsumed: transactions.length
-    };
+      return {
+        transactions,
+        roomNumber,
+        totalItemsConsumed: transactions.length
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -298,53 +322,57 @@ class StockInventoryService {
    * @returns {Promise<Array>} Array of consumption transactions
    */
   static async processGuestServiceConsumption(guestServiceData) {
-    const {
-      hotelId,
-      bookingId,
-      roomNumber,
-      items, // Array of { inventoryItemId, quantity, serviceName }
-      performedBy,
-      serviceRequestId
-    } = guestServiceData;
+    try {
+      const {
+        hotelId,
+        bookingId,
+        roomNumber,
+        items, // Array of { inventoryItemId, quantity, serviceName }
+        performedBy,
+        serviceRequestId
+      } = guestServiceData;
 
-    const transactions = [];
+      const transactions = [];
 
-    for (const item of items) {
-      if (item.quantity > 0) {
-        const transaction = await this.consumeItem({
-          hotelId,
-          inventoryItemId: item.inventoryItemId,
-          quantity: item.quantity,
-          reason: `Guest service - ${item.serviceName || 'Service request'}`,
-          reference: {
-            type: 'guest_service',
-            id: serviceRequestId,
-            description: `Guest service for room ${roomNumber}`
-          },
-          location: {
-            to: {
-              room: roomNumber,
-              building: 'Main'
+      for (const item of items) {
+        if (item.quantity > 0) {
+          const transaction = await this.consumeItem({
+            hotelId,
+            inventoryItemId: item.inventoryItemId,
+            quantity: item.quantity,
+            reason: `Guest service - ${item.serviceName || 'Service request'}`,
+            reference: {
+              type: 'guest_service',
+              id: serviceRequestId,
+              description: `Guest service for room ${roomNumber}`
+            },
+            location: {
+              to: {
+                room: roomNumber,
+                building: 'Main'
+              }
+            },
+            performedBy,
+            metadata: {
+              bookingId,
+              serviceRequestId,
+              serviceName: item.serviceName,
+              operation: 'guest_service'
             }
-          },
-          performedBy,
-          metadata: {
-            bookingId,
-            serviceRequestId,
-            serviceName: item.serviceName,
-            operation: 'guest_service'
-          }
-        });
+          });
 
-        transactions.push(transaction);
+          transactions.push(transaction);
+        }
       }
-    }
 
-    return {
-      transactions,
-      bookingId,
-      totalItemsUsed: transactions.length
-    };
+      return {
+        transactions,
+        bookingId,
+        totalItemsUsed: transactions.length
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -354,59 +382,63 @@ class StockInventoryService {
    * @returns {Promise<Array>} Array of low stock items with usage patterns
    */
   static async getLowStockAlerts(hotelId, threshold = 5) {
-    // Get items with low stock
-    const lowStockItems = await Inventory.find({
-      hotelId,
-      stock: { $lte: threshold },
-      isActive: true
-    });
-
-    const alerts = [];
-
-    for (const item of lowStockItems) {
-      // Get recent usage pattern
-      const usagePattern = await StockMovement.getItemUsagePattern(
+    try {
+      // Get items with low stock
+      const lowStockItems = await Inventory.find({
         hotelId,
-        item._id,
-        30 // Last 30 days
-      );
+        stock: { $lte: threshold },
+        isActive: true
+      }).lean().limit(1000);
 
-      // Calculate average daily consumption
-      const totalOutFlow = usagePattern.reduce((sum, day) => sum + day.totalOut, 0);
-      const avgDailyConsumption = usagePattern.length > 0 ? totalOutFlow / usagePattern.length : 0;
+      const alerts = [];
 
-      // Estimate days until stockout
-      const daysUntilStockout = avgDailyConsumption > 0 ? Math.ceil(item.stock / avgDailyConsumption) : null;
+      for (const item of lowStockItems) {
+        // Get recent usage pattern
+        const usagePattern = await StockMovement.getItemUsagePattern(
+          hotelId,
+          item._id,
+          30 // Last 30 days
+        );
 
-      alerts.push({
-        item: {
-          id: item._id,
-          name: item.name,
-          category: item.category,
-          currentStock: item.stock,
-          minStock: item.minStock,
-          unit: item.unit
-        },
-        alert: {
-          severity: item.stock <= item.minStock ? 'critical' : 'warning',
-          daysUntilStockout,
-          avgDailyConsumption: avgDailyConsumption.toFixed(2),
-          reorderSuggested: avgDailyConsumption > 0 ? Math.ceil(avgDailyConsumption * 7) : item.minStock
-        },
-        usage: usagePattern
+        // Calculate average daily consumption
+        const totalOutFlow = usagePattern.reduce((sum, day) => sum + day.totalOut, 0);
+        const avgDailyConsumption = usagePattern.length > 0 ? totalOutFlow / usagePattern.length : 0;
+
+        // Estimate days until stockout
+        const daysUntilStockout = avgDailyConsumption > 0 ? Math.ceil(item.stock / avgDailyConsumption) : null;
+
+        alerts.push({
+          item: {
+            id: item._id,
+            name: item.name,
+            category: item.category,
+            currentStock: item.stock,
+            minStock: item.minStock,
+            unit: item.unit
+          },
+          alert: {
+            severity: item.stock <= item.minStock ? 'critical' : 'warning',
+            daysUntilStockout,
+            avgDailyConsumption: avgDailyConsumption.toFixed(2),
+            reorderSuggested: avgDailyConsumption > 0 ? Math.ceil(avgDailyConsumption * 7) : item.minStock
+          },
+          usage: usagePattern
+        });
+      }
+
+      return alerts.sort((a, b) => {
+        // Sort by severity and days until stockout
+        if (a.alert.severity === 'critical' && b.alert.severity !== 'critical') return -1;
+        if (b.alert.severity === 'critical' && a.alert.severity !== 'critical') return 1;
+
+        if (a.alert.daysUntilStockout === null) return 1;
+        if (b.alert.daysUntilStockout === null) return -1;
+
+        return a.alert.daysUntilStockout - b.alert.daysUntilStockout;
       });
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return alerts.sort((a, b) => {
-      // Sort by severity and days until stockout
-      if (a.alert.severity === 'critical' && b.alert.severity !== 'critical') return -1;
-      if (b.alert.severity === 'critical' && a.alert.severity !== 'critical') return 1;
-
-      if (a.alert.daysUntilStockout === null) return 1;
-      if (b.alert.daysUntilStockout === null) return -1;
-
-      return a.alert.daysUntilStockout - b.alert.daysUntilStockout;
-    });
   }
 
   /**
@@ -417,81 +449,85 @@ class StockInventoryService {
    * @returns {Promise<Object>} Item statistics
    */
   static async getItemStatistics(hotelId, itemId, days = 30) {
-    const [item, transactions, usagePattern] = await Promise.all([
-      Inventory.findById(itemId),
-      TransactionService.getItemTransactions(itemId, { hotelId, limit: 100 }),
-      StockMovement.getItemUsagePattern(hotelId, itemId, days)
-    ]);
+    try {
+      const [item, transactions, usagePattern] = await Promise.all([
+        Inventory.findById(itemId),
+        TransactionService.getItemTransactions(itemId, { hotelId, limit: 100 }),
+        StockMovement.getItemUsagePattern(hotelId, itemId, days)
+      ]);
 
-    if (!item) {
-      throw new Error('Item not found');
-    }
-
-    // Calculate statistics
-    const totalTransactions = transactions.length;
-    const totalInFlow = transactions
-      .filter(t => ['IN', 'REORDER'].includes(t.transactionType))
-      .reduce((sum, t) => sum + t.quantity, 0);
-    const totalOutFlow = transactions
-      .filter(t => ['OUT', 'CONSUMPTION'].includes(t.transactionType))
-      .reduce((sum, t) => sum + Math.abs(t.quantity), 0);
-    const totalCost = transactions.reduce((sum, t) => sum + (t.totalCost || 0), 0);
-
-    // Usage by type
-    const usageByType = transactions.reduce((acc, t) => {
-      const type = t.transactionType;
-      if (!acc[type]) {
-        acc[type] = { count: 0, quantity: 0, cost: 0 };
+      if (!item) {
+        throw new Error('Item not found');
       }
-      acc[type].count++;
-      acc[type].quantity += Math.abs(t.quantity);
-      acc[type].cost += t.totalCost || 0;
-      return acc;
-    }, {});
 
-    // Recent activity (last 7 days)
-    const recentDate = new Date();
-    recentDate.setDate(recentDate.getDate() - 7);
-    const recentTransactions = transactions.filter(
-      t => new Date(t.timestamps.created) >= recentDate
-    );
+      // Calculate statistics
+      const totalTransactions = transactions.length;
+      const totalInFlow = transactions
+        .filter(t => ['IN', 'REORDER'].includes(t.transactionType))
+        .reduce((sum, t) => sum + t.quantity, 0);
+      const totalOutFlow = transactions
+        .filter(t => ['OUT', 'CONSUMPTION'].includes(t.transactionType))
+        .reduce((sum, t) => sum + Math.abs(t.quantity), 0);
+      const totalCost = transactions.reduce((sum, t) => sum + (t.totalCost || 0), 0);
 
-    return {
-      item: {
-        id: item._id,
-        name: item.name,
-        category: item.category,
-        currentStock: item.stock,
-        minStock: item.minStock,
-        maxStock: item.maxStock,
-        unit: item.unit,
-        avgCost: item.averageCost || 0,
-        lastUpdated: item.lastUpdated
-      },
-      statistics: {
-        totalTransactions,
-        totalInFlow,
-        totalOutFlow,
-        totalCost,
-        netFlow: totalInFlow - totalOutFlow,
-        avgTransactionValue: totalTransactions > 0 ? totalCost / totalTransactions : 0,
-        turnoverRate: item.stock > 0 ? totalOutFlow / item.stock : 0
-      },
-      usage: {
-        byType: usageByType,
-        pattern: usagePattern,
-        recentActivity: {
-          transactions: recentTransactions.length,
-          quantity: recentTransactions.reduce((sum, t) => sum + Math.abs(t.quantity), 0),
-          cost: recentTransactions.reduce((sum, t) => sum + (t.totalCost || 0), 0)
+      // Usage by type
+      const usageByType = transactions.reduce((acc, t) => {
+        const type = t.transactionType;
+        if (!acc[type]) {
+          acc[type] = { count: 0, quantity: 0, cost: 0 };
         }
-      },
-      performance: {
-        stockoutRisk: item.stock <= item.minStock ? 'high' : item.stock <= item.minStock * 1.5 ? 'medium' : 'low',
-        reorderNeeded: item.stock <= item.minStock,
-        suggestedReorderQuantity: Math.max(item.maxStock - item.stock, 0)
-      }
-    };
+        acc[type].count++;
+        acc[type].quantity += Math.abs(t.quantity);
+        acc[type].cost += t.totalCost || 0;
+        return acc;
+      }, {});
+
+      // Recent activity (last 7 days)
+      const recentDate = new Date();
+      recentDate.setDate(recentDate.getDate() - 7);
+      const recentTransactions = transactions.filter(
+        t => new Date(t.timestamps.created) >= recentDate
+      );
+
+      return {
+        item: {
+          id: item._id,
+          name: item.name,
+          category: item.category,
+          currentStock: item.stock,
+          minStock: item.minStock,
+          maxStock: item.maxStock,
+          unit: item.unit,
+          avgCost: item.averageCost || 0,
+          lastUpdated: item.lastUpdated
+        },
+        statistics: {
+          totalTransactions,
+          totalInFlow,
+          totalOutFlow,
+          totalCost,
+          netFlow: totalInFlow - totalOutFlow,
+          avgTransactionValue: totalTransactions > 0 ? totalCost / totalTransactions : 0,
+          turnoverRate: item.stock > 0 ? totalOutFlow / item.stock : 0
+        },
+        usage: {
+          byType: usageByType,
+          pattern: usagePattern,
+          recentActivity: {
+            transactions: recentTransactions.length,
+            quantity: recentTransactions.reduce((sum, t) => sum + Math.abs(t.quantity), 0),
+            cost: recentTransactions.reduce((sum, t) => sum + (t.totalCost || 0), 0)
+          }
+        },
+        performance: {
+          stockoutRisk: item.stock <= item.minStock ? 'high' : item.stock <= item.minStock * 1.5 ? 'medium' : 'low',
+          reorderNeeded: item.stock <= item.minStock,
+          suggestedReorderQuantity: Math.max(item.maxStock - item.stock, 0)
+        }
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -501,68 +537,72 @@ class StockInventoryService {
    * @returns {Promise<Array>} Array of auto-reorder suggestions
    */
   static async generateAutoReorderSuggestions(hotelId, options = {}) {
-    const { includeScheduled = false, daysToAnalyze = 30 } = options;
+    try {
+      const { includeScheduled = false, daysToAnalyze = 30 } = options;
 
-    // Get items that need reordering
-    const lowStockItems = await this.getLowStockAlerts(hotelId, 0); // All items at or below min stock
+      // Get items that need reordering
+      const lowStockItems = await this.getLowStockAlerts(hotelId, 0); // All items at or below min stock
 
-    const suggestions = [];
+      const suggestions = [];
 
-    for (const alert of lowStockItems) {
-      const { item, alert: alertInfo } = alert;
+      for (const alert of lowStockItems) {
+        const { item, alert: alertInfo } = alert;
 
-      // Skip if already has a pending reorder (optional)
-      if (!includeScheduled) {
-        const pendingReorders = await StockMovement.find({
-          hotelId,
-          inventoryItemId: item.id,
-          transactionType: 'REORDER',
-          status: 'pending'
-        });
+        // Skip if already has a pending reorder (optional)
+        if (!includeScheduled) {
+          const pendingReorders = await StockMovement.find({
+            hotelId,
+            inventoryItemId: item.id,
+            transactionType: 'REORDER',
+            status: 'pending'
+          }).lean().limit(1000);
 
-        if (pendingReorders.length > 0) {
-          continue;
+          if (pendingReorders.length > 0) {
+            continue;
+          }
         }
+
+        // Calculate suggested order quantity
+        const avgDailyUsage = parseFloat(alertInfo.avgDailyConsumption);
+        const leadTimeDays = 7; // Default lead time
+        const safetyStock = avgDailyUsage * 3; // 3 days safety stock
+        const targetStock = (avgDailyUsage * leadTimeDays) + safetyStock;
+        const orderQuantity = Math.max(targetStock - item.currentStock, item.minStock);
+
+        suggestions.push({
+          item,
+          currentStock: item.currentStock,
+          minStock: item.minStock,
+          maxStock: item.maxStock,
+          avgDailyUsage,
+          daysUntilStockout: alertInfo.daysUntilStockout,
+          suggestedOrderQuantity: Math.ceil(orderQuantity),
+          priority: alertInfo.severity,
+          estimatedCost: orderQuantity * (item.avgCost || 0),
+          reasoning: {
+            leadTimeDays,
+            safetyStock: Math.ceil(safetyStock),
+            targetStock: Math.ceil(targetStock),
+            urgency: alertInfo.daysUntilStockout ?
+              alertInfo.daysUntilStockout <= 3 ? 'urgent' :
+              alertInfo.daysUntilStockout <= 7 ? 'soon' : 'normal' : 'unknown'
+          }
+        });
       }
 
-      // Calculate suggested order quantity
-      const avgDailyUsage = parseFloat(alertInfo.avgDailyConsumption);
-      const leadTimeDays = 7; // Default lead time
-      const safetyStock = avgDailyUsage * 3; // 3 days safety stock
-      const targetStock = (avgDailyUsage * leadTimeDays) + safetyStock;
-      const orderQuantity = Math.max(targetStock - item.currentStock, item.minStock);
+      return suggestions.sort((a, b) => {
+        // Sort by priority and urgency
+        if (a.priority === 'critical' && b.priority !== 'critical') return -1;
+        if (b.priority === 'critical' && a.priority !== 'critical') return 1;
 
-      suggestions.push({
-        item,
-        currentStock: item.currentStock,
-        minStock: item.minStock,
-        maxStock: item.maxStock,
-        avgDailyUsage,
-        daysUntilStockout: alertInfo.daysUntilStockout,
-        suggestedOrderQuantity: Math.ceil(orderQuantity),
-        priority: alertInfo.severity,
-        estimatedCost: orderQuantity * (item.avgCost || 0),
-        reasoning: {
-          leadTimeDays,
-          safetyStock: Math.ceil(safetyStock),
-          targetStock: Math.ceil(targetStock),
-          urgency: alertInfo.daysUntilStockout ?
-            alertInfo.daysUntilStockout <= 3 ? 'urgent' :
-            alertInfo.daysUntilStockout <= 7 ? 'soon' : 'normal' : 'unknown'
-        }
+        if (a.reasoning.urgency === 'urgent' && b.reasoning.urgency !== 'urgent') return -1;
+        if (b.reasoning.urgency === 'urgent' && a.reasoning.urgency !== 'urgent') return 1;
+
+        return (a.daysUntilStockout || 999) - (b.daysUntilStockout || 999);
       });
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return suggestions.sort((a, b) => {
-      // Sort by priority and urgency
-      if (a.priority === 'critical' && b.priority !== 'critical') return -1;
-      if (b.priority === 'critical' && a.priority !== 'critical') return 1;
-
-      if (a.reasoning.urgency === 'urgent' && b.reasoning.urgency !== 'urgent') return -1;
-      if (b.reasoning.urgency === 'urgent' && a.reasoning.urgency !== 'urgent') return 1;
-
-      return (a.daysUntilStockout || 999) - (b.daysUntilStockout || 999);
-    });
   }
 }
 

@@ -92,302 +92,318 @@ offerFavoriteSchema.virtual('user', {
 
 // Static methods
 offerFavoriteSchema.statics.getUserFavorites = async function(userId, options = {}) {
-  const {
-    page = 1,
-    limit = 20,
-    category,
-    type,
-    sortBy = 'createdAt',
-    sortOrder = -1
-  } = options;
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      category,
+      type,
+      sortBy = 'createdAt',
+      sortOrder = -1
+    } = options;
 
-  const skip = (page - 1) * limit;
+    const skip = (page - 1) * limit;
   
-  // Build aggregation pipeline
-  const pipeline = [
-    { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-    {
-      $lookup: {
-        from: 'offers',
-        localField: 'offerId',
-        foreignField: '_id',
-        as: 'offer',
-        pipeline: [
-          { $match: { isActive: true } } // Only include active offers
-        ]
-      }
-    },
-    { $unwind: '$offer' },
-    {
-      $lookup: {
-        from: 'hotels',
-        localField: 'offer.hotelId',
-        foreignField: '_id',
-        as: 'offer.hotel'
-      }
-    },
-    { $unwind: { path: '$offer.hotel', preserveNullAndEmptyArrays: true } }
-  ];
+    // Build aggregation pipeline
+    const pipeline = [
+      { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+      {
+        $lookup: {
+          from: 'offers',
+          localField: 'offerId',
+          foreignField: '_id',
+          as: 'offer',
+          pipeline: [
+            { $match: { isActive: true } } // Only include active offers
+          ]
+        }
+      },
+      { $unwind: '$offer' },
+      {
+        $lookup: {
+          from: 'hotels',
+          localField: 'offer.hotelId',
+          foreignField: '_id',
+          as: 'offer.hotel'
+        }
+      },
+      { $unwind: { path: '$offer.hotel', preserveNullAndEmptyArrays: true } }
+    ];
 
-  // Add filters if specified
-  if (category) {
-    pipeline.push({ $match: { 'offer.category': category } });
-  }
-  
-  if (type) {
-    pipeline.push({ $match: { 'offer.type': type } });
-  }
-
-  // Add sorting
-  const sortOptions = {};
-  if (sortBy === 'createdAt') {
-    sortOptions.createdAt = sortOrder;
-  } else if (sortBy === 'offerName') {
-    sortOptions['offer.title'] = sortOrder;
-  } else if (sortBy === 'pointsRequired') {
-    sortOptions['offer.pointsRequired'] = sortOrder;
-  } else if (sortBy === 'validUntil') {
-    sortOptions['offer.validUntil'] = sortOrder;
-  }
-  
-  pipeline.push({ $sort: sortOptions });
-
-  // Get total count for pagination
-  const countPipeline = [...pipeline, { $count: 'total' }];
-  const countResult = await this.aggregate(countPipeline);
-  const total = countResult[0]?.total || 0;
-
-  // Add pagination
-  pipeline.push(
-    { $skip: skip },
-    { $limit: parseInt(limit) }
-  );
-
-  // Execute aggregation
-  const favorites = await this.aggregate(pipeline);
-
-  return {
-    favorites,
-    pagination: {
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(total / limit),
-      totalItems: total,
-      itemsPerPage: parseInt(limit),
-      hasNext: page * limit < total,
-      hasPrev: page > 1
+    // Add filters if specified
+    if (category) {
+      pipeline.push({ $match: { 'offer.category': category } });
     }
-  };
+  
+    if (type) {
+      pipeline.push({ $match: { 'offer.type': type } });
+    }
+
+    // Add sorting
+    const sortOptions = {};
+    if (sortBy === 'createdAt') {
+      sortOptions.createdAt = sortOrder;
+    } else if (sortBy === 'offerName') {
+      sortOptions['offer.title'] = sortOrder;
+    } else if (sortBy === 'pointsRequired') {
+      sortOptions['offer.pointsRequired'] = sortOrder;
+    } else if (sortBy === 'validUntil') {
+      sortOptions['offer.validUntil'] = sortOrder;
+    }
+  
+    pipeline.push({ $sort: sortOptions });
+
+    // Get total count for pagination
+    const countPipeline = [...pipeline, { $count: 'total' }];
+    const countResult = await this.aggregate(countPipeline);
+    const total = countResult[0]?.total || 0;
+
+    // Add pagination
+    pipeline.push(
+      { $skip: skip },
+      { $limit: parseInt(limit) }
+    );
+
+    // Execute aggregation
+    const favorites = await this.aggregate(pipeline);
+
+    return {
+      favorites,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        totalItems: total,
+        itemsPerPage: parseInt(limit),
+        hasNext: page * limit < total,
+        hasPrev: page > 1
+      }
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 offerFavoriteSchema.statics.getOfferPopularity = async function(offerId) {
-  const stats = await this.aggregate([
-    { $match: { offerId: new mongoose.Types.ObjectId(offerId) } },
-    {
-      $group: {
-        _id: null,
-        totalFavorites: { $sum: 1 },
-        uniqueUsers: { $addToSet: '$userId' }
+  try {
+    const stats = await this.aggregate([
+      { $match: { offerId: new mongoose.Types.ObjectId(offerId) } },
+      {
+        $group: {
+          _id: null,
+          totalFavorites: { $sum: 1 },
+          uniqueUsers: { $addToSet: '$userId' }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          totalFavorites: 1,
+          uniqueUsers: { $size: '$uniqueUsers' }
+        }
       }
-    },
-    {
-      $project: {
-        _id: 0,
-        totalFavorites: 1,
-        uniqueUsers: { $size: '$uniqueUsers' }
-      }
-    }
-  ]);
+    ]);
 
-  return stats[0] || { totalFavorites: 0, uniqueUsers: 0 };
+    return stats[0] || { totalFavorites: 0, uniqueUsers: 0 };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 offerFavoriteSchema.statics.getPopularOffers = async function(options = {}) {
-  const {
-    limit = 10,
-    category,
-    minFavorites = 1,
-    timeframe // 'week', 'month', 'year' or specific date
-  } = options;
+  try {
+    const {
+      limit = 10,
+      category,
+      minFavorites = 1,
+      timeframe // 'week', 'month', 'year' or specific date
+    } = options;
 
-  const pipeline = [
-    {
-      $lookup: {
-        from: 'offers',
-        localField: 'offerId',
-        foreignField: '_id',
-        as: 'offer'
-      }
-    },
-    { $unwind: '$offer' },
-    { $match: { 'offer.isActive': true } }
-  ];
-
-  // Add time filter if specified
-  if (timeframe) {
-    let dateFilter = {};
-    const now = new Date();
-    
-    if (timeframe === 'week') {
-      dateFilter = { $gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) };
-    } else if (timeframe === 'month') {
-      dateFilter = { $gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) };
-    } else if (timeframe === 'year') {
-      dateFilter = { $gte: new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000) };
-    } else if (timeframe instanceof Date) {
-      dateFilter = { $gte: timeframe };
-    }
-    
-    if (Object.keys(dateFilter).length > 0) {
-      pipeline.push({ $match: { createdAt: dateFilter } });
-    }
-  }
-
-  // Add category filter if specified
-  if (category) {
-    pipeline.push({ $match: { 'offer.category': category } });
-  }
-
-  // Group by offer and count favorites
-  pipeline.push(
-    {
-      $group: {
-        _id: '$offerId',
-        offer: { $first: '$offer' },
-        favoriteCount: { $sum: 1 },
-        uniqueUsers: { $addToSet: '$userId' },
-        latestFavorited: { $max: '$createdAt' }
-      }
-    },
-    {
-      $match: { favoriteCount: { $gte: minFavorites } }
-    },
-    {
-      $project: {
-        _id: 0,
-        offerId: '$_id',
-        offer: 1,
-        favoriteCount: 1,
-        uniqueUsers: { $size: '$uniqueUsers' },
-        latestFavorited: 1,
-        popularityScore: {
-          $add: [
-            '$favoriteCount',
-            { $multiply: [{ $size: '$uniqueUsers' }, 0.5] } // Unique users weighted at 50%
-          ]
+    const pipeline = [
+      {
+        $lookup: {
+          from: 'offers',
+          localField: 'offerId',
+          foreignField: '_id',
+          as: 'offer'
         }
-      }
-    },
-    { $sort: { popularityScore: -1, latestFavorited: -1 } },
-    { $limit: parseInt(limit) }
-  );
+      },
+      { $unwind: '$offer' },
+      { $match: { 'offer.isActive': true } }
+    ];
 
-  return await this.aggregate(pipeline);
+    // Add time filter if specified
+    if (timeframe) {
+      let dateFilter = {};
+      const now = new Date();
+    
+      if (timeframe === 'week') {
+        dateFilter = { $gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) };
+      } else if (timeframe === 'month') {
+        dateFilter = { $gte: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000) };
+      } else if (timeframe === 'year') {
+        dateFilter = { $gte: new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000) };
+      } else if (timeframe instanceof Date) {
+        dateFilter = { $gte: timeframe };
+      }
+    
+      if (Object.keys(dateFilter).length > 0) {
+        pipeline.push({ $match: { createdAt: dateFilter } });
+      }
+    }
+
+    // Add category filter if specified
+    if (category) {
+      pipeline.push({ $match: { 'offer.category': category } });
+    }
+
+    // Group by offer and count favorites
+    pipeline.push(
+      {
+        $group: {
+          _id: '$offerId',
+          offer: { $first: '$offer' },
+          favoriteCount: { $sum: 1 },
+          uniqueUsers: { $addToSet: '$userId' },
+          latestFavorited: { $max: '$createdAt' }
+        }
+      },
+      {
+        $match: { favoriteCount: { $gte: minFavorites } }
+      },
+      {
+        $project: {
+          _id: 0,
+          offerId: '$_id',
+          offer: 1,
+          favoriteCount: 1,
+          uniqueUsers: { $size: '$uniqueUsers' },
+          latestFavorited: 1,
+          popularityScore: {
+            $add: [
+              '$favoriteCount',
+              { $multiply: [{ $size: '$uniqueUsers' }, 0.5] } // Unique users weighted at 50%
+            ]
+          }
+        }
+      },
+      { $sort: { popularityScore: -1, latestFavorited: -1 } },
+      { $limit: parseInt(limit) }
+    );
+
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 offerFavoriteSchema.statics.getUserRecommendations = async function(userId, options = {}) {
-  const { limit = 5, excludeFavorites = true } = options;
+  try {
+    const { limit = 5, excludeFavorites = true } = options;
   
-  // Get user's favorite categories and types
-  const userPreferences = await this.aggregate([
-    { $match: { userId: new mongoose.Types.ObjectId(userId) } },
-    {
-      $lookup: {
-        from: 'offers',
-        localField: 'offerId',
-        foreignField: '_id',
-        as: 'offer'
+    // Get user's favorite categories and types
+    const userPreferences = await this.aggregate([
+      { $match: { userId: new mongoose.Types.ObjectId(userId) } },
+      {
+        $lookup: {
+          from: 'offers',
+          localField: 'offerId',
+          foreignField: '_id',
+          as: 'offer'
+        }
+      },
+      { $unwind: '$offer' },
+      {
+        $group: {
+          _id: null,
+          favoriteCategories: { $addToSet: '$offer.category' },
+          favoriteTypes: { $addToSet: '$offer.type' },
+          avgPointsRange: { $avg: '$offer.pointsRequired' }
+        }
       }
-    },
-    { $unwind: '$offer' },
-    {
-      $group: {
-        _id: null,
-        favoriteCategories: { $addToSet: '$offer.category' },
-        favoriteTypes: { $addToSet: '$offer.type' },
-        avgPointsRange: { $avg: '$offer.pointsRequired' }
-      }
+    ]);
+
+    const preferences = userPreferences[0];
+    if (!preferences) {
+      // If user has no favorites, return popular offers
+      const popular = await this.getPopularOffers({ limit });
+      return popular.map(item => ({
+        ...item,
+        recommendationReason: 'Popular with other users',
+        score: item.popularityScore
+      }));
     }
-  ]);
 
-  const preferences = userPreferences[0];
-  if (!preferences) {
-    // If user has no favorites, return popular offers
-    const popular = await this.getPopularOffers({ limit });
-    return popular.map(item => ({
-      ...item,
-      recommendationReason: 'Popular with other users',
-      score: item.popularityScore
-    }));
-  }
-
-  // Build recommendation pipeline
-  const pipeline = [
-    {
-      $match: {
-        isActive: true,
-        $or: [
-          { category: { $in: preferences.favoriteCategories } },
-          { type: { $in: preferences.favoriteTypes } },
-          {
-            pointsRequired: {
-              $gte: preferences.avgPointsRange * 0.7,
-              $lte: preferences.avgPointsRange * 1.3
-            }
-          }
-        ]
-      }
-    }
-  ];
-
-  // Exclude already favorited offers if requested
-  if (excludeFavorites) {
-    const userFavoriteOfferIds = await this.find({ userId }).distinct('offerId');
-    if (userFavoriteOfferIds.length > 0) {
-      pipeline.push({ $match: { _id: { $nin: userFavoriteOfferIds } } });
-    }
-  }
-
-  // Add recommendation scoring
-  pipeline.push(
-    {
-      $addFields: {
-        recommendationScore: {
-          $add: [
-            { $cond: [{ $in: ['$category', preferences.favoriteCategories] }, 3, 0] },
-            { $cond: [{ $in: ['$type', preferences.favoriteTypes] }, 2, 0] },
+    // Build recommendation pipeline
+    const pipeline = [
+      {
+        $match: {
+          isActive: true,
+          $or: [
+            { category: { $in: preferences.favoriteCategories } },
+            { type: { $in: preferences.favoriteTypes } },
             {
-              $cond: [
-                {
-                  $and: [
-                    { $gte: ['$pointsRequired', preferences.avgPointsRange * 0.8] },
-                    { $lte: ['$pointsRequired', preferences.avgPointsRange * 1.2] }
-                  ]
-                },
-                1,
-                0
-              ]
+              pointsRequired: {
+                $gte: preferences.avgPointsRange * 0.7,
+                $lte: preferences.avgPointsRange * 1.3
+              }
             }
-          ]
-        },
-        recommendationReason: {
-          $cond: [
-            { $in: ['$category', preferences.favoriteCategories] },
-            { $concat: ['Based on your interest in ', '$category', ' offers'] },
-            { $cond: [
-              { $in: ['$type', preferences.favoriteTypes] },
-              { $concat: ['You like ', '$type', ' offers'] },
-              'Similar to your preferences'
-            ]}
           ]
         }
       }
-    },
-    { $sort: { recommendationScore: -1, pointsRequired: 1 } },
-    { $limit: parseInt(limit) }
-  );
+    ];
 
-  const Offer = mongoose.model('Offer');
-  return await Offer.aggregate(pipeline);
+    // Exclude already favorited offers if requested
+    if (excludeFavorites) {
+      const userFavoriteOfferIds = await this.find({ userId }).distinct('offerId').lean().limit(1000);
+      if (userFavoriteOfferIds.length > 0) {
+        pipeline.push({ $match: { _id: { $nin: userFavoriteOfferIds } } });
+      }
+    }
+
+    // Add recommendation scoring
+    pipeline.push(
+      {
+        $addFields: {
+          recommendationScore: {
+            $add: [
+              { $cond: [{ $in: ['$category', preferences.favoriteCategories] }, 3, 0] },
+              { $cond: [{ $in: ['$type', preferences.favoriteTypes] }, 2, 0] },
+              {
+                $cond: [
+                  {
+                    $and: [
+                      { $gte: ['$pointsRequired', preferences.avgPointsRange * 0.8] },
+                      { $lte: ['$pointsRequired', preferences.avgPointsRange * 1.2] }
+                    ]
+                  },
+                  1,
+                  0
+                ]
+              }
+            ]
+          },
+          recommendationReason: {
+            $cond: [
+              { $in: ['$category', preferences.favoriteCategories] },
+              { $concat: ['Based on your interest in ', '$category', ' offers'] },
+              { $cond: [
+                { $in: ['$type', preferences.favoriteTypes] },
+                { $concat: ['You like ', '$type', ' offers'] },
+                'Similar to your preferences'
+              ]}
+            ]
+          }
+        }
+      },
+      { $sort: { recommendationScore: -1, pointsRequired: 1 } },
+      { $limit: parseInt(limit) }
+    );
+
+    const Offer = mongoose.model('Offer');
+    return await Offer.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance methods
@@ -407,25 +423,33 @@ offerFavoriteSchema.methods.shouldNotifyExpiry = function() {
 
 // Pre-save middleware
 offerFavoriteSchema.pre('save', async function(next) {
-  // Verify offer exists and is active
-  const Offer = mongoose.model('Offer');
-  const offer = await Offer.findById(this.offerId);
+  try {
+    // Verify offer exists and is active
+    const Offer = mongoose.model('Offer');
+    const offer = await Offer.findById(this.offerId).lean();
   
-  if (!offer) {
-    return next(new Error('Offer not found'));
+    if (!offer) {
+      return next(new Error('Offer not found'));
+    }
+  
+    if (!offer.isActive) {
+      return next(new Error('Cannot favorite inactive offer'));
+    }
+  
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  if (!offer.isActive) {
-    return next(new Error('Cannot favorite inactive offer'));
-  }
-  
-  next();
 });
 
 // Post-save middleware for analytics
 offerFavoriteSchema.post('save', async function(doc) {
-  // Could trigger analytics events here
-  console.log(`Offer ${doc.offerId} favorited by user ${doc.userId}`);
+  try {
+    // Could trigger analytics events here
+    console.log(`Offer ${doc.offerId} favorited by user ${doc.userId}`);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 });
 
 export default mongoose.model('OfferFavorite', offerFavoriteSchema);

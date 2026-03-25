@@ -83,7 +83,7 @@ class DiscountPricingService {
 
       return await SpecialDiscount.find(query)
         .sort({ priority: -1, createdAt: -1 })
-        .populate('createdBy updatedBy', 'name email');
+        .populate('createdBy updatedBy', 'name email').lean().limit(1000);
     } catch (error) {
       logger.error('Error getting special discounts:', error);
       throw error;
@@ -197,7 +197,7 @@ class DiscountPricingService {
 
       return await DynamicPricing.find(query)
         .sort({ priority: -1, createdAt: -1 })
-        .populate('createdBy updatedBy', 'name email');
+        .populate('createdBy updatedBy', 'name email').lean().limit(1000);
     } catch (error) {
       logger.error('Error getting dynamic pricing rules:', error);
       throw error;
@@ -318,7 +318,7 @@ class DiscountPricingService {
 
       return await MarketSegment.find(query)
         .sort({ priority: -1, createdAt: -1 })
-        .populate('createdBy updatedBy', 'name email');
+        .populate('createdBy updatedBy', 'name email').lean().limit(1000);
     } catch (error) {
       logger.error('Error getting market segments:', error);
       throw error;
@@ -437,7 +437,7 @@ class DiscountPricingService {
       return await JobType.find(query)
         .sort({ priority: -1, createdAt: -1 })
         .populate('createdBy updatedBy', 'name email')
-        .populate('department', 'name code');
+        .populate('department', 'name code').lean().limit(1000);
     } catch (error) {
       logger.error('Error getting job types:', error);
       throw error;
@@ -507,7 +507,11 @@ class DiscountPricingService {
   }
 
   async ayx(){
-    return ;
+    try {
+      return ;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getJobTypeAnalytics(hotelId, dateRange) {
@@ -559,28 +563,31 @@ class DiscountPricingService {
     session.startTransaction();
 
     try {
-      const results = [];
-
-      for (const update of updates) {
-        const { discountId, isActive } = update;
-        const discount = await SpecialDiscount.findByIdAndUpdate(
-          discountId,
-          { isActive, updatedBy: userId },
-          { new: true, session }
-        );
-
-        if (discount) {
-          results.push(discount);
-
-          // Log status update
-          await AuditLog.logAction('discount_status_updated', userId, {
-            source: 'discount_pricing_service',
-            discountId: discount._id,
-            discountName: discount.name,
-            newStatus: isActive ? 'active' : 'inactive'
-          });
+      // Batch: use bulkWrite to update all discounts at once
+      const discountBulkOps = updates.map(({ discountId, isActive }) => ({
+        updateOne: {
+          filter: { _id: discountId },
+          update: { $set: { isActive, updatedBy: userId } }
         }
+      }));
+
+      if (discountBulkOps.length > 0) {
+        await SpecialDiscount.bulkWrite(discountBulkOps, { session });
       }
+
+      const updatedIds = updates.map(u => u.discountId);
+      const results = await SpecialDiscount.find({ _id: { $in: updatedIds } }).session(session);
+
+      // Log all status updates in parallel
+      await Promise.all(results.map(discount => {
+        const update = updates.find(u => u.discountId.toString() === discount._id.toString());
+        return AuditLog.logAction('discount_status_updated', userId, {
+          source: 'discount_pricing_service',
+          discountId: discount._id,
+          discountName: discount.name,
+          newStatus: update?.isActive ? 'active' : 'inactive'
+        });
+      }));
 
       await session.commitTransaction();
       return results;
@@ -598,18 +605,23 @@ class DiscountPricingService {
     session.startTransaction();
 
     try {
-      const results = [];
+      // Batch: use bulkWrite to update all pricing rules at once
+      const pricingBulkOps = updates.map(({ pricingId, isActive }) => ({
+        updateOne: {
+          filter: { _id: pricingId },
+          update: { $set: { isActive, updatedBy: userId } }
+        }
+      }));
 
-      for (const update of updates) {
-        const { pricingId, isActive } = update;
-        const pricing = await DynamicPricing.findByIdAndUpdate(
-          pricingId,
-          { isActive, updatedBy: userId },
-          { new: true, session }
-        );
+      if (pricingBulkOps.length > 0) {
+        await DynamicPricing.bulkWrite(pricingBulkOps, { session });
+      }
 
+      const pricingIds = updates.map(u => u.pricingId);
+      const results = await DynamicPricing.find({ _id: { $in: pricingIds } }).session(session);
+
+      for (const pricing of results) {
         if (pricing) {
-          results.push(pricing);
 
           // Log status update
           await AuditLog.logAction('pricing_status_updated', userId, {

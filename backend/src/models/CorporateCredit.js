@@ -194,42 +194,46 @@ corporateCreditSchema.pre('save', async function(next) {
 
 // Static method to get credit summary for a company
 corporateCreditSchema.statics.getCreditSummary = async function(corporateCompanyId, hotelId) {
-  const summary = await this.aggregate([
-    {
-      $match: {
-        corporateCompanyId: new mongoose.Types.ObjectId(corporateCompanyId),
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        status: 'processed'
+  try {
+    const summary = await this.aggregate([
+      {
+        $match: {
+          corporateCompanyId: new mongoose.Types.ObjectId(corporateCompanyId),
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          status: 'processed'
+        }
+      },
+      {
+        $group: {
+          _id: '$transactionType',
+          totalAmount: { $sum: '$amount' },
+          count: { $sum: 1 }
+        }
       }
-    },
-    {
-      $group: {
-        _id: '$transactionType',
-        totalAmount: { $sum: '$amount' },
-        count: { $sum: 1 }
+    ]);
+  
+    const result = {
+      totalDebits: 0,
+      totalCredits: 0,
+      netBalance: 0,
+      transactionCount: 0
+    };
+  
+    summary.forEach(item => {
+      if (item._id === 'debit') {
+        result.totalDebits = Math.abs(item.totalAmount);
+      } else if (item._id === 'credit') {
+        result.totalCredits = item.totalAmount;
       }
-    }
-  ]);
+      result.transactionCount += item.count;
+    });
   
-  const result = {
-    totalDebits: 0,
-    totalCredits: 0,
-    netBalance: 0,
-    transactionCount: 0
-  };
+    result.netBalance = result.totalCredits - result.totalDebits;
   
-  summary.forEach(item => {
-    if (item._id === 'debit') {
-      result.totalDebits = Math.abs(item.totalAmount);
-    } else if (item._id === 'credit') {
-      result.totalCredits = item.totalAmount;
-    }
-    result.transactionCount += item.count;
-  });
-  
-  result.netBalance = result.totalCredits - result.totalDebits;
-  
-  return result;
+    return result;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get overdue transactions
@@ -247,61 +251,65 @@ corporateCreditSchema.statics.getOverdueTransactions = function(hotelId, daysOve
 
 // Static method to get monthly credit report
 corporateCreditSchema.statics.getMonthlyReport = async function(hotelId, year, month) {
-  const startDate = new Date(year, month - 1, 1);
-  const endDate = new Date(year, month, 0, 23, 59, 59);
+  try {
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
   
-  return this.aggregate([
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        transactionDate: { $gte: startDate, $lte: endDate },
-        status: 'processed'
+    return this.aggregate([
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          transactionDate: { $gte: startDate, $lte: endDate },
+          status: 'processed'
+        }
+      },
+      {
+        $lookup: {
+          from: 'corporatecompanies',
+          localField: 'corporateCompanyId',
+          foreignField: '_id',
+          as: 'company'
+        }
+      },
+      {
+        $unwind: '$company'
+      },
+      {
+        $group: {
+          _id: {
+            companyId: '$corporateCompanyId',
+            companyName: '$company.name'
+          },
+          totalDebits: {
+            $sum: {
+              $cond: [{ $eq: ['$transactionType', 'debit'] }, '$amount', 0]
+            }
+          },
+          totalCredits: {
+            $sum: {
+              $cond: [{ $eq: ['$transactionType', 'credit'] }, '$amount', 0]
+            }
+          },
+          transactionCount: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          companyId: '$_id.companyId',
+          companyName: '$_id.companyName',
+          totalDebits: 1,
+          totalCredits: 1,
+          netAmount: { $subtract: ['$totalCredits', '$totalDebits'] },
+          transactionCount: 1
+        }
+      },
+      {
+        $sort: { totalDebits: -1 }
       }
-    },
-    {
-      $lookup: {
-        from: 'corporatecompanies',
-        localField: 'corporateCompanyId',
-        foreignField: '_id',
-        as: 'company'
-      }
-    },
-    {
-      $unwind: '$company'
-    },
-    {
-      $group: {
-        _id: {
-          companyId: '$corporateCompanyId',
-          companyName: '$company.name'
-        },
-        totalDebits: {
-          $sum: {
-            $cond: [{ $eq: ['$transactionType', 'debit'] }, '$amount', 0]
-          }
-        },
-        totalCredits: {
-          $sum: {
-            $cond: [{ $eq: ['$transactionType', 'credit'] }, '$amount', 0]
-          }
-        },
-        transactionCount: { $sum: 1 }
-      }
-    },
-    {
-      $project: {
-        companyId: '$_id.companyId',
-        companyName: '$_id.companyName',
-        totalDebits: 1,
-        totalCredits: 1,
-        netAmount: { $subtract: ['$totalCredits', '$totalDebits'] },
-        transactionCount: 1
-      }
-    },
-    {
-      $sort: { totalDebits: -1 }
-    }
-  ]);
+    ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance method to approve transaction

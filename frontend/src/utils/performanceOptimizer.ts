@@ -20,15 +20,27 @@ export function debounce<T extends (...args: unknown[]) => unknown>(
 export function throttle<T extends (...args: unknown[]) => unknown>(
   func: T,
   limit: number
-): (...args: Parameters<T>) => void {
+): ((...args: Parameters<T>) => void) & { cancel: () => void } {
   let inThrottle: boolean;
-  return (...args: Parameters<T>) => {
+  let throttleTimer: ReturnType<typeof setTimeout> | null = null;
+  const throttled = (...args: Parameters<T>) => {
     if (!inThrottle) {
       func(...args);
       inThrottle = true;
-      setTimeout(() => (inThrottle = false), limit);
+      throttleTimer = setTimeout(() => {
+        inThrottle = false;
+        throttleTimer = null;
+      }, limit);
     }
   };
+  throttled.cancel = () => {
+    if (throttleTimer) {
+      clearTimeout(throttleTimer);
+      throttleTimer = null;
+    }
+    inThrottle = false;
+  };
+  return throttled;
 }
 
 // Memoization utility for expensive calculations

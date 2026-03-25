@@ -44,6 +44,7 @@ class TranslationLoader {
   private missingTranslations: Map<string, MissingTranslation> = new Map();
   private currentLanguage: string = 'EN';
   private fallbackLanguage: string = 'EN';
+  private preloadTimer: ReturnType<typeof setTimeout> | null = null;
   private loadingState: LoadingState = {
     isLoading: false,
     progress: 0,
@@ -172,7 +173,9 @@ class TranslationLoader {
    */
   private preloadNamespaces(namespaces: string[], language: string): void {
     // Use setTimeout to make it non-blocking
-    setTimeout(async () => {
+    if (this.preloadTimer) clearTimeout(this.preloadTimer);
+    this.preloadTimer = setTimeout(async () => {
+      this.preloadTimer = null;
       for (const namespace of namespaces) {
         try {
           await this.loadNamespace(namespace, language);

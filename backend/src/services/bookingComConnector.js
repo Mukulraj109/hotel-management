@@ -1,5 +1,6 @@
 import axios from 'axios';
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 import { getRedisClient } from '../config/redis.js';
 import logger from '../utils/logger.js';
 import Room from '../models/Room.js';
@@ -74,25 +75,22 @@ export class BookingComConnector {
         throw new Error('Hotel not found');
       }
       
-      // Check if OTA connections exist and initialize if needed
-      if (!hotel.otaConnections) {
-        hotel.otaConnections = {
-          bookingCom: {
-            isEnabled: false,
-            credentials: {},
-            lastSync: null
-          }
-        };
-        await hotel.save();
-      }
-      
-      if (!hotel.otaConnections.bookingCom) {
-        hotel.otaConnections.bookingCom = {
-          isEnabled: false,
-          credentials: {},
-          lastSync: null
-        };
-        await hotel.save();
+      // Atomically initialize OTA connections if needed (avoids multiple save() calls)
+      if (!hotel.otaConnections || !hotel.otaConnections.bookingCom) {
+        hotel = await Hotel.findByIdAndUpdate(
+          hotelId,
+          {
+            $setOnInsert: {},
+            $set: {
+              'otaConnections.bookingCom': hotel.otaConnections?.bookingCom || {
+                isEnabled: false,
+                credentials: {},
+                lastSync: null
+              }
+            }
+          },
+          { new: true }
+        );
       }
       
       if (!hotel.otaConnections.bookingCom.isEnabled) {
@@ -120,23 +118,38 @@ export class BookingComConnector {
       // Update room availability in our system
       await this.updateRoomAvailability(hotelId, availability);
 
-      // Update hotel's last sync timestamp
-      hotel.otaConnections.bookingCom.lastSync = new Date();
-      await hotel.save();
-
-      // Update sync history record
+      // Update hotel lastSync and sync history atomically within a transaction
       const endTime = Date.now();
-      await SyncHistory.findByIdAndUpdate(syncHistory._id, {
-        status: 'completed',
-        completedAt: new Date(),
-        roomsUpdated: availability.rooms?.length || 0,
-        metadata: {
-          duration: endTime - startTime,
-          recordsProcessed: availability.rooms?.length || 0,
-          apiCalls: 2, // auth + availability call
-          dataSize: JSON.stringify(availability).length
-        }
-      });
+      const txnSession = await mongoose.startSession();
+      try {
+        await txnSession.withTransaction(async () => {
+          try {
+            await Hotel.findByIdAndUpdate(
+              hotelId,
+              { $set: { 'otaConnections.bookingCom.lastSync': new Date() } },
+              { session: txnSession, new: true }
+            );
+
+            await SyncHistory.findByIdAndUpdate(syncHistory._id, {
+              status: 'completed',
+              completedAt: new Date(),
+              roomsUpdated: availability.rooms?.length || 0,
+              metadata: {
+                duration: endTime - startTime,
+                recordsProcessed: availability.rooms?.length || 0,
+                apiCalls: 2, // auth + availability call
+                dataSize: JSON.stringify(availability).length
+              }
+            }, { session: txnSession, new: true });
+        
+          } catch (error) {
+            console.error('Operation failed:', error.message);
+            throw error;
+          }
+        });
+      } finally {
+        txnSession.endSession();
+      }
 
       // Update Redis for real-time status
       if (this.redis && this.redis.isReady) {
@@ -176,7 +189,9 @@ export class BookingComConnector {
           apiCalls: 1, // failed during process
           dataSize: 0
         }
-      });
+      },
+        { new: true }
+      );
       
       // Update Redis status to failed
       if (this.redis && this.redis.isReady) {
@@ -225,7 +240,7 @@ export class BookingComConnector {
         const hotelRooms = await Room.find({
           hotelId,
           status: { $in: ['available', 'occupied', 'maintenance'] }
-        }).limit(10);
+        }).limit(10).lean();
 
         const fallbackRooms = hotelRooms.map(room => ({
           room_number: room.number,
@@ -268,25 +283,29 @@ export class BookingComConnector {
       return;
     }
 
+    // Batch: use bulkWrite to update all rooms at once
+    const roomBulkOps = availabilityData.rooms.map(roomData => {
+      const updateFields = {
+        status: roomData.available ? 'vacant' : 'occupied'
+      };
+      if (roomData.rate) {
+        updateFields.currentRate = roomData.rate;
+      }
+      return {
+        updateOne: {
+          filter: { hotelId, roomNumber: roomData.room_number || roomData.id },
+          update: { $set: updateFields }
+        }
+      };
+    });
+
+    if (roomBulkOps.length > 0) {
+      await Room.bulkWrite(roomBulkOps);
+    }
+
     for (const roomData of availabilityData.rooms) {
       try {
-        const updateFields = {
-          status: roomData.available ? 'vacant' : 'occupied'
-        };
-
-        if (roomData.rate) {
-          updateFields.currentRate = roomData.rate;
-        }
-
-        // Use atomic findOneAndUpdate instead of find + modify + save
-        const room = await Room.findOneAndUpdate(
-          {
-            hotelId,
-            roomNumber: roomData.room_number || roomData.id
-          },
-          { $set: updateFields },
-          { new: true }
-        );
+        const room = { roomNumber: roomData.room_number || roomData.id };
 
         if (room) {
           logger.debug(`Updated room ${room.roomNumber} availability`);
@@ -340,52 +359,64 @@ export class BookingComConnector {
 
   // Webhook handler for Booking.com notifications (if supported)
   async handleWebhook(payload, signature) {
-    // Verify webhook signature
-    const expectedSignature = crypto
-      .createHmac('sha256', this.clientSecret)
-      .update(JSON.stringify(payload))
-      .digest('hex');
+    try {
+      // Verify webhook signature
+      const expectedSignature = crypto
+        .createHmac('sha256', this.clientSecret)
+        .update(JSON.stringify(payload))
+        .digest('hex');
 
-    if (signature !== expectedSignature) {
-      throw new Error('Invalid webhook signature');
-    }
+      if (signature !== expectedSignature) {
+        throw new Error('Invalid webhook signature');
+      }
 
-    logger.info('Booking.com webhook received:', payload.event_type);
+      logger.info('Booking.com webhook received:', payload.event_type);
 
-    // Handle different webhook events
-    switch (payload.event_type) {
-      case 'availability_updated':
-        await this.handleAvailabilityUpdate(payload);
-        break;
-      case 'booking_created':
-        await this.handleNewBooking(payload);
-        break;
-      default:
-        logger.info(`Unhandled webhook event: ${payload.event_type}`);
+      // Handle different webhook events
+      switch (payload.event_type) {
+        case 'availability_updated':
+          await this.handleAvailabilityUpdate(payload);
+          break;
+        case 'booking_created':
+          await this.handleNewBooking(payload);
+          break;
+        default:
+          logger.info(`Unhandled webhook event: ${payload.event_type}`);
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
   async handleAvailabilityUpdate(payload) {
-    // Update room availability based on webhook data
-    const { hotel_id, room_id, available, date } = payload.data;
+    try {
+      // Update room availability based on webhook data
+      const { hotel_id, room_id, available, date } = payload.data;
     
-    // Find our hotel by Booking.com hotel ID
-    const hotel = await Hotel.findOne({
-      'otaConnections.bookingCom.credentials.hotelId': hotel_id
-    });
+      // Find our hotel by Booking.com hotel ID
+      const hotel = await Hotel.findOne({
+        'otaConnections.bookingCom.credentials.hotelId': hotel_id
+      }).lean();
 
-    if (hotel) {
-      // Trigger availability sync for this hotel
-      await this.syncAvailability(hotel._id);
+      if (hotel) {
+        // Trigger availability sync for this hotel
+        await this.syncAvailability(hotel._id);
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
   async handleNewBooking(payload) {
-    // Handle new booking notifications from Booking.com
-    // This would typically create a booking record in our system
-    logger.info('New Booking.com booking received:', payload.data.booking_id);
+    try {
+      // Handle new booking notifications from Booking.com
+      // This would typically create a booking record in our system
+      logger.info('New Booking.com booking received:', payload.data.booking_id);
     
-    // Implementation would depend on business requirements
-    // for handling external bookings
+      // Implementation would depend on business requirements
+      // for handling external bookings
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }

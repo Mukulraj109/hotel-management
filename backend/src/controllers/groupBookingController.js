@@ -38,52 +38,58 @@ import { ensureTenantContext } from '../middleware/tenantIsolation.js';
  */
 export const createGroupBooking = catchAsync(async (req, res, next) => {
   const groupBooking = await withTransaction(async (session) => {
-    // Verify corporate company exists and has sufficient credit
-    const company = await CorporateCompany.findOne({
-      _id: req.body.corporateCompanyId,
-      hotelId: req.user.hotelId,
-      isActive: true
-    }).session(session);
-
-    if (!company) {
-      throw new ApplicationError('Corporate company not found or inactive', 404);
-    }
-
-    // Add hotel ID and creator info
-    const groupBookingData = {
-      ...req.body,
-      hotelId: req.user.hotelId,
-      'metadata.createdBy': req.user.id
-    };
-
-    // Check room availability for the requested dates
-    const { checkIn, checkOut, rooms } = req.body;
-    const requestedRoomTypes = rooms.map(room => room.roomType);
-
-    // Get available rooms for each requested type
-    for (const roomType of [...new Set(requestedRoomTypes)]) {
-      const availableRooms = await Room.find({
+    try {
+      // Verify corporate company exists and has sufficient credit
+      const company = await CorporateCompany.findOne({
+        _id: req.body.corporateCompanyId,
         hotelId: req.user.hotelId,
-        type: roomType,
         isActive: true
       }).session(session);
 
-      const requestedCount = requestedRoomTypes.filter(type => type === roomType).length;
-
-      if (availableRooms.length < requestedCount) {
-        throw new ApplicationError(`Not enough ${roomType} rooms available. Requested: ${requestedCount}, Available: ${availableRooms.length}`, 400);
+      if (!company) {
+        throw new ApplicationError('Corporate company not found or inactive', 404);
       }
+
+      // Add hotel ID and creator info
+      const groupBookingData = {
+        ...req.body,
+        hotelId: req.user.hotelId,
+        'metadata.createdBy': req.user.id
+      };
+
+      // Check room availability for the requested dates
+      const { checkIn, checkOut, rooms } = req.body;
+      const requestedRoomTypes = rooms.map(room => room.roomType);
+
+      // Get available rooms for each requested type
+      for (const roomType of [...new Set(requestedRoomTypes)]) {
+        const availableRooms = await Room.find({
+          hotelId: req.user.hotelId,
+          type: roomType,
+          isActive: true
+        }).session(session).limit(1000);
+
+        const requestedCount = requestedRoomTypes.filter(type => type === roomType).length;
+
+        if (availableRooms.length < requestedCount) {
+          throw new ApplicationError(`Not enough ${roomType} rooms available. Requested: ${requestedCount}, Available: ${availableRooms.length}`, 400);
+        }
+      }
+
+      const [booking] = await GroupBooking.create([groupBookingData], { session });
+
+      // Check if company has sufficient credit for estimated amount
+      if (company.availableCredit < booking.totalAmount &&
+          booking.paymentMethod === 'corporate_credit') {
+        throw new ApplicationError(`Insufficient corporate credit. Required: ₹${booking.totalAmount}, Available: ₹${company.availableCredit}`, 400);
+      }
+
+      return booking;
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
     }
-
-    const [booking] = await GroupBooking.create([groupBookingData], { session });
-
-    // Check if company has sufficient credit for estimated amount
-    if (company.availableCredit < booking.totalAmount &&
-        booking.paymentMethod === 'corporate_credit') {
-      throw new ApplicationError(`Insufficient corporate credit. Required: ₹${booking.totalAmount}, Available: ₹${company.availableCredit}`, 400);
-    }
-
-    return booking;
   });
 
   res.status(201).json({
@@ -167,7 +173,7 @@ export const getGroupBooking = catchAsync(async (req, res, next) => {
   })
   .populate('corporateCompanyId')
   .populate('rooms.roomId')
-  .populate('rooms.bookingId');
+  .populate('rooms.bookingId').lean();
   
   if (!groupBooking) {
     return next(new ApplicationError('Group booking not found', 404));
@@ -270,79 +276,93 @@ export const updateGroupBooking = catchAsync(async (req, res, next) => {
  */
 export const confirmGroupBooking = catchAsync(async (req, res, next) => {
   const result = await withTransaction(async (session) => {
-    const groupBooking = await GroupBooking.findOne({
-      _id: req.params.id,
-      hotelId: req.user.hotelId
-    }).populate('corporateCompanyId').session(session);
+    try {
+      const groupBooking = await GroupBooking.findOne({
+        _id: req.params.id,
+        hotelId: req.user.hotelId
+      }).populate('corporateCompanyId').session(session);
 
-    if (!groupBooking) {
-      throw new ApplicationError('Group booking not found', 404);
-    }
-
-    const { roomIndices } = req.body;
-    const indicesToConfirm = roomIndices || groupBooking.rooms.map((_, index) => index);
-
-    // Create individual bookings for each room
-    const createdBookings = [];
-
-    for (const index of indicesToConfirm) {
-      const roomData = groupBooking.rooms[index];
-      if (!roomData) continue;
-
-      // Find available room of the requested type
-      const availableRoom = await Room.findOne({
-        hotelId: req.user.hotelId,
-        type: roomData.roomType,
-        isActive: true
-      }).session(session);
-
-      if (!availableRoom) {
-        throw new ApplicationError(`No available ${roomData.roomType} rooms`, 400);
+      if (!groupBooking) {
+        throw new ApplicationError('Group booking not found', 404);
       }
 
-      // Create individual booking
-      const bookingData = {
-        hotelId: req.user.hotelId,
-        userId: req.user.id,
-        rooms: [{
-          roomId: availableRoom._id,
-          rate: roomData.rate
-        }],
-        checkIn: groupBooking.checkIn,
-        checkOut: groupBooking.checkOut,
-        nights: groupBooking.nights,
-        status: 'confirmed',
-        paymentStatus: 'pending',
-        totalAmount: roomData.rate * groupBooking.nights,
-        currency: 'INR',
-        guestDetails: {
-          adults: 1,
-          children: 0,
-          specialRequests: roomData.specialRequests
-        },
-        corporateBooking: {
-          corporateCompanyId: groupBooking.corporateCompanyId._id,
-          groupBookingId: groupBooking._id,
-          employeeId: roomData.employeeId,
-          department: roomData.department,
-          paymentMethod: groupBooking.paymentMethod,
-          billingEmail: groupBooking.corporateCompanyId.primaryHRContact?.email
+      const { roomIndices } = req.body;
+      const indicesToConfirm = roomIndices || groupBooking.rooms.map((_, index) => index);
+
+      // Create individual bookings for each room
+      const createdBookings = [];
+
+      for (const index of indicesToConfirm) {
+        const roomData = groupBooking.rooms[index];
+        if (!roomData) continue;
+
+        // Find available room of the requested type
+        const availableRoom = await Room.findOne({
+          hotelId: req.user.hotelId,
+          type: roomData.roomType,
+          isActive: true
+        }).session(session);
+
+        if (!availableRoom) {
+          throw new ApplicationError(`No available ${roomData.roomType} rooms`, 400);
         }
-      };
 
-      const [booking] = await Booking.create([bookingData], { session });
-      createdBookings.push(booking);
+        // Create individual booking
+        const bookingData = {
+          hotelId: req.user.hotelId,
+          userId: req.user.id,
+          rooms: [{
+            roomId: availableRoom._id,
+            rate: roomData.rate
+          }],
+          checkIn: groupBooking.checkIn,
+          checkOut: groupBooking.checkOut,
+          nights: groupBooking.nights,
+          status: 'confirmed',
+          paymentStatus: 'pending',
+          totalAmount: roomData.rate * groupBooking.nights,
+          currency: 'INR',
+          guestDetails: {
+            adults: 1,
+            children: 0,
+            specialRequests: roomData.specialRequests
+          },
+          corporateBooking: {
+            corporateCompanyId: groupBooking.corporateCompanyId._id,
+            groupBookingId: groupBooking._id,
+            employeeId: roomData.employeeId,
+            department: roomData.department,
+            paymentMethod: groupBooking.paymentMethod,
+            billingEmail: groupBooking.corporateCompanyId.primaryHRContact?.email
+          }
+        };
 
-      // Update group booking room with individual booking ID
-      groupBooking.rooms[index].bookingId = booking._id;
-      groupBooking.rooms[index].roomId = availableRoom._id;
-      groupBooking.rooms[index].status = 'confirmed';
+        const [booking] = await Booking.create([bookingData], { session });
+        createdBookings.push(booking);
+
+        // Update group booking room with individual booking ID
+        groupBooking.rooms[index].bookingId = booking._id;
+        groupBooking.rooms[index].roomId = availableRoom._id;
+        // Validate room status transition: only 'pending' rooms can be confirmed
+        const currentRoomStatus = groupBooking.rooms[index].status;
+        if (currentRoomStatus && currentRoomStatus !== 'pending') {
+          throw new ApplicationError(
+            `Cannot confirm room: invalid transition from '${currentRoomStatus}' to 'confirmed'`,
+            400
+          );
+        }
+        groupBooking.rooms[index].status = 'confirmed';
+      }
+
+      // Update group booking status
+      await groupBooking.confirmRooms(indicesToConfirm);
+
+      return { groupBooking, createdBookings };
+  
+    } catch (error) {
+      console.error('Operation failed:', error.message);
+      throw error;
     }
-
-    // Update group booking status
-    await groupBooking.confirmRooms(indicesToConfirm);
-
-    return { groupBooking, createdBookings };
   });
 
   res.status(200).json({
@@ -397,7 +417,7 @@ export const cancelGroupBooking = catchAsync(async (req, res, next) => {
   const groupBooking = await GroupBooking.findOne({
     _id: req.params.id,
     hotelId: req.user.hotelId
-  });
+  }).lean();
   
   if (!groupBooking) {
     return next(new ApplicationError('Group booking not found', 404));
@@ -405,11 +425,20 @@ export const cancelGroupBooking = catchAsync(async (req, res, next) => {
   
   const indicesToCancel = roomIndices || groupBooking.rooms.map((_, index) => index);
   
-  // Cancel individual bookings if they exist (using atomic state machine)
+  // Batch: fetch all individual bookings in a single query
+  const bookingIdsToCancel = indicesToCancel
+    .map(i => groupBooking.rooms[i])
+    .filter(r => r && r.bookingId)
+    .map(r => r.bookingId);
+  const individualBookings = bookingIdsToCancel.length > 0
+    ? await Booking.find({ _id: { $in: bookingIdsToCancel } }).lean()
+    : [];
+  const bookingMap = new Map(individualBookings.map(b => [b._id.toString(), b]));
+
   for (const index of indicesToCancel) {
     const roomData = groupBooking.rooms[index];
     if (roomData && roomData.bookingId) {
-      const individualBooking = await Booking.findById(roomData.bookingId);
+      const individualBooking = bookingMap.get(roomData.bookingId.toString());
       if (individualBooking) {
         const validation = validateTransition(individualBooking.status, 'cancelled');
         if (validation.valid) {
@@ -575,7 +604,7 @@ export const toggleGroupBookingStatus = catchAsync(async (req, res, next) => {
   const groupBooking = await GroupBooking.findOne({
     _id: req.params.id,
     hotelId: req.user.hotelId
-  }).populate('corporateCompanyId');
+  }).populate('corporateCompanyId').lean();
 
   if (!groupBooking) {
     return next(new ApplicationError('Group booking not found', 404));
@@ -641,16 +670,18 @@ export const toggleGroupBookingStatus = catchAsync(async (req, res, next) => {
   groupBooking.status = newStatus;
   groupBooking.metadata.lastModifiedBy = req.user.id;
 
-  // If cancelling, update all room statuses
+  // If cancelling, update all room statuses (validate each transition)
   if (newStatus === 'cancelled') {
+    const cancellableStatuses = ['pending', 'confirmed', 'partially_confirmed'];
     groupBooking.rooms.forEach(room => {
-      if (room.status !== 'checked_in' && room.status !== 'checked_out') {
+      if (cancellableStatuses.includes(room.status)) {
         room.status = 'cancelled';
       }
+      // checked_in and checked_out rooms are intentionally left unchanged
     });
   }
 
-  // If reactivating, reset room statuses
+  // If reactivating, reset room statuses (only cancelled -> pending is valid)
   if (newStatus === 'draft') {
     groupBooking.rooms.forEach(room => {
       if (room.status === 'cancelled') {

@@ -51,57 +51,77 @@ export interface StaffResponse {
 class StaffService {
   // Get all staff members with filtering and pagination
   async getStaffMembers(params: StaffQueryParams = {}): Promise<StaffResponse> {
-    const queryParams = new URLSearchParams();
+    try {
+      const queryParams = new URLSearchParams();
 
-    if (params.page) queryParams.append('page', params.page.toString());
-    if (params.limit) queryParams.append('limit', params.limit.toString());
-    if (params.search) queryParams.append('search', params.search);
+      if (params.page) queryParams.append('page', params.page.toString());
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.search) queryParams.append('search', params.search);
 
-    // For staff management, always filter by role unless explicitly specified
-    // This ensures we only get staff and admin users, never guests
-    if (params.role) {
-      queryParams.append('role', params.role);
-    } else {
-      // When no specific role is requested, the backend will default to staff/admin only
-      // But we can be explicit to ensure we're getting staff management data
+      // For staff management, always filter by role unless explicitly specified
+      // This ensures we only get staff and admin users, never guests
+      if (params.role) {
+        queryParams.append('role', params.role);
+      } else {
+        // When no specific role is requested, the backend will default to staff/admin only
+        // But we can be explicit to ensure we're getting staff management data
+      }
+
+      if (params.isActive !== undefined) queryParams.append('isActive', params.isActive.toString());
+
+      const response = await api.get(`/admin/users?${queryParams.toString()}`);
+
+      // Filter out any guest users that might have slipped through (extra safety)
+      const staffUsers = response.data.data.users.filter((user: StaffMember) =>
+        user.role === 'staff' || user.role === 'admin'
+      );
+
+      return {
+        staff: staffUsers,
+        pagination: response.data.data.pagination // Keep original pagination from backend
+      };
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-
-    if (params.isActive !== undefined) queryParams.append('isActive', params.isActive.toString());
-
-    const response = await api.get(`/admin/users?${queryParams.toString()}`);
-
-    // Filter out any guest users that might have slipped through (extra safety)
-    const staffUsers = response.data.data.users.filter((user: StaffMember) =>
-      user.role === 'staff' || user.role === 'admin'
-    );
-
-    return {
-      staff: staffUsers,
-      pagination: response.data.data.pagination // Keep original pagination from backend
-    };
   }
 
   // Get a specific staff member by ID
   async getStaffMember(id: string): Promise<StaffMember> {
-    const response = await api.get(`/admin/users/${id}`);
-    return response.data.data.user;
+    try {
+      const response = await api.get(`/admin/users/${id}`);
+      return response.data.data.user;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Create a new staff member
   async createStaffMember(data: CreateStaffData): Promise<StaffMember> {
-    const response = await api.post('/admin/users', data);
-    return response.data.data.user;
+    try {
+      const response = await api.post('/admin/users', data);
+      return response.data.data.user;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Update a staff member
   async updateStaffMember(id: string, data: UpdateStaffData): Promise<StaffMember> {
-    const response = await api.patch(`/admin/users/${id}`, data);
-    return response.data.data.user;
+    try {
+      const response = await api.patch(`/admin/users/${id}`, data);
+      return response.data.data.user;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Delete a staff member
   async deleteStaffMember(id: string): Promise<void> {
-    await api.delete(`/admin/users/${id}`);
+    try {
+      await api.delete(`/admin/users/${id}`);
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get staff statistics
@@ -112,20 +132,24 @@ class StaffService {
     admins: number;
     regularStaff: number;
   }> {
-    const response = await api.get('/admin/users');
+    try {
+      const response = await api.get('/admin/users');
 
-    // Filter to only include staff and admin users, exclude guests
-    const staff = response.data.data.users.filter((user: StaffMember) =>
-      user.role === 'staff' || user.role === 'admin'
-    );
+      // Filter to only include staff and admin users, exclude guests
+      const staff = response.data.data.users.filter((user: StaffMember) =>
+        user.role === 'staff' || user.role === 'admin'
+      );
 
-    return {
-      total: staff.length,
-      active: staff.filter((s: StaffMember) => s.isActive).length,
-      inactive: staff.filter((s: StaffMember) => !s.isActive).length,
-      admins: staff.filter((s: StaffMember) => s.role === 'admin').length,
-      regularStaff: staff.filter((s: StaffMember) => s.role === 'staff').length,
-    };
+      return {
+        total: staff.length,
+        active: staff.filter((s: StaffMember) => s.isActive).length,
+        inactive: staff.filter((s: StaffMember) => !s.isActive).length,
+        admins: staff.filter((s: StaffMember) => s.role === 'admin').length,
+        regularStaff: staff.filter((s: StaffMember) => s.role === 'staff').length,
+      };
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Bulk operations

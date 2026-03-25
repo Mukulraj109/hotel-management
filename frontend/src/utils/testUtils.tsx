@@ -175,20 +175,26 @@ export const customRender = (
 };
 
 // Mock API responses
-export const mockApiResponse = <T>(data: T, delay: number = 100): Promise<{ data: T }> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
+export const mockApiResponse = <T>(data: T, delay: number = 100): Promise<{ data: T }> & { cancel: () => void } => {
+  let timer: ReturnType<typeof setTimeout>;
+  const promise = new Promise<{ data: T }>((resolve) => {
+    timer = setTimeout(() => {
       resolve({ data });
     }, delay);
-  });
+  }) as Promise<{ data: T }> & { cancel: () => void };
+  promise.cancel = () => clearTimeout(timer);
+  return promise;
 };
 
-export const mockApiError = (message: string = 'API Error', delay: number = 100): Promise<never> => {
-  return new Promise((_, reject) => {
-    setTimeout(() => {
+export const mockApiError = (message: string = 'API Error', delay: number = 100): Promise<never> & { cancel: () => void } => {
+  let timer: ReturnType<typeof setTimeout>;
+  const promise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
       reject(new Error(message));
     }, delay);
-  });
+  }) as Promise<never> & { cancel: () => void };
+  promise.cancel = () => clearTimeout(timer);
+  return promise;
 };
 
 // Mock intersection observer

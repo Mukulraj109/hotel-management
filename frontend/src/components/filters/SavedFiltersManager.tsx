@@ -150,7 +150,7 @@ const SavedFiltersManager: React.FC<SavedFiltersManagerProps> = ({
           <div className="p-4">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-medium text-gray-900">Saved Filters</h3>
-              <button
+              <button aria-label="Close"
                 onClick={() => setIsOpen(false)}
                 className="text-gray-400 hover:text-gray-600"
               >
@@ -224,7 +224,7 @@ const SavedFiltersManager: React.FC<SavedFiltersManagerProps> = ({
               <h3 className="text-lg font-medium text-gray-900">
                 {editingFilter ? 'Edit Filter' : 'Save Filter'}
               </h3>
-              <button
+              <button aria-label="Edit"
                 onClick={() => {
                   setShowSaveDialog(false);
                   setEditingFilter(null);
@@ -303,7 +303,7 @@ const SavedFiltersManager: React.FC<SavedFiltersManagerProps> = ({
 
       {/* Backdrop */}
       {(isOpen || showSaveDialog) && (
-        <div
+        <div aria-hidden="true"
           className="fixed inset-0 z-40"
           onClick={() => {
             setIsOpen(false);
@@ -345,7 +345,7 @@ const FilterCard: React.FC<FilterCardProps> = ({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h5 className="font-medium text-gray-900 truncate">{filter.name}</h5>
-            <button
+            <button aria-label="Toggle"
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleStar(filter);
@@ -376,7 +376,7 @@ const FilterCard: React.FC<FilterCardProps> = ({
         <div className={`flex items-center gap-1 transition-opacity ${
           showActions ? 'opacity-100' : 'opacity-0'
         }`}>
-          <button
+          <button aria-label="Add"
             onClick={(e) => {
               e.stopPropagation();
               onLoad(filter);
@@ -386,7 +386,7 @@ const FilterCard: React.FC<FilterCardProps> = ({
           >
             <Plus className="h-4 w-4" />
           </button>
-          <button
+          <button aria-label="Edit"
             onClick={(e) => {
               e.stopPropagation();
               onEdit(filter);
@@ -396,7 +396,7 @@ const FilterCard: React.FC<FilterCardProps> = ({
           >
             <Edit className="h-4 w-4" />
           </button>
-          <button
+          <button aria-label="Delete"
             onClick={(e) => {
               e.stopPropagation();
               if (confirm('Are you sure you want to delete this filter?')) {

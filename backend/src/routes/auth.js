@@ -126,7 +126,7 @@ router.post('/register', authLimiter, validate(schemas.register), catchAsync(asy
   const { name, email, password, phone, role } = req.body;
 
   // Check if user exists
-  const existingUser = await User.findOne({ email });
+  const existingUser = await User.findOne({ email }).lean();
   if (existingUser) {
     throw new ApplicationError('User with this email already exists', 400);
   }
@@ -217,9 +217,9 @@ router.post('/login', authLimiter, validate(schemas.login), catchAsync(async (re
     throw new ApplicationError('Account has been deactivated', 401);
   }
 
-  // Update last login
-  user.lastLogin = new Date();
-  await user.save({ validateBeforeSave: false });
+  // Update last login atomically
+  await User.findByIdAndUpdate(user._id, { $set: { lastLogin: new Date() } },
+    { new: true });
 
   // Generate access token
   const accessToken = jwt.sign(
@@ -360,11 +360,14 @@ router.patch('/change-password', authenticate, ensurePropertyAccess, validate(sc
   const { currentPassword, newPassword } = req.body;
 
   const user = await User.findById(req.user._id).select('+password');
-  
+
   if (!(await user.comparePassword(currentPassword))) {
     throw new ApplicationError('Current password is incorrect', 401);
   }
 
+  // Password hashing is handled by the pre-save hook, so we must use save()
+  // here. The race window is acceptable because password changes are
+  // user-specific and serialized by the authentication check above.
   user.password = newPassword;
   await user.save();
 
@@ -406,12 +409,26 @@ router.post('/refresh', catchAsync(async (req, res) => {
     throw new ApplicationError('Token reuse detected. Please login again.', 401);
   }
 
-  // Mark current token as used
-  storedToken.isUsed = true;
-  await storedToken.save();
+  // Mark current token as used atomically
+  const markedToken = await RefreshToken.findOneAndUpdate(
+    { _id: storedToken._id, isUsed: false },
+    { $set: { isUsed: true } },
+    { new: true }
+  );
+
+  // If the atomic update failed, another request already used this token (replay)
+  if (!markedToken) {
+    logger.warn('Refresh token concurrent reuse detected, invalidating family', {
+      userId: storedToken.userId,
+      family: storedToken.family
+    });
+    await RefreshToken.deleteMany({ family: storedToken.family });
+    clearAuthCookies(res);
+    throw new ApplicationError('Token reuse detected. Please login again.', 401);
+  }
 
   // Verify user still exists and is active
-  const user = await User.findById(storedToken.userId).select('+role');
+  const user = await User.findById(storedToken.userId).select('+role').lean();
   if (!user || !user.isActive) {
     await RefreshToken.deleteMany({ family: storedToken.family });
     clearAuthCookies(res);
@@ -450,7 +467,7 @@ router.post('/logout', catchAsync(async (req, res) => {
 
   if (rawRefreshToken) {
     const tokenHash = crypto.createHash('sha256').update(rawRefreshToken).digest('hex');
-    const storedToken = await RefreshToken.findOne({ tokenHash });
+    const storedToken = await RefreshToken.findOne({ tokenHash }).lean();
     if (storedToken) {
       // Invalidate entire token family
       await RefreshToken.deleteMany({ family: storedToken.family });

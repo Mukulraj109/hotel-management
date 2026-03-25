@@ -8,6 +8,7 @@ import RoomAvailability from '../models/RoomAvailability.js';
 import { Channel } from '../models/ChannelManager.js';
 import InventoryService from '../services/inventoryService.js';
 import logger from '../utils/logger.js';
+import { validateTransition } from '../utils/bookingStateMachine.js';
 
 const router = express.Router();
 
@@ -387,9 +388,25 @@ async function handleCancellation(channel, data) {
         throw new Error('Booking not found');
       }
 
+      // Validate status transition using state machine
+      const transition = validateTransition(booking.status, 'cancelled');
+      if (!transition.valid) {
+        throw new Error(transition.error);
+      }
+
+      // Calculate refund for OTA cancellation
+      let refundInfo = { refundAmount: 0, penaltyAmount: 0, refundPercentage: 0 };
+      try {
+        const cancellationService = (await import('../services/cancellationService.js')).default;
+        refundInfo = cancellationService.calculateRefund(booking);
+      } catch { /* cancellation service not available */ }
+
       // Update booking status
       booking.status = 'cancelled';
       booking.cancellationReason = reason;
+      booking.settlementTracking = booking.settlementTracking || {};
+      booking.settlementTracking.refundAmount = refundInfo.refundAmount;
+      booking.settlementTracking.penaltyAmount = refundInfo.penaltyAmount;
 
       // Add to modifications history
       booking.modifications.push({

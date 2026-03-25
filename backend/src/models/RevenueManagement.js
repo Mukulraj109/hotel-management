@@ -268,6 +268,32 @@ const revenueAnalyticsSchema = new mongoose.Schema({
   timestamps: true
 });
 
+// Indexes for PricingRule
+pricingRuleSchema.index({ type: 1, isActive: 1 });
+pricingRuleSchema.index({ 'dateRange.startDate': 1, 'dateRange.endDate': 1 });
+pricingRuleSchema.index({ priority: -1, isActive: 1 });
+
+// Indexes for RateShopping
+rateShoppingSchema.index({ competitorId: 1, checkInDate: 1 });
+rateShoppingSchema.index({ isActive: 1, 'rates.lastUpdated': -1 });
+
+// Indexes for DemandForecast
+demandForecastSchema.index({ date: 1, roomType: 1 });
+demandForecastSchema.index({ date: 1, confidence: -1 });
+
+// Indexes for Package
+packageSchema.index({ type: 1, isActive: 1 });
+packageSchema.index({ 'validDates.startDate': 1, 'validDates.endDate': 1 });
+
+// Indexes for CorporateRate
+corporateRateSchema.index({ company: 1, isActive: 1 });
+corporateRateSchema.index({ rateType: 1, isActive: 1 });
+corporateRateSchema.index({ 'validPeriod.startDate': 1, 'validPeriod.endDate': 1 });
+
+// Indexes for RevenueAnalytics
+revenueAnalyticsSchema.index({ date: 1, roomType: 1 });
+revenueAnalyticsSchema.index({ date: -1 });
+
 const PricingRule = mongoose.models.PricingRule || mongoose.model('PricingRule', pricingRuleSchema);
 const RateShopping = mongoose.models.RateShopping || mongoose.model('RateShopping', rateShoppingSchema);
 const DemandForecast = mongoose.models.DemandForecast || mongoose.model('DemandForecast', demandForecastSchema);

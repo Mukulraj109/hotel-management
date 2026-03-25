@@ -36,7 +36,7 @@ export const getPricingRules = async (req, res) => {
   try {
     const rules = await PricingRule.find()
       .populate('applicableRoomTypes', 'name')
-      .sort({ priority: -1, createdAt: -1 });
+      .sort({ priority: -1, createdAt: -1 }).lean().limit(1000);
     
     res.json({
       success: true,
@@ -182,7 +182,7 @@ export const getDemandForecast = async (req, res) => {
     
     const forecasts = await DemandForecast.find(filter)
       .populate('roomType', 'name')
-      .sort({ date: 1 });
+      .sort({ date: 1 }).lean().limit(1000);
     
     res.json({
       success: true,
@@ -224,7 +224,7 @@ export const getCompetitorRates = async (req, res) => {
     }
 
     // Get all active rates first
-    let rates = await RateShopping.find(filter).sort({ createdAt: -1 });
+    let rates = await RateShopping.find(filter).sort({ createdAt: -1 }).lean().limit(1000);
 
     // If date is provided, try to filter but always return some data
     if (date && rates.length > 0) {
@@ -329,7 +329,7 @@ export const createPackage = async (req, res) => {
 export const getPackages = async (req, res) => {
   try {
     const packages = await Package.find({ isActive: true })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }).lean().limit(1000);
 
     res.json({
       success: true,
@@ -399,7 +399,7 @@ export const getCorporateRates = async (req, res) => {
     const rates = await CorporateRate.find({ isActive: true })
       .populate('company', 'name')
       .populate('roomTypes.roomType', 'name')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }).lean().limit(1000);
     
     res.json({
       success: true,
@@ -467,6 +467,12 @@ export const getRevenueAnalytics = async (req, res) => {
         };
     }
     
+    // Consider caching this aggregation result for 5 minutes
+
+    
+    // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+    
     const analytics = await RevenueAnalytics.aggregate([
       { $match: matchStage },
       groupByStage,
@@ -496,6 +502,12 @@ export const getRevenueSummary = async (req, res) => {
       $gte: startDate ? new Date(startDate) : thirtyDaysAgo,
       $lte: endDate ? new Date(endDate) : today
     };
+    
+    // Consider caching this aggregation result for 5 minutes
+
+    
+    // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
     
     const summary = await RevenueAnalytics.aggregate([
       { $match: { date: dateRange } },
@@ -546,7 +558,7 @@ export const getOptimizationRecommendations = async (req, res) => {
     
     const recentAnalytics = await RevenueAnalytics.find({
       date: { $gte: lastWeek }
-    }).sort({ date: -1 });
+    }).sort({ date: -1 }).lean().limit(1000);
     
     if (recentAnalytics.length === 0) {
       return res.json({
@@ -585,7 +597,7 @@ export const getOptimizationRecommendations = async (req, res) => {
     const recentCompetitorRates = await RateShopping.find({
       'rates.date': { $gte: lastWeek },
       isActive: true
-    });
+    }).lean().limit(1000);
     
     if (recentCompetitorRates.length > 0) {
       recommendations.push({
@@ -600,7 +612,7 @@ export const getOptimizationRecommendations = async (req, res) => {
     // Forecast-based recommendations
     const upcomingForecasts = await DemandForecast.find({
       date: { $gte: new Date(), $lte: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) }
-    }).sort({ date: 1 });
+    }).sort({ date: 1 }).lean().limit(1000);
     
     const highDemandDays = upcomingForecasts.filter(forecast => 
       forecast.predictedOccupancy > 90
@@ -652,7 +664,7 @@ export const getDashboardMetrics = async (req, res) => {
     const bookings = await Booking.find({
       checkIn: dateRange,
       status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-    }).populate('rooms.roomId');
+    }).populate('rooms.roomId').lean().limit(1000);
     
     console.log(`Found ${bookings.length} bookings`);
     
@@ -689,7 +701,7 @@ export const getDashboardMetrics = async (req, res) => {
       adr = roomRevenue / totalRoomNights;
     } else {
       // Intelligent default based on room types
-      const roomTypes = await RoomType.find({ isActive: true });
+      const roomTypes = await RoomType.find({ isActive: true }).lean().limit(1000);
       const avgBaseRate = roomTypes.length > 0
         ? roomTypes.reduce((sum, rt) => sum + (rt.baseRate || 3500), 0) / roomTypes.length
         : 3500;
@@ -725,7 +737,7 @@ export const getDashboardMetrics = async (req, res) => {
     const prevBookings = await Booking.find({
       checkIn: { $gte: prevPeriodStart, $lte: prevPeriodEnd },
       status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-    });
+    }).lean().limit(1000);
     
     const prevRevenue = prevBookings.reduce((sum, booking) => sum + (booking.totalAmount || 0), 0);
     const revenueGrowth = prevRevenue > 0 ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
@@ -734,7 +746,7 @@ export const getDashboardMetrics = async (req, res) => {
     const competitorRates = await RateShopping.find({
       isActive: true,
       'rates.date': { $gte: dateRange.$gte, $lte: dateRange.$lte }
-    });
+    }).lean().limit(1000);
 
     let competitiveIndex = 100; // Default to market average
     let marketPosition = 'competitive';
@@ -766,7 +778,7 @@ export const getDashboardMetrics = async (req, res) => {
     const realRateShopping = await RateShopping.find({
       isActive: true,
       'rates.date': { $gte: dateRange.$gte, $lte: dateRange.$lte }
-    }).populate('competitorId');
+    }).populate('competitorId').lean().limit(1000);
 
     const rateShopping = {
       competitors: realRateShopping.length > 0 ? realRateShopping.map(comp => ({
@@ -790,6 +802,10 @@ export const getDashboardMetrics = async (req, res) => {
     };
     
     // Get real demand forecast data from database aggregated by date
+    // Consider caching this aggregation result for 5 minutes
+
+    // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
     const existingForecasts = await DemandForecast.aggregate([
       {
         $match: {
@@ -1125,7 +1141,7 @@ export const getRoomTypesForPricing = async (req, res) => {
     const roomTypes = await RoomType.find({
       hotelId,
       isActive: true
-    }).select('code name baseRate totalRooms');
+    }).select('code name baseRate totalRooms').lean().limit(1000);
 
     // Transform to format expected by Dynamic Pricing frontend
     const pricingRoomTypes = roomTypes.map(roomType => ({

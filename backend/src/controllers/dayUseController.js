@@ -118,7 +118,7 @@ class DayUseController {
       
       const slot = await DayUseSlot.findById(id)
         .populate('createdBy', 'firstName lastName')
-        .populate('updatedBy', 'firstName lastName');
+        .populate('updatedBy', 'firstName lastName').lean();
       
       if (!slot) {
         return res.status(404).json({
@@ -347,7 +347,7 @@ class DayUseController {
         .populate('guestInfo.primaryGuest.guestId', 'firstName lastName email phone')
         .populate('addOnServices.serviceId', 'name category')
         .populate('createdBy', 'firstName lastName')
-        .populate('updatedBy', 'firstName lastName');
+        .populate('updatedBy', 'firstName lastName').lean();
       
       if (!booking) {
         return res.status(404).json({
@@ -439,7 +439,13 @@ class DayUseController {
       const { roomAssignment } = req.body;
 
       const booking = await withTransaction(async (session) => {
-        return await dayUseService.checkInBooking(id, roomAssignment, req.user?.id, { session });
+        try {
+          return await dayUseService.checkInBooking(id, roomAssignment, req.user?.id, { session });
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
+        }
       });
 
       res.json({
@@ -654,7 +660,7 @@ class DayUseController {
       // Get slot details
       const slotIds = occupancy.map(item => item._id);
       const slots = await DayUseSlot.find({ _id: { $in: slotIds } })
-        .select('slotId slotName roomType timeSlot capacity');
+        .select('slotId slotName roomType timeSlot capacity').lean().limit(1000);
       
       // Combine data
       const report = occupancy.map(item => {
@@ -707,7 +713,7 @@ class DayUseController {
       })
       .populate('bookingDetails.slotId', 'slotName roomType timeSlot')
       .populate('guestInfo.primaryGuest.guestId', 'firstName lastName')
-      .sort({ 'bookingDetails.timeSlot.startTime': 1 });
+      .sort({ 'bookingDetails.timeSlot.startTime': 1 }).lean().limit(1000);
       
       const schedule = bookings.map(booking => ({
         bookingId: booking.bookingId,

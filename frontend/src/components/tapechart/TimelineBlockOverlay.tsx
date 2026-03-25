@@ -161,7 +161,7 @@ const TimelineBlockOverlay: React.FC<TimelineBlockOverlayProps> = ({
         return (
           <Tooltip key={block._id}>
             <TooltipTrigger asChild>
-              <div
+              <div role="button" tabIndex={0}
                 className={cn(
                   'absolute top-0 h-full pointer-events-auto cursor-pointer',
                   'border-l-2 border-r-2 border-opacity-60',
@@ -178,7 +178,7 @@ const TimelineBlockOverlay: React.FC<TimelineBlockOverlayProps> = ({
                 onMouseEnter={() => setHoveredBlock(block._id)}
                 onMouseLeave={() => setHoveredBlock(null)}
                 onClick={() => onBlockDetails?.(block)}
-              >
+               onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => onBlockDetails?.(block); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                 {/* Block content */}
                 <div className="h-full flex items-center justify-between px-1 text-white text-xs">
                   <div className="flex items-center gap-1 min-w-0 flex-1">

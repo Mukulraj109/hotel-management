@@ -41,12 +41,16 @@ class StripePaymentService {
     extraPersonCharges: ExtraPersonChargePayment[],
     currency = 'INR'
   ): Promise<CreatePaymentIntentResponse> {
-    const response = await api.post('/payments/extra-person-charges/intent', {
-      bookingId,
-      extraPersonCharges,
-      currency
-    });
-    return response.data.data;
+    try {
+      const response = await api.post('/payments/extra-person-charges/intent', {
+        bookingId,
+        extraPersonCharges,
+        currency
+      });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Create payment intent for settlement
@@ -56,21 +60,29 @@ class StripePaymentService {
     currency = 'INR',
     description?: string
   ): Promise<CreatePaymentIntentResponse> {
-    const response = await api.post('/payments/settlement/intent', {
-      settlementId,
-      amount,
-      currency,
-      description
-    });
-    return response.data.data;
+    try {
+      const response = await api.post('/payments/settlement/intent', {
+        settlementId,
+        amount,
+        currency,
+        description
+      });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Confirm payment on server
   async confirmPayment(paymentIntentId: string): Promise<PaymentConfirmationResponse> {
-    const response = await api.post('/payments/confirm', {
-      paymentIntentId
-    });
-    return response.data.data;
+    try {
+      const response = await api.post('/payments/confirm', {
+        paymentIntentId
+      });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Process extra person charges payment
@@ -191,12 +203,16 @@ class StripePaymentService {
     amount?: number,
     currency = 'INR'
   ): Promise<CreatePaymentIntentResponse> {
-    const response = await api.post('/payments/intent', {
-      bookingId,
-      amount,
-      currency
-    });
-    return response.data.data;
+    try {
+      const response = await api.post('/payments/intent', {
+        bookingId,
+        amount,
+        currency
+      });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Format amount for display

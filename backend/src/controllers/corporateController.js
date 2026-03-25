@@ -133,7 +133,7 @@ export const getCorporateCompany = catchAsync(async (req, res, next) => {
   const company = await CorporateCompany.findOne({
     _id: req.params.id,
     hotelId: req.user.hotelId
-  });
+  }).lean();
   
   if (!company) {
     return next(new ApplicationError('Corporate company not found', 404));
@@ -268,7 +268,7 @@ export const toggleCorporateCompanyStatus = catchAsync(async (req, res, next) =>
   const existing = await CorporateCompany.findOne({
     _id: req.params.id,
     hotelId: req.user.hotelId
-  });
+  }).lean();
 
   if (!existing) {
     return next(new ApplicationError('Corporate company not found', 404));
@@ -355,7 +355,7 @@ export const getCorporateCompanyCreditSummary = catchAsync(async (req, res, next
   const company = await CorporateCompany.findOne({
     _id: req.params.id,
     hotelId: req.user.hotelId
-  });
+  }).lean();
   
   if (!company) {
     return next(new ApplicationError('Corporate company not found', 404));
@@ -407,7 +407,7 @@ export const getCorporateCompanyBookings = catchAsync(async (req, res, next) => 
   const company = await CorporateCompany.findOne({
     _id: req.params.id,
     hotelId: req.user.hotelId
-  });
+  }).lean();
   
   if (!company) {
     return next(new ApplicationError('Corporate company not found', 404));
@@ -463,7 +463,7 @@ export const getLowCreditCompanies = catchAsync(async (req, res, next) => {
     hotelId: req.user.hotelId,
     isActive: true,
     availableCredit: { $lt: threshold }
-  }).select('name email phone availableCredit creditLimit');
+  }).select('name email phone availableCredit creditLimit').lean().limit(1000);
   
   res.status(200).json({
     status: 'success',
@@ -515,7 +515,7 @@ export const updateCorporateCredit = catchAsync(async (req, res, next) => {
   const company = await CorporateCompany.findOne({
     _id: req.params.id,
     hotelId: req.user.hotelId
-  });
+  }).lean();
 
   if (!company) {
     return next(new ApplicationError('Corporate company not found', 404));
@@ -572,7 +572,7 @@ export const getCorporateDashboardMetrics = catchAsync(async (req, res, next) =>
   const companies = await CorporateCompany.find({
     hotelId,
     isActive: true
-  });
+  }).lean().limit(1000);
 
   // Calculate total credit exposure
   const totalCreditLimit = companies.reduce((sum, company) => sum + company.creditLimit, 0);
@@ -612,7 +612,7 @@ export const getCorporateDashboardMetrics = catchAsync(async (req, res, next) =>
   const recentTransactions = await CorporateCredit.find({
     hotelId,
     createdAt: { $gte: thirtyDaysAgo }
-  }).countDocuments();
+  }).countDocuments().lean().limit(1000);
 
   // Monthly credit usage trend (last 6 months)
   const sixMonthsAgo = new Date();

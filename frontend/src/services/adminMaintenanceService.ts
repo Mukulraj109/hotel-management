@@ -72,31 +72,35 @@ class AdminMaintenanceService {
   private hotelIdCacheExpiry: number = 0;
 
   private async apiRequest<T>(endpoint: string, options: { method?: string; data?: Record<string, unknown>; basePath?: string } = {}): Promise<ApiResponse<T>> {
-    const basePath = options.basePath || this.basePath;
-    const url = `${basePath}${endpoint}`;
+    try {
+      const basePath = options.basePath || this.basePath;
+      const url = `${basePath}${endpoint}`;
 
-    let response;
-    const method = (options.method || 'GET').toUpperCase();
+      let response;
+      const method = (options.method || 'GET').toUpperCase();
 
-    switch (method) {
-      case 'POST':
-        response = await api.post(url, options.data);
-        break;
-      case 'PUT':
-        response = await api.put(url, options.data);
-        break;
-      case 'PATCH':
-        response = await api.patch(url, options.data);
-        break;
-      case 'DELETE':
-        response = await api.delete(url);
-        break;
-      default:
-        response = await api.get(url);
-        break;
+      switch (method) {
+        case 'POST':
+          response = await api.post(url, options.data);
+          break;
+        case 'PUT':
+          response = await api.put(url, options.data);
+          break;
+        case 'PATCH':
+          response = await api.patch(url, options.data);
+          break;
+        case 'DELETE':
+          response = await api.delete(url);
+          break;
+        default:
+          response = await api.get(url);
+          break;
+      }
+
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-
-    return response.data;
   }
 
   private roomsCache: Array<{ _id: string; roomNumber: string; type: string; floor?: string }> = [];

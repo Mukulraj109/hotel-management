@@ -319,12 +319,12 @@ export function ChangePreview({
                   className="border border-gray-200 rounded-lg overflow-hidden"
                 >
                   {/* Property Header */}
-                  <div
+                  <div role="button" tabIndex={0}
                     className={`p-4 cursor-pointer hover:bg-gray-50 transition-colors ${
                       preview.hasChanges ? 'bg-white' : 'bg-gray-50'
                     }`}
                     onClick={() => togglePropertyExpansion(preview.propertyId)}
-                  >
+                   onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => togglePropertyExpansion(preview.propertyId); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <Button

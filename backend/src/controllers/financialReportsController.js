@@ -122,7 +122,7 @@ export const getCashFlowStatement = catchAsync(async (req, res) => {
     const cashAccounts = await ChartOfAccounts.find({
       accountName: { $regex: /cash|bank/i },
       isActive: true
-    });
+    }).lean().limit(1000);
 
     if (cashAccounts.length === 0) {
       return res.status(200).json({
@@ -350,30 +350,36 @@ async function getTrialBalanceData(startDate, endDate) {
     if (startDate) dateFilter.$gte = new Date(startDate);
     if (endDate) dateFilter.$lte = new Date(endDate);
 
-    const accounts = await ChartOfAccounts.find({ isActive: true }).populate('parentAccount');
+    const accounts = await ChartOfAccounts.find({ isActive: true }).populate('parentAccount').lean().limit(1000);
 
     const trialBalance = await Promise.all(
       accounts.map(async (account) => {
-        const transactions = await GeneralLedger.find({
-          accountId: account._id,
-          ...(Object.keys(dateFilter).length && { transactionDate: dateFilter }),
-          status: 'Posted'
-        });
+        try {
+          const transactions = await GeneralLedger.find({
+            accountId: account._id,
+            ...(Object.keys(dateFilter).length && { transactionDate: dateFilter }),
+            status: 'Posted'
+          }).lean().limit(1000);
 
-        const balance = transactions.reduce((sum, trans) => {
-          return account.normalBalance === 'Debit'
-            ? sum + trans.debitAmount - trans.creditAmount
-            : sum + trans.creditAmount - trans.debitAmount;
-        }, 0);
+          const balance = transactions.reduce((sum, trans) => {
+            return account.normalBalance === 'Debit'
+              ? sum + trans.debitAmount - trans.creditAmount
+              : sum + trans.creditAmount - trans.debitAmount;
+          }, 0);
 
-        return {
-          accountId: account._id,
-          accountCode: account.accountCode,
-          accountName: account.accountName,
-          accountType: account.accountType,
-          accountSubType: account.accountSubType,
-          balance: Math.abs(balance)
-        };
+          return {
+            accountId: account._id,
+            accountCode: account.accountCode,
+            accountName: account.accountName,
+            accountType: account.accountType,
+            accountSubType: account.accountSubType,
+            balance: Math.abs(balance)
+          };
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
+        }
       })
     );
 

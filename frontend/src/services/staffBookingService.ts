@@ -58,20 +58,28 @@ interface ApiResponse<T> {
 
 class StaffBookingService {
   async getUpcomingBookings(filters: { days?: number; page?: number; limit?: number } = {}): Promise<ApiResponse<StaffUpcomingBooking[]>> {
-    const params = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/bookings/upcoming?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/bookings/upcoming?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getBookingById(id: string): Promise<ApiResponse<{ booking: StaffUpcomingBooking }>> {
-    const response = await api.get(`/bookings/${id}`);
-    return response.data;
+    try {
+      const response = await api.get(`/bookings/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

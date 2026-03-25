@@ -23,13 +23,13 @@ const DataTableRow = React.memo(function DataTableRow<T extends Record<string, u
   onRowClick?: (row: T) => void;
 }) {
   return (
-    <tr
+    <tr role="button" tabIndex={0}
       className={cn(
         'hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-indigo-50/50 transition-all duration-200 hover:shadow-sm border-l-2 border-transparent hover:border-blue-400',
         onRowClick && 'cursor-pointer transform hover:scale-[1.001]'
       )}
       onClick={() => onRowClick && onRowClick(row)}
-    >
+     onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => onRowClick && onRowClick(row); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
       {columns.map((column, colIndex) => {
         const value = row[column.key];
         return (
@@ -201,7 +201,7 @@ export function DataTable<T extends Record<string, unknown>>({
             <thead className="bg-gradient-to-r from-gray-50 to-slate-50 border-b border-gray-200/50 sticky top-0 backdrop-blur-sm">
               <tr>
                 {columns.map((column, index) => (
-                  <th
+                  <th role="button" tabIndex={0}
                     key={column.key}
                     className={cn(
                       'px-3 sm:px-6 py-2 sm:py-3 text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap',
@@ -211,7 +211,7 @@ export function DataTable<T extends Record<string, unknown>>({
                     )}
                     style={{ width: column.width, minWidth: '100px' }}
                     onClick={() => (column.sortable || sortable) && handleSort(column.key)}
-                  >
+                   onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => (column.sortable || sortable) && handleSort(column.key); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                     <div className="flex items-center space-x-1">
                       <span className="truncate">{column.header}</span>
                       {(column.sortable || sortable) && getSortIcon(column.key)}

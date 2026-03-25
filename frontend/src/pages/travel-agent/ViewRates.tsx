@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import {
   ArrowLeft,
   Download,
@@ -25,6 +25,7 @@ import { useNavigate } from 'react-router-dom';
 import { format, addMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isToday } from 'date-fns';
 import { toast } from 'sonner';
 import { travelAgentService, TravelAgentRate } from '../../services/travelAgentService';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface RoomTypeRate {
   roomTypeId: string;
@@ -156,6 +157,12 @@ const ViewRates: React.FC = () => {
     }
   ];
 
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   useEffect(() => {
     fetchRates();
   }, []);
@@ -165,6 +172,7 @@ const ViewRates: React.FC = () => {
       setLoading(true);
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1000));
+    if (!isMountedRef.current) return;
 
       setRates(mockRates);
       setSeasonalRates(mockSeasonalRates);
@@ -241,7 +249,7 @@ const ViewRates: React.FC = () => {
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <button
+              <button aria-label="Previous"
                 onClick={() => navigate('/travel-agent')}
                 className="p-2 text-gray-600 hover:text-indigo-600 transition-colors"
               >
@@ -280,7 +288,7 @@ const ViewRates: React.FC = () => {
                 { key: 'calendar', label: 'Calendar View', icon: Calendar },
                 { key: 'seasonal', label: 'Seasonal Rates', icon: TrendingUp }
               ].map(({ key, label, icon: Icon }) => (
-                <button
+                <button aria-label="View"
                   key={key}
                   onClick={() => setViewMode(key as unknown)}
                   className={`flex items-center gap-2 px-6 py-3 text-sm font-medium ${
@@ -466,7 +474,7 @@ const ViewRates: React.FC = () => {
                           >
                             Book Now
                           </button>
-                          <button className="text-gray-600 hover:text-gray-900">
+                          <button aria-label="View" className="text-gray-600 hover:text-gray-900">
                             <Eye className="h-4 w-4" />
                           </button>
                         </div>
@@ -489,13 +497,13 @@ const ViewRates: React.FC = () => {
                   {format(currentMonth, 'MMMM yyyy')}
                 </h2>
                 <div className="flex gap-2">
-                  <button
+                  <button aria-label="Add"
                     onClick={() => setCurrentMonth(addMonths(currentMonth, -1))}
                     className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                   >
                     <ArrowLeft className="h-4 w-4" />
                   </button>
-                  <button
+                  <button aria-label="Add"
                     onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
                     className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                   >
@@ -701,4 +709,4 @@ const ViewRates: React.FC = () => {
   );
 };
 
-export default ViewRates;
+export default withErrorBoundary(ViewRates, { level: 'page' });

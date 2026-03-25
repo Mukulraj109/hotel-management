@@ -63,7 +63,7 @@ const getCampaigns = catchAsync(async (req, res, next) => {
     .sort({ createdAt: -1 })
     .skip((page - 1) * limit)
     .limit(parseInt(limit))
-    .populate('createdBy', 'name email');
+    .populate('createdBy', 'name email').lean();
 
   const total = await EmailCampaign.countDocuments(filter);
 
@@ -86,7 +86,7 @@ const getCampaign = catchAsync(async (req, res, next) => {
   const campaign = await EmailCampaign.findOne({
     _id: req.params.id,
     hotelId: req.user.hotelId
-  }).populate('createdBy', 'name email');
+  }).populate('createdBy', 'name email').lean();
 
   if (!campaign) {
     return next(new AppError('Campaign not found', 404));
@@ -105,7 +105,7 @@ const updateCampaign = catchAsync(async (req, res, next) => {
   const existing = await EmailCampaign.findOne({
     _id: req.params.id,
     hotelId: req.user.hotelId
-  });
+  }).lean();
 
   if (!existing) {
     return next(new AppError('Campaign not found', 404));
@@ -113,6 +113,24 @@ const updateCampaign = catchAsync(async (req, res, next) => {
 
   if (existing.status === 'sent') {
     return next(new AppError('Cannot update a campaign that has already been sent', 400));
+  }
+
+  // Validate campaign status transition when scheduling
+  if (scheduledAt) {
+    const allowedCampaignTransitions = {
+      draft: ['scheduled', 'sending'],
+      scheduled: ['draft', 'sending'],
+      sending: ['sent', 'failed'],
+      sent: [],
+      failed: ['draft', 'scheduled']
+    };
+    const allowedTargets = allowedCampaignTransitions[existing.status] || [];
+    if (!allowedTargets.includes('scheduled')) {
+      return next(new AppError(
+        `Cannot schedule campaign: invalid transition from '${existing.status}' to 'scheduled'`,
+        400
+      ));
+    }
   }
 
   if (scheduledAt && existing.scheduledAt && scheduledJobs.has(existing._id.toString())) {
@@ -150,30 +168,44 @@ const updateCampaign = catchAsync(async (req, res, next) => {
 });
 
 const sendCampaign = catchAsync(async (req, res, next) => {
-  const campaign = await EmailCampaign.findOne({
-    _id: req.params.id,
-    hotelId: req.user.hotelId
-  });
+  // Atomically set status to 'sending' only if not already sent
+  const campaign = await EmailCampaign.findOneAndUpdate(
+    {
+      _id: req.params.id,
+      hotelId: req.user.hotelId,
+      status: { $ne: 'sent' }
+    },
+    { $set: { status: 'sending', sentAt: new Date() } },
+    { new: true }
+  );
 
   if (!campaign) {
-    return next(new AppError('Campaign not found', 404));
-  }
+    // Check if it exists at all or was already sent
+    const existing = await EmailCampaign.findOne({
+      _id: req.params.id,
+      hotelId: req.user.hotelId
+    }).lean();
 
-  if (campaign.status === 'sent') {
+    if (!existing) {
+      return next(new AppError('Campaign not found', 404));
+    }
     return next(new AppError('Campaign has already been sent', 400));
   }
-
-  campaign.status = 'sending';
-  campaign.sentAt = new Date();
-  await campaign.save();
 
   try {
     const result = await enhancedEmailService.sendCampaign(campaign._id.toString());
 
-    campaign.status = 'sent';
-    campaign.analytics.totalSent = result.totalSent;
-    campaign.analytics.totalFailed = result.totalFailed;
-    await campaign.save();
+    const sentCampaign = await EmailCampaign.findOneAndUpdate(
+      { _id: campaign._id },
+      {
+        $set: {
+          status: 'sent',
+          'analytics.totalSent': result.totalSent,
+          'analytics.totalFailed': result.totalFailed
+        }
+      },
+      { new: true }
+    );
 
     if (scheduledJobs.has(campaign._id.toString())) {
       const job = scheduledJobs.get(campaign._id.toString());
@@ -185,7 +217,7 @@ const sendCampaign = catchAsync(async (req, res, next) => {
       success: true,
       message: 'Campaign sent successfully',
       data: {
-        campaign,
+        campaign: sentCampaign,
         result: {
           totalSent: result.totalSent,
           totalFailed: result.totalFailed
@@ -193,9 +225,16 @@ const sendCampaign = catchAsync(async (req, res, next) => {
       }
     });
   } catch (error) {
-    campaign.status = 'failed';
-    campaign.analytics.lastError = error.message;
-    await campaign.save();
+    await EmailCampaign.findOneAndUpdate(
+      { _id: campaign._id },
+      {
+        $set: {
+          status: 'failed',
+          'analytics.lastError': error.message
+        }
+      },
+      { new: true }
+    );
 
     return next(new AppError(`Failed to send campaign: ${error.message}`, 500));
   }
@@ -205,7 +244,7 @@ const duplicateCampaign = catchAsync(async (req, res, next) => {
   const originalCampaign = await EmailCampaign.findOne({
     _id: req.params.id,
     hotelId: req.user.hotelId
-  });
+  }).lean();
 
   if (!originalCampaign) {
     return next(new AppError('Campaign not found', 404));
@@ -237,7 +276,7 @@ const deleteCampaign = catchAsync(async (req, res, next) => {
   const campaign = await EmailCampaign.findOne({
     _id: req.params.id,
     hotelId: req.user.hotelId
-  });
+  }).lean();
 
   if (!campaign) {
     return next(new AppError('Campaign not found', 404));
@@ -267,7 +306,7 @@ const previewCampaign = catchAsync(async (req, res, next) => {
   const campaign = await EmailCampaign.findOne({
     _id: req.params.id,
     hotelId: req.user.hotelId
-  });
+  }).lean();
 
   if (!campaign) {
     return next(new AppError('Campaign not found', 404));
@@ -275,7 +314,7 @@ const previewCampaign = catchAsync(async (req, res, next) => {
 
   let previewUser = null;
   if (userId) {
-    previewUser = await User.findById(userId);
+    previewUser = await User.findById(userId).lean();
   }
 
   if (!previewUser) {
@@ -344,7 +383,7 @@ const getCampaignAnalytics = catchAsync(async (req, res, next) => {
   const campaign = await EmailCampaign.findOne({
     _id: req.params.id,
     hotelId: req.user.hotelId
-  });
+  }).lean();
 
   if (!campaign) {
     return next(new AppError('Campaign not found', 404));
@@ -374,27 +413,40 @@ const scheduleEmailCampaign = async (campaign) => {
 
   const job = cron.schedule(cronTime, async () => {
     try {
-      const currentCampaign = await EmailCampaign.findById(campaign._id);
-      if (currentCampaign && currentCampaign.status === 'scheduled') {
-        currentCampaign.status = 'sending';
-        currentCampaign.sentAt = new Date();
-        await currentCampaign.save();
+      // Atomically transition from 'scheduled' to 'sending'
+      const currentCampaign = await EmailCampaign.findOneAndUpdate(
+        { _id: campaign._id, status: 'scheduled' },
+        { $set: { status: 'sending', sentAt: new Date() } },
+        { new: true }
+      );
 
+      if (currentCampaign) {
         const result = await enhancedEmailService.sendCampaign(campaign._id.toString());
 
-        currentCampaign.status = 'sent';
-        currentCampaign.analytics.totalSent = result.totalSent;
-        currentCampaign.analytics.totalFailed = result.totalFailed;
-        await currentCampaign.save();
+        await EmailCampaign.findOneAndUpdate(
+          { _id: campaign._id },
+          {
+            $set: {
+              status: 'sent',
+              'analytics.totalSent': result.totalSent,
+              'analytics.totalFailed': result.totalFailed
+            }
+          },
+          { new: true }
+        );
       }
     } catch (error) {
       console.error('Scheduled campaign failed:', error);
-      const currentCampaign = await EmailCampaign.findById(campaign._id);
-      if (currentCampaign) {
-        currentCampaign.status = 'failed';
-        currentCampaign.analytics.lastError = error.message;
-        await currentCampaign.save();
-      }
+      await EmailCampaign.findOneAndUpdate(
+        { _id: campaign._id },
+        {
+          $set: {
+            status: 'failed',
+            'analytics.lastError': error.message
+          }
+        },
+        { new: true }
+      );
     } finally {
       scheduledJobs.delete(campaign._id.toString());
     }
@@ -423,7 +475,7 @@ const getScheduledCampaigns = catchAsync(async (req, res, next) => {
     hotelId: req.user.hotelId,
     status: 'scheduled',
     scheduledAt: { $gte: new Date() }
-  }).sort({ scheduledAt: 1 });
+  }).sort({ scheduledAt: 1 }).lean().limit(1000);
 
   const campaignsWithJobs = scheduledCampaigns.map(campaign => ({
     ...campaign.toObject(),
@@ -444,7 +496,7 @@ const reinitializeScheduledCampaigns = async () => {
     const scheduledCampaigns = await EmailCampaign.find({
       status: 'scheduled',
       scheduledAt: { $gte: new Date() }
-    });
+    }).lean().limit(1000);
 
     for (const campaign of scheduledCampaigns) {
       if (!scheduledJobs.has(campaign._id.toString())) {

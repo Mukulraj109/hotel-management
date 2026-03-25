@@ -26,9 +26,9 @@ async function seedBookingsOnly() {
     }
 
     // Get existing data
-    const hotel = await Hotel.findOne();
-    const rooms = await Room.find().limit(80); // Use 80% of rooms for bookings
-    const guests = await User.find({ role: { $in: ['guest', 'vip'] } });
+    const hotel = await Hotel.findOne().lean();
+    const rooms = await Room.find().limit(80).lean(); // Use 80% of rooms for bookings
+    const guests = await User.find({ role: { $in: ['guest', 'vip'] } }).lean().limit(1000);
 
     if (!hotel || rooms.length === 0 || guests.length === 0) {
       throw new Error('Missing required data. Please run main seed script first.');

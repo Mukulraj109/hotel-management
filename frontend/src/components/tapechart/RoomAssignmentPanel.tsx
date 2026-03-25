@@ -395,11 +395,11 @@ const RoomAssignmentPanel: React.FC<RoomAssignmentPanelProps> = ({
             ) : (
               <div className="space-y-3">
                 {filteredRooms.map(room => (
-                  <div
+                  <div role="button" tabIndex={0}
                     key={room.id}
                     className="border rounded-lg p-3 hover:shadow-sm transition-shadow cursor-pointer"
                     onClick={() => handleAssignRoom(room.id)}
-                  >
+                   onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => handleAssignRoom(room.id); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{room.roomNumber}</span>

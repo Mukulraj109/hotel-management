@@ -290,55 +290,59 @@ class NotificationService {
      * Send notification to specific channel
      */
     async sendToChannel(channelName, notification) {
-        const channel = this.channels[channelName];
-        if (!channel || !channel.enabled) {
-            // For disabled channels, just log and return success (graceful degradation)
-            logger.debug(`Channel ${channelName} is not available or disabled - skipping`);
-            return {
-                success: true,
-                channel: channelName,
-                messageId: `disabled_${Date.now()}`,
-                timestamp: new Date(),
-                note: 'Channel disabled - notification skipped'
-            };
-        }
+      try {
+          const channel = this.channels[channelName];
+          if (!channel || !channel.enabled) {
+              // For disabled channels, just log and return success (graceful degradation)
+              logger.debug(`Channel ${channelName} is not available or disabled - skipping`);
+              return {
+                  success: true,
+                  channel: channelName,
+                  messageId: `disabled_${Date.now()}`,
+                  timestamp: new Date(),
+                  note: 'Channel disabled - notification skipped'
+              };
+          }
 
-        // Check rate limits
-        if (this.isRateLimited(channel)) {
-            throw new Error(`Rate limit exceeded for ${channelName}`);
-        }
+          // Check rate limits
+          if (this.isRateLimited(channel)) {
+              throw new Error(`Rate limit exceeded for ${channelName}`);
+          }
 
-        // Get template or use custom content
-        let renderedContent;
-        if (notification.type && notification.type !== 'custom') {
-            const template = this.getTemplate(notification.type, channelName);
-            if (template) {
-                renderedContent = this.renderTemplate(template, notification.data);
-            }
-        }
+          // Get template or use custom content
+          let renderedContent;
+          if (notification.type && notification.type !== 'custom') {
+              const template = this.getTemplate(notification.type, channelName);
+              if (template) {
+                  renderedContent = this.renderTemplate(template, notification.data);
+              }
+          }
 
-        // Fallback to custom content
-        if (!renderedContent) {
-            renderedContent = this.createCustomContent(channelName, notification.data);
-        }
+          // Fallback to custom content
+          if (!renderedContent) {
+              renderedContent = this.createCustomContent(channelName, notification.data);
+          }
 
-        // Send based on channel type
-        switch (channelName) {
-            case 'email':
-                return await this.sendEmail(notification.recipient, renderedContent, notification.priority);
-            case 'sms':
-                return await this.sendSMS(notification.recipient, renderedContent, notification.priority);
-            case 'push':
-                return await this.sendPush(notification.recipient, renderedContent, notification.priority);
-            case 'webhook':
-            case 'slack':
-            case 'teams':
-                return await this.sendWebhook(notification.recipient, renderedContent, notification.priority);
-            case 'inApp':
-                return await this.sendInApp(notification.recipient, renderedContent, notification.priority);
-            default:
-                throw new Error(`Unsupported channel: ${channelName}`);
-        }
+          // Send based on channel type
+          switch (channelName) {
+              case 'email':
+                  return await this.sendEmail(notification.recipient, renderedContent, notification.priority);
+              case 'sms':
+                  return await this.sendSMS(notification.recipient, renderedContent, notification.priority);
+              case 'push':
+                  return await this.sendPush(notification.recipient, renderedContent, notification.priority);
+              case 'webhook':
+              case 'slack':
+              case 'teams':
+                  return await this.sendWebhook(notification.recipient, renderedContent, notification.priority);
+              case 'inApp':
+                  return await this.sendInApp(notification.recipient, renderedContent, notification.priority);
+              default:
+                  throw new Error(`Unsupported channel: ${channelName}`);
+          }
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
@@ -371,103 +375,123 @@ class NotificationService {
      * Send email notification
      */
     async sendEmail(recipient, content, priority) {
-        logger.debug(`[EMAIL] Sending to ${recipient}:`);
-        logger.debug(`Subject: ${content.subject}`);
-        logger.debug(`Body: ${content.text || content.html}`);
+      try {
+          logger.debug(`[EMAIL] Sending to ${recipient}:`);
+          logger.debug(`Subject: ${content.subject}`);
+          logger.debug(`Body: ${content.text || content.html}`);
 
-        // In production, integrate with actual email provider
-        // Example with nodemailer:
-        /*
-        const transporter = nodemailer.createTransporter(this.channels.email.config);
-        const result = await transporter.sendMail({
-            from: this.channels.email.config.from,
-            to: recipient,
-            subject: content.subject,
-            text: content.text,
-            html: content.html,
-            priority: priority === 'high' ? 'high' : 'normal'
-        });
-        return { success: true, messageId: result.messageId, channel: 'email' };
-        */
+          // In production, integrate with actual email provider
+          // Example with nodemailer:
+          /*
+          const transporter = nodemailer.createTransporter(this.channels.email.config);
+          const result = await transporter.sendMail({
+              from: this.channels.email.config.from,
+              to: recipient,
+              subject: content.subject,
+              text: content.text,
+              html: content.html,
+              priority: priority === 'high' ? 'high' : 'normal'
+          });
+          return { success: true, messageId: result.messageId, channel: 'email' };
+          */
 
-        // Simulate email sending
-        await new Promise(resolve => setTimeout(resolve, 100));
-        return {
-            success: true,
-            messageId: `email_${Date.now()}`,
-            channel: 'email',
-            timestamp: new Date()
-        };
+          // Simulate email sending
+          await new Promise(resolve => setTimeout(resolve, 100));
+          return {
+              success: true,
+              messageId: `email_${Date.now()}`,
+              channel: 'email',
+              timestamp: new Date()
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Send SMS notification
      */
     async sendSMS(recipient, content, priority) {
-        logger.debug(`[SMS] Sending to ${recipient}: ${content.message}`);
+      try {
+          logger.debug(`[SMS] Sending to ${recipient}: ${content.message}`);
 
-        // In production, integrate with SMS provider (Twilio, AWS SNS, etc.)
-        // Simulate SMS sending
-        await new Promise(resolve => setTimeout(resolve, 200));
-        return {
-            success: true,
-            messageId: `sms_${Date.now()}`,
-            channel: 'sms',
-            timestamp: new Date()
-        };
+          // In production, integrate with SMS provider (Twilio, AWS SNS, etc.)
+          // Simulate SMS sending
+          await new Promise(resolve => setTimeout(resolve, 200));
+          return {
+              success: true,
+              messageId: `sms_${Date.now()}`,
+              channel: 'sms',
+              timestamp: new Date()
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Send push notification
      */
     async sendPush(recipient, content, priority) {
-        logger.debug(`[PUSH] Sending to ${recipient}:`);
-        logger.debug(`Title: ${content.title}`);
-        logger.debug(`Body: ${content.body}`);
+      try {
+          logger.debug(`[PUSH] Sending to ${recipient}:`);
+          logger.debug(`Title: ${content.title}`);
+          logger.debug(`Body: ${content.body}`);
 
-        // In production, integrate with push notification service
-        // Simulate push sending
-        await new Promise(resolve => setTimeout(resolve, 150));
-        return {
-            success: true,
-            messageId: `push_${Date.now()}`,
-            channel: 'push',
-            timestamp: new Date()
-        };
+          // In production, integrate with push notification service
+          // Simulate push sending
+          await new Promise(resolve => setTimeout(resolve, 150));
+          return {
+              success: true,
+              messageId: `push_${Date.now()}`,
+              channel: 'push',
+              timestamp: new Date()
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Send webhook notification
      */
     async sendWebhook(recipient, content, priority) {
-        logger.debug(`[WEBHOOK] Sending to ${recipient}`);
-        logger.debug(`Content: ${JSON.stringify(content)}`);
+      try {
+          logger.debug(`[WEBHOOK] Sending to ${recipient}`);
+          logger.debug(`Content: ${JSON.stringify(content)}`);
 
-        // In production, make actual HTTP request
-        // Simulate webhook sending
-        await new Promise(resolve => setTimeout(resolve, 300));
-        return {
-            success: true,
-            statusCode: 200,
-            channel: 'webhook',
-            timestamp: new Date()
-        };
+          // In production, make actual HTTP request
+          // Simulate webhook sending
+          await new Promise(resolve => setTimeout(resolve, 300));
+          return {
+              success: true,
+              statusCode: 200,
+              channel: 'webhook',
+              timestamp: new Date()
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Send in-app notification
      */
     async sendInApp(recipient, content, priority) {
-        logger.debug(`[IN-APP] Storing for ${recipient}:`);
-        logger.debug(`Content: ${JSON.stringify(content)}`);
+      try {
+          logger.debug(`[IN-APP] Storing for ${recipient}:`);
+          logger.debug(`Content: ${JSON.stringify(content)}`);
 
-        // In production, store in database or cache
-        return {
-            success: true,
-            notificationId: `inapp_${Date.now()}`,
-            channel: 'inApp',
-            timestamp: new Date()
-        };
+          // In production, store in database or cache
+          return {
+              success: true,
+              notificationId: `inapp_${Date.now()}`,
+              channel: 'inApp',
+              timestamp: new Date()
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
@@ -544,81 +568,101 @@ class NotificationService {
      * Log notification attempt
      */
     async logNotification(notificationLog) {
-        logger.debug(`[NOTIFICATION LOG] ${notificationLog.type} to ${notificationLog.recipient}:`);
-        logger.debug(`Channels: ${notificationLog.channels.join(', ')}`);
-        logger.debug(`Success: ${notificationLog.deliveryResults.filter(r => r.success).length}/${notificationLog.deliveryResults.length}`);
+      try {
+          logger.debug(`[NOTIFICATION LOG] ${notificationLog.type} to ${notificationLog.recipient}:`);
+          logger.debug(`Channels: ${notificationLog.channels.join(', ')}`);
+          logger.debug(`Success: ${notificationLog.deliveryResults.filter(r => r.success).length}/${notificationLog.deliveryResults.length}`);
 
-        // In production, store in audit log or notification history table
+          // In production, store in audit log or notification history table
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     // Legacy methods for backward compatibility
     async sendApprovalRequest(approver, workflow) {
-        return await this.sendNotification({
-            type: 'approval_request',
-            recipient: approver.email,
-            channels: ['email', 'push'],
-            priority: 'high',
-            data: {
-                workflowId: workflow.workflowId,
-                reason: workflow.bypassAuditId?.reason?.description || 'N/A',
-                riskScore: workflow.bypassAuditId?.securityMetadata?.riskScore || 0,
-                financialImpactFormatted: `₹${workflow.bypassAuditId?.financialImpact?.estimatedLoss || 0}`,
-                requestedBy: workflow.initiatedBy?.name || 'Unknown',
-                approvalUrl: `${process.env.FRONTEND_URL}/admin/approvals/${workflow.workflowId}`
-            }
-        });
+      try {
+          return await this.sendNotification({
+              type: 'approval_request',
+              recipient: approver.email,
+              channels: ['email', 'push'],
+              priority: 'high',
+              data: {
+                  workflowId: workflow.workflowId,
+                  reason: workflow.bypassAuditId?.reason?.description || 'N/A',
+                  riskScore: workflow.bypassAuditId?.securityMetadata?.riskScore || 0,
+                  financialImpactFormatted: `₹${workflow.bypassAuditId?.financialImpact?.estimatedLoss || 0}`,
+                  requestedBy: workflow.initiatedBy?.name || 'Unknown',
+                  approvalUrl: `${process.env.FRONTEND_URL}/admin/approvals/${workflow.workflowId}`
+              }
+          });
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     async sendApprovalStatusUpdate(initiator, workflow, status) {
-        return await this.sendNotification({
-            type: 'approval_status_update',
-            recipient: initiator.email,
-            channels: ['email', 'inApp'],
-            priority: 'medium',
-            data: {
-                workflowId: workflow.workflowId,
-                status: status.toUpperCase(),
-                processedBy: workflow.approvalChain?.find(a => a.status === status)?.approvedBy?.name || 'System',
-                notes: workflow.approvalChain?.find(a => a.status === status)?.notes || 'No additional notes'
-            }
-        });
+      try {
+          return await this.sendNotification({
+              type: 'approval_status_update',
+              recipient: initiator.email,
+              channels: ['email', 'inApp'],
+              priority: 'medium',
+              data: {
+                  workflowId: workflow.workflowId,
+                  status: status.toUpperCase(),
+                  processedBy: workflow.approvalChain?.find(a => a.status === status)?.approvedBy?.name || 'System',
+                  notes: workflow.approvalChain?.find(a => a.status === status)?.notes || 'No additional notes'
+              }
+          });
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     async sendEscalationNotification(escalatedTo, workflow) {
-        return await this.sendNotification({
-            type: 'approval_request',
-            recipient: escalatedTo.email,
-            channels: ['email', 'sms', 'push'],
-            priority: 'high',
-            data: {
-                workflowId: workflow.workflowId,
-                reason: `ESCALATED: ${workflow.bypassAuditId?.reason?.description || 'N/A'}`,
-                riskScore: workflow.bypassAuditId?.securityMetadata?.riskScore || 0,
-                financialImpactFormatted: `₹${workflow.bypassAuditId?.financialImpact?.estimatedLoss || 0}`,
-                requestedBy: workflow.initiatedBy?.name || 'Unknown',
-                approvalUrl: `${process.env.FRONTEND_URL}/admin/approvals/${workflow.workflowId}`
-            }
-        });
+      try {
+          return await this.sendNotification({
+              type: 'approval_request',
+              recipient: escalatedTo.email,
+              channels: ['email', 'sms', 'push'],
+              priority: 'high',
+              data: {
+                  workflowId: workflow.workflowId,
+                  reason: `ESCALATED: ${workflow.bypassAuditId?.reason?.description || 'N/A'}`,
+                  riskScore: workflow.bypassAuditId?.securityMetadata?.riskScore || 0,
+                  financialImpactFormatted: `₹${workflow.bypassAuditId?.financialImpact?.estimatedLoss || 0}`,
+                  requestedBy: workflow.initiatedBy?.name || 'Unknown',
+                  approvalUrl: `${process.env.FRONTEND_URL}/admin/approvals/${workflow.workflowId}`
+              }
+          });
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     async sendTimeoutNotification(workflow) {
-        const pendingApprover = workflow.approvalChain?.find(a => a.status === 'pending')?.assignedTo;
-        if (pendingApprover) {
-            return await this.sendNotification({
-                type: 'approval_request',
-                recipient: pendingApprover.email,
-                channels: ['email', 'sms'],
-                priority: 'high',
-                data: {
-                    workflowId: workflow.workflowId,
-                    reason: `TIMEOUT WARNING: ${workflow.bypassAuditId?.reason?.description || 'N/A'}`,
-                    riskScore: workflow.bypassAuditId?.securityMetadata?.riskScore || 0,
-                    financialImpactFormatted: `₹${workflow.bypassAuditId?.financialImpact?.estimatedLoss || 0}`,
-                    requestedBy: workflow.initiatedBy?.name || 'Unknown',
-                    approvalUrl: `${process.env.FRONTEND_URL}/admin/approvals/${workflow.workflowId}`
-                }
-            });
-        }
+      try {
+          const pendingApprover = workflow.approvalChain?.find(a => a.status === 'pending')?.assignedTo;
+          if (pendingApprover) {
+              return await this.sendNotification({
+                  type: 'approval_request',
+                  recipient: pendingApprover.email,
+                  channels: ['email', 'sms'],
+                  priority: 'high',
+                  data: {
+                      workflowId: workflow.workflowId,
+                      reason: `TIMEOUT WARNING: ${workflow.bypassAuditId?.reason?.description || 'N/A'}`,
+                      riskScore: workflow.bypassAuditId?.securityMetadata?.riskScore || 0,
+                      financialImpactFormatted: `₹${workflow.bypassAuditId?.financialImpact?.estimatedLoss || 0}`,
+                      requestedBy: workflow.initiatedBy?.name || 'Unknown',
+                      approvalUrl: `${process.env.FRONTEND_URL}/admin/approvals/${workflow.workflowId}`
+                  }
+              });
+          }
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
@@ -654,6 +698,7 @@ class NotificationService {
         reminderType,
         metadata
     }) {
+      try {
         const reminderMessages = {
             approval_pending: 'You have a pending bypass approval request that requires your attention.',
             escalation_warning: 'Your approval request will be escalated soon if not responded to.',
@@ -671,6 +716,9 @@ class NotificationService {
                 reminderType
             }
         });
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 }
 

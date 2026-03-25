@@ -231,7 +231,7 @@ export const preventDuplicateBypass = async (req, res, next) => {
       adminId,
       createdAt: { $gte: new Date(Date.now() - 5 * 60 * 1000) }, // Last 5 minutes
       'operationStatus.status': { $in: ['initiated', 'pending_approval', 'in_progress'] }
-    });
+    }).lean();
 
     if (recentBypass) {
       await bypassSecurityService.logSecurityEvent({

@@ -67,7 +67,7 @@ router.get('/notifications', catchAsync(async (req, res) => {
     .sort({ createdAt: -1 })
     .limit(parseInt(limit))
     .populate('metadata.guestId', 'name email')
-    .populate('metadata.bookingId', 'bookingNumber checkIn checkOut');
+    .populate('metadata.bookingId', 'bookingNumber checkIn checkOut').lean();
 
   // Get counts by category for summary
   const categoryCounts = await Notification.aggregate([
@@ -139,7 +139,7 @@ router.get('/activity-feed', catchAsync(async (req, res) => {
     .limit(parseInt(limit))
     .populate('metadata.guestId', 'name email avatar')
     .populate('metadata.bookingId', 'bookingNumber')
-    .select('title message type createdAt metadata priority');
+    .select('title message type createdAt metadata priority').lean();
 
   // Format activities for dashboard display
   const formattedActivities = activities.map(activity => ({

@@ -100,8 +100,12 @@ export interface HotelReviewsResponse {
 
 class ReviewService {
   async createReview(data: CreateReviewRequest): Promise<{ status: string; data: { review: Review } }> {
-    const response = await api.post('/reviews', data);
-    return response.data;
+    try {
+      const response = await api.post('/reviews', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getHotelReviews(
@@ -113,8 +117,12 @@ class ReviewService {
       sortBy?: 'newest' | 'oldest' | 'highest_rated' | 'lowest_rated' | 'most_helpful';
     }
   ): Promise<HotelReviewsResponse> {
-    const response = await api.get(`/reviews/hotel/${hotelId}`, { params });
-    return response.data.data;
+    try {
+      const response = await api.get(`/reviews/hotel/${hotelId}`, { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getHotelRatingSummary(hotelId: string): Promise<{
@@ -129,28 +137,48 @@ class ReviewService {
       amenities: number;
     };
   }> {
-    const response = await api.get(`/reviews/hotel/${hotelId}/summary`);
-    return response.data.data;
+    try {
+      const response = await api.get(`/reviews/hotel/${hotelId}/summary`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getReview(reviewId: string): Promise<{ status: string; data: { review: Review } }> {
-    const response = await api.get(`/reviews/${reviewId}`);
-    return response.data;
+    try {
+      const response = await api.get(`/reviews/${reviewId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async markReviewHelpful(reviewId: string): Promise<{ status: string; message: string; data: { helpfulVotes: number } }> {
-    const response = await api.post(`/reviews/${reviewId}/helpful`);
-    return response.data;
+    try {
+      const response = await api.post(`/reviews/${reviewId}/helpful`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async reportReview(reviewId: string, reason: string): Promise<{ status: string; message: string }> {
-    const response = await api.post(`/reviews/${reviewId}/report`, { reason });
-    return response.data;
+    try {
+      const response = await api.post(`/reviews/${reviewId}/report`, { reason });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async addResponse(reviewId: string, content: string): Promise<{ status: string; message: string; data: { review: Review } }> {
-    const response = await api.post(`/reviews/${reviewId}/response`, { content });
-    return response.data;
+    try {
+      const response = await api.post(`/reviews/${reviewId}/response`, { content });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async moderateReview(
@@ -158,8 +186,12 @@ class ReviewService {
     status: 'approved' | 'rejected' | 'pending',
     notes?: string
   ): Promise<{ status: string; message: string; data: { review: Review } }> {
-    const response = await api.patch(`/reviews/${reviewId}/moderate`, { status, notes });
-    return response.data;
+    try {
+      const response = await api.patch(`/reviews/${reviewId}/moderate`, { status, notes });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getPendingReviews(params?: {
@@ -174,8 +206,12 @@ class ReviewService {
       pages: number;
     };
   }> {
-    const response = await api.get('/reviews/pending', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/reviews/pending', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

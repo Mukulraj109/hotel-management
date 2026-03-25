@@ -97,7 +97,7 @@ const VIPBenefits: React.FC<VIPBenefitsProps> = ({ onClose }) => {
             <GiftIcon className="w-6 h-6 text-purple-600 mr-2" />
             <h3 className="text-lg font-medium text-gray-900">VIP Benefits & Requirements</h3>
           </div>
-          <button
+          <button aria-label="Close"
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
           >

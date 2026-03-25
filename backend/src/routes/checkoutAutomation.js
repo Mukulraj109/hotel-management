@@ -38,7 +38,7 @@ router.use(ensurePropertyAccess);
 router.get('/config', authorize('admin', 'manager'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
 
-  let config = await CheckoutAutomationConfig.findOne({ hotelId });
+  let config = await CheckoutAutomationConfig.findOne({ hotelId }).lean();
   
   if (!config) {
     // Create default configuration
@@ -90,21 +90,34 @@ router.put('/config', authorize('admin', 'manager'), catchAsync(async (req, res)
   const { hotelId, _id: userId } = req.user;
   const updateData = req.body;
 
-  let config = await CheckoutAutomationConfig.findOne({ hotelId });
-  
-  if (!config) {
-    config = await CheckoutAutomationConfig.createDefault(hotelId, userId);
-  }
-
-  // Update configuration
+  const setFields = {};
   Object.keys(updateData).forEach(key => {
     if (updateData[key] !== undefined) {
-      config[key] = updateData[key];
+      setFields[key] = updateData[key];
     }
   });
+  setFields.lastUpdatedBy = userId;
 
-  config.lastUpdatedBy = userId;
-  await config.save();
+  const config = await CheckoutAutomationConfig.findOneAndUpdate(
+    { hotelId },
+    { $set: setFields },
+    { new: true, runValidators: true, upsert: false }
+  );
+
+  if (!config) {
+    // Create default config if none exists, then apply update
+    const defaultConfig = await CheckoutAutomationConfig.createDefault(hotelId, userId);
+    const updatedConfig = await CheckoutAutomationConfig.findOneAndUpdate(
+      { hotelId },
+      { $set: setFields },
+      { new: true, runValidators: true }
+    );
+    return res.status(200).json({
+      status: 'success',
+      message: 'Configuration updated successfully',
+      data: { config: updatedConfig || defaultConfig }
+    });
+  }
 
   res.status(200).json({
     status: 'success',
@@ -138,7 +151,7 @@ router.get('/status/:bookingId', authorize('staff', 'admin'), catchAsync(async (
   const { hotelId } = req.user;
 
   // Verify booking belongs to hotel
-  const booking = await Booking.findOne({ _id: bookingId, hotelId });
+  const booking = await Booking.findOne({ _id: bookingId, hotelId }).lean();
   if (!booking) {
     throw new ApplicationError('Booking not found', 404);
   }
@@ -188,7 +201,7 @@ router.post('/process/:bookingId', authorize('staff', 'admin'), catchAsync(async
   const { hotelId, _id: userId } = req.user;
 
   // Verify booking belongs to hotel and is checked out
-  const booking = await Booking.findOne({ _id: bookingId, hotelId });
+  const booking = await Booking.findOne({ _id: bookingId, hotelId }).lean();
   if (!booking) {
     throw new ApplicationError('Booking not found', 404);
   }
@@ -234,7 +247,7 @@ router.post('/retry/:bookingId', authorize('staff', 'admin'), catchAsync(async (
   const { hotelId, _id: userId } = req.user;
 
   // Verify booking belongs to hotel
-  const booking = await Booking.findOne({ _id: bookingId, hotelId });
+  const booking = await Booking.findOne({ _id: bookingId, hotelId }).lean();
   if (!booking) {
     throw new ApplicationError('Booking not found', 404);
   }
@@ -310,7 +323,7 @@ router.get('/dashboard', authorize('admin', 'manager'), catchAsync(async (req, r
     .limit(20)
     .populate('bookingId', 'bookingNumber')
     .populate('roomId', 'roomNumber')
-    .populate('initiatedBy', 'name email');
+    .populate('initiatedBy', 'name email').lean();
 
   // Get failed automations
   const failedAutomations = await CheckoutAutomationLog.getFailedAutomations(24, 10);
@@ -323,7 +336,7 @@ router.get('/dashboard', authorize('admin', 'manager'), catchAsync(async (req, r
   })
     .select('bookingNumber automationStatus automationTriggeredAt')
     .sort({ automationTriggeredAt: -1 })
-    .limit(10);
+    .limit(10).lean();
 
   res.status(200).json({
     status: 'success',
@@ -447,20 +460,39 @@ router.post('/toggle', authorize('admin', 'manager'), catchAsync(async (req, res
   const { hotelId, _id: userId } = req.user;
   const { enabled, automationType } = req.body;
 
-  let config = await CheckoutAutomationConfig.findOne({ hotelId });
-  
-  if (!config) {
-    config = await CheckoutAutomationConfig.createDefault(hotelId, userId);
-  }
+  // Build the atomic update based on automationType
+  const setFields = { lastUpdatedBy: userId };
 
   if (automationType) {
-    await config.toggleAutomationType(automationType, enabled);
+    // Toggle specific automation type
+    const typeFieldMap = {
+      laundry: 'isLaundryAutomationEnabled',
+      inventory: 'isInventoryAutomationEnabled',
+      housekeeping: 'isHousekeepingAutomationEnabled'
+    };
+    const field = typeFieldMap[automationType];
+    if (field) {
+      setFields[field] = enabled;
+    }
   } else {
-    await config.toggleAutomation(enabled);
+    // Toggle all automation
+    setFields.isEnabled = enabled;
   }
 
-  config.lastUpdatedBy = userId;
-  await config.save();
+  let config = await CheckoutAutomationConfig.findOneAndUpdate(
+    { hotelId },
+    { $set: setFields },
+    { new: true, runValidators: true }
+  );
+
+  if (!config) {
+    config = await CheckoutAutomationConfig.createDefault(hotelId, userId);
+    config = await CheckoutAutomationConfig.findOneAndUpdate(
+      { hotelId },
+      { $set: setFields },
+      { new: true, runValidators: true }
+    );
+  }
 
   res.status(200).json({
     status: 'success',

@@ -106,53 +106,57 @@ class MultiLanguageMetricsService {
 
   // Analyze performance for specific language
   async analyzeLanguagePerformance(hotelId, language, options = {}) {
-    const { timeRange, baseCurrency, includeTranslationQuality, includeContentPerformance } = options;
+    try {
+      const { timeRange, baseCurrency, includeTranslationQuality, includeContentPerformance } = options;
 
-    const languageData = {
-      languageCode: language,
-      languageName: this.getLanguageName(language),
-      nativeName: this.getNativeName(language),
-      analysisDate: new Date(),
+      const languageData = {
+        languageCode: language,
+        languageName: this.getLanguageName(language),
+        nativeName: this.getNativeName(language),
+        analysisDate: new Date(),
       
-      // Core performance metrics
-      performance: await this.getLanguagePerformanceMetrics(hotelId, language, timeRange),
+        // Core performance metrics
+        performance: await this.getLanguagePerformanceMetrics(hotelId, language, timeRange),
       
-      // Booking behavior by language
-      bookingBehavior: await this.analyzeBookingBehavior(hotelId, language, timeRange),
+        // Booking behavior by language
+        bookingBehavior: await this.analyzeBookingBehavior(hotelId, language, timeRange),
       
-      // Guest satisfaction by language
-      satisfaction: await this.analyzeSatisfactionMetrics(hotelId, language, timeRange),
+        // Guest satisfaction by language
+        satisfaction: await this.analyzeSatisfactionMetrics(hotelId, language, timeRange),
       
-      // Channel effectiveness by language
-      channelPerformance: await this.analyzeChannelEffectiveness(hotelId, language, timeRange),
+        // Channel effectiveness by language
+        channelPerformance: await this.analyzeChannelEffectiveness(hotelId, language, timeRange),
       
-      // Communication preferences
-      communicationPreferences: await this.analyzeCommunicationPreferences(hotelId, language),
+        // Communication preferences
+        communicationPreferences: await this.analyzeCommunicationPreferences(hotelId, language),
       
-      // Content engagement metrics
-      contentEngagement: await this.analyzeContentEngagement(hotelId, language, timeRange),
+        // Content engagement metrics
+        contentEngagement: await this.analyzeContentEngagement(hotelId, language, timeRange),
       
-      // Cultural adaptation indicators
-      culturalAdaptation: await this.assessCulturalAdaptation(hotelId, language),
+        // Cultural adaptation indicators
+        culturalAdaptation: await this.assessCulturalAdaptation(hotelId, language),
       
-      // Market penetration in language markets
-      marketPenetration: await this.analyzeMarketPenetration(hotelId, language, timeRange)
-    };
+        // Market penetration in language markets
+        marketPenetration: await this.analyzeMarketPenetration(hotelId, language, timeRange)
+      };
 
-    // Optional detailed analyses
-    if (includeTranslationQuality) {
-      languageData.translationMetrics = await this.getTranslationMetrics(hotelId, language);
+      // Optional detailed analyses
+      if (includeTranslationQuality) {
+        languageData.translationMetrics = await this.getTranslationMetrics(hotelId, language);
+      }
+
+      if (includeContentPerformance) {
+        languageData.contentPerformance = await this.getContentPerformanceMetrics(hotelId, language);
+      }
+
+      // Calculate language performance score
+      languageData.performanceScore = this.calculateLanguageScore(languageData);
+      languageData.optimizationPotential = this.assessOptimizationPotential(languageData);
+
+      return languageData;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    if (includeContentPerformance) {
-      languageData.contentPerformance = await this.getContentPerformanceMetrics(hotelId, language);
-    }
-
-    // Calculate language performance score
-    languageData.performanceScore = this.calculateLanguageScore(languageData);
-    languageData.optimizationPotential = this.assessOptimizationPotential(languageData);
-
-    return languageData;
   }
 
   // Get core performance metrics for language
@@ -198,252 +202,276 @@ class MultiLanguageMetricsService {
 
   // Analyze booking behavior patterns by language
   async analyzeBookingBehavior(hotelId, language, timeRange) {
-    return {
-      preferredBookingChannels: await this.getPreferredChannels(hotelId, language),
-      bookingTimePatterns: await this.getBookingTimePatterns(hotelId, language),
-      devicePreferences: await this.getDevicePreferences(hotelId, language),
-      paymentMethodPreferences: await this.getPaymentPreferences(hotelId, language),
-      roomTypePreferences: await this.getRoomTypePreferences(hotelId, language),
-      amenityPreferences: await this.getAmenityPreferences(hotelId, language),
-      serviceUtilization: await this.getServiceUtilization(hotelId, language),
-      groupBookingTendency: await this.getGroupBookingTendency(hotelId, language),
-      advanceBookingBehavior: {
-        averageLeadTime: await this.getAverageLeadTime(hotelId, language),
-        earlyBirdRate: await this.getEarlyBookingRate(hotelId, language),
-        lastMinuteRate: await this.getLastMinuteBookingRate(hotelId, language),
-        spontaneousBookingRate: await this.getSpontaneousBookingRate(hotelId, language)
-      },
-      pricesensitivity: await this.analyzePriceSensitivity(hotelId, language),
-      loyaltyEngagement: await this.analyzeLoyaltyEngagement(hotelId, language)
-    };
+    try {
+      return {
+        preferredBookingChannels: await this.getPreferredChannels(hotelId, language),
+        bookingTimePatterns: await this.getBookingTimePatterns(hotelId, language),
+        devicePreferences: await this.getDevicePreferences(hotelId, language),
+        paymentMethodPreferences: await this.getPaymentPreferences(hotelId, language),
+        roomTypePreferences: await this.getRoomTypePreferences(hotelId, language),
+        amenityPreferences: await this.getAmenityPreferences(hotelId, language),
+        serviceUtilization: await this.getServiceUtilization(hotelId, language),
+        groupBookingTendency: await this.getGroupBookingTendency(hotelId, language),
+        advanceBookingBehavior: {
+          averageLeadTime: await this.getAverageLeadTime(hotelId, language),
+          earlyBirdRate: await this.getEarlyBookingRate(hotelId, language),
+          lastMinuteRate: await this.getLastMinuteBookingRate(hotelId, language),
+          spontaneousBookingRate: await this.getSpontaneousBookingRate(hotelId, language)
+        },
+        pricesensitivity: await this.analyzePriceSensitivity(hotelId, language),
+        loyaltyEngagement: await this.analyzeLoyaltyEngagement(hotelId, language)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Analyze satisfaction metrics by language
   async analyzeSatisfactionMetrics(hotelId, language, timeRange) {
-    return {
-      overallSatisfaction: await this.getOverallSatisfaction(hotelId, language),
-      categoryRatings: {
-        serviceQuality: await this.getServiceRating(hotelId, language),
-        roomQuality: await this.getRoomRating(hotelId, language),
-        cleanliness: await this.getCleanlinessRating(hotelId, language),
-        location: await this.getLocationRating(hotelId, language),
-        valueForMoney: await this.getValueRating(hotelId, language),
-        amenities: await this.getAmenityRating(hotelId, language),
-        staff: await this.getStaffRating(hotelId, language)
-      },
-      reviewMetrics: {
-        reviewFrequency: await this.getReviewFrequency(hotelId, language),
-        averageReviewLength: await this.getAverageReviewLength(hotelId, language),
-        positiveReviewRate: await this.getPositiveReviewRate(hotelId, language),
-        responseRate: await this.getReviewResponseRate(hotelId, language),
-        sentimentScore: await this.getSentimentScore(hotelId, language)
-      },
-      complaintAnalysis: {
-        complaintRate: await this.getComplaintRate(hotelId, language),
-        complaintCategories: await this.getComplaintCategories(hotelId, language),
-        resolutionTime: await this.getResolutionTime(hotelId, language),
-        resolutionSatisfaction: await this.getResolutionSatisfaction(hotelId, language)
-      },
-      nps: await this.getNetPromoterScore(hotelId, language),
-      culturalSatisfactionFactors: await this.getCulturalSatisfactionFactors(language)
-    };
+    try {
+      return {
+        overallSatisfaction: await this.getOverallSatisfaction(hotelId, language),
+        categoryRatings: {
+          serviceQuality: await this.getServiceRating(hotelId, language),
+          roomQuality: await this.getRoomRating(hotelId, language),
+          cleanliness: await this.getCleanlinessRating(hotelId, language),
+          location: await this.getLocationRating(hotelId, language),
+          valueForMoney: await this.getValueRating(hotelId, language),
+          amenities: await this.getAmenityRating(hotelId, language),
+          staff: await this.getStaffRating(hotelId, language)
+        },
+        reviewMetrics: {
+          reviewFrequency: await this.getReviewFrequency(hotelId, language),
+          averageReviewLength: await this.getAverageReviewLength(hotelId, language),
+          positiveReviewRate: await this.getPositiveReviewRate(hotelId, language),
+          responseRate: await this.getReviewResponseRate(hotelId, language),
+          sentimentScore: await this.getSentimentScore(hotelId, language)
+        },
+        complaintAnalysis: {
+          complaintRate: await this.getComplaintRate(hotelId, language),
+          complaintCategories: await this.getComplaintCategories(hotelId, language),
+          resolutionTime: await this.getResolutionTime(hotelId, language),
+          resolutionSatisfaction: await this.getResolutionSatisfaction(hotelId, language)
+        },
+        nps: await this.getNetPromoterScore(hotelId, language),
+        culturalSatisfactionFactors: await this.getCulturalSatisfactionFactors(language)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Analyze channel effectiveness by language
   async analyzeChannelEffectiveness(hotelId, language, timeRange) {
-    const channels = ['direct', 'booking_com', 'expedia', 'agoda', 'airbnb', 'others'];
-    const effectiveness = {};
+    try {
+      const channels = ['direct', 'booking_com', 'expedia', 'agoda', 'airbnb', 'others'];
+      const effectiveness = {};
 
-    for (const channel of channels) {
-      effectiveness[channel] = {
-        revenue: await this.getChannelRevenue(hotelId, language, channel, timeRange),
-        bookings: await this.getChannelBookings(hotelId, language, channel, timeRange),
-        conversionRate: await this.getChannelConversion(hotelId, language, channel),
-        averageRate: 0,
-        marketShare: 0,
-        customerSatisfaction: await this.getChannelSatisfaction(hotelId, language, channel),
-        repeatBookingRate: await this.getChannelRepeatRate(hotelId, language, channel),
-        cancellationRate: await this.getChannelCancellationRate(hotelId, language, channel),
-        profitability: await this.calculateChannelProfitability(hotelId, language, channel),
-        languageSupport: await this.assessLanguageSupport(channel, language),
-        localizedContent: await this.assessContentLocalization(hotelId, channel, language)
-      };
-
-      // Calculate derived metrics
-      if (effectiveness[channel].bookings > 0) {
-        effectiveness[channel].averageRate = effectiveness[channel].revenue / effectiveness[channel].bookings;
-      }
-    }
-
-    // Calculate market shares
-    const totalRevenue = Object.values(effectiveness).reduce((sum, ch) => sum + ch.revenue, 0);
-    if (totalRevenue > 0) {
       for (const channel of channels) {
-        effectiveness[channel].marketShare = (effectiveness[channel].revenue / totalRevenue) * 100;
-      }
-    }
+        effectiveness[channel] = {
+          revenue: await this.getChannelRevenue(hotelId, language, channel, timeRange),
+          bookings: await this.getChannelBookings(hotelId, language, channel, timeRange),
+          conversionRate: await this.getChannelConversion(hotelId, language, channel),
+          averageRate: 0,
+          marketShare: 0,
+          customerSatisfaction: await this.getChannelSatisfaction(hotelId, language, channel),
+          repeatBookingRate: await this.getChannelRepeatRate(hotelId, language, channel),
+          cancellationRate: await this.getChannelCancellationRate(hotelId, language, channel),
+          profitability: await this.calculateChannelProfitability(hotelId, language, channel),
+          languageSupport: await this.assessLanguageSupport(channel, language),
+          localizedContent: await this.assessContentLocalization(hotelId, channel, language)
+        };
 
-    return effectiveness;
+        // Calculate derived metrics
+        if (effectiveness[channel].bookings > 0) {
+          effectiveness[channel].averageRate = effectiveness[channel].revenue / effectiveness[channel].bookings;
+        }
+      }
+
+      // Calculate market shares
+      const totalRevenue = Object.values(effectiveness).reduce((sum, ch) => sum + ch.revenue, 0);
+      if (totalRevenue > 0) {
+        for (const channel of channels) {
+          effectiveness[channel].marketShare = (effectiveness[channel].revenue / totalRevenue) * 100;
+        }
+      }
+
+      return effectiveness;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Analyze translation quality metrics
   async analyzeTranslationQuality(hotelId, languages) {
-    const qualityMetrics = {};
+    try {
+      const qualityMetrics = {};
 
-    for (const language of languages) {
-      if (language === 'en') continue; // Skip English (source language)
+      for (const language of languages) {
+        if (language === 'en') continue; // Skip English (source language)
 
-      qualityMetrics[language] = {
-        overallQuality: await this.getTranslationQualityScore(hotelId, language),
-        contentCategories: {
-          roomDescriptions: await this.getCategoryQuality(hotelId, language, 'rooms'),
-          amenityDescriptions: await this.getCategoryQuality(hotelId, language, 'amenities'),
-          hotelDescriptions: await this.getCategoryQuality(hotelId, language, 'hotel'),
-          policies: await this.getCategoryQuality(hotelId, language, 'policies'),
-          services: await this.getCategoryQuality(hotelId, language, 'services')
-        },
-        automaticVsHuman: {
-          automaticTranslationQuality: await this.getAutomaticQuality(hotelId, language),
-          humanTranslationQuality: await this.getHumanQuality(hotelId, language),
-          reviewedTranslationQuality: await this.getReviewedQuality(hotelId, language)
-        },
-        qualityImprovementTrends: await this.getQualityTrends(hotelId, language),
-        guestFeedbackOnTranslation: await this.getTranslationFeedback(hotelId, language),
-        businessImpact: {
-          bookingImpactScore: await this.calculateBookingImpact(hotelId, language),
-          satisfactionCorrelation: await this.getTranslationSatisfactionCorr(hotelId, language),
-          conversionImpact: await this.getTranslationConversionImpact(hotelId, language)
-        }
-      };
+        qualityMetrics[language] = {
+          overallQuality: await this.getTranslationQualityScore(hotelId, language),
+          contentCategories: {
+            roomDescriptions: await this.getCategoryQuality(hotelId, language, 'rooms'),
+            amenityDescriptions: await this.getCategoryQuality(hotelId, language, 'amenities'),
+            hotelDescriptions: await this.getCategoryQuality(hotelId, language, 'hotel'),
+            policies: await this.getCategoryQuality(hotelId, language, 'policies'),
+            services: await this.getCategoryQuality(hotelId, language, 'services')
+          },
+          automaticVsHuman: {
+            automaticTranslationQuality: await this.getAutomaticQuality(hotelId, language),
+            humanTranslationQuality: await this.getHumanQuality(hotelId, language),
+            reviewedTranslationQuality: await this.getReviewedQuality(hotelId, language)
+          },
+          qualityImprovementTrends: await this.getQualityTrends(hotelId, language),
+          guestFeedbackOnTranslation: await this.getTranslationFeedback(hotelId, language),
+          businessImpact: {
+            bookingImpactScore: await this.calculateBookingImpact(hotelId, language),
+            satisfactionCorrelation: await this.getTranslationSatisfactionCorr(hotelId, language),
+            conversionImpact: await this.getTranslationConversionImpact(hotelId, language)
+          }
+        };
+      }
+
+      return qualityMetrics;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return qualityMetrics;
   }
 
   // Perform cross-language comparative analysis
   async performComparativeAnalysis(languageData) {
-    const analysis = {
-      topPerformingLanguages: [],
-      underperformingLanguages: [],
-      revenueDistribution: {},
-      conversionRateComparison: {},
-      satisfactionComparison: {},
-      channelPreferencePatterns: {},
-      culturalInsights: {},
-      optimizationOpportunities: []
-    };
-
-    // Sort languages by performance score
-    const sortedLanguages = Object.entries(languageData).sort((a, b) => 
-      (b[1].performanceScore || 0) - (a[1].performanceScore || 0)
-    );
-
-    analysis.topPerformingLanguages = sortedLanguages.slice(0, 5).map(([lang, data]) => ({
-      language: lang,
-      languageName: data.languageName,
-      score: data.performanceScore,
-      keyMetrics: {
-        revenue: data.performance?.totalRevenue || 0,
-        conversionRate: data.performance?.conversionRate || 0,
-        satisfaction: data.satisfaction?.overallSatisfaction || 0
-      }
-    }));
-
-    analysis.underperformingLanguages = sortedLanguages.slice(-3).map(([lang, data]) => ({
-      language: lang,
-      languageName: data.languageName,
-      score: data.performanceScore,
-      improvementAreas: this.identifyLanguageImprovementAreas(data)
-    }));
-
-    // Revenue distribution analysis
-    const totalRevenue = Object.values(languageData).reduce((sum, data) => 
-      sum + (data.performance?.totalRevenue || 0), 0);
-
-    for (const [lang, data] of Object.entries(languageData)) {
-      analysis.revenueDistribution[lang] = {
-        percentage: totalRevenue > 0 ? ((data.performance?.totalRevenue || 0) / totalRevenue) * 100 : 0,
-        amount: data.performance?.totalRevenue || 0
+    try {
+      const analysis = {
+        topPerformingLanguages: [],
+        underperformingLanguages: [],
+        revenueDistribution: {},
+        conversionRateComparison: {},
+        satisfactionComparison: {},
+        channelPreferencePatterns: {},
+        culturalInsights: {},
+        optimizationOpportunities: []
       };
+
+      // Sort languages by performance score
+      const sortedLanguages = Object.entries(languageData).sort((a, b) => 
+        (b[1].performanceScore || 0) - (a[1].performanceScore || 0)
+      );
+
+      analysis.topPerformingLanguages = sortedLanguages.slice(0, 5).map(([lang, data]) => ({
+        language: lang,
+        languageName: data.languageName,
+        score: data.performanceScore,
+        keyMetrics: {
+          revenue: data.performance?.totalRevenue || 0,
+          conversionRate: data.performance?.conversionRate || 0,
+          satisfaction: data.satisfaction?.overallSatisfaction || 0
+        }
+      }));
+
+      analysis.underperformingLanguages = sortedLanguages.slice(-3).map(([lang, data]) => ({
+        language: lang,
+        languageName: data.languageName,
+        score: data.performanceScore,
+        improvementAreas: this.identifyLanguageImprovementAreas(data)
+      }));
+
+      // Revenue distribution analysis
+      const totalRevenue = Object.values(languageData).reduce((sum, data) => 
+        sum + (data.performance?.totalRevenue || 0), 0);
+
+      for (const [lang, data] of Object.entries(languageData)) {
+        analysis.revenueDistribution[lang] = {
+          percentage: totalRevenue > 0 ? ((data.performance?.totalRevenue || 0) / totalRevenue) * 100 : 0,
+          amount: data.performance?.totalRevenue || 0
+        };
+      }
+
+      // Conversion rate comparison
+      for (const [lang, data] of Object.entries(languageData)) {
+        analysis.conversionRateComparison[lang] = data.performance?.conversionRate || 0;
+      }
+
+      // Cultural insights
+      analysis.culturalInsights = await this.generateCulturalInsights(languageData);
+
+      return analysis;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Conversion rate comparison
-    for (const [lang, data] of Object.entries(languageData)) {
-      analysis.conversionRateComparison[lang] = data.performance?.conversionRate || 0;
-    }
-
-    // Cultural insights
-    analysis.culturalInsights = await this.generateCulturalInsights(languageData);
-
-    return analysis;
   }
 
   // Generate language-specific recommendations
   async generateLanguageRecommendations(metrics) {
-    const recommendations = [];
+    try {
+      const recommendations = [];
 
-    for (const [language, data] of Object.entries(metrics.languages)) {
-      // Translation quality recommendations
-      if (data.translationMetrics?.overallQuality < 70) {
-        recommendations.push({
-          type: 'translation_improvement',
-          language,
-          priority: 'high',
-          title: `Improve ${data.languageName} translation quality`,
-          description: 'Low translation quality may be impacting bookings and satisfaction',
-          currentScore: data.translationMetrics.overallQuality,
-          targetScore: 85,
-          estimatedImpact: 'conversion_increase_10_15_percent'
-        });
-      }
-
-      // Content localization recommendations
-      if (data.contentEngagement?.engagementRate < 30) {
-        recommendations.push({
-          type: 'content_localization',
-          language,
-          priority: 'medium',
-          title: `Enhance ${data.languageName} content localization`,
-          description: 'Improve cultural adaptation and local relevance',
-          suggestedActions: ['review_cultural_elements', 'add_local_context', 'optimize_imagery']
-        });
-      }
-
-      // Channel optimization recommendations
-      if (data.channelPerformance) {
-        const bestChannel = Object.entries(data.channelPerformance)
-          .sort((a, b) => (b[1].conversionRate || 0) - (a[1].conversionRate || 0))[0];
-        
-        if (bestChannel && bestChannel[1].marketShare < 40) {
+      for (const [language, data] of Object.entries(metrics.languages)) {
+        // Translation quality recommendations
+        if (data.translationMetrics?.overallQuality < 70) {
           recommendations.push({
-            type: 'channel_optimization',
+            type: 'translation_improvement',
+            language,
+            priority: 'high',
+            title: `Improve ${data.languageName} translation quality`,
+            description: 'Low translation quality may be impacting bookings and satisfaction',
+            currentScore: data.translationMetrics.overallQuality,
+            targetScore: 85,
+            estimatedImpact: 'conversion_increase_10_15_percent'
+          });
+        }
+
+        // Content localization recommendations
+        if (data.contentEngagement?.engagementRate < 30) {
+          recommendations.push({
+            type: 'content_localization',
             language,
             priority: 'medium',
-            title: `Optimize ${bestChannel[0]} for ${data.languageName}`,
-            description: 'High-performing channel with expansion potential',
-            currentShare: bestChannel[1].marketShare,
-            potentialIncrease: '25-35%'
+            title: `Enhance ${data.languageName} content localization`,
+            description: 'Improve cultural adaptation and local relevance',
+            suggestedActions: ['review_cultural_elements', 'add_local_context', 'optimize_imagery']
+          });
+        }
+
+        // Channel optimization recommendations
+        if (data.channelPerformance) {
+          const bestChannel = Object.entries(data.channelPerformance)
+            .sort((a, b) => (b[1].conversionRate || 0) - (a[1].conversionRate || 0))[0];
+        
+          if (bestChannel && bestChannel[1].marketShare < 40) {
+            recommendations.push({
+              type: 'channel_optimization',
+              language,
+              priority: 'medium',
+              title: `Optimize ${bestChannel[0]} for ${data.languageName}`,
+              description: 'High-performing channel with expansion potential',
+              currentShare: bestChannel[1].marketShare,
+              potentialIncrease: '25-35%'
+            });
+          }
+        }
+
+        // Market penetration recommendations
+        if (data.performanceScore > 70 && data.marketPenetration?.penetrationRate < 20) {
+          recommendations.push({
+            type: 'market_expansion',
+            language,
+            priority: 'high',
+            title: `Expand in ${data.languageName} markets`,
+            description: 'High performance with low market penetration indicates opportunity',
+            recommendedActions: ['increase_marketing_budget', 'expand_channel_presence', 'localize_promotions']
           });
         }
       }
 
-      // Market penetration recommendations
-      if (data.performanceScore > 70 && data.marketPenetration?.penetrationRate < 20) {
-        recommendations.push({
-          type: 'market_expansion',
-          language,
-          priority: 'high',
-          title: `Expand in ${data.languageName} markets`,
-          description: 'High performance with low market penetration indicates opportunity',
-          recommendedActions: ['increase_marketing_budget', 'expand_channel_presence', 'localize_promotions']
-        });
-      }
+      return recommendations.sort((a, b) => {
+        const priority = { high: 3, medium: 2, low: 1 };
+        return priority[b.priority] - priority[a.priority];
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return recommendations.sort((a, b) => {
-      const priority = { high: 3, medium: 2, low: 1 };
-      return priority[b.priority] - priority[a.priority];
-    });
   }
 
   // Calculate language performance score
@@ -492,15 +520,19 @@ class MultiLanguageMetricsService {
 
   // Helper methods for data simulation (would be replaced with real database queries)
   async calculateLanguageRevenue(hotelId, language, timeRange) {
-    // Simulate revenue based on language popularity
-    const languageWeights = {
-      'en': 1.0, 'es': 0.7, 'fr': 0.6, 'de': 0.8, 'zh': 0.5,
-      'ja': 0.4, 'pt': 0.3, 'it': 0.4, 'ru': 0.3, 'ar': 0.2
-    };
+    try {
+      // Simulate revenue based on language popularity
+      const languageWeights = {
+        'en': 1.0, 'es': 0.7, 'fr': 0.6, 'de': 0.8, 'zh': 0.5,
+        'ja': 0.4, 'pt': 0.3, 'it': 0.4, 'ru': 0.3, 'ar': 0.2
+      };
     
-    const baseRevenue = Math.random() * 30000 + 5000;
-    const weight = languageWeights[language] || 0.1;
-    return Math.round(baseRevenue * weight * 100) / 100;
+      const baseRevenue = Math.random() * 30000 + 5000;
+      const weight = languageWeights[language] || 0.1;
+      return Math.round(baseRevenue * weight * 100) / 100;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   getLanguageName(code) {

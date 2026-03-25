@@ -226,35 +226,43 @@ roomAvailabilitySchema.pre('save', function(next) {
 
 // Static methods for inventory management
 roomAvailabilitySchema.statics.getInventoryForDateRange = async function(hotelId, roomTypeId, startDate, endDate) {
-  return await this.find({
-    hotelId,
-    roomTypeId,
-    date: {
-      $gte: startDate,
-      $lte: endDate
-    }
-  }).sort({ date: 1 });
+  try {
+    return await this.find({
+      hotelId,
+      roomTypeId,
+      date: {
+        $gte: startDate,
+        $lte: endDate
+      }
+    }).sort({ date: 1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 roomAvailabilitySchema.statics.createInventoryForMonth = async function(hotelId, roomTypeId, year, month, totalRooms, baseRate) {
-  const inventoryRecords = [];
-  const daysInMonth = new Date(year, month, 0).getDate();
+  try {
+    const inventoryRecords = [];
+    const daysInMonth = new Date(year, month, 0).getDate();
   
-  for (let day = 1; day <= daysInMonth; day++) {
-    const date = new Date(year, month - 1, day);
-    inventoryRecords.push({
-      hotelId,
-      roomTypeId,
-      date,
-      totalRooms,
-      availableRooms: totalRooms,
-      soldRooms: 0,
-      blockedRooms: 0,
-      baseRate
-    });
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(year, month - 1, day);
+      inventoryRecords.push({
+        hotelId,
+        roomTypeId,
+        date,
+        totalRooms,
+        availableRooms: totalRooms,
+        soldRooms: 0,
+        blockedRooms: 0,
+        baseRate
+      });
+    }
+  
+    return await this.insertMany(inventoryRecords, { ordered: false });
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  return await this.insertMany(inventoryRecords, { ordered: false });
 };
 
 // Instance methods
@@ -378,54 +386,60 @@ roomAvailabilitySchema.statics.bookRoomsWithLock = async function(
     let result = false;
     
     await session.withTransaction(async () => {
-      // Get inventory for each date in the range
-      const startDate = new Date(checkIn);
-      const endDate = new Date(checkOut);
+      try {
+        // Get inventory for each date in the range
+        const startDate = new Date(checkIn);
+        const endDate = new Date(checkOut);
       
-      for (let date = startDate; date < endDate; date.setDate(date.getDate() + 1)) {
-        const currentDate = new Date(date);
+        for (let date = startDate; date < endDate; date.setDate(date.getDate() + 1)) {
+          const currentDate = new Date(date);
         
-        // Find and lock the inventory record
-        const inventory = await this.findOne({
-          hotelId,
-          roomTypeId,
-          date: currentDate
-        }).session(session).select('+availableRooms +soldRooms +blockedRooms +totalRooms');
+          // Find and lock the inventory record
+          const inventory = await this.findOne({
+            hotelId,
+            roomTypeId,
+            date: currentDate
+          }).session(session).select('+availableRooms +soldRooms +blockedRooms +totalRooms');
         
-        if (!inventory) {
-          throw new Error(`Inventory not found for date: ${currentDate.toISOString().split('T')[0]}`);
-        }
-        
-        // Check availability with atomic update
-        const updateResult = await this.updateOne(
-          { 
-            _id: inventory._id,
-            availableRooms: { $gte: roomsCount }
-          },
-          {
-            $inc: { 
-              soldRooms: roomsCount,
-              availableRooms: -roomsCount
-            },
-            $push: {
-              reservations: {
-                bookingId,
-                roomsReserved: roomsCount,
-                source,
-                reservedAt: new Date()
-              }
-            },
-            needsSync: true,
-            lastModifiedAt: new Date()
+          if (!inventory) {
+            throw new Error(`Inventory not found for date: ${currentDate.toISOString().split('T')[0]}`);
           }
-        ).session(session);
         
-        if (updateResult.modifiedCount === 0) {
-          throw new Error(`Not enough rooms available for date: ${currentDate.toISOString().split('T')[0]}`);
+          // Check availability with atomic update
+          const updateResult = await this.updateOne(
+            { 
+              _id: inventory._id,
+              availableRooms: { $gte: roomsCount }
+            },
+            {
+              $inc: { 
+                soldRooms: roomsCount,
+                availableRooms: -roomsCount
+              },
+              $push: {
+                reservations: {
+                  bookingId,
+                  roomsReserved: roomsCount,
+                  source,
+                  reservedAt: new Date()
+                }
+              },
+              needsSync: true,
+              lastModifiedAt: new Date()
+            }
+          ).session(session);
+        
+          if (updateResult.modifiedCount === 0) {
+            throw new Error(`Not enough rooms available for date: ${currentDate.toISOString().split('T')[0]}`);
+          }
         }
-      }
       
-      result = true;
+        result = true;
+    
+      } catch (error) {
+        console.error('Operation failed:', error.message);
+        throw error;
+      }
     });
     
     return result;
@@ -449,54 +463,60 @@ roomAvailabilitySchema.statics.releaseRoomsWithLock = async function(
     let result = false;
     
     await session.withTransaction(async () => {
-      const startDate = new Date(checkIn);
-      const endDate = new Date(checkOut);
+      try {
+        const startDate = new Date(checkIn);
+        const endDate = new Date(checkOut);
       
-      for (let date = startDate; date < endDate; date.setDate(date.getDate() + 1)) {
-        const currentDate = new Date(date);
+        for (let date = startDate; date < endDate; date.setDate(date.getDate() + 1)) {
+          const currentDate = new Date(date);
         
-        // Find and update the inventory record
-        const inventory = await this.findOne({
-          hotelId,
-          roomTypeId,
-          date: currentDate
-        }).session(session);
+          // Find and update the inventory record
+          const inventory = await this.findOne({
+            hotelId,
+            roomTypeId,
+            date: currentDate
+          }).session(session);
         
-        if (!inventory) {
-          throw new Error(`Inventory not found for date: ${currentDate.toISOString().split('T')[0]}`);
-        }
-        
-        // Remove the specific reservation
-        const reservationIndex = inventory.reservations.findIndex(
-          r => r.bookingId && r.bookingId.toString() === bookingId.toString()
-        );
-        
-        if (reservationIndex === -1) {
-          throw new Error(`Reservation not found for booking: ${bookingId}`);
-        }
-        
-        const roomsToRelease = Math.min(roomsCount, inventory.reservations[reservationIndex].roomsReserved);
-        
-        // Atomic update to release rooms
-        await this.updateOne(
-          { _id: inventory._id },
-          {
-            $inc: { 
-              soldRooms: -roomsToRelease,
-              availableRooms: roomsToRelease
-            },
-            $pull: {
-              reservations: {
-                bookingId: bookingId
-              }
-            },
-            needsSync: true,
-            lastModifiedAt: new Date()
+          if (!inventory) {
+            throw new Error(`Inventory not found for date: ${currentDate.toISOString().split('T')[0]}`);
           }
-        ).session(session);
-      }
+        
+          // Remove the specific reservation
+          const reservationIndex = inventory.reservations.findIndex(
+            r => r.bookingId && r.bookingId.toString() === bookingId.toString()
+          );
+        
+          if (reservationIndex === -1) {
+            throw new Error(`Reservation not found for booking: ${bookingId}`);
+          }
+        
+          const roomsToRelease = Math.min(roomsCount, inventory.reservations[reservationIndex].roomsReserved);
+        
+          // Atomic update to release rooms
+          await this.updateOne(
+            { _id: inventory._id },
+            {
+              $inc: { 
+                soldRooms: -roomsToRelease,
+                availableRooms: roomsToRelease
+              },
+              $pull: {
+                reservations: {
+                  bookingId: bookingId
+                }
+              },
+              needsSync: true,
+              lastModifiedAt: new Date()
+            }
+          ).session(session);
+        }
       
-      result = true;
+        result = true;
+    
+      } catch (error) {
+        console.error('Operation failed:', error.message);
+        throw error;
+      }
     });
     
     return result;
@@ -519,34 +539,40 @@ roomAvailabilitySchema.statics.checkAvailabilityWithLock = async function(
     let availability = [];
     
     await session.withTransaction(async () => {
-      const startDate = new Date(checkIn);
-      const endDate = new Date(checkOut);
+      try {
+        const startDate = new Date(checkIn);
+        const endDate = new Date(checkOut);
       
-      for (let date = startDate; date < endDate; date.setDate(date.getDate() + 1)) {
-        const currentDate = new Date(date);
+        for (let date = startDate; date < endDate; date.setDate(date.getDate() + 1)) {
+          const currentDate = new Date(date);
         
-        const inventory = await this.findOne({
-          hotelId,
-          roomTypeId,
-          date: currentDate
-        }).session(session).select('availableRooms stopSellFlag closedToArrival minLengthOfStay');
+          const inventory = await this.findOne({
+            hotelId,
+            roomTypeId,
+            date: currentDate
+          }).session(session).select('availableRooms stopSellFlag closedToArrival minLengthOfStay');
         
-        if (!inventory) {
-          throw new Error(`Inventory not found for date: ${currentDate.toISOString().split('T')[0]}`);
-        }
-        
-        availability.push({
-          date: currentDate,
-          availableRooms: inventory.availableRooms,
-          canBook: inventory.availableRooms >= roomsCount && 
-                   !inventory.stopSellFlag && 
-                   !inventory.closedToArrival,
-          restrictions: {
-            stopSell: inventory.stopSellFlag,
-            closedToArrival: inventory.closedToArrival,
-            minLengthOfStay: inventory.minLengthOfStay
+          if (!inventory) {
+            throw new Error(`Inventory not found for date: ${currentDate.toISOString().split('T')[0]}`);
           }
-        });
+        
+          availability.push({
+            date: currentDate,
+            availableRooms: inventory.availableRooms,
+            canBook: inventory.availableRooms >= roomsCount && 
+                     !inventory.stopSellFlag && 
+                     !inventory.closedToArrival,
+            restrictions: {
+              stopSell: inventory.stopSellFlag,
+              closedToArrival: inventory.closedToArrival,
+              minLengthOfStay: inventory.minLengthOfStay
+            }
+          });
+        }
+    
+      } catch (error) {
+        console.error('Operation failed:', error.message);
+        throw error;
       }
     });
     
@@ -582,77 +608,85 @@ roomAvailabilitySchema.methods.releaseRooms = function(roomsCount, bookingId) {
 
 // Method to get audit trail for a specific date range
 roomAvailabilitySchema.statics.getAuditTrail = async function(hotelId, roomTypeId, startDate, endDate, action = null) {
-  const query = {
-    hotelId,
-    roomTypeId,
-    date: { $gte: startDate, $lte: endDate }
-  };
+  try {
+    const query = {
+      hotelId,
+      roomTypeId,
+      date: { $gte: startDate, $lte: endDate }
+    };
   
-  if (action) {
-    query['inventoryChanges.action'] = action;
-  }
+    if (action) {
+      query['inventoryChanges.action'] = action;
+    }
   
-  const records = await this.find(query)
-    .select('date inventoryChanges')
-    .sort({ date: 1 });
+    const records = await this.find(query)
+      .select('date inventoryChanges')
+      .sort({ date: 1 }).lean().limit(1000);
   
-  const auditTrail = [];
+    const auditTrail = [];
   
-  records.forEach(record => {
-    record.inventoryChanges.forEach(change => {
-      if (action && change.action !== action) return;
+    records.forEach(record => {
+      record.inventoryChanges.forEach(change => {
+        if (action && change.action !== action) return;
       
-      auditTrail.push({
-        date: record.date,
-        action: change.action,
-        timestamp: change.timestamp,
-        userId: change.userId,
-        source: change.source,
-        oldValues: change.oldValues,
-        newValues: change.newValues,
-        reason: change.reason,
-        metadata: change.metadata
+        auditTrail.push({
+          date: record.date,
+          action: change.action,
+          timestamp: change.timestamp,
+          userId: change.userId,
+          source: change.source,
+          oldValues: change.oldValues,
+          newValues: change.newValues,
+          reason: change.reason,
+          metadata: change.metadata
+        });
       });
     });
-  });
   
-  return auditTrail.sort((a, b) => b.timestamp - a.timestamp);
+    return auditTrail.sort((a, b) => b.timestamp - a.timestamp);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Method to get performance metrics
 roomAvailabilitySchema.statics.getPerformanceMetrics = async function(hotelId, roomTypeId, startDate, endDate) {
-  const records = await this.find({
-    hotelId,
-    roomTypeId,
-    date: { $gte: startDate, $lte: endDate }
-  }).sort({ date: 1 });
+  try {
+    const records = await this.find({
+      hotelId,
+      roomTypeId,
+      date: { $gte: startDate, $lte: endDate }
+    }).sort({ date: 1 }).lean().limit(1000);
   
-  if (records.length === 0) return null;
+    if (records.length === 0) return null;
   
-  const totalDays = records.length;
-  let totalRevenue = 0;
-  let totalOccupancy = 0;
-  let totalBookings = 0;
+    const totalDays = records.length;
+    let totalRevenue = 0;
+    let totalOccupancy = 0;
+    let totalBookings = 0;
   
-  records.forEach(record => {
-    totalRevenue += (record.sellingRate || record.baseRate || 0) * record.soldRooms;
-    totalOccupancy += record.soldRooms;
-    totalBookings += record.reservations.length;
-  });
+    records.forEach(record => {
+      totalRevenue += (record.sellingRate || record.baseRate || 0) * record.soldRooms;
+      totalOccupancy += record.soldRooms;
+      totalBookings += record.reservations.length;
+    });
   
-  const averageOccupancy = totalOccupancy / totalDays;
-  const revenuePerRoom = totalRevenue / totalDays;
-  const conversionRate = totalBookings / totalDays;
+    const averageOccupancy = totalOccupancy / totalDays;
+    const revenuePerRoom = totalRevenue / totalDays;
+    const conversionRate = totalBookings / totalDays;
   
-  return {
-    period: { startDate, endDate },
-    totalDays,
-    totalRevenue,
-    averageOccupancy: Math.round(averageOccupancy * 100) / 100,
-    revenuePerRoom: Math.round(revenuePerRoom * 100) / 100,
-    conversionRate: Math.round(conversionRate * 100) / 100,
-    lastCalculated: new Date()
-  };
+    return {
+      period: { startDate, endDate },
+      totalDays,
+      totalRevenue,
+      averageOccupancy: Math.round(averageOccupancy * 100) / 100,
+      revenuePerRoom: Math.round(revenuePerRoom * 100) / 100,
+      conversionRate: Math.round(conversionRate * 100) / 100,
+      lastCalculated: new Date()
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 export default mongoose.model('RoomAvailability', roomAvailabilitySchema);

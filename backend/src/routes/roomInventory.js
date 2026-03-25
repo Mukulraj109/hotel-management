@@ -287,7 +287,7 @@ router.get('/rooms/:roomId', catchAsync(async (req, res) => {
   })
   .populate('items.itemId')
   .populate('templateId')
-  .populate('currentBookingId');
+  .populate('currentBookingId').lean();
 
   if (!roomInventory) {
     throw new ApplicationError('Room inventory not found', 404);
@@ -323,7 +323,7 @@ router.post('/rooms/:roomId/inspect', authorize('staff', 'admin'), catchAsync(as
   const { roomId } = req.params;
   const hotelId = req.user.hotelId;
 
-  const roomInventory = await RoomInventory.findOne({ roomId, hotelId });
+  const roomInventory = await RoomInventory.findOne({ roomId, hotelId }).lean();
   if (!roomInventory) {
     throw new ApplicationError('Room inventory not found', 404);
   }
@@ -380,7 +380,7 @@ router.post('/rooms/:roomId/replace', authorize('staff', 'admin'), catchAsync(as
   const { items, reason, notes } = req.body;
   const hotelId = req.user.hotelId;
 
-  const roomInventory = await RoomInventory.findOne({ roomId, hotelId });
+  const roomInventory = await RoomInventory.findOne({ roomId, hotelId }).lean();
   if (!roomInventory) {
     throw new ApplicationError('Room inventory not found', 404);
   }
@@ -396,7 +396,7 @@ router.post('/rooms/:roomId/replace', authorize('staff', 'admin'), catchAsync(as
         await roomInventory.requestReplacement(item.itemId, reason, notes);
 
         // Find item details for transaction
-        const inventoryItem = await InventoryItem.findById(item.itemId);
+        const inventoryItem = await InventoryItem.findById(item.itemId).lean();
         if (inventoryItem) {
           transactionItems.push({
             itemId: item.itemId,
@@ -482,7 +482,7 @@ router.get('/transactions', catchAsync(async (req, res) => {
     .populate('items.itemId', 'name category')
     .sort({ processedAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   const total = await InventoryTransaction.countDocuments(query);
 
@@ -557,7 +557,7 @@ router.post('/checkout-inspection', authorize('staff', 'admin'), catchAsync(asyn
   const inspectedBy = req.user._id;
 
   // Check if inspection already exists
-  const existingInspection = await CheckoutInspection.findOne({ bookingId });
+  const existingInspection = await CheckoutInspection.findOne({ bookingId }).lean();
   if (existingInspection) {
     throw new ApplicationError('Checkout inspection already exists for this booking', 409);
   }
@@ -661,7 +661,7 @@ router.get('/checkout-inspection/:bookingId', catchAsync(async (req, res) => {
   .populate('roomId', 'roomNumber type')
   .populate('bookingId')
   .populate('inspectedBy', 'name')
-  .populate('inventoryVerification.itemId');
+  .populate('inventoryVerification.itemId').lean();
 
   if (!inspection) {
     throw new ApplicationError('Checkout inspection not found', 404);

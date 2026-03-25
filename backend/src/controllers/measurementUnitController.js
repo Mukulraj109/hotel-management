@@ -49,7 +49,7 @@ class MeasurementUnitController {
     const existingUnit = await MeasurementUnit.findOne({
       hotelId: req.user.hotelId,
       name: { $regex: new RegExp(`^${name}$`, 'i') }
-    });
+    }).lean();
 
     if (existingUnit) {
       return next(new ApplicationError('Unit with this name already exists', 409));
@@ -59,7 +59,7 @@ class MeasurementUnitController {
     const existingSymbol = await MeasurementUnit.findOne({
       hotelId: req.user.hotelId,
       symbol: { $regex: new RegExp(`^${symbol}$`, 'i') }
-    });
+    }).lean();
 
     if (existingSymbol) {
       return next(new ApplicationError('Unit with this symbol already exists', 409));
@@ -146,7 +146,7 @@ class MeasurementUnitController {
       .populate('baseUnit', 'name symbol')
       .sort(sortOptions)
       .skip(skip)
-      .limit(parseInt(limit));
+      .limit(parseInt(limit)).lean();
 
     const total = await MeasurementUnit.countDocuments(filter);
 
@@ -173,7 +173,7 @@ class MeasurementUnitController {
     })
       .populate('createdBy updatedBy', 'firstName lastName email')
       .populate('baseUnit', 'name symbol')
-      .populate('conversionFactors.targetUnit', 'name symbol unitType');
+      .populate('conversionFactors.targetUnit', 'name symbol unitType').lean();
 
     if (!unit) {
       return next(new ApplicationError('Measurement unit not found', 404));
@@ -194,7 +194,7 @@ class MeasurementUnitController {
     const unit = await MeasurementUnit.findOne({
       _id: req.params.id,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!unit) {
       return next(new ApplicationError('Measurement unit not found', 404));
@@ -206,7 +206,7 @@ class MeasurementUnitController {
         hotelId: req.user.hotelId,
         name: { $regex: new RegExp(`^${req.body.name}$`, 'i') },
         _id: { $ne: req.params.id }
-      });
+      }).lean();
 
       if (existingUnit) {
         return next(new ApplicationError('Unit with this name already exists', 409));
@@ -219,7 +219,7 @@ class MeasurementUnitController {
         hotelId: req.user.hotelId,
         symbol: { $regex: new RegExp(`^${req.body.symbol}$`, 'i') },
         _id: { $ne: req.params.id }
-      });
+      }).lean();
 
       if (existingSymbol) {
         return next(new ApplicationError('Unit with this symbol already exists', 409));
@@ -259,7 +259,7 @@ class MeasurementUnitController {
     const unit = await MeasurementUnit.findOne({
       _id: req.params.id,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!unit) {
       return next(new ApplicationError('Measurement unit not found', 404));
@@ -513,7 +513,7 @@ class MeasurementUnitController {
     const unit = await MeasurementUnit.findOne({
       _id: unitId,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!unit) {
       return next(new ApplicationError('Measurement unit not found', 404));
@@ -630,7 +630,7 @@ class MeasurementUnitController {
     const unit = await MeasurementUnit.findOne({
       _id: unitId,
       hotelId: req.user.hotelId
-    });
+    }).lean();
 
     if (!unit) {
       return next(new ApplicationError('Measurement unit not found', 404));

@@ -114,7 +114,7 @@ export const getAccountLedger = catchAsync(async (req, res) => {
   } = req.query;
 
   // Verify account exists and belongs to hotel
-  const account = await ChartOfAccounts.findOne({ _id: accountId, hotelId });
+  const account = await ChartOfAccounts.findOne({ _id: accountId, hotelId }).lean();
   if (!account) {
     return res.status(404).json({
       status: 'error',
@@ -501,7 +501,7 @@ export const exportLedger = catchAsync(async (req, res) => {
     .populate('accountId', 'accountCode accountName')
     .populate('journalEntryId', 'entryNumber description')
     .sort({ transactionDate: 1, createdAt: 1 })
-    .lean();
+    .lean().limit(1000);
 
   // Format data for export
   const exportData = entries.map(entry => ({
@@ -552,11 +552,34 @@ function convertToCSV(data) {
   return csvContent;
 }
 
+// Verify ledger balance integrity
+export const verifyBalance = catchAsync(async (req, res) => {
+  const { hotelId } = req.user;
+  const { fiscalYear, fiscalPeriod } = req.query;
+
+  const options = {};
+  if (fiscalYear) options.fiscalYear = parseInt(fiscalYear);
+  if (fiscalPeriod) options.fiscalPeriod = parseInt(fiscalPeriod);
+
+  const result = await GeneralLedger.verifyBalance(hotelId, options);
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      ...result,
+      message: result.balanced
+        ? 'Ledger is balanced. Total debits equal total credits.'
+        : `Ledger imbalance detected: difference of ${result.difference.toFixed(2)}. Review account-level breakdown for details.`
+    }
+  });
+});
+
 export default {
   getLedgerEntries,
   getTrialBalance,
   getAccountLedger,
   getFinancialStatements,
   getAgingReport,
-  exportLedger
+  exportLedger,
+  verifyBalance
 };

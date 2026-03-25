@@ -30,7 +30,7 @@ export const getBankAccounts = catchAsync(async (req, res) => {
   let accounts = await BankAccount.find(filter)
     .populate('glAccountId', 'accountCode accountName')
     .populate('createdBy', 'name email')
-    .sort({ isPrimary: -1, accountName: 1 });
+    .sort({ isPrimary: -1, accountName: 1 }).lean().limit(1000);
 
   console.log('📊 Raw accounts found:', accounts.length);
   console.log('📊 First account sample:', accounts[0]);
@@ -60,7 +60,7 @@ export const getBankAccount = catchAsync(async (req, res) => {
 
   const account = await BankAccount.findOne({ _id: id })
     .populate('glAccountId', 'accountCode accountName accountType')
-    .populate('createdBy updatedBy', 'name email');
+    .populate('createdBy updatedBy', 'name email').lean();
 
   if (!account) {
     return res.status(404).json({
@@ -86,7 +86,7 @@ export const createBankAccount = catchAsync(async (req, res) => {
       hotelId,
       accountType: 'Asset',
       isActive: true
-    });
+    }).lean();
 
     if (!glAccount) {
       return res.status(400).json({
@@ -134,7 +134,7 @@ export const updateBankAccount = catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { id } = req.params;
 
-  const account = await BankAccount.findOne({ _id: id, hotelId });
+  const account = await BankAccount.findOne({ _id: id, hotelId }).lean();
   
   if (!account) {
     return res.status(404).json({
@@ -158,7 +158,7 @@ export const updateBankAccount = catchAsync(async (req, res) => {
       hotelId,
       accountType: 'Asset',
       isActive: true
-    });
+    }).lean();
 
     if (!glAccount) {
       return res.status(400).json({
@@ -256,7 +256,7 @@ export const addTransaction = catchAsync(async (req, res) => {
 
   if (!account) {
     // Distinguish between not-found/inactive and insufficient balance
-    const exists = await BankAccount.findOne({ _id: id, hotelId });
+    const exists = await BankAccount.findOne({ _id: id, hotelId }).lean();
     if (!exists) {
       return res.status(404).json({
         status: 'error',
@@ -312,7 +312,7 @@ export const getTransactions = catchAsync(async (req, res) => {
   } = req.query;
 
   console.log('🔍 Looking for account with ID:', id);
-  const account = await BankAccount.findOne({ _id: id });
+  const account = await BankAccount.findOne({ _id: id }).lean();
   
   if (!account) {
     console.log('❌ Bank account not found');
@@ -487,7 +487,7 @@ export const getAccountBalances = catchAsync(async (req, res) => {
 
   const accounts = await BankAccount.find({ hotelId, isActive: true })
     .select('accountName accountNumber accountType currentBalance currency isPrimary')
-    .sort({ isPrimary: -1, accountName: 1 });
+    .sort({ isPrimary: -1, accountName: 1 }).lean().limit(1000);
 
   const totalBalance = accounts.reduce((sum, account) => sum + account.currentBalance, 0);
   

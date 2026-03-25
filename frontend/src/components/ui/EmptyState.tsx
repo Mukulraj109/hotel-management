@@ -30,7 +30,7 @@ export default function EmptyState({
       <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-1">{title}</h3>
       <p className="text-sm text-gray-500 dark:text-gray-400 text-center max-w-sm mb-4">{description}</p>
       {action && (
-        <button
+        <button aria-label="Close"
           onClick={action.onClick}
           className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
         >

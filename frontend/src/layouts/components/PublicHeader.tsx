@@ -78,7 +78,7 @@ export default function PublicHeader() {
           </div>
 
           {/* Mobile menu button */}
-          <button
+          <button aria-label="More options"
             onClick={() => setIsMenuOpen(!isMenuOpen)}
             className="md:hidden p-2 rounded-md text-gray-700 hover:bg-gray-100"
           >

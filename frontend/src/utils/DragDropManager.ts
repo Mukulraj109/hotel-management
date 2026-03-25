@@ -44,6 +44,7 @@ export class DragDropManager {
   private operationHistory: DragOperation[] = [];
   private readonly MAX_HISTORY = 10;
   private refreshCallback: (() => void) | null = null;
+  private pendingTimers: Set<ReturnType<typeof setTimeout>> = new Set();
 
   private constructor() {}
 
@@ -366,9 +367,11 @@ export class DragDropManager {
         toast.success(successMessage);
 
         // Trigger chart refresh for real-time updates
-        setTimeout(() => {
+        const refreshTimer = setTimeout(() => {
+          this.pendingTimers.delete(refreshTimer);
           this.triggerRefresh();
         }, 500); // Small delay to ensure backend update is complete
+        this.pendingTimers.add(refreshTimer);
       }
 
       if (errors.length > 0) {
@@ -390,13 +393,15 @@ export class DragDropManager {
           }
 
           // Show one toast per error with slight delay to avoid stacking
-          setTimeout(() => {
+          const toastTimer = setTimeout(() => {
+            this.pendingTimers.delete(toastTimer);
             if (toastType === 'warning') {
               toast.warning(toastMessage);
             } else {
               toast.error(toastMessage);
             }
           }, index * 100);
+          this.pendingTimers.add(toastTimer);
         });
       }
 
@@ -481,6 +486,8 @@ export class DragDropManager {
 
   // Cleanup
   cleanup(): void {
+    this.pendingTimers.forEach(timer => clearTimeout(timer));
+    this.pendingTimers.clear();
     this.currentOperation = null;
     this.dropZones.clear();
     this.selectedReservations.clear();

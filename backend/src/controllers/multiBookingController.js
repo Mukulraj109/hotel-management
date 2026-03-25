@@ -122,7 +122,7 @@ export const createMultiBooking = catchAsync(async (req, res) => {
 
       // Validate room availability for all requested bookings
       const roomTypeIds = bookings.map(booking => booking.roomTypeId);
-      const roomTypes = await RoomType.find({ _id: { $in: roomTypeIds } }).session(session);
+      const roomTypes = await RoomType.find({ _id: { $in: roomTypeIds } }).session(session).limit(1000);
 
       if (roomTypes.length !== roomTypeIds.length) {
         throw new ApplicationError('One or more room types not found', 404);
@@ -268,6 +268,10 @@ export const createMultiBooking = catchAsync(async (req, res) => {
 
           // Update multi-booking with individual booking reference
           multiBooking.bookings[index].bookingId = individualBooking._id;
+          // Validate sub-booking status transition: pending -> confirmed
+          if (multiBooking.bookings[index].status && multiBooking.bookings[index].status !== 'pending') {
+            throw new Error(`Cannot confirm sub-booking: invalid transition from '${multiBooking.bookings[index].status}' to 'confirmed'`);
+          }
           multiBooking.bookings[index].status = 'confirmed';
 
           return {
@@ -276,7 +280,7 @@ export const createMultiBooking = catchAsync(async (req, res) => {
             travelAgentBookingId: travelAgentBooking._id
           };
         } catch (error) {
-          // Mark this booking as failed
+          // Mark this booking as failed (pending/undefined -> failed is always valid on error)
           multiBooking.bookings[index].status = 'failed';
           multiBooking.bookings[index].failureReason = error.message;
 
@@ -302,7 +306,16 @@ export const createMultiBooking = catchAsync(async (req, res) => {
         result.status === 'fulfilled' && result.value.success
       ).length;
 
-      // Update transaction status
+      // Update transaction status with validated transitions
+      // Valid multi-booking transitions: pending -> confirmed/partially_booked/failed
+      const allowedMultiTransitions = {
+        pending: ['confirmed', 'partially_booked', 'failed'],
+        confirmed: ['cancelled', 'checked_in'],
+        partially_booked: ['confirmed', 'cancelled', 'failed'],
+        failed: ['pending'],
+        cancelled: []
+      };
+
       if (successfulBookings > 0) {
         await multiBooking.updateTransactionStep(2, 'completed', {
           successfulBookings,
@@ -310,17 +323,22 @@ export const createMultiBooking = catchAsync(async (req, res) => {
           successRate: (successfulBookings / bookings.length) * 100
         });
 
-        if (successfulBookings === bookings.length) {
-          await multiBooking.addTransactionStep(3, 'confirm_bookings', 'completed', {}, session);
-          multiBooking.status = 'confirmed';
-        } else {
-          multiBooking.status = 'partially_booked';
+        const newStatus = successfulBookings === bookings.length ? 'confirmed' : 'partially_booked';
+        const allowed = allowedMultiTransitions[multiBooking.status] || [];
+        if (allowed.includes(newStatus)) {
+          if (newStatus === 'confirmed') {
+            await multiBooking.addTransactionStep(3, 'confirm_bookings', 'completed', {}, session);
+          }
+          multiBooking.status = newStatus;
         }
       } else {
         await multiBooking.updateTransactionStep(2, 'failed', {
           reason: 'All individual bookings failed'
         });
-        multiBooking.status = 'failed';
+        const allowed = allowedMultiTransitions[multiBooking.status] || [];
+        if (allowed.includes('failed')) {
+          multiBooking.status = 'failed';
+        }
       }
 
       await multiBooking.save({ session });
@@ -409,7 +427,7 @@ export const getMultiBookingById = catchAsync(async (req, res) => {
     .populate('travelAgent', 'companyName agentCode contactPerson phone email')
     .populate('hotel', 'name address phone email')
     .populate('bookings.roomTypeId', 'name description amenities')
-    .populate('bookings.bookingId', 'bookingNumber status checkIn checkOut roomIds');
+    .populate('bookings.bookingId', 'bookingNumber status checkIn checkOut roomIds').lean();
 
   if (!multiBooking) {
     throw new ApplicationError('Multi-booking not found', 404);
@@ -417,7 +435,7 @@ export const getMultiBookingById = catchAsync(async (req, res) => {
 
   // Check access permissions
   if (req.user.role === 'travel_agent') {
-    const userTravelAgent = await TravelAgent.findOne({ userId: req.user._id });
+    const userTravelAgent = await TravelAgent.findOne({ userId: req.user._id }).lean();
     if (!userTravelAgent || multiBooking.travelAgentId.toString() !== userTravelAgent._id.toString()) {
       throw new ApplicationError('Access denied', 403);
     }
@@ -481,7 +499,7 @@ export const updateMultiBookingStatus = catchAsync(async (req, res) => {
     // Cancel all individual bookings using atomic state machine
     for (const booking of multiBooking.bookings) {
       if (booking.bookingId && booking.status === 'confirmed') {
-        const individualBooking = await Booking.findById(booking.bookingId);
+        const individualBooking = await Booking.findById(booking.bookingId).lean();
         if (individualBooking) {
           const validation = validateTransition(individualBooking.status, 'cancelled');
           if (validation.valid) {
@@ -501,6 +519,8 @@ export const updateMultiBookingStatus = catchAsync(async (req, res) => {
             bookingStatus: 'cancelled',
             'commission.paymentStatus': 'cancelled'
           }
+        ,
+          { new: true }
         );
       }
     }
@@ -571,7 +591,7 @@ export const calculateBulkPricing = catchAsync(async (req, res) => {
   let travelAgentId;
   if (req.user.role === 'travel_agent') {
     // For travel agents, find their profile using their user ID
-    const travelAgent = await TravelAgent.findOne({ userId: req.user._id });
+    const travelAgent = await TravelAgent.findOne({ userId: req.user._id }).lean();
     if (!travelAgent || travelAgent.status !== 'active') {
       throw new ApplicationError('Travel agent profile not found or not active', 404);
     }
@@ -585,14 +605,14 @@ export const calculateBulkPricing = catchAsync(async (req, res) => {
   }
 
   // Verify travel agent
-  const travelAgent = await TravelAgent.findById(travelAgentId);
+  const travelAgent = await TravelAgent.findById(travelAgentId).lean();
   if (!travelAgent) {
     throw new ApplicationError('Travel agent not found', 404);
   }
 
   // Validate room types
   const roomTypeIds = bookings.map(booking => booking.roomTypeId);
-  const roomTypes = await RoomType.find({ _id: { $in: roomTypeIds } });
+  const roomTypes = await RoomType.find({ _id: { $in: roomTypeIds } }).lean().limit(1000);
 
   if (roomTypes.length !== roomTypeIds.length) {
     throw new ApplicationError('One or more room types not found', 404);
@@ -748,7 +768,7 @@ export const rollbackFailedBookings = catchAsync(async (req, res) => {
                 bookingStatus: 'cancelled',
                 'commission.paymentStatus': 'cancelled'
               },
-              { session }
+              { new: true, session }
             );
 
             rollbackSteps.push({
@@ -761,8 +781,10 @@ export const rollbackFailedBookings = catchAsync(async (req, res) => {
               }
             });
 
-            // Update booking status in multi-booking
-            booking.status = 'cancelled';
+            // Update booking status in multi-booking (rollback: confirmed/partially_booked -> cancelled)
+            if (booking.status !== 'cancelled') {
+              booking.status = 'cancelled';
+            }
           } catch (error) {
             rollbackSteps.push({
               action: `cancel_booking_${booking.bookingId}`,
@@ -812,7 +834,7 @@ export const getAgentMultiBookings = catchAsync(async (req, res) => {
   let travelAgentId;
 
   if (req.user.role === 'travel_agent') {
-    const travelAgent = await TravelAgent.findOne({ userId: req.user._id });
+    const travelAgent = await TravelAgent.findOne({ userId: req.user._id }).lean();
     if (!travelAgent) {
       throw new ApplicationError('Travel agent profile not found', 404);
     }
@@ -847,7 +869,7 @@ export const getAgentMultiBookings = catchAsync(async (req, res) => {
     .populate('hotel', 'name address')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   const total = await MultiBooking.countDocuments(query);
 

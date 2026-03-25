@@ -170,31 +170,35 @@ class AdminSupplyRequestsService {
   private hotelIdCacheExpiry: number = 0;
 
   private async apiRequest<T>(endpoint: string, options: { method?: string; data?: Record<string, unknown>; basePath?: string } = {}): Promise<ApiResponse<T>> {
-    const basePath = options.basePath || this.basePath;
-    const url = `${basePath}${endpoint}`;
+    try {
+      const basePath = options.basePath || this.basePath;
+      const url = `${basePath}${endpoint}`;
 
-    let response;
-    const method = (options.method || 'GET').toUpperCase();
+      let response;
+      const method = (options.method || 'GET').toUpperCase();
 
-    switch (method) {
-      case 'POST':
-        response = await api.post(url, options.data);
-        break;
-      case 'PUT':
-        response = await api.put(url, options.data);
-        break;
-      case 'PATCH':
-        response = await api.patch(url, options.data);
-        break;
-      case 'DELETE':
-        response = await api.delete(url);
-        break;
-      default:
-        response = await api.get(url);
-        break;
+      switch (method) {
+        case 'POST':
+          response = await api.post(url, options.data);
+          break;
+        case 'PUT':
+          response = await api.put(url, options.data);
+          break;
+        case 'PATCH':
+          response = await api.patch(url, options.data);
+          break;
+        case 'DELETE':
+          response = await api.delete(url);
+          break;
+        default:
+          response = await api.get(url);
+          break;
+      }
+
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-
-    return response.data;
   }
 
   private async getUserHotelId(): Promise<string> {
@@ -378,38 +382,46 @@ class AdminSupplyRequestsService {
 
   // Export requests data for reporting
   async exportRequests(filters?: SupplyRequestFilters, format: 'csv' | 'excel' = 'csv'): Promise<Blob> {
-    const queryParams = new URLSearchParams();
+    try {
+      const queryParams = new URLSearchParams();
 
-    if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          queryParams.append(key, value.toString());
-        }
+      if (filters) {
+        Object.entries(filters).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            queryParams.append(key, value.toString());
+          }
+        });
+      }
+
+      queryParams.append('format', format);
+
+      const response = await api.get(`${this.basePath}/export?${queryParams.toString()}`, {
+        responseType: 'blob',
       });
+
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-
-    queryParams.append('format', format);
-
-    const response = await api.get(`${this.basePath}/export?${queryParams.toString()}`, {
-      responseType: 'blob',
-    });
-
-    return response.data;
   }
 
   // Upload attachment to a request
   async uploadAttachment(requestId: string, file: File, type: 'quote' | 'specification' | 'image' | 'invoice' | 'receipt' | 'other'): Promise<ApiResponse<{ url: string; filename: string }>> {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('type', type);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('type', type);
 
-    const response = await api.post(`${this.basePath}/${requestId}/attachments`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+      const response = await api.post(`${this.basePath}/${requestId}/attachments`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
 
-    return response.data;
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Delete attachment

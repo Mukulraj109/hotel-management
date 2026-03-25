@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
 import financialService from '@/services/financialService';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface AccountingIntegration {
   id: string;
@@ -126,6 +127,12 @@ const AccountingIntegrationDashboard: React.FC = () => {
   const [fiscalPeriod, setFiscalPeriod] = useState('current');
   const [isLoading, setIsLoading] = useState(false);
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
+
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     fetchFinancialData();
@@ -413,6 +420,7 @@ const AccountingIntegrationDashboard: React.FC = () => {
   const toggleIntegration = async (integrationId: string, connected: boolean) => {
     try {
       await new Promise(resolve => setTimeout(resolve, 1000));
+    if (!isMountedRef.current) return;
       
       setIntegrations(prev => prev.map(integration =>
         integration.id === integrationId 
@@ -435,6 +443,7 @@ const AccountingIntegrationDashboard: React.FC = () => {
       ));
 
       await new Promise(resolve => setTimeout(resolve, 3000));
+    if (!isMountedRef.current) return;
       
       setIntegrations(prev => prev.map(integration =>
         integration.id === integrationId 
@@ -506,6 +515,7 @@ const AccountingIntegrationDashboard: React.FC = () => {
     try {
       // Mock export functionality
       await new Promise(resolve => setTimeout(resolve, 2000));
+    if (!isMountedRef.current) return;
       toast.success(`Financial data exported as ${format.toUpperCase()}`);
     } catch (error) {
       toast.error('Export failed');
@@ -1026,4 +1036,4 @@ const AccountingIntegrationDashboard: React.FC = () => {
   );
 };
 
-export default AccountingIntegrationDashboard;
+export default withErrorBoundary(AccountingIntegrationDashboard, { level: 'component' });

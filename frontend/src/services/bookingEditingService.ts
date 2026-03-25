@@ -111,24 +111,40 @@ class BookingEditingService {
       autoCalculateCharges?: boolean;
     }
   ) {
-    const response = await api.post(`/bookings/${bookingId}/extra-persons`, personData);
-    return response.data;
+    try {
+      const response = await api.post(`/bookings/${bookingId}/extra-persons`, personData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async removeExtraPersonFromBooking(bookingId: string, personId: string) {
-    const response = await api.delete(`/bookings/${bookingId}/extra-persons/${personId}`);
-    return response.data;
+    try {
+      const response = await api.delete(`/bookings/${bookingId}/extra-persons/${personId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async calculateExtraPersonCharges(bookingId: string) {
-    const response = await api.post(`/bookings/${bookingId}/extra-persons/calculate-charges`);
-    return response.data;
+    try {
+      const response = await api.post(`/bookings/${bookingId}/extra-persons/calculate-charges`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Settlement Management
   async getBookingSettlement(bookingId: string) {
-    const response = await api.get(`/bookings/${bookingId}/settlement`);
-    return response.data;
+    try {
+      const response = await api.get(`/bookings/${bookingId}/settlement`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async addSettlementAdjustment(
@@ -139,8 +155,12 @@ class BookingEditingService {
       description: string;
     }
   ) {
-    const response = await api.post(`/bookings/${bookingId}/settlement/adjustment`, adjustmentData);
-    return response.data;
+    try {
+      const response = await api.post(`/bookings/${bookingId}/settlement/adjustment`, adjustmentData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async processSettlementPayment(
@@ -152,40 +172,68 @@ class BookingEditingService {
       notes?: string;
     }
   ) {
-    const response = await api.post(`/bookings/${bookingId}/settlement/payment`, paymentData);
-    return response.data;
+    try {
+      const response = await api.post(`/bookings/${bookingId}/settlement/payment`, paymentData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Pricing Rules Management
   async getPricingRules() {
-    const response = await api.get('/extra-person-pricing/rules');
-    return response.data;
+    try {
+      const response = await api.get('/extra-person-pricing/rules');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async createPricingRule(ruleData: Omit<PricingRule, '_id' | 'createdBy' | 'updatedBy'>) {
-    const response = await api.post('/extra-person-pricing/rules', ruleData);
-    return response.data;
+    try {
+      const response = await api.post('/extra-person-pricing/rules', ruleData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updatePricingRule(ruleId: string, updateData: Partial<PricingRule>) {
-    const response = await api.put(`/extra-person-pricing/rules/${ruleId}`, updateData);
-    return response.data;
+    try {
+      const response = await api.put(`/extra-person-pricing/rules/${ruleId}`, updateData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Dynamic Pricing
   async calculateDynamicPricing(pricingData: DynamicPricingRequest): Promise<DynamicPricingResponse> {
-    const response = await api.post('/extra-person-pricing/calculate', pricingData);
-    return response.data;
+    try {
+      const response = await api.post('/extra-person-pricing/calculate', pricingData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getPricingPreview(previewData: DynamicPricingRequest) {
-    const response = await api.post('/extra-person-pricing/preview', previewData);
-    return response.data;
+    try {
+      const response = await api.post('/extra-person-pricing/preview', previewData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getAvailablePricingStrategies() {
-    const response = await api.get('/extra-person-pricing/strategies');
-    return response.data;
+    try {
+      const response = await api.get('/extra-person-pricing/strategies');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Settlement Analytics
@@ -196,31 +244,43 @@ class BookingEditingService {
     limit?: number;
     offset?: number;
   }) {
-    const params = new URLSearchParams();
-    if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined) {
-          params.append(key, value.toString());
-        }
-      });
-    }
+    try {
+      const params = new URLSearchParams();
+      if (filters) {
+        Object.entries(filters).forEach(([key, value]) => {
+          if (value !== undefined) {
+            params.append(key, value.toString());
+          }
+        });
+      }
 
-    const response = await api.get(`/settlements?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/settlements?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getOverdueSettlements(gracePeriod = 0) {
-    const response = await api.get(`/settlements/overdue?gracePeriod=${gracePeriod}`);
-    return response.data;
+    try {
+      const response = await api.get(`/settlements/overdue?gracePeriod=${gracePeriod}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getSettlementAnalytics(dateRange?: { startDate?: string; endDate?: string }) {
-    const params = new URLSearchParams();
-    if (dateRange?.startDate) params.append('startDate', dateRange.startDate);
-    if (dateRange?.endDate) params.append('endDate', dateRange.endDate);
+    try {
+      const params = new URLSearchParams();
+      if (dateRange?.startDate) params.append('startDate', dateRange.startDate);
+      if (dateRange?.endDate) params.append('endDate', dateRange.endDate);
 
-    const response = await api.get(`/settlements/analytics?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/settlements/analytics?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async createSettlementFromBooking(
@@ -231,16 +291,24 @@ class BookingEditingService {
       assignedTo?: string;
     }
   ) {
-    const response = await api.post('/settlements', {
-      bookingId,
-      ...settlementData
-    });
-    return response.data;
+    try {
+      const response = await api.post('/settlements', {
+        bookingId,
+        ...settlementData
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getSettlementDetails(settlementId: string) {
-    const response = await api.get(`/settlements/${settlementId}`);
-    return response.data;
+    try {
+      const response = await api.get(`/settlements/${settlementId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async addPaymentToSettlement(
@@ -252,13 +320,21 @@ class BookingEditingService {
       notes?: string;
     }
   ) {
-    const response = await api.post(`/settlements/${settlementId}/payment`, paymentData);
-    return response.data;
+    try {
+      const response = await api.post(`/settlements/${settlementId}/payment`, paymentData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async escalateSettlement(settlementId: string, reason: string) {
-    const response = await api.post(`/settlements/${settlementId}/escalate`, { reason });
-    return response.data;
+    try {
+      const response = await api.post(`/settlements/${settlementId}/escalate`, { reason });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async addCommunicationToSettlement(
@@ -270,8 +346,12 @@ class BookingEditingService {
       direction?: 'outbound' | 'inbound';
     }
   ) {
-    const response = await api.post(`/settlements/${settlementId}/communication`, communicationData);
-    return response.data;
+    try {
+      const response = await api.post(`/settlements/${settlementId}/communication`, communicationData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async addDisputeToSettlement(
@@ -283,8 +363,12 @@ class BookingEditingService {
       raisedBy: 'guest' | 'hotel';
     }
   ) {
-    const response = await api.post(`/settlements/${settlementId}/dispute`, disputeData);
-    return response.data;
+    try {
+      const response = await api.post(`/settlements/${settlementId}/dispute`, disputeData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async resolveDispute(
@@ -292,10 +376,14 @@ class BookingEditingService {
     disputeId: string,
     resolution: string
   ) {
-    const response = await api.post(`/settlements/${settlementId}/dispute/${disputeId}/resolve`, {
-      resolution
-    });
-    return response.data;
+    try {
+      const response = await api.post(`/settlements/${settlementId}/dispute/${disputeId}/resolve`, {
+        resolution
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Stripe Payment Integration
@@ -308,12 +396,16 @@ class BookingEditingService {
     }>,
     currency = 'INR'
   ) {
-    const response = await api.post('/payments/extra-person-charges/intent', {
-      bookingId,
-      extraPersonCharges,
-      currency
-    });
-    return response.data;
+    try {
+      const response = await api.post('/payments/extra-person-charges/intent', {
+        bookingId,
+        extraPersonCharges,
+        currency
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async createSettlementPaymentIntent(
@@ -322,20 +414,28 @@ class BookingEditingService {
     currency = 'INR',
     description?: string
   ) {
-    const response = await api.post('/payments/settlement/intent', {
-      settlementId,
-      amount,
-      currency,
-      description
-    });
-    return response.data;
+    try {
+      const response = await api.post('/payments/settlement/intent', {
+        settlementId,
+        amount,
+        currency,
+        description
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async confirmPayment(paymentIntentId: string) {
-    const response = await api.post('/payments/confirm', {
-      paymentIntentId
-    });
-    return response.data;
+    try {
+      const response = await api.post('/payments/confirm', {
+        paymentIntentId
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Supplementary Invoice Generation
@@ -350,11 +450,15 @@ class BookingEditingService {
       addedAt?: string;
     }>
   ) {
-    const response = await api.post('/invoices/supplementary/extra-person-charges', {
-      bookingId,
-      extraPersonCharges
-    });
-    return response.data;
+    try {
+      const response = await api.post('/invoices/supplementary/extra-person-charges', {
+        bookingId,
+        extraPersonCharges
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async generateSettlementInvoice(
@@ -366,11 +470,15 @@ class BookingEditingService {
       appliedAt?: string;
     }>
   ) {
-    const response = await api.post('/invoices/supplementary/settlement', {
-      settlementId,
-      adjustments
-    });
-    return response.data;
+    try {
+      const response = await api.post('/invoices/supplementary/settlement', {
+        settlementId,
+        adjustments
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async addExtraChargesToInvoice(
@@ -384,10 +492,14 @@ class BookingEditingService {
       addedAt?: string;
     }>
   ) {
-    const response = await api.put(`/invoices/${invoiceId}/add-extra-charges`, {
-      extraPersonCharges
-    });
-    return response.data;
+    try {
+      const response = await api.put(`/invoices/${invoiceId}/add-extra-charges`, {
+        extraPersonCharges
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Settlement Notification Management
@@ -395,42 +507,66 @@ class BookingEditingService {
     settlementId: string,
     reminderType: 'payment_reminder' | 'final_notice' | 'courtesy_reminder' = 'payment_reminder'
   ) {
-    const response = await api.post('/settlement-notifications/send-reminder', {
-      settlementId,
-      reminderType
-    });
-    return response.data;
+    try {
+      const response = await api.post('/settlement-notifications/send-reminder', {
+        settlementId,
+        reminderType
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async sendBulkSettlementReminders(
     settlementIds: string[],
     reminderType: 'payment_reminder' | 'final_notice' | 'courtesy_reminder' = 'payment_reminder'
   ) {
-    const response = await api.post('/settlement-notifications/bulk-remind', {
-      settlementIds,
-      reminderType
-    });
-    return response.data;
+    try {
+      const response = await api.post('/settlement-notifications/bulk-remind', {
+        settlementIds,
+        reminderType
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getSettlementNotificationStats() {
-    const response = await api.get('/settlement-notifications/stats');
-    return response.data;
+    try {
+      const response = await api.get('/settlement-notifications/stats');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async processOverdueSettlements() {
-    const response = await api.post('/settlement-notifications/process-overdue');
-    return response.data;
+    try {
+      const response = await api.post('/settlement-notifications/process-overdue');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async processDueTodaySettlements() {
-    const response = await api.post('/settlement-notifications/process-due-today');
-    return response.data;
+    try {
+      const response = await api.post('/settlement-notifications/process-due-today');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async processEscalations() {
-    const response = await api.post('/settlement-notifications/process-escalations');
-    return response.data;
+    try {
+      const response = await api.post('/settlement-notifications/process-escalations');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Utility methods
@@ -459,23 +595,27 @@ class BookingEditingService {
   }
 
   async getBookingEditHistory(bookingId: string) {
-    // This would get the modification history from the booking
     try {
-      const response = await api.get(`/bookings/${bookingId}`);
-      const booking = response.data.booking;
+      // This would get the modification history from the booking
+      try {
+        const response = await api.get(`/bookings/${bookingId}`);
+        const booking = response.data.booking;
 
-      return {
-        modifications: booking.modifications || [],
-        extraPersonHistory: booking.extraPersons?.map((person: Record<string, unknown>) => ({
-          ...person,
-          addedAt: person.addedAt,
-          addedBy: person.addedBy
-        })) || [],
-        settlementHistory: booking.settlementTracking?.settlementHistory || []
-      };
+        return {
+          modifications: booking.modifications || [],
+          extraPersonHistory: booking.extraPersons?.map((person: Record<string, unknown>) => ({
+            ...person,
+            addedAt: person.addedAt,
+            addedBy: person.addedBy
+          })) || [],
+          settlementHistory: booking.settlementTracking?.settlementHistory || []
+        };
+      } catch (error: unknown) {
+        const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
+        throw new Error(axiosErr.response?.data?.message || 'Failed to get booking edit history');
+      }
     } catch (error: unknown) {
-      const axiosErr = error as { response?: { data?: { message?: string }; status?: number }; config?: unknown };
-      throw new Error(axiosErr.response?.data?.message || 'Failed to get booking edit history');
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 }

@@ -118,7 +118,7 @@ export default function AdminLogin() {
                 error={errors.password}
                 placeholder="Enter your password"
               />
-              <button
+              <button aria-label="View"
                 type="button"
                 className="absolute inset-y-0 right-0 pr-3 flex items-center mt-6"
                 onClick={() => setShowPassword(!showPassword)}

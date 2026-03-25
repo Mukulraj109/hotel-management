@@ -38,7 +38,7 @@ export const createBookingWidget = async (req, res) => {
 export const getBookingWidgets = async (req, res) => {
   try {
     const widgets = await BookingWidget.find({ isActive: true })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }).lean().limit(1000);
     
     res.json({
       success: true,
@@ -90,7 +90,7 @@ export const getWidgetCode = async (req, res) => {
     const { widgetId } = req.params;
     const { theme, language, currency } = req.query;
     
-    const widget = await BookingWidget.findOne({ widgetId });
+    const widget = await BookingWidget.findOne({ widgetId }).lean();
     if (!widget) {
       return res.status(404).json({
         success: false,
@@ -181,7 +181,7 @@ export const getPromoCodes = async (req, res) => {
     if (type) filter.type = type;
     
     const promoCodes = await PromoCode.find(filter)
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }).lean().limit(1000);
     
     res.json({
       success: true,
@@ -266,7 +266,7 @@ export const getGuestCRM = async (req, res) => {
     
     const guests = await GuestCRM.find(filter)
       .sort(sortOptions)
-      .limit(100);
+      .limit(100).lean();
     
     res.json({
       success: true,
@@ -282,7 +282,7 @@ export const getGuestCRM = async (req, res) => {
 
 export const getGuestProfile = async (req, res) => {
   try {
-    const guest = await GuestCRM.findById(req.params.id);
+    const guest = await GuestCRM.findById(req.params.id).lean();
     
     if (!guest) {
       return res.status(404).json({
@@ -362,7 +362,7 @@ export const getEmailCampaigns = async (req, res) => {
     if (type) filter.type = type;
     
     const campaigns = await EmailCampaign.find(filter)
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }).lean().limit(1000);
     
     res.json({
       success: true,
@@ -397,7 +397,7 @@ export const sendEmailCampaign = async (req, res) => {
 
 export const getCampaignAnalytics = async (req, res) => {
   try {
-    const campaign = await EmailCampaign.findById(req.params.id);
+    const campaign = await EmailCampaign.findById(req.params.id).lean();
     
     if (!campaign) {
       return res.status(404).json({
@@ -452,7 +452,7 @@ export const createLoyaltyProgram = async (req, res) => {
 export const getLoyaltyPrograms = async (req, res) => {
   try {
     const programs = await LoyaltyProgram.find({ isActive: true })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }).lean().limit(1000);
     
     res.json({
       success: true,
@@ -523,7 +523,7 @@ export const getLandingPages = async (req, res) => {
     if (isActive !== undefined) filter.isActive = isActive === 'true';
     
     const pages = await LandingPage.find(filter)
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }).lean().limit(1000);
     
     res.json({
       success: true,
@@ -539,7 +539,7 @@ export const getLandingPages = async (req, res) => {
 
 export const getLandingPageAnalytics = async (req, res) => {
   try {
-    const page = await LandingPage.findById(req.params.id);
+    const page = await LandingPage.findById(req.params.id).lean();
     
     if (!page) {
       return res.status(404).json({
@@ -588,7 +588,7 @@ export const getReviews = async (req, res) => {
     
     const reviews = await ReviewManagement.find(filter)
       .sort({ createdAt: -1 })
-      .limit(100);
+      .limit(100).lean();
     
     res.json({
       success: true,
@@ -680,7 +680,7 @@ export const getMarketingDashboard = async (req, res) => {
     thirtyDaysAgo.setDate(today.getDate() - 30);
     
     // Widget performance
-    const widgets = await BookingWidget.find({ isActive: true });
+    const widgets = await BookingWidget.find({ isActive: true }).lean().limit(1000);
     const widgetStats = widgets.reduce((acc, widget) => {
       acc.totalImpressions += widget.performance.impressions || 0;
       acc.totalClicks += widget.performance.clicks || 0;
@@ -691,7 +691,7 @@ export const getMarketingDashboard = async (req, res) => {
     // Email campaign stats
     const campaigns = await EmailCampaign.find({
       createdAt: { $gte: thirtyDaysAgo }
-    });
+    }).lean().limit(1000);
     
     const emailStats = campaigns.reduce((acc, campaign) => {
       acc.totalSent += campaign.tracking.sent || 0;
@@ -701,8 +701,11 @@ export const getMarketingDashboard = async (req, res) => {
       return acc;
     }, { totalSent: 0, totalOpens: 0, totalClicks: 0, totalConversions: 0 });
     
-    // Guest segmentation
+    // Guest segmentation - scoped to hotel
+    const hotelId = req.user?.hotelId;
+    const hotelMatch = hotelId ? { $match: { hotelId } } : { $match: {} };
     const guestSegments = await GuestCRM.aggregate([
+      hotelMatch,
       {
         $group: {
           _id: '$segmentation.segment',
@@ -711,9 +714,10 @@ export const getMarketingDashboard = async (req, res) => {
         }
       }
     ]);
-    
-    // Review summary
+
+    // Review summary - scoped to hotel
     const reviewStats = await ReviewManagement.aggregate([
+      hotelMatch,
       {
         $group: {
           _id: null,
@@ -895,9 +899,11 @@ export const getWidgetsPerformanceSummary = async (req, res) => {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - parseInt(dateRange));
 
+    const widgetHotelId = req.user?.hotelId;
     const overallMetrics = await WidgetTracking.aggregate([
       {
         $match: {
+          ...(widgetHotelId && { hotelId: widgetHotelId }),
           timestamp: { $gte: startDate }
         }
       },
@@ -984,32 +990,40 @@ function parseUserAgent(userAgent) {
 
 async function updateWidgetPerformanceMetrics(widgetId, event, value = 0) {
   try {
-    const updateField = {};
-    updateField[`performance.${event}s`] = 1;
+    const incFields = {};
+    incFields[`performance.${event}s`] = 1;
 
-    if (event === 'conversion' && value > 0) {
-      // Update average booking value as well
-      const widget = await BookingWidget.findOne({ widgetId });
-      if (widget) {
-        const currentTotal = (widget.performance.averageBookingValue || 0) * (widget.performance.conversions || 0);
-        const newTotal = currentTotal + value;
-        const newConversions = (widget.performance.conversions || 0) + 1;
-        updateField['performance.averageBookingValue'] = newTotal / newConversions;
-      }
-    }
-
-    await BookingWidget.findOneAndUpdate(
+    // Atomically increment counter and recalculate derived fields in one operation
+    // This avoids the read-modify-write race condition on conversionRate
+    const widget = await BookingWidget.findOneAndUpdate(
       { widgetId },
-      { $inc: updateField },
+      { $inc: incFields },
       { new: true }
     );
 
-    // Recalculate conversion rate
-    const widget = await BookingWidget.findOne({ widgetId });
-    if (widget && widget.performance.clicks > 0) {
-      widget.performance.conversionRate =
+    if (!widget) return;
+
+    // Atomically update derived fields (conversionRate, averageBookingValue)
+    // using values from the already-incremented document
+    const setFields = {};
+
+    if (widget.performance.clicks > 0) {
+      setFields['performance.conversionRate'] =
         (widget.performance.conversions / widget.performance.clicks) * 100;
-      await widget.save();
+    }
+
+    if (event === 'conversion' && value > 0) {
+      const conversions = widget.performance.conversions || 1;
+      const previousTotal = (widget.performance.averageBookingValue || 0) * (conversions - 1);
+      setFields['performance.averageBookingValue'] = (previousTotal + value) / conversions;
+    }
+
+    if (Object.keys(setFields).length > 0) {
+      await BookingWidget.findOneAndUpdate(
+        { widgetId },
+        { $set: setFields },
+        { new: true }
+      );
     }
   } catch (error) {
     console.error('Error updating widget metrics:', error);
@@ -1017,87 +1031,105 @@ async function updateWidgetPerformanceMetrics(widgetId, event, value = 0) {
 }
 
 async function getWidgetTimeSeriesData(widgetId, days) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
 
-  return await WidgetTracking.aggregate([
-    {
-      $match: {
-        widgetId,
-        timestamp: { $gte: startDate }
-      }
-    },
-    {
-      $group: {
-        _id: {
-          date: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
-          event: '$event'
-        },
-        count: { $sum: 1 }
-      }
-    },
-    {
-      $group: {
-        _id: '$_id.date',
-        events: {
-          $push: {
-            event: '$_id.event',
-            count: '$count'
+    return await WidgetTracking.aggregate([
+      {
+        $match: {
+          widgetId,
+          timestamp: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+            event: '$event'
+          },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.date',
+          events: {
+            $push: {
+              event: '$_id.event',
+              count: '$count'
+            }
           }
         }
-      }
-    },
-    { $sort: { _id: 1 } }
-  ]);
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+  } catch (error) {
+    console.error('Operation failed:', error.message);
+    throw error;
+  }
 }
 
 async function getWidgetGeographicData(widgetId, days) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
 
-  return await WidgetTracking.aggregate([
-    {
-      $match: {
-        widgetId,
-        timestamp: { $gte: startDate },
-        country: { $exists: true, $ne: null }
-      }
-    },
-    {
-      $group: {
-        _id: '$country',
-        impressions: { $sum: { $cond: [{ $eq: ['$event', 'impression'] }, 1, 0] } },
-        conversions: { $sum: { $cond: [{ $eq: ['$event', 'conversion'] }, 1, 0] } }
-      }
-    },
-    { $sort: { impressions: -1 } },
-    { $limit: 10 }
-  ]);
+    return await WidgetTracking.aggregate([
+      {
+        $match: {
+          widgetId,
+          timestamp: { $gte: startDate },
+          country: { $exists: true, $ne: null }
+        }
+      },
+      {
+        $group: {
+          _id: '$country',
+          impressions: { $sum: { $cond: [{ $eq: ['$event', 'impression'] }, 1, 0] } },
+          conversions: { $sum: { $cond: [{ $eq: ['$event', 'conversion'] }, 1, 0] } }
+        }
+      },
+      { $sort: { impressions: -1 } },
+      { $limit: 10 }
+    ]);
+
+  } catch (error) {
+    console.error('Operation failed:', error.message);
+    throw error;
+  }
 }
 
 async function getWidgetDeviceData(widgetId, days) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
 
-  return await WidgetTracking.aggregate([
-    {
-      $match: {
-        widgetId,
-        timestamp: { $gte: startDate }
-      }
-    },
-    {
-      $group: {
-        _id: {
-          deviceType: '$deviceType',
-          browser: '$browser'
-        },
-        impressions: { $sum: { $cond: [{ $eq: ['$event', 'impression'] }, 1, 0] } },
-        conversions: { $sum: { $cond: [{ $eq: ['$event', 'conversion'] }, 1, 0] } }
-      }
-    },
-    { $sort: { impressions: -1 } }
-  ]);
+    return await WidgetTracking.aggregate([
+      {
+        $match: {
+          widgetId,
+          timestamp: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            deviceType: '$deviceType',
+            browser: '$browser'
+          },
+          impressions: { $sum: { $cond: [{ $eq: ['$event', 'impression'] }, 1, 0] } },
+          conversions: { $sum: { $cond: [{ $eq: ['$event', 'conversion'] }, 1, 0] } }
+        }
+      },
+      { $sort: { impressions: -1 } }
+    ]);
+
+  } catch (error) {
+    console.error('Operation failed:', error.message);
+    throw error;
+  }
 }
 
 export default {

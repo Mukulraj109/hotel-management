@@ -31,6 +31,7 @@ import {
 } from '../middleware/bypassSecurityMiddleware.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import logger from '../utils/logger.js';
+import { validateTransition } from '../utils/bookingStateMachine.js';
 
 const router = express.Router();
 
@@ -181,7 +182,7 @@ router.get('/security/events', catchAsync(async (req, res) => {
             createdAt: -1
         })
         .limit(parseInt(limit))
-        .skip(parseInt(offset));
+        .skip(parseInt(offset)).lean();
 
     const total = await AdminBypassAudit.countDocuments(query);
 
@@ -222,7 +223,7 @@ router.get('/security/alerts', catchAsync(async (req, res) => {
         } // Last hour
     }).populate('userId', 'name email').sort({
         createdAt: -1
-    }).limit(20);
+    }).limit(20).lean();
 
     // Transform to alert format
     const alerts = recentAlerts.map(log => ({
@@ -290,7 +291,7 @@ router.post('/enhanced-checkout',
         const securityResult = req.bypassSecurity;
 
         // Find the booking
-        const booking = await Booking.findById(bookingId).populate('userId rooms.roomId');
+        const booking = await Booking.findById(bookingId).populate('userId rooms.roomId').lean();
         if (!booking) {
             throw new ApplicationError('Booking not found', 404);
         }
@@ -415,6 +416,12 @@ router.post('/enhanced-checkout',
             auditRecord.operationStatus.completedAt = new Date();
             await auditRecord.save();
 
+            // Validate status transition before checkout
+            const bypassTransition = validateTransition(booking.status, 'checked_out');
+            if (!bypassTransition.valid) {
+                throw new ApplicationError(bypassTransition.error, 400);
+            }
+
             // Update booking status to checked out
             booking.status = 'checked_out';
             booking.actualCheckOut = new Date();
@@ -532,7 +539,7 @@ router.get('/security/bypass/:bypassId', catchAsync(async (req, res) => {
         })
         .populate('adminId', 'name email role')
         .populate('bookingId', 'bookingNumber')
-        .populate('checkoutInventoryId');
+        .populate('checkoutInventoryId').lean();
 
     if (!bypass) {
         throw new ApplicationError('Bypass operation not found', 404);
@@ -809,7 +816,7 @@ router.get('/approvals/:workflowId', catchAsync(async (req, res) => {
         .populate('bypassAuditId', 'bypassId reason financialImpact securityMetadata')
         .populate('initiatedBy', 'name email')
         .populate('approvalChain.assignedTo', 'name email role')
-        .populate('approvalChain.delegatedTo', 'name email role');
+        .populate('approvalChain.delegatedTo', 'name email role').lean();
 
     if (!workflow) {
         return res.status(404).json({
@@ -889,6 +896,12 @@ async function executeApprovedBypass(workflow) {
         auditRecord.operationStatus.status = 'completed';
         auditRecord.operationStatus.completedAt = new Date();
         await auditRecord.save();
+
+        // Validate status transition before checkout
+        const approvedBypassTransition = validateTransition(booking.status, 'checked_out');
+        if (!approvedBypassTransition.valid) {
+            throw new Error(approvedBypassTransition.error);
+        }
 
         // Update booking status to checked out
         booking.status = 'checked_out';

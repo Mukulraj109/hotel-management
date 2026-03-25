@@ -81,7 +81,7 @@ export const getRoomTax = catchAsync(async (req, res, next) => {
   const tax = await RoomTax.findById(id)
     .populate('applicableRoomTypes', 'name code category pricing')
     .populate('createdBy', 'name email')
-    .populate('updatedBy', 'name email');
+    .populate('updatedBy', 'name email').lean();
 
   if (!tax) {
     return next(new ApplicationError('Room tax not found', 404));
@@ -124,7 +124,7 @@ export const createRoomTax = catchAsync(async (req, res, next) => {
     hotelId,
     taxName: req.body.taxName,
     isActive: true
-  });
+  }).lean();
 
   if (existingTax) {
     return next(new ApplicationError('A tax with this name already exists', 400));
@@ -135,7 +135,7 @@ export const createRoomTax = catchAsync(async (req, res, next) => {
     const roomTypes = await RoomType.find({
       _id: { $in: req.body.applicableRoomTypes },
       hotelId
-    });
+    }).lean().limit(1000);
 
     if (roomTypes.length !== req.body.applicableRoomTypes.length) {
       return next(new ApplicationError('One or more room types are invalid', 400));
@@ -178,7 +178,7 @@ export const updateRoomTax = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user._id;
 
-  const tax = await RoomTax.findById(id);
+  const tax = await RoomTax.findById(id).lean();
 
   if (!tax) {
     return next(new ApplicationError('Room tax not found', 404));
@@ -194,7 +194,7 @@ export const updateRoomTax = catchAsync(async (req, res, next) => {
     const roomTypes = await RoomType.find({
       _id: { $in: req.body.applicableRoomTypes },
       hotelId: tax.hotelId
-    });
+    }).lean().limit(1000);
 
     if (roomTypes.length !== req.body.applicableRoomTypes.length) {
       return next(new ApplicationError('One or more room types are invalid', 400));
@@ -208,7 +208,7 @@ export const updateRoomTax = catchAsync(async (req, res, next) => {
       taxName: req.body.taxName,
       isActive: true,
       _id: { $ne: id }
-    });
+    }).lean();
 
     if (existingTax) {
       return next(new ApplicationError('A tax with this name already exists', 400));
@@ -248,7 +248,7 @@ export const deleteRoomTax = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user._id;
 
-  const tax = await RoomTax.findById(id);
+  const tax = await RoomTax.findById(id).lean();
 
   if (!tax) {
     return next(new ApplicationError('Room tax not found', 404));

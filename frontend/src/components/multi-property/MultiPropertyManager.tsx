@@ -77,6 +77,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { propertyGroupsApi, api } from '../../services/api';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface Property {
   id: string;
@@ -516,8 +517,8 @@ export const MultiPropertyManager: React.FC = () => {
         <CardContent>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {propertyGroups.map(group => (
-              <div key={group.id} className="p-6 border border-gray-200 rounded-xl cursor-pointer hover:border-blue-300 hover:shadow-md transition-all duration-200 bg-white"
-                   onClick={() => setSelectedGroup(group)}>
+              <div role="button" tabIndex={0} key={group.id} className="p-6 border border-gray-200 rounded-xl cursor-pointer hover:border-blue-300 hover:shadow-md transition-all duration-200 bg-white"
+                   onClick={() => setSelectedGroup(group)} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => setSelectedGroup(group); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex-1">
                     <div className="flex items-center space-x-3 mb-2">
@@ -1233,7 +1234,7 @@ export const MultiPropertyManager: React.FC = () => {
               {tabs.map(tab => {
                 const Icon = tab.icon;
                 return (
-                  <button
+                  <button aria-label="View"
                     key={tab.id}
                     onClick={() => setActiveView(tab.id as unknown)}
                     className={`flex items-center px-6 py-4 text-sm font-medium border-b-2 transition-all duration-200 ${
@@ -1806,3 +1807,5 @@ export const MultiPropertyManager: React.FC = () => {
     </div>
   );
 };
+
+export default withErrorBoundary(MultiPropertyManager, { level: 'component' });

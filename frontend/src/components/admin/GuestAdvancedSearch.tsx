@@ -137,7 +137,7 @@ const GuestAdvancedSearch: React.FC<GuestAdvancedSearchProps> = ({
             <MagnifyingGlassIcon className="w-6 h-6 text-blue-600 mr-2" />
             <h3 className="text-lg font-medium text-gray-900">Advanced Guest Search</h3>
           </div>
-          <button
+          <button aria-label="Close"
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
           >
@@ -379,7 +379,7 @@ const GuestAdvancedSearch: React.FC<GuestAdvancedSearchProps> = ({
             >
               Cancel
             </button>
-            <button
+            <button aria-label="Search"
               type="submit"
               disabled={loading}
               className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"

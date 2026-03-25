@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
@@ -20,6 +20,7 @@ import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../../com
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../../hooks/useSettingsInheritance';
 import { useProperty } from '../../../context/PropertyContext';
 import { api } from '../../../services/api';
+import { withErrorBoundary } from '../../../components/ErrorBoundary';
 
 interface HotelFormData {
   basicInfo: {
@@ -62,7 +63,7 @@ interface HotelSettingsProps {
   onSettingsChange?: (hasChanges: boolean) => void;
 }
 
-export default function HotelSettings({ onSettingsChange }: HotelSettingsProps = {}) {
+function HotelSettings({ onSettingsChange }: HotelSettingsProps = {}) {
   const { selectedProperty, selectedPropertyId } = useProperty();
 
   // Multi-property state
@@ -162,6 +163,17 @@ export default function HotelSettings({ onSettingsChange }: HotelSettingsProps =
   });
 
   // Watch for form changes
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const policiesSuccessTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      if (policiesSuccessTimerRef.current) clearTimeout(policiesSuccessTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (onSettingsChange) {
       onSettingsChange(isDirty);
@@ -246,11 +258,13 @@ export default function HotelSettings({ onSettingsChange }: HotelSettingsProps =
       }
 
       setShowSuccess(true);
-      setTimeout(() => setShowSuccess(false), 3000);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
 
       if (policiesScope !== 'single') {
         setShowPoliciesSuccess(true);
-        setTimeout(() => setShowPoliciesSuccess(false), 3000);
+        if (policiesSuccessTimerRef.current) clearTimeout(policiesSuccessTimerRef.current);
+        policiesSuccessTimerRef.current = setTimeout(() => setShowPoliciesSuccess(false), 3000);
       }
 
       const totalUpdated = Math.max(
@@ -287,7 +301,8 @@ export default function HotelSettings({ onSettingsChange }: HotelSettingsProps =
 
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
 
         toast.success(`Settings updated for ${result.propertiesUpdated} properties`);
 
@@ -844,3 +859,5 @@ export default function HotelSettings({ onSettingsChange }: HotelSettingsProps =
     </div>
   );
 }
+
+export default withErrorBoundary(HotelSettings, { level: 'page' });

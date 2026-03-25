@@ -93,56 +93,92 @@ class BillingSessionService {
 
   // Create a new billing session
   async createSession(data: CreateBillingSessionRequest): Promise<BillingSessionResponse> {
-    const response = await api.post(this.baseUrl, data);
-    return response.data;
+    try {
+      const response = await api.post(this.baseUrl, data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get billing session by ID
   async getSession(id: string): Promise<BillingSessionResponse> {
-    const response = await api.get(`${this.baseUrl}/${id}`);
-    return response.data;
+    try {
+      const response = await api.get(`${this.baseUrl}/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Update billing session
   async updateSession(id: string, data: Partial<BillingSession>): Promise<BillingSessionResponse> {
-    const response = await api.put(`${this.baseUrl}/${id}`, data);
-    return response.data;
+    try {
+      const response = await api.put(`${this.baseUrl}/${id}`, data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Delete billing session
   async deleteSession(id: string): Promise<{ status: string; message: string }> {
-    const response = await api.delete(`${this.baseUrl}/${id}`);
-    return response.data;
+    try {
+      const response = await api.delete(`${this.baseUrl}/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Add item to billing session
   async addItem(sessionId: string, data: AddItemRequest): Promise<BillingSessionResponse> {
-    const response = await api.post(`${this.baseUrl}/${sessionId}/items`, data);
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseUrl}/${sessionId}/items`, data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Update item quantity in billing session
   async updateItem(sessionId: string, itemId: string, data: UpdateItemRequest): Promise<BillingSessionResponse> {
-    const response = await api.put(`${this.baseUrl}/${sessionId}/items/${itemId}`, data);
-    return response.data;
+    try {
+      const response = await api.put(`${this.baseUrl}/${sessionId}/items/${itemId}`, data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Remove item from billing session
   async removeItem(sessionId: string, itemId: string): Promise<BillingSessionResponse> {
-    const response = await api.delete(`${this.baseUrl}/${sessionId}/items/${itemId}`);
-    return response.data;
+    try {
+      const response = await api.delete(`${this.baseUrl}/${sessionId}/items/${itemId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Checkout billing session
   async checkoutSession(sessionId: string, data: CheckoutRequest): Promise<BillingSessionResponse> {
-    const response = await api.post(`${this.baseUrl}/${sessionId}/checkout`, data);
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseUrl}/${sessionId}/checkout`, data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Void billing session
   async voidSession(sessionId: string, data: VoidRequest): Promise<BillingSessionResponse> {
-    const response = await api.post(`${this.baseUrl}/${sessionId}/void`, data);
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseUrl}/${sessionId}/void`, data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get all billing sessions for a hotel
@@ -154,14 +190,18 @@ class BillingSessionService {
       limit?: number;
     }
   ): Promise<BillingSessionsResponse> {
-    const queryParams = new URLSearchParams();
-    if (params?.status) queryParams.append('status', params.status);
-    if (params?.page) queryParams.append('page', params.page.toString());
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.status) queryParams.append('status', params.status);
+      if (params?.page) queryParams.append('page', params.page.toString());
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
 
-    const url = `${this.baseUrl}/hotel/${hotelId}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-    const response = await api.get(url);
-    return response.data;
+      const url = `${this.baseUrl}/hotel/${hotelId}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      const response = await api.get(url);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

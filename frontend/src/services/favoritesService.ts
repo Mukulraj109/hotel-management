@@ -74,8 +74,12 @@ const favoritesService = {
     sortBy?: string;
     sortOrder?: number;
   }): Promise<FavoritesResponse> => {
-    const response = await api.get('/loyalty/favorites', { params });
-    return response.data;
+    try {
+      const response = await api.get('/loyalty/favorites', { params });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   },
 
   // Add offer to favorites
@@ -85,8 +89,12 @@ const favoritesService = {
     notifyOnUpdate?: boolean;
     notes?: string;
   }): Promise<{ status: string; data: FavoriteOffer }> => {
-    const response = await api.post('/loyalty/favorites', data);
-    return response.data;
+    try {
+      const response = await api.post('/loyalty/favorites', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   },
 
   // Update favorite settings
@@ -95,20 +103,32 @@ const favoritesService = {
     notifyOnUpdate?: boolean;
     notes?: string;
   }): Promise<{ status: string; data: FavoriteOffer }> => {
-    const response = await api.put(`/loyalty/favorites/${favoriteId}`, data);
-    return response.data;
+    try {
+      const response = await api.put(`/loyalty/favorites/${favoriteId}`, data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   },
 
   // Remove from favorites by favorite ID
   removeFromFavorites: async (favoriteId: string): Promise<{ status: string }> => {
-    const response = await api.delete(`/loyalty/favorites/${favoriteId}`);
-    return response.data;
+    try {
+      const response = await api.delete(`/loyalty/favorites/${favoriteId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   },
 
   // Remove from favorites by offer ID
   removeOfferFromFavorites: async (offerId: string): Promise<{ status: string }> => {
-    const response = await api.delete(`/loyalty/favorites/offer/${offerId}`);
-    return response.data;
+    try {
+      const response = await api.delete(`/loyalty/favorites/offer/${offerId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   },
 
   // Check if offer is in favorites
@@ -119,8 +139,12 @@ const favoritesService = {
       favorite: FavoriteOffer | null;
     };
   }> => {
-    const response = await api.get(`/loyalty/favorites/check/${offerId}`);
-    return response.data;
+    try {
+      const response = await api.get(`/loyalty/favorites/check/${offerId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   },
 
   // Get personalized recommendations
@@ -131,8 +155,12 @@ const favoritesService = {
     status: string;
     data: RecommendedOffer[];
   }> => {
-    const response = await api.get('/loyalty/favorites/recommendations', { params });
-    return response.data;
+    try {
+      const response = await api.get('/loyalty/favorites/recommendations', { params });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   },
 
   // Get popular offers
@@ -145,8 +173,12 @@ const favoritesService = {
     status: string;
     data: PopularOffer[];
   }> => {
-    const response = await api.get('/loyalty/favorites/popular', { params });
-    return response.data;
+    try {
+      const response = await api.get('/loyalty/favorites/popular', { params });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   },
 
   // Get favorites statistics
@@ -154,8 +186,12 @@ const favoritesService = {
     status: string;
     data: FavoriteStats;
   }> => {
-    const response = await api.get('/loyalty/favorites/stats');
-    return response.data;
+    try {
+      const response = await api.get('/loyalty/favorites/stats');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 };
 

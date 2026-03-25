@@ -4,6 +4,7 @@ import { ApiError } from '../utils/ApiError.js';
 import Booking from '../models/Booking.js';
 import NotificationAutomationService from '../services/notificationAutomationService.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
+import { validateTransition } from '../utils/bookingStateMachine.js';
 
 /**
  * @desc    Mark booking as no-show
@@ -20,22 +21,17 @@ export const markAsNoShow = asyncHandler(async (req, res) => {
     throw new ApiError(403, 'You do not have permission to mark bookings as no-show');
   }
 
-  // Find the booking
+  // Find the booking (no .lean() so we can call .save())
   const booking = await Booking.findById(bookingId).populate('hotelId userId');
 
   if (!booking) {
     throw new ApiError(404, 'Booking not found');
   }
 
-  // Check if booking can be marked as no-show
-  if (booking.status === 'no_show') {
-    throw new ApiError(400, 'Booking is already marked as no-show');
-  }
-
-  // Validate booking status - can only mark as no-show from certain statuses
-  const allowedStatuses = ['confirmed', 'pending'];
-  if (!allowedStatuses.includes(booking.status)) {
-    throw new ApiError(400, `Cannot mark booking as no-show. Current status: ${booking.status}`);
+  // Validate status transition using the state machine
+  const transition = validateTransition(booking.status, 'no_show');
+  if (!transition.valid) {
+    throw new ApiError(400, `Cannot mark booking as no-show: ${transition.error}`);
   }
 
   // Check if check-in date has passed
@@ -181,7 +177,7 @@ export const getNoShowStats = asyncHandler(async (req, res) => {
     .populate('hotelId', 'name')
     .populate('userId', 'name email')
     .select('bookingNumber noShowRecorded noShowReason noShowChargeAmount totalAmount checkIn checkOut')
-    .sort({ noShowRecorded: -1 });
+    .sort({ noShowRecorded: -1 }).lean().limit(1000);
 
   // Calculate statistics
   const totalNoShows = noShowBookings.length;

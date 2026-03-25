@@ -101,6 +101,14 @@ const LiveChatWidget: React.FC<LiveChatWidgetProps> = ({
     }
   ];
 
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (messages.length === 0) {
       setMessages(mockMessages);
@@ -139,7 +147,8 @@ const LiveChatWidget: React.FC<LiveChatWidgetProps> = ({
     setMessage('');
     
     // Simulate message being sent
-    setTimeout(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
       setMessages(prev => prev.map(msg => 
         msg.id === newMessage.id 
           ? { ...msg, status: 'sent' } 
@@ -148,12 +157,14 @@ const LiveChatWidget: React.FC<LiveChatWidgetProps> = ({
     }, 500);
 
     // Simulate agent typing
-    setTimeout(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
       setIsTyping(true);
     }, 1000);
 
     // Simulate agent response
-    setTimeout(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
       setIsTyping(false);
       const response: Message = {
         id: (Date.now() + 1).toString(),

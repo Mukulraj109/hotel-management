@@ -186,7 +186,7 @@ class PayloadRetentionService {
         ]
       })
       .limit(1000) // Process in batches
-      .sort({ createdAt: 1 });
+      .sort({ createdAt: 1 }).lean();
 
       for (const payload of payloads) {
         try {
@@ -231,21 +231,25 @@ class PayloadRetentionService {
    * Process individual payload for retention
    */
   async processPayloadRetention(payload, policy) {
-    const now = new Date();
-    const createdAt = new Date(payload.createdAt);
-    const ageInDays = (now - createdAt) / (1000 * 60 * 60 * 24);
+    try {
+      const now = new Date();
+      const createdAt = new Date(payload.createdAt);
+      const ageInDays = (now - createdAt) / (1000 * 60 * 60 * 24);
 
-    // Check if payload should be deleted
-    if (payload.retention.deleteAfter && now > payload.retention.deleteAfter) {
-      return await this.deletePayload(payload);
+      // Check if payload should be deleted
+      if (payload.retention.deleteAfter && now > payload.retention.deleteAfter) {
+        return await this.deletePayload(payload);
+      }
+
+      // Check if payload should be archived
+      if (!payload.retention.archived && ageInDays > policy.archiveAfterDays) {
+        return await this.archivePayload(payload, policy);
+      }
+
+      return { action: 'none', spaceReclaimed: 0 };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Check if payload should be archived
-    if (!payload.retention.archived && ageInDays > policy.archiveAfterDays) {
-      return await this.archivePayload(payload, policy);
-    }
-
-    return { action: 'none', spaceReclaimed: 0 };
   }
 
   /**
@@ -374,7 +378,7 @@ class PayloadRetentionService {
         createdAt: { $lt: oneYearAgo }
       })
       .limit(500)
-      .sort({ createdAt: 1 });
+      .sort({ createdAt: 1 }).lean();
 
       let archivedCount = 0;
       for (const payload of oldPayloads) {
@@ -414,7 +418,7 @@ class PayloadRetentionService {
       // Check for payloads that should have been deleted but weren't
       const overduePayloads = await OTAPayload.find({
         'retention.deleteAfter': { $lt: new Date(Date.now() - (7 * 24 * 60 * 60 * 1000)) } // 7 days overdue
-      });
+      }).lean().limit(1000);
 
       if (overduePayloads.length > 0) {
         logger.warn(`Found ${overduePayloads.length} overdue payloads for deletion`);
@@ -450,7 +454,7 @@ class PayloadRetentionService {
       const archivedPayloads = await OTAPayload.find({
         'retention.archived': true,
         'retention.archiveLocation': { $exists: true }
-      }).limit(100);
+      }).limit(100).lean();
 
       let integrityIssues = 0;
 
@@ -497,7 +501,7 @@ class PayloadRetentionService {
       };
 
       // Get overall payload statistics
-      const totalPayloads = await OTAPayload.countDocuments();
+      const totalPayloads = await OTAPayload.estimatedDocumentCount();
       const archivedPayloads = await OTAPayload.countDocuments({ 'retention.archived': true });
       const overduePayloads = await OTAPayload.countDocuments({
         'retention.deleteAfter': { $lt: new Date() }
@@ -604,47 +608,51 @@ class PayloadRetentionService {
    * Manually trigger cleanup for specific criteria
    */
   async manualCleanup(criteria = {}) {
-    logger.info('Starting manual cleanup', criteria);
+    try {
+      logger.info('Starting manual cleanup', criteria);
 
-    const query = {};
+      const query = {};
     
-    if (criteria.channel) query.channel = criteria.channel;
-    if (criteria.olderThanDays) {
-      const cutoffDate = new Date(Date.now() - (criteria.olderThanDays * 24 * 60 * 60 * 1000));
-      query.createdAt = { $lt: cutoffDate };
-    }
-    if (criteria.operation) query['businessContext.operation'] = criteria.operation;
-
-    const payloads = await OTAPayload.find(query)
-      .limit(criteria.limit || 100)
-      .sort({ createdAt: 1 });
-
-    const results = {
-      processed: 0,
-      archived: 0,
-      deleted: 0,
-      errors: []
-    };
-
-    for (const payload of payloads) {
-      try {
-        const policy = this.getRetentionPolicy(payload.businessContext.operation);
-        const result = await this.processPayloadRetention(payload, policy);
-        
-        results.processed++;
-        if (result.action === 'archived') results.archived++;
-        if (result.action === 'deleted') results.deleted++;
-        
-      } catch (error) {
-        results.errors.push({
-          payloadId: payload.payloadId,
-          error: error.message
-        });
+      if (criteria.channel) query.channel = criteria.channel;
+      if (criteria.olderThanDays) {
+        const cutoffDate = new Date(Date.now() - (criteria.olderThanDays * 24 * 60 * 60 * 1000));
+        query.createdAt = { $lt: cutoffDate };
       }
-    }
+      if (criteria.operation) query['businessContext.operation'] = criteria.operation;
 
-    logger.info('Manual cleanup completed', results);
-    return results;
+      const payloads = await OTAPayload.find(query)
+        .limit(criteria.limit || 100)
+        .sort({ createdAt: 1 }).lean();
+
+      const results = {
+        processed: 0,
+        archived: 0,
+        deleted: 0,
+        errors: []
+      };
+
+      for (const payload of payloads) {
+        try {
+          const policy = this.getRetentionPolicy(payload.businessContext.operation);
+          const result = await this.processPayloadRetention(payload, policy);
+        
+          results.processed++;
+          if (result.action === 'archived') results.archived++;
+          if (result.action === 'deleted') results.deleted++;
+        
+        } catch (error) {
+          results.errors.push({
+            payloadId: payload.payloadId,
+            error: error.message
+          });
+        }
+      }
+
+      logger.info('Manual cleanup completed', results);
+      return results;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

@@ -32,7 +32,7 @@ export const authenticate = catchAsync(async (req, res, next) => {
       path: 'primaryProperty',
       select: 'name address',
       populate: { path: 'totalRooms' }
-    });
+    }).lean();
 
   if (!currentUser) {
     return next(new ApplicationError('The user belonging to this token does no longer exist.', 401));
@@ -82,7 +82,7 @@ export const optionalAuth = catchAsync(async (req, res, next) => {
           path: 'primaryProperty',
           select: 'name address',
           populate: { path: 'totalRooms' }
-        });
+        }).lean();
 
       if (currentUser && currentUser.isActive) {
         req.user = currentUser;

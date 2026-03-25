@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,6 +35,7 @@ import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../settings/
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface BillMessage {
   _id?: string;
@@ -232,6 +233,15 @@ const MessageTemplateEditor: React.FC<MessageTemplateEditorProps> = ({
   const [activeTab, setActiveTab] = useState('basic');
   const [previewMode, setPreviewMode] = useState(false);
 
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (message) {
       setFormData({
@@ -327,7 +337,8 @@ const MessageTemplateEditor: React.FC<MessageTemplateEditorProps> = ({
         }
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast({
           title: 'Success',
           description: `Message template ${message ? 'updated' : 'created'} successfully${
@@ -372,7 +383,8 @@ const MessageTemplateEditor: React.FC<MessageTemplateEditorProps> = ({
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast({
           title: 'Success',
           description: `Settings updated for ${result.propertiesUpdated} properties`
@@ -492,7 +504,8 @@ const MessageTemplateEditor: React.FC<MessageTemplateEditorProps> = ({
       setFormData(prev => ({ ...prev, messageTemplate: newValue }));
       
       // Set cursor position after inserted placeholder
-      setTimeout(() => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => {
         textarea.setSelectionRange(start + placeholder.length, start + placeholder.length);
         textarea.focus();
       }, 0);
@@ -1475,4 +1488,4 @@ const MessageTemplateEditor: React.FC<MessageTemplateEditorProps> = ({
   );
 };
 
-export default MessageTemplateEditor;
+export default withErrorBoundary(MessageTemplateEditor, { level: 'component' });

@@ -62,7 +62,7 @@ class ChannelSyncService {
           channelQuery.channelId = channelId;
         }
 
-        const channels = await Channel.find(channelQuery);
+        const channels = await Channel.find(channelQuery).lean().limit(1000);
 
         if (channels.length === 0) {
           return {
@@ -79,7 +79,7 @@ class ChannelSyncService {
           roomTypeQuery._id = roomTypeId;
         }
 
-        const roomTypes = await RoomType.find(roomTypeQuery);
+        const roomTypes = await RoomType.find(roomTypeQuery).lean().limit(1000);
 
         if (roomTypes.length === 0) {
           return {
@@ -330,7 +330,7 @@ class ChannelSyncService {
         hotelId,
         roomTypeId: { $in: roomTypeIds },
         date: { $gte: startDate, $lte: endDate }
-      }).populate('roomTypeId').sort({ date: 1 });
+      }).populate('roomTypeId').sort({ date: 1 }).lean().limit(1000);
 
       return availability;
 
@@ -371,7 +371,7 @@ class ChannelSyncService {
     try {
       // Get channels and their last sync times
       const channels = await Channel.find({ hotelId, isActive: true })
-        .select('name channelId category lastSync connectionStatus');
+        .select('name channelId category lastSync connectionStatus').lean().limit(1000);
 
       // Get availability records that need sync
       const needsSyncCount = await RoomAvailability.countDocuments({
@@ -387,7 +387,7 @@ class ChannelSyncService {
       })
         .sort({ timestamp: -1 })
         .limit(10)
-        .select('timestamp changeType newValues metadata');
+        .select('timestamp changeType newValues metadata').lean();
 
       return {
         success: true,
@@ -431,7 +431,7 @@ class ChannelSyncService {
           { legacyType: booking.roomType },
           { _id: booking.roomTypeId }
         ]
-      });
+      }).lean();
 
       if (!roomType) {
         logger.warn('Room type not found for booking', booking._id);
@@ -503,7 +503,7 @@ class ChannelSyncService {
    */
   async getChannelMetrics(hotelId, startDate, endDate) {
     try {
-      const channels = await Channel.find({ hotelId, isActive: true });
+      const channels = await Channel.find({ hotelId, isActive: true }).lean().limit(1000);
       const metrics = [];
 
       for (const channel of channels) {

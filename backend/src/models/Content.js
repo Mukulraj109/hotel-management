@@ -395,7 +395,7 @@ contentSchema.statics.getByNamespace = async function(namespace, category = null
     return await this.find(query)
       .sort(sort)
       .limit(limit)
-      .select(options.fields || '-__v');
+      .select(options.fields || '-__v').lean();
 
   } catch (error) {
     logger.error('Failed to get content by namespace', { namespace, category, error: error.message });
@@ -438,7 +438,7 @@ contentSchema.statics.searchContent = async function(searchTerm, options = {}) {
       .skip(skip)
       .limit(limit)
       .populate('createdBy updatedBy', 'name email')
-      .select(options.fields || '-__v');
+      .select(options.fields || '-__v').lean();
 
   } catch (error) {
     logger.error('Content search failed', { searchTerm, error: error.message });
@@ -467,7 +467,7 @@ contentSchema.statics.getTranslatableContent = async function(options = {}) {
 
     return await this.find(query)
       .sort({ 'translationConfig.priority': -1, updatedAt: -1 })
-      .limit(options.limit || 100);
+      .limit(options.limit || 100).lean();
 
   } catch (error) {
     logger.error('Failed to get translatable content', { error: error.message });

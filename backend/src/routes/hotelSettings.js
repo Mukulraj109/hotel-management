@@ -169,7 +169,7 @@ router.get('/backup', catchAsync(async (req, res, next) => {
     return next(new ApplicationError('User not associated with any hotel', 400));
   }
 
-  const settings = await HotelSettings.findOne({ hotelId });
+  const settings = await HotelSettings.findOne({ hotelId }).lean();
   if (!settings) {
     return next(new ApplicationError('Hotel settings not found', 404));
   }
@@ -242,7 +242,9 @@ router.put('/basic-info', catchAsync(async (req, res, next) => {
     phone: req.body.contact.phone,
     email: req.body.contact.email,
     website: req.body.contact.website
-  });
+  },
+    { new: true }
+  );
 
   res.status(200).json({
     status: 'success',
@@ -401,7 +403,7 @@ router.post('/integrations/test', catchAsync(async (req, res, next) => {
     return next(new ApplicationError('User not associated with any hotel', 400));
   }
 
-  const settings = await HotelSettings.findOne({ hotelId });
+  const settings = await HotelSettings.findOne({ hotelId }).lean();
   if (!settings) {
     return next(new ApplicationError('Hotel settings not found', 404));
   }

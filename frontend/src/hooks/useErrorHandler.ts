@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 
 interface ErrorHandlerOptions {
@@ -20,6 +20,11 @@ interface ApiError {
 export const useErrorHandler = (options: ErrorHandlerOptions = {}) => {
   const { onError, showToast = true } = options;
   const [error, setError] = useState<unknown>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   const getErrorMessage = useCallback((error: ApiError): string => {
     // Handle API errors with status codes
@@ -110,6 +115,7 @@ export const useErrorHandler = (options: ErrorHandlerOptions = {}) => {
 
         // Wait before retrying
         await new Promise(resolve => setTimeout(resolve, delay * attempt));
+        if (!isMountedRef.current) throw new Error('Component unmounted during retry');
       }
     }
 

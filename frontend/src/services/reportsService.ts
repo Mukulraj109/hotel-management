@@ -256,60 +256,80 @@ class ReportsService {
   private baseUrl = '/reports';
 
   async getRevenueReport(filters: ReportFilters): Promise<RevenueReportData> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    if (filters.startDate) params.append('startDate', filters.startDate);
-    if (filters.endDate) params.append('endDate', filters.endDate);
-    if (filters.groupBy) params.append('groupBy', filters.groupBy);
-    if (filters.hotelId) params.append('hotelId', filters.hotelId);
+      if (filters.startDate) params.append('startDate', filters.startDate);
+      if (filters.endDate) params.append('endDate', filters.endDate);
+      if (filters.groupBy) params.append('groupBy', filters.groupBy);
+      if (filters.hotelId) params.append('hotelId', filters.hotelId);
 
-    const response = await api.get(`${this.baseUrl}/revenue?${params.toString()}`);
-    return response.data.data;
+      const response = await api.get(`${this.baseUrl}/revenue?${params.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getOccupancyReport(filters: ReportFilters): Promise<OccupancyReportData> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    if (filters.startDate) params.append('startDate', filters.startDate);
-    if (filters.endDate) params.append('endDate', filters.endDate);
-    if (filters.hotelId) params.append('hotelId', filters.hotelId);
+      if (filters.startDate) params.append('startDate', filters.startDate);
+      if (filters.endDate) params.append('endDate', filters.endDate);
+      if (filters.hotelId) params.append('hotelId', filters.hotelId);
 
-    const response = await api.get(`${this.baseUrl}/occupancy?${params.toString()}`);
-    return response.data.data;
+      const response = await api.get(`${this.baseUrl}/occupancy?${params.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getBookingsReport(filters: ReportFilters): Promise<BookingsReportData> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    if (filters.startDate) params.append('startDate', filters.startDate);
-    if (filters.endDate) params.append('endDate', filters.endDate);
-    if (filters.hotelId) params.append('hotelId', filters.hotelId);
+      if (filters.startDate) params.append('startDate', filters.startDate);
+      if (filters.endDate) params.append('endDate', filters.endDate);
+      if (filters.hotelId) params.append('hotelId', filters.hotelId);
 
-    const response = await api.get(`${this.baseUrl}/bookings?${params.toString()}`);
-    return response.data.data;
+      const response = await api.get(`${this.baseUrl}/bookings?${params.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getBookingStats(filters: ReportFilters): Promise<BookingStatsData> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    if (filters.startDate) params.append('startDate', filters.startDate);
-    if (filters.endDate) params.append('endDate', filters.endDate);
-    if (filters.hotelId) params.append('hotelId', filters.hotelId);
+      if (filters.startDate) params.append('startDate', filters.startDate);
+      if (filters.endDate) params.append('endDate', filters.endDate);
+      if (filters.hotelId) params.append('hotelId', filters.hotelId);
 
-    const response = await api.get(`${this.baseUrl}/bookings/stats?${params.toString()}`);
-    return response.data.data;
+      const response = await api.get(`${this.baseUrl}/bookings/stats?${params.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getCheckoutInventoryReport(filters: ReportFilters): Promise<CheckoutInventoryData> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    if (filters.startDate) params.append('startDate', filters.startDate);
-    if (filters.endDate) params.append('endDate', filters.endDate);
-    if (filters.groupBy) params.append('groupBy', filters.groupBy);
-    if (filters.hotelId) params.append('hotelId', filters.hotelId);
+      if (filters.startDate) params.append('startDate', filters.startDate);
+      if (filters.endDate) params.append('endDate', filters.endDate);
+      if (filters.groupBy) params.append('groupBy', filters.groupBy);
+      if (filters.hotelId) params.append('hotelId', filters.hotelId);
 
-    const response = await api.get(`${this.baseUrl}/checkout-inventory?${params.toString()}`);
-    return response.data.data;
+      const response = await api.get(`${this.baseUrl}/checkout-inventory?${params.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getRevenueBreakdown(params?: {
@@ -317,18 +337,22 @@ class ReportsService {
     year?: number;
     hotelId?: string;
   }): Promise<RevenueBreakdown> {
-    const searchParams = new URLSearchParams();
+    try {
+      const searchParams = new URLSearchParams();
     
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          searchParams.append(key, value.toString());
-        }
-      });
-    }
+      if (params) {
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            searchParams.append(key, value.toString());
+          }
+        });
+      }
 
-    const response = await api.get(`${this.baseUrl}/revenue-breakdown?${searchParams.toString()}`);
-    return response.data.data;
+      const response = await api.get(`${this.baseUrl}/revenue-breakdown?${searchParams.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getOccupancyBreakdown(params?: {
@@ -336,18 +360,22 @@ class ReportsService {
     year?: number;
     hotelId?: string;
   }): Promise<OccupancyBreakdown> {
-    const searchParams = new URLSearchParams();
+    try {
+      const searchParams = new URLSearchParams();
     
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          searchParams.append(key, value.toString());
-        }
-      });
-    }
+      if (params) {
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            searchParams.append(key, value.toString());
+          }
+        });
+      }
 
-    const response = await api.get(`${this.baseUrl}/occupancy-breakdown?${searchParams.toString()}`);
-    return response.data.data;
+      const response = await api.get(`${this.baseUrl}/occupancy-breakdown?${searchParams.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getBookingsBreakdown(params?: {
@@ -355,18 +383,22 @@ class ReportsService {
     year?: number;
     hotelId?: string;
   }): Promise<BookingsBreakdown> {
-    const searchParams = new URLSearchParams();
+    try {
+      const searchParams = new URLSearchParams();
     
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          searchParams.append(key, value.toString());
-        }
-      });
-    }
+      if (params) {
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            searchParams.append(key, value.toString());
+          }
+        });
+      }
 
-    const response = await api.get(`${this.baseUrl}/bookings-breakdown?${searchParams.toString()}`);
-    return response.data.data;
+      const response = await api.get(`${this.baseUrl}/bookings-breakdown?${searchParams.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getSatisfactionBreakdown(params?: {
@@ -374,18 +406,22 @@ class ReportsService {
     year?: number;
     hotelId?: string;
   }): Promise<SatisfactionBreakdown> {
-    const searchParams = new URLSearchParams();
+    try {
+      const searchParams = new URLSearchParams();
     
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          searchParams.append(key, value.toString());
-        }
-      });
-    }
+      if (params) {
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            searchParams.append(key, value.toString());
+          }
+        });
+      }
 
-    const response = await api.get(`${this.baseUrl}/satisfaction-breakdown?${searchParams.toString()}`);
-    return response.data.data;
+      const response = await api.get(`${this.baseUrl}/satisfaction-breakdown?${searchParams.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Helper method to generate comprehensive report data for ReportBuilder
@@ -504,24 +540,28 @@ class ReportsService {
     filters: ReportFilters,
     format: 'csv' | 'excel' | 'pdf' = 'csv'
   ): Promise<Blob> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value) params.append(key, value.toString());
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value) params.append(key, value.toString());
+      });
     
-    params.append('format', format);
-    params.append('export', 'true');
+      params.append('format', format);
+      params.append('export', 'true');
 
-    const endpoint = reportType === 'revenue' ? '/revenue' : 
-                    reportType === 'occupancy' ? '/occupancy' : 
-                    reportType === 'bookings' ? '/bookings' : '/revenue';
+      const endpoint = reportType === 'revenue' ? '/revenue' : 
+                      reportType === 'occupancy' ? '/occupancy' : 
+                      reportType === 'bookings' ? '/bookings' : '/revenue';
 
-    const response = await api.get(`${this.baseUrl}${endpoint}?${params.toString()}`, {
-      responseType: 'blob',
-    });
+      const response = await api.get(`${this.baseUrl}${endpoint}?${params.toString()}`, {
+        responseType: 'blob',
+      });
 
-    return response.data;
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

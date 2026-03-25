@@ -60,13 +60,17 @@ class DashboardUpdatesService {
     };
     timestamp: string;
   }> {
-    const params = new URLSearchParams();
-    if (since) params.append('since', since);
-    if (types?.length) params.append('types', types.join(','));
-    params.append('limit', limit.toString());
+    try {
+      const params = new URLSearchParams();
+      if (since) params.append('since', since);
+      if (types?.length) params.append('types', types.join(','));
+      params.append('limit', limit.toString());
 
-    const response = await api.get(`/dashboard-updates/notifications?${params.toString()}`);
-    return response.data.data;
+      const response = await api.get(`/dashboard-updates/notifications?${params.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -77,12 +81,16 @@ class DashboardUpdatesService {
     count: number;
     timestamp: string;
   }> {
-    const params = new URLSearchParams();
-    if (since) params.append('since', since);
-    params.append('limit', limit.toString());
+    try {
+      const params = new URLSearchParams();
+      if (since) params.append('since', since);
+      params.append('limit', limit.toString());
 
-    const response = await api.get(`/dashboard-updates/activity-feed?${params.toString()}`);
-    return response.data.data;
+      const response = await api.get(`/dashboard-updates/activity-feed?${params.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -93,8 +101,12 @@ class DashboardUpdatesService {
     breakdown: Record<string, number>;
     lastUpdated: string;
   }> {
-    const response = await api.get('/dashboard-updates/summary');
-    return response.data.data;
+    try {
+      const response = await api.get('/dashboard-updates/summary');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -104,11 +116,15 @@ class DashboardUpdatesService {
     markedCount: number;
     timestamp: string;
   }> {
-    const response = await api.patch('/dashboard-updates/mark-read', {
-      notificationIds,
-      markAllRead
-    });
-    return response.data.data;
+    try {
+      const response = await api.patch('/dashboard-updates/mark-read', {
+        notificationIds,
+        markAllRead
+      });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**

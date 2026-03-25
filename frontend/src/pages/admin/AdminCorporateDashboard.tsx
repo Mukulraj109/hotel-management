@@ -78,13 +78,21 @@ interface MonthlyTrend {
 
 // API functions
 const fetchCorporateOverview = async (propertyId?: string): Promise<{ overview: CorporateOverviewData; topCompanies: TopCompany[] }> => {
-  const response = await api.get('/corporate/admin/dashboard-overview', { params: { propertyId } });
-  return response.data.data;
+  try {
+    const response = await api.get('/corporate/admin/dashboard-overview', { params: { propertyId } });
+    return response.data.data;
+  } catch (error: unknown) {
+    throw error instanceof Error ? error : new Error('Failed to fetch corporate overview');
+  }
 };
 
 const fetchMonthlyTrends = async (months: number = 12, propertyId?: string): Promise<{ trends: MonthlyTrend[] }> => {
-  const response = await api.get(`/corporate/admin/monthly-trends?months=${months}`, { params: { propertyId } });
-  return response.data.data;
+  try {
+    const response = await api.get(`/corporate/admin/monthly-trends?months=${months}`, { params: { propertyId } });
+    return response.data.data;
+  } catch (error: unknown) {
+    throw error instanceof Error ? error : new Error('Failed to fetch monthly trends');
+  }
 };
 
 export default function AdminCorporateDashboard() {

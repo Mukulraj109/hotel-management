@@ -127,10 +127,10 @@ const SalutationSelector: React.FC<SalutationSelectorProps> = ({
             </div>
 
             {/* Clear Option */}
-            <div
+            <div role="button" tabIndex={0}
               className="relative cursor-pointer select-none py-2 pl-3 pr-9 hover:bg-gray-100"
               onClick={handleClear}
-            >
+             onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClear(e as any); } }}>
               <span className="text-gray-500 italic">No salutation</span>
             </div>
 
@@ -144,11 +144,11 @@ const SalutationSelector: React.FC<SalutationSelectorProps> = ({
               </div>
             ) : (
               filteredSalutations.map((salutation) => (
-                <div
+                <div role="button" tabIndex={0}
                   key={salutation._id}
                   className="relative cursor-pointer select-none py-2 pl-3 pr-9 hover:bg-gray-100"
                   onClick={() => handleSelect(salutation._id)}
-                >
+                 onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => handleSelect(salutation._id); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center">
                       <span className="font-medium text-gray-900">

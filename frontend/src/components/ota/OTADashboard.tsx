@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef} from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -51,6 +51,7 @@ import {
   Tablet
 } from 'lucide-react';
 import { format, subDays, startOfDay, endOfDay } from 'date-fns';
+import { withErrorBoundary } from '../ErrorBoundary';
 import {
   LineChart,
   Line as RechartsLine,
@@ -152,6 +153,12 @@ const OTADashboard: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
 
   // Load dashboard data
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   useEffect(() => {
     loadDashboardData();
   }, [dateRange, hotelId]);
@@ -162,6 +169,7 @@ const OTADashboard: React.FC = () => {
       
       // Mock data - in real implementation, these would be API calls
       await new Promise(resolve => setTimeout(resolve, 1500));
+    if (!isMountedRef.current) return;
       
       // Mock OTA Channels
       const mockChannels: OTAChannel[] = [
@@ -797,4 +805,4 @@ const OTADashboard: React.FC = () => {
   );
 };
 
-export default OTADashboard;
+export default withErrorBoundary(OTADashboard, { level: 'component' });

@@ -58,7 +58,7 @@ router.use(ensurePropertyAccess);
  */
 router.get('/dashboard', catchAsync(async (req, res) => {
   // Get user with loyalty data
-  const user = await User.findById(req.user._id).select('+loyalty');
+  const user = await User.findById(req.user._id).select('+loyalty').lean();
   
   // Get recent transactions
   const recentTransactions = await Loyalty.find({ userId: req.user._id })
@@ -66,7 +66,7 @@ router.get('/dashboard', catchAsync(async (req, res) => {
     .limit(10)
     .populate('bookingId', 'bookingNumber checkIn checkOut totalAmount')
     .populate('offerId', 'title category')
-    .populate('hotelId', 'name');
+    .populate('hotelId', 'name').lean();
   
   // Get available offers
   const availableOffers = await Offer.getAvailableOffers(
@@ -111,7 +111,7 @@ router.get('/dashboard', catchAsync(async (req, res) => {
  */
 router.get('/offers', catchAsync(async (req, res) => {
   const { category } = req.query;
-  const user = await User.findById(req.user._id).select('+loyalty');
+  const user = await User.findById(req.user._id).select('+loyalty').lean();
   
   let offers;
   if (category) {
@@ -174,7 +174,7 @@ router.get('/transactions', catchAsync(async (req, res) => {
     .limit(parseInt(limit))
     .populate('bookingId', 'bookingNumber checkIn checkOut totalAmount')
     .populate('offerId', 'title category')
-    .populate('hotelId', 'name');
+    .populate('hotelId', 'name').lean();
   
   // Get total count
   const total = await Loyalty.countDocuments(query);
@@ -226,7 +226,7 @@ catchAsync(async (req, res) => {
     const { offerId } = req.body;
 
     // Get the offer
-    const offer = await Offer.findById(offerId);
+    const offer = await Offer.findById(offerId).lean();
     if (!offer) {
       logger.debug('Offer not found for redemption', { offerId });
       throw new ApplicationError('Offer not found', 404);
@@ -234,7 +234,7 @@ catchAsync(async (req, res) => {
     logger.debug('Offer found for redemption', { offerId, title: offer.title, pointsRequired: offer.pointsRequired });
 
     // Get user with loyalty data
-    const user = await User.findById(req.user._id).select('+loyalty');
+    const user = await User.findById(req.user._id).select('+loyalty').lean();
     logger.debug('User loyalty status', { userFound: !!user, points: user?.loyalty?.points, tier: user?.loyalty?.tier });
 
     // Validate redemption
@@ -374,7 +374,7 @@ router.get('/history', catchAsync(async (req, res) => {
  *         description: User's loyalty status
  */
 router.get('/points', catchAsync(async (req, res) => {
-  const user = await User.findById(req.user._id).select('+loyalty');
+  const user = await User.findById(req.user._id).select('+loyalty').lean();
   
   // Get active points (not expired)
   const activePoints = await Loyalty.getUserActivePoints(req.user._id);
@@ -415,13 +415,13 @@ router.get('/offers/:offerId', catchAsync(async (req, res) => {
   const { offerId } = req.params;
   
   const offer = await Offer.findById(offerId)
-    .populate('hotelId', 'name');
+    .populate('hotelId', 'name').lean();
     
   if (!offer) {
     throw new ApplicationError('Offer not found', 404);
   }
 
-  const user = await User.findById(req.user._id).select('+loyalty');
+  const user = await User.findById(req.user._id).select('+loyalty').lean();
   const canRedeem = offer.canRedeem(user.loyalty.tier, user.loyalty.points);
 
   res.json({

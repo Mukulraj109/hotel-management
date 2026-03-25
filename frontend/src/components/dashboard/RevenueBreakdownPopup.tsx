@@ -95,7 +95,7 @@ export const RevenueBreakdownPopup: React.FC<RevenueBreakdownPopupProps> = ({
                 <h3 className="text-lg font-bold text-gray-800">Revenue Breakdown</h3>
               </div>
               {onClose && (
-                <button
+                <button aria-label="Close"
                   onClick={onClose}
                   className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-white rounded-full"
                 >

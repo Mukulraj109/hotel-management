@@ -562,12 +562,16 @@ class SecurityMonitoringService {
   }
 
   async notifySecurityTeam(alert) {
-    // This would integrate with notification systems
-    logger.warn('Security team notification', {
-      alertId: alert.id,
-      severity: alert.severity,
-      message: `Critical security alert: Risk score ${alert.risk_score}`
-    });
+    try {
+      // This would integrate with notification systems
+      logger.warn('Security team notification', {
+        alertId: alert.id,
+        severity: alert.severity,
+        message: `Critical security alert: Risk score ${alert.risk_score}`
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   getEventBreakdown(events) {

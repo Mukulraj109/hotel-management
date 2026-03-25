@@ -129,7 +129,7 @@ const bookingFormController = {
         .populate('updatedBy', 'name email')
         .sort(sort)
         .skip(skip)
-        .limit(parseInt(limit));
+        .limit(parseInt(limit)).lean();
 
       console.log('📋 Found templates count:', templates.length);
       
@@ -186,7 +186,7 @@ const bookingFormController = {
         hotelId: req.user.hotelId
       })
       .populate('createdBy', 'name email')
-      .populate('updatedBy', 'name email');
+      .populate('updatedBy', 'name email').lean();
 
       if (!template) {
         return res.status(404).json({
@@ -292,7 +292,7 @@ const bookingFormController = {
       const originalTemplate = await BookingFormTemplate.findOne({
         _id: id,
         hotelId: req.user.hotelId
-      });
+      }).lean();
 
       if (!originalTemplate) {
         return res.status(404).json({
@@ -301,7 +301,8 @@ const bookingFormController = {
         });
       }
 
-      const duplicateData = originalTemplate.toObject();
+      // .lean() already returns a plain object, no need for .toObject()
+      const duplicateData = { ...originalTemplate };
       delete duplicateData._id;
       delete duplicateData.__v;
       
@@ -338,7 +339,7 @@ const bookingFormController = {
       const template = await BookingFormTemplate.findOne({
         _id: id,
         hotelId: req.user.hotelId
-      });
+      }).lean();
 
       if (!template) {
         return res.status(404).json({
@@ -382,7 +383,7 @@ const bookingFormController = {
         _id: id,
         hotelId: req.user.hotelId,
         status: 'active'
-      });
+      }).lean();
 
       if (!template) {
         return res.status(404).json({
@@ -424,7 +425,7 @@ const bookingFormController = {
       const template = await BookingFormTemplate.findOne({
         _id: id,
         hotelId: req.user.hotelId
-      });
+      }).lean();
 
       if (!template) {
         return res.status(404).json({
@@ -461,7 +462,7 @@ const bookingFormController = {
       const template = await BookingFormTemplate.findOne({
         _id: id,
         hotelId: req.user.hotelId
-      });
+      }).lean();
 
       if (!template) {
         return res.status(404).json({
@@ -501,7 +502,7 @@ const bookingFormController = {
       const template = await BookingFormTemplate.findOne({
         _id: id,
         hotelId: req.user.hotelId
-      });
+      }).lean();
 
       if (!template) {
         return res.status(404).json({
@@ -574,7 +575,7 @@ const bookingFormController = {
       const template = await BookingFormTemplate.findOne({
         _id: id,
         hotelId: req.user.hotelId
-      });
+      }).lean();
 
       if (!template) {
         return res.status(404).json({

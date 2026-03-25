@@ -121,24 +121,163 @@ guestCustomDataSchema.virtual('updater', {
 
 // Static method to get guest custom data
 guestCustomDataSchema.statics.getGuestCustomData = async function(guestId, hotelId) {
-  return await this.find({
-    guestId: new mongoose.Types.ObjectId(guestId),
-    hotelId: new mongoose.Types.ObjectId(hotelId),
-    isActive: true
-  }).populate('fieldId', 'name label type category validation defaultValue');
+  try {
+    return await this.find({
+      guestId: new mongoose.Types.ObjectId(guestId),
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      isActive: true
+    }).populate('fieldId', 'name label type category validation defaultValue').lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get field usage statistics
 guestCustomDataSchema.statics.getFieldUsageStats = async function(fieldId, hotelId) {
-  const stats = await this.aggregate([
-    {
-      $match: {
-        fieldId: new mongoose.Types.ObjectId(fieldId),
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        isActive: true
+  try {
+    const stats = await this.aggregate([
+      {
+        $match: {
+          fieldId: new mongoose.Types.ObjectId(fieldId),
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          isActive: true
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalEntries: { $sum: 1 },
+          nonEmptyEntries: {
+            $sum: {
+              $cond: [
+                { $and: [{ $ne: ['$value', ''] }, { $ne: ['$value', null] }] },
+                1,
+                0
+              ]
+            }
+          },
+          uniqueValues: { $addToSet: '$value' }
+        }
       }
-    },
-    {
+    ]);
+
+    if (stats.length === 0) {
+      return {
+        totalEntries: 0,
+        nonEmptyEntries: 0,
+        completionRate: 0,
+        uniqueValueCount: 0
+      };
+    }
+
+    const result = stats[0];
+    const completionRate = result.totalEntries > 0 
+      ? (result.nonEmptyEntries / result.totalEntries) * 100 
+      : 0;
+
+    return {
+      totalEntries: result.totalEntries,
+      nonEmptyEntries: result.nonEmptyEntries,
+      completionRate: Math.round(completionRate * 100) / 100,
+      uniqueValueCount: result.uniqueValues.length
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
+};
+
+// Static method to get guest data by category
+guestCustomDataSchema.statics.getGuestDataByCategory = async function(guestId, hotelId, category) {
+  try {
+    return await this.find({
+      guestId: new mongoose.Types.ObjectId(guestId),
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      isActive: true
+    }).populate({
+      path: 'fieldId',
+      match: { category: category },
+      select: 'name label type category validation defaultValue'
+    }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
+};
+
+// Static method to bulk update guest data
+guestCustomDataSchema.statics.bulkUpdateGuestData = async function(guestId, hotelId, dataUpdates, updatedBy) {
+  try {
+    const operations = [];
+  
+    for (const [fieldId, value] of Object.entries(dataUpdates)) {
+      operations.push({
+        updateOne: {
+          filter: {
+            guestId: new mongoose.Types.ObjectId(guestId),
+            fieldId: new mongoose.Types.ObjectId(fieldId),
+            hotelId: new mongoose.Types.ObjectId(hotelId)
+          },
+          update: {
+            $set: {
+              value: value.toString(),
+              rawValue: value,
+              lastUpdatedBy: updatedBy,
+              updatedAt: new Date()
+            }
+          },
+          upsert: true
+        }
+      });
+    }
+
+    if (operations.length > 0) {
+      return await this.bulkWrite(operations);
+    }
+  
+    return { modifiedCount: 0, upsertedCount: 0 };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
+};
+
+// Static method to get data analytics
+guestCustomDataSchema.statics.getDataAnalytics = async function(hotelId, options = {}) {
+  try {
+    const { category, fieldType, dateRange } = options;
+  
+    const matchStage = {
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      isActive: true
+    };
+
+    if (dateRange && dateRange.start && dateRange.end) {
+      matchStage.createdAt = {
+        $gte: new Date(dateRange.start),
+        $lte: new Date(dateRange.end)
+      };
+    }
+
+    const pipeline = [
+      { $match: matchStage },
+      {
+        $lookup: {
+          from: 'customfields',
+          localField: 'fieldId',
+          foreignField: '_id',
+          as: 'field'
+        }
+      },
+      { $unwind: '$field' }
+    ];
+
+    if (category) {
+      pipeline.push({ $match: { 'field.category': category } });
+    }
+
+    if (fieldType) {
+      pipeline.push({ $match: { 'field.type': fieldType } });
+    }
+
+    pipeline.push({
       $group: {
         _id: null,
         totalEntries: { $sum: 1 },
@@ -151,191 +290,72 @@ guestCustomDataSchema.statics.getFieldUsageStats = async function(fieldId, hotel
             ]
           }
         },
-        uniqueValues: { $addToSet: '$value' }
-      }
-    }
-  ]);
-
-  if (stats.length === 0) {
-    return {
-      totalEntries: 0,
-      nonEmptyEntries: 0,
-      completionRate: 0,
-      uniqueValueCount: 0
-    };
-  }
-
-  const result = stats[0];
-  const completionRate = result.totalEntries > 0 
-    ? (result.nonEmptyEntries / result.totalEntries) * 100 
-    : 0;
-
-  return {
-    totalEntries: result.totalEntries,
-    nonEmptyEntries: result.nonEmptyEntries,
-    completionRate: Math.round(completionRate * 100) / 100,
-    uniqueValueCount: result.uniqueValues.length
-  };
-};
-
-// Static method to get guest data by category
-guestCustomDataSchema.statics.getGuestDataByCategory = async function(guestId, hotelId, category) {
-  return await this.find({
-    guestId: new mongoose.Types.ObjectId(guestId),
-    hotelId: new mongoose.Types.ObjectId(hotelId),
-    isActive: true
-  }).populate({
-    path: 'fieldId',
-    match: { category: category },
-    select: 'name label type category validation defaultValue'
-  });
-};
-
-// Static method to bulk update guest data
-guestCustomDataSchema.statics.bulkUpdateGuestData = async function(guestId, hotelId, dataUpdates, updatedBy) {
-  const operations = [];
-  
-  for (const [fieldId, value] of Object.entries(dataUpdates)) {
-    operations.push({
-      updateOne: {
-        filter: {
-          guestId: new mongoose.Types.ObjectId(guestId),
-          fieldId: new mongoose.Types.ObjectId(fieldId),
-          hotelId: new mongoose.Types.ObjectId(hotelId)
-        },
-        update: {
-          $set: {
-            value: value.toString(),
-            rawValue: value,
-            lastUpdatedBy: updatedBy,
-            updatedAt: new Date()
+        byCategory: {
+          $push: {
+            category: '$field.category',
+            hasValue: { $and: [{ $ne: ['$value', ''] }, { $ne: ['$value', null] }] }
           }
         },
-        upsert: true
+        byType: {
+          $push: {
+            type: '$field.type',
+            hasValue: { $and: [{ $ne: ['$value', ''] }, { $ne: ['$value', null] }] }
+          }
+        }
       }
     });
-  }
 
-  if (operations.length > 0) {
-    return await this.bulkWrite(operations);
-  }
-  
-  return { modifiedCount: 0, upsertedCount: 0 };
-};
+    const stats = await this.aggregate(pipeline);
 
-// Static method to get data analytics
-guestCustomDataSchema.statics.getDataAnalytics = async function(hotelId, options = {}) {
-  const { category, fieldType, dateRange } = options;
-  
-  const matchStage = {
-    hotelId: new mongoose.Types.ObjectId(hotelId),
-    isActive: true
-  };
-
-  if (dateRange && dateRange.start && dateRange.end) {
-    matchStage.createdAt = {
-      $gte: new Date(dateRange.start),
-      $lte: new Date(dateRange.end)
-    };
-  }
-
-  const pipeline = [
-    { $match: matchStage },
-    {
-      $lookup: {
-        from: 'customfields',
-        localField: 'fieldId',
-        foreignField: '_id',
-        as: 'field'
-      }
-    },
-    { $unwind: '$field' }
-  ];
-
-  if (category) {
-    pipeline.push({ $match: { 'field.category': category } });
-  }
-
-  if (fieldType) {
-    pipeline.push({ $match: { 'field.type': fieldType } });
-  }
-
-  pipeline.push({
-    $group: {
-      _id: null,
-      totalEntries: { $sum: 1 },
-      nonEmptyEntries: {
-        $sum: {
-          $cond: [
-            { $and: [{ $ne: ['$value', ''] }, { $ne: ['$value', null] }] },
-            1,
-            0
-          ]
-        }
-      },
-      byCategory: {
-        $push: {
-          category: '$field.category',
-          hasValue: { $and: [{ $ne: ['$value', ''] }, { $ne: ['$value', null] }] }
-        }
-      },
-      byType: {
-        $push: {
-          type: '$field.type',
-          hasValue: { $and: [{ $ne: ['$value', ''] }, { $ne: ['$value', null] }] }
-        }
-      }
+    if (stats.length === 0) {
+      return {
+        totalEntries: 0,
+        nonEmptyEntries: 0,
+        completionRate: 0,
+        byCategory: {},
+        byType: {}
+      };
     }
-  });
 
-  const stats = await this.aggregate(pipeline);
+    const result = stats[0];
+    const completionRate = result.totalEntries > 0 
+      ? (result.nonEmptyEntries / result.totalEntries) * 100 
+      : 0;
 
-  if (stats.length === 0) {
+    // Calculate category breakdown
+    const categoryStats = {};
+    result.byCategory.forEach(item => {
+      if (!categoryStats[item.category]) {
+        categoryStats[item.category] = { total: 0, completed: 0 };
+      }
+      categoryStats[item.category].total++;
+      if (item.hasValue) {
+        categoryStats[item.category].completed++;
+      }
+    });
+
+    // Calculate type breakdown
+    const typeStats = {};
+    result.byType.forEach(item => {
+      if (!typeStats[item.type]) {
+        typeStats[item.type] = { total: 0, completed: 0 };
+      }
+      typeStats[item.type].total++;
+      if (item.hasValue) {
+        typeStats[item.type].completed++;
+      }
+    });
+
     return {
-      totalEntries: 0,
-      nonEmptyEntries: 0,
-      completionRate: 0,
-      byCategory: {},
-      byType: {}
+      totalEntries: result.totalEntries,
+      nonEmptyEntries: result.nonEmptyEntries,
+      completionRate: Math.round(completionRate * 100) / 100,
+      byCategory: categoryStats,
+      byType: typeStats
     };
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  const result = stats[0];
-  const completionRate = result.totalEntries > 0 
-    ? (result.nonEmptyEntries / result.totalEntries) * 100 
-    : 0;
-
-  // Calculate category breakdown
-  const categoryStats = {};
-  result.byCategory.forEach(item => {
-    if (!categoryStats[item.category]) {
-      categoryStats[item.category] = { total: 0, completed: 0 };
-    }
-    categoryStats[item.category].total++;
-    if (item.hasValue) {
-      categoryStats[item.category].completed++;
-    }
-  });
-
-  // Calculate type breakdown
-  const typeStats = {};
-  result.byType.forEach(item => {
-    if (!typeStats[item.type]) {
-      typeStats[item.type] = { total: 0, completed: 0 };
-    }
-    typeStats[item.type].total++;
-    if (item.hasValue) {
-      typeStats[item.type].completed++;
-    }
-  });
-
-  return {
-    totalEntries: result.totalEntries,
-    nonEmptyEntries: result.nonEmptyEntries,
-    completionRate: Math.round(completionRate * 100) / 100,
-    byCategory: categoryStats,
-    byType: typeStats
-  };
 };
 
 // Instance method to convert value based on field type
@@ -395,5 +415,8 @@ guestCustomDataSchema.methods.setValue = function(value, fieldType) {
   this.value = stringValue;
   this.rawValue = rawValue;
 };
+
+// Data retention TTL: auto-delete guest custom data after 3 years (GDPR behavioral data retention)
+guestCustomDataSchema.index({ createdAt: 1 }, { expireAfterSeconds: 1095 * 24 * 60 * 60 });
 
 export default mongoose.model('GuestCustomData', guestCustomDataSchema);

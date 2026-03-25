@@ -4,8 +4,12 @@ import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validate } from '../middleware/validation.js';
 import { body, param, query } from 'express-validator';
+import financialRateLimiter from '../middleware/financialRateLimiter.js';
 
 const router = express.Router({ mergeParams: true });
+
+// Rate limiting for financial tax operations
+router.use(financialRateLimiter);
 
 // Validation schemas
 const createTaxValidation = [

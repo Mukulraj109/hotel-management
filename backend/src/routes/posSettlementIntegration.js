@@ -7,8 +7,12 @@ import posSettlementIntegrationService from '../services/posSettlementIntegratio
 import BillingSession from '../models/BillingSession.js';
 import CheckoutInventory from '../models/CheckoutInventory.js';
 import Settlement from '../models/Settlement.js';
+import financialRateLimiter from '../middleware/financialRateLimiter.js';
 
 const router = express.Router();
+
+// Rate limiting for POS settlement financial operations
+router.use(financialRateLimiter);
 
 /**
  * @swagger

@@ -163,16 +163,24 @@ class StaffMeetUpSupervisionService {
     priority?: string;
     safetyLevel?: string;
   }): Promise<SupervisionMeetUpsResponse> {
-    const response = await api.get('/staff-meetups/supervision', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/staff-meetups/supervision', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Assign staff to supervise a meet-up
    */
   async assignStaffToMeetUp(meetUpId: string, data: AssignStaffRequest): Promise<SupervisionMeetUp> {
-    const response = await api.post(`/staff-meetups/${meetUpId}/assign`, data);
-    return response.data.data;
+    try {
+      const response = await api.post(`/staff-meetups/${meetUpId}/assign`, data);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -183,48 +191,72 @@ class StaffMeetUpSupervisionService {
     limit?: number;
     status?: string;
   }): Promise<StaffAssignmentsResponse> {
-    const response = await api.get('/staff-meetups/my-assignments', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/staff-meetups/my-assignments', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Update supervision status
    */
   async updateSupervisionStatus(meetUpId: string, data: UpdateSupervisionStatusRequest): Promise<SupervisionMeetUp> {
-    const response = await api.put(`/staff-meetups/${meetUpId}/supervision-status`, data);
-    return response.data.data;
+    try {
+      const response = await api.put(`/staff-meetups/${meetUpId}/supervision-status`, data);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get supervision statistics
    */
   async getSupervisionStats(period?: '24h' | '7d' | '30d'): Promise<SupervisionStatsResponse> {
-    const response = await api.get('/staff-meetups/stats', { params: { period } });
-    return response.data.data;
+    try {
+      const response = await api.get('/staff-meetups/stats', { params: { period } });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get urgent supervision tasks
    */
   async getUrgentSupervisionTasks(): Promise<UrgentTasksResponse> {
-    const response = await api.get('/staff-meetups/urgent');
-    return response.data.data;
+    try {
+      const response = await api.get('/staff-meetups/urgent');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Process upcoming meet-ups and create supervision alerts
    */
   async processSupervisionAlerts(): Promise<ProcessAlertsResponse> {
-    const response = await api.post('/staff-meetups/process-alerts');
-    return response.data.data;
+    try {
+      const response = await api.post('/staff-meetups/process-alerts');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get supervision alert statistics
    */
   async getSupervisionAlertStats(): Promise<SupervisionAlertStats> {
-    const response = await api.get('/staff-meetups/alert-stats');
-    return response.data.data;
+    try {
+      const response = await api.get('/staff-meetups/alert-stats');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Utility methods for UI components

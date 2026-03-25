@@ -413,7 +413,7 @@ class LoginAnalyticsService {
       const logins = await LoginSession.find({ hotelId })
         .populate('userId', 'name email role')
         .sort({ loginTime: -1 })
-        .limit(limit);
+        .limit(limit).lean();
 
       return logins;
     } catch (error) {
@@ -524,7 +524,7 @@ class LoginAnalyticsService {
       const auditLogs = await AuditLog.find(matchStage)
         .populate('user', 'name email role')
         .sort({ timestamp: -1 })
-        .limit(limit);
+        .limit(limit).lean();
 
       return auditLogs;
     } catch (error) {

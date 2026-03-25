@@ -106,7 +106,7 @@ class CurrencyController {
     }
 
     // Check if currency already exists
-    const existingCurrency = await Currency.findOne({ code: code.toUpperCase() });
+    const existingCurrency = await Currency.findOne({ code: code.toUpperCase() }).lean();
     if (existingCurrency) {
       return next(new ApplicationError('Currency already exists', 409));
     }
@@ -201,7 +201,7 @@ class CurrencyController {
     const { code } = req.params;
 
     // First check if it's the base currency (cannot delete)
-    const currency = await Currency.findOne({ code: code.toUpperCase() });
+    const currency = await Currency.findOne({ code: code.toUpperCase() }).lean();
     if (!currency) {
       return next(new ApplicationError('Currency not found', 404));
     }
@@ -355,7 +355,7 @@ class CurrencyController {
       return next(new ApplicationError('Channel is required', 400));
     }
 
-    const currency = await Currency.findOne({ code: code.toUpperCase() });
+    const currency = await Currency.findOne({ code: code.toUpperCase() }).lean();
     if (!currency) {
       return next(new ApplicationError('Currency not found', 404));
     }
@@ -415,11 +415,12 @@ class CurrencyController {
       staleCurrencies,
       channelStats
     ] = await Promise.all([
-      Currency.countDocuments(),
+      Currency.estimatedDocumentCount(),
       Currency.countDocuments({ isActive: true }),
       Currency.getBaseCurrency(),
       Currency.getStaleCurrencies(),
       Currency.aggregate([
+        { $match: { isActive: true } },
         { $unwind: '$supportedChannels' },
         { $group: { _id: '$supportedChannels.channel', count: { $sum: 1 } } },
         { $sort: { count: -1 } }
@@ -490,7 +491,7 @@ class CurrencyController {
     const validCurrencies = await Currency.find({ 
       code: { $in: [baseCurrency, ...targetCurrenciesList] },
       isActive: true 
-    });
+    }).lean().limit(1000);
     
     const validCodes = validCurrencies.map(c => c.code);
     

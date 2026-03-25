@@ -72,7 +72,7 @@ router.post('/intent',
     const { bookingId, amount, currency = 'INR' } = req.body;
 
     // Get booking
-    const booking = await Booking.findById(bookingId);
+    const booking = await Booking.findById(bookingId).lean();
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
     }
@@ -189,69 +189,92 @@ router.post('/confirm',
         const paymentType = payment.metadata?.get('paymentType');
 
         if (paymentType === 'extra_person_charges') {
-          // Handle extra person charges payment
-          const booking = await Booking.findById(payment.bookingId);
-          if (booking) {
-            // Update booking with payment confirmation
-            booking.extraPersonCharges = booking.extraPersonCharges || [];
+          // Handle extra person charges payment atomically
+          const chargeDetails = payment.metadata?.get('chargeDetails');
+          if (chargeDetails) {
+            const charges = JSON.parse(chargeDetails);
 
-            // Parse charge details from metadata
-            const chargeDetails = payment.metadata?.get('chargeDetails');
-            if (chargeDetails) {
-              const charges = JSON.parse(chargeDetails);
-              charges.forEach(charge => {
-                const existingCharge = booking.extraPersonCharges.find(c => c.personId === charge.personId);
-                if (existingCharge) {
-                  existingCharge.paymentStatus = 'paid';
-                  existingCharge.stripePaymentId = paymentIntentId;
-                } else {
-                  booking.extraPersonCharges.push({
-                    personId: charge.personId,
-                    baseCharge: charge.amount,
-                    totalCharge: charge.amount,
-                    currency: payment.currency,
-                    description: charge.description || 'Extra person charge',
-                    paymentStatus: 'paid',
-                    stripePaymentId: paymentIntentId,
-                    paidAt: new Date()
-                  });
-                }
-              });
+            // For each charge, try to update existing or push new
+            for (const charge of charges) {
+              // First try to update existing charge
+              const updatedBooking = await Booking.findOneAndUpdate(
+                {
+                  _id: payment.bookingId,
+                  'extraPersonCharges.personId': charge.personId
+                },
+                {
+                  $set: {
+                    'extraPersonCharges.$.paymentStatus': 'paid',
+                    'extraPersonCharges.$.stripePaymentId': paymentIntentId
+                  }
+                },
+                { new: true }
+              );
+
+              // If no existing charge found, push new one
+              if (!updatedBooking) {
+                await Booking.findByIdAndUpdate(
+                  payment.bookingId,
+                  {
+                    $push: {
+                      extraPersonCharges: {
+                        personId: charge.personId,
+                        baseCharge: charge.amount,
+                        totalCharge: charge.amount,
+                        currency: payment.currency,
+                        description: charge.description || 'Extra person charge',
+                        paymentStatus: 'paid',
+                        stripePaymentId: paymentIntentId,
+                        paidAt: new Date()
+                      }
+                    }
+                  },
+                  { new: true }
+                );
+              }
             }
-
-            await booking.save();
           }
         } else if (paymentType === 'settlement') {
-          // Handle settlement payment
+          // Handle settlement payment atomically
           const settlementId = payment.metadata?.get('settlementId');
           if (settlementId) {
             const Settlement = (await import('../models/Settlement.js')).default;
-            const settlement = await Settlement.findById(settlementId);
+
+            // Push payment and read back to compute status
+            const settlement = await Settlement.findByIdAndUpdate(
+              settlementId,
+              {
+                $push: {
+                  payments: {
+                    paymentId: payment._id,
+                    stripePaymentIntentId: paymentIntentId,
+                    amount: payment.amount,
+                    method: 'stripe',
+                    paidBy: payment.metadata?.get('paidBy'),
+                    paidAt: new Date()
+                  }
+                }
+              },
+              { new: true }
+            );
 
             if (settlement) {
-              // Add payment to settlement
-              settlement.payments.push({
-                paymentId: payment._id,
-                stripePaymentIntentId: paymentIntentId,
-                amount: payment.amount,
-                method: 'stripe',
-                paidBy: payment.metadata?.get('paidBy'),
-                paidAt: new Date()
-              });
-
-              // Update settlement status based on remaining balance
+              // Compute and update status atomically
               const totalPaid = settlement.payments.reduce((sum, p) => sum + p.amount, 0);
               const remainingBalance = settlement.finalAmount - totalPaid;
 
+              const statusUpdate = {
+                outstandingBalance: Math.max(0, remainingBalance)
+              };
               if (remainingBalance <= 0) {
-                settlement.status = 'completed';
-                settlement.completedAt = new Date();
+                statusUpdate.status = 'completed';
+                statusUpdate.completedAt = new Date();
               } else {
-                settlement.status = 'partial';
+                statusUpdate.status = 'partial';
               }
 
-              settlement.outstandingBalance = Math.max(0, remainingBalance);
-              await settlement.save();
+              await Settlement.findByIdAndUpdate(settlementId, { $set: statusUpdate },
+                { new: true });
             }
           }
         } else {
@@ -260,7 +283,9 @@ router.post('/confirm',
             status: 'confirmed',
             paymentStatus: 'paid',
             stripePaymentId: paymentIntentId
-          });
+          },
+            { new: true }
+          );
         }
       }
 
@@ -326,7 +351,7 @@ router.post('/extra-person-charges/intent',
     const { bookingId, extraPersonCharges, currency = 'INR' } = req.body;
 
     // Get booking
-    const booking = await Booking.findById(bookingId);
+    const booking = await Booking.findById(bookingId).lean();
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
     }
@@ -441,7 +466,7 @@ router.post('/settlement/intent',
     const settlement = await Settlement.findById(settlementId).populate({
       path: 'bookingId',
       populate: { path: 'hotelId' }
-    });
+    }).lean();
 
     if (!settlement) {
       throw new ApplicationError('Settlement not found', 404);
@@ -588,20 +613,29 @@ router.post('/refund',
       () => { throw new Error('Payment service temporarily unavailable. Please try again.'); }
     );
 
-    // Update payment record
-    payment.refunds.push({
-      stripeRefundId: refund.id,
-      amount: refund.amount / 100,
-      reason: refund.reason
-    });
-
-    payment.status = refund.amount === payment.amount * 100 ? 'refunded' : 'partially_refunded';
-    await payment.save();
+    // Update payment record atomically
+    const newStatus = refund.amount === payment.amount * 100 ? 'refunded' : 'partially_refunded';
+    await Payment.findByIdAndUpdate(
+      payment._id,
+      {
+        $push: {
+          refunds: {
+            stripeRefundId: refund.id,
+            amount: refund.amount / 100,
+            reason: refund.reason
+          }
+        },
+        $set: { status: newStatus }
+      },
+      { new: true }
+    );
 
     // Update booking status
     await Booking.findByIdAndUpdate(payment.bookingId._id, {
-      paymentStatus: payment.status
-    });
+      paymentStatus: newStatus
+    },
+      { new: true }
+    );
 
     res.json({
       status: 'success',
@@ -626,12 +660,13 @@ router.post('/room-charge', authenticate, ensureTenantContext, catchAsync(async 
     throw new ApplicationError('Amount and booking ID are required', 400);
   }
 
-  const booking = await Booking.findById(bookingId);
-  if (!booking) {
+  // Verify booking exists and check permissions (lean read)
+  const bookingCheck = await Booking.findById(bookingId).lean();
+  if (!bookingCheck) {
     throw new ApplicationError('Booking not found', 404);
   }
 
-  if (req.user.role === 'guest' && booking.userId.toString() !== req.user._id.toString()) {
+  if (req.user.role === 'guest' && bookingCheck.userId.toString() !== req.user._id.toString()) {
     throw new ApplicationError('Access denied', 403);
   }
 
@@ -642,12 +677,10 @@ router.post('/room-charge', authenticate, ensureTenantContext, catchAsync(async 
     paymentDetails: { roomChargeReference: reference, roomNumber, bookingId }
   };
 
+  // Atomic POS order update
   if (orderId) {
-    const posOrder = await POSOrder.findById(orderId);
-    if (posOrder) {
-      posOrder.payment = paymentData;
-      await posOrder.save();
-    }
+    await POSOrder.findByIdAndUpdate(orderId, { $set: { payment: paymentData } },
+      { new: true });
   }
 
   const serviceCharge = {
@@ -661,11 +694,15 @@ router.post('/room-charge', authenticate, ensureTenantContext, catchAsync(async 
     }
   };
 
-  if (!booking.settlementTracking) booking.settlementTracking = { adjustments: [] };
-  if (!booking.settlementTracking.adjustments) booking.settlementTracking.adjustments = [];
-  booking.settlementTracking.adjustments.push(serviceCharge);
-  booking.totalAmount = (booking.totalAmount || 0) + parseFloat(amount);
-  await booking.save();
+  // Atomic booking update: push adjustment and increment totalAmount
+  await Booking.findByIdAndUpdate(
+    bookingId,
+    {
+      $push: { 'settlementTracking.adjustments': serviceCharge },
+      $inc: { totalAmount: parseFloat(amount) }
+    },
+    { new: true }
+  );
 
   res.json({
     success: true,
@@ -689,12 +726,10 @@ router.post('/cash-on-delivery', authenticate, ensureTenantContext, catchAsync(a
     paymentDetails: { reference, deliveryAddress: roomNumber ? `Room ${roomNumber}` : 'Guest location' }
   };
 
+  // Atomic POS order update
   if (orderId) {
-    const posOrder = await POSOrder.findById(orderId);
-    if (posOrder) {
-      posOrder.payment = paymentData;
-      await posOrder.save();
-    }
+    await POSOrder.findByIdAndUpdate(orderId, { $set: { payment: paymentData } },
+      { new: true });
   }
 
   res.json({

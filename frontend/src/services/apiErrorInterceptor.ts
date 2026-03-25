@@ -22,6 +22,7 @@ class ApiErrorInterceptor {
     retryAttempts: 2,
     retryDelay: 1000
   };
+  private retryTimers: Set<ReturnType<typeof setTimeout>> = new Set();
 
   constructor(config?: Partial<ErrorHandlingConfig>) {
     if (config) {
@@ -194,9 +195,13 @@ class ApiErrorInterceptor {
     const retryCount = (config.metadata?.retryCount || 0) + 1;
 
     // Wait before retrying
-    await new Promise(resolve =>
-      setTimeout(resolve, this.config.retryDelay * retryCount)
-    );
+    await new Promise<void>(resolve => {
+      const timer = setTimeout(() => {
+        this.retryTimers.delete(timer);
+        resolve();
+      }, this.config.retryDelay * retryCount);
+      this.retryTimers.add(timer);
+    });
 
     // Update retry count
     config.metadata = {
@@ -269,6 +274,11 @@ class ApiErrorInterceptor {
 
   public enableToasts() {
     this.config.showToasts = true;
+  }
+
+  public destroy() {
+    this.retryTimers.forEach(timer => clearTimeout(timer));
+    this.retryTimers.clear();
   }
 }
 

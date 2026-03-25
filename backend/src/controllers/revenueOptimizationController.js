@@ -221,7 +221,7 @@ class RevenueOptimizationController {
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .skip((parseInt(page) - 1) * parseInt(limit))
-      .select('reportId reportType reportPeriod currencySettings.baseCurrency createdAt revenueData.totalRevenue performanceMetrics.occupancyRate');
+      .select('reportId reportType reportPeriod currencySettings.baseCurrency createdAt revenueData.totalRevenue performanceMetrics.occupancyRate').lean();
 
     const totalReports = await RevenueReport.countDocuments(query);
 
@@ -246,7 +246,7 @@ class RevenueOptimizationController {
         { _id: reportId, hotelId },
         { reportId, hotelId }
       ]
-    });
+    }).lean();
 
     if (!report) {
       throw new ApplicationError('Revenue report not found', 404);

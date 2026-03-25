@@ -131,8 +131,13 @@ class ChannelSyncMiddleware {
    */
   startSyncProcessor() {
     setInterval(async () => {
-      if (!this.isProcessing && this.syncQueue.size > 0) {
-        await this.processSyncQueue();
+      try {
+        if (!this.isProcessing && this.syncQueue.size > 0) {
+          await this.processSyncQueue();
+        }
+    
+      } catch (error) {
+        console.error('Sync queue processing failed:', error.message);
       }
     }, 5 * 60 * 1000); // Every 5 minutes
 
@@ -202,7 +207,7 @@ class ChannelSyncMiddleware {
         hotelId,
         isActive: true,
         connectionStatus: 'connected'
-      });
+      }).lean().limit(1000);
 
       if (activeChannels.length === 0) {
         console.log(`No active channels for hotel ${hotelId}`);
@@ -299,7 +304,7 @@ class ChannelSyncMiddleware {
       const channelQuery = { hotelId, isActive: true };
       if (channelId) channelQuery.channelId = channelId;
       
-      const channels = await Channel.find(channelQuery);
+      const channels = await Channel.find(channelQuery).lean().limit(1000);
       
       if (channels.length === 0) {
         return {

@@ -632,99 +632,111 @@ vipGuestSchema.virtual('concierge', {
 
 // Static method to get VIP statistics
 vipGuestSchema.statics.getVIPStatistics = async function(hotelId) {
-  const stats = await this.aggregate([
-    { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
-    {
-      $group: {
-        _id: null,
-        total: { $sum: 1 },
-        active: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
-        inactive: { $sum: { $cond: [{ $eq: ['$status', 'inactive'] }, 1, 0] } },
-        suspended: { $sum: { $cond: [{ $eq: ['$status', 'suspended'] }, 1, 0] } },
-        pending: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
-        byLevel: {
-          $push: {
-            level: '$vipLevel',
-            status: '$status'
-          }
-        },
-        totalSpent: { $sum: '$qualificationCriteria.totalSpent' },
-        totalStays: { $sum: '$qualificationCriteria.totalStays' },
-        totalNights: { $sum: '$qualificationCriteria.totalNights' }
+  try {
+    const stats = await this.aggregate([
+      { $match: { hotelId: new mongoose.Types.ObjectId(hotelId) } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: 1 },
+          active: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } },
+          inactive: { $sum: { $cond: [{ $eq: ['$status', 'inactive'] }, 1, 0] } },
+          suspended: { $sum: { $cond: [{ $eq: ['$status', 'suspended'] }, 1, 0] } },
+          pending: { $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] } },
+          byLevel: {
+            $push: {
+              level: '$vipLevel',
+              status: '$status'
+            }
+          },
+          totalSpent: { $sum: '$qualificationCriteria.totalSpent' },
+          totalStays: { $sum: '$qualificationCriteria.totalStays' },
+          totalNights: { $sum: '$qualificationCriteria.totalNights' }
+        }
       }
+    ]);
+
+    if (stats.length === 0) {
+      return {
+        total: 0,
+        active: 0,
+        inactive: 0,
+        suspended: 0,
+        pending: 0,
+        byLevel: {},
+        totalSpent: 0,
+        totalStays: 0,
+        totalNights: 0
+      };
     }
-  ]);
 
-  if (stats.length === 0) {
-    return {
-      total: 0,
-      active: 0,
-      inactive: 0,
-      suspended: 0,
-      pending: 0,
-      byLevel: {},
-      totalSpent: 0,
-      totalStays: 0,
-      totalNights: 0
-    };
-  }
-
-  const result = stats[0];
+    const result = stats[0];
   
-  // Calculate level breakdown
-  const levelStats = {};
-  result.byLevel.forEach(item => {
-    if (!levelStats[item.level]) {
-      levelStats[item.level] = { total: 0, active: 0, inactive: 0, suspended: 0, pending: 0 };
-    }
-    levelStats[item.level].total++;
-    levelStats[item.level][item.status]++;
-  });
+    // Calculate level breakdown
+    const levelStats = {};
+    result.byLevel.forEach(item => {
+      if (!levelStats[item.level]) {
+        levelStats[item.level] = { total: 0, active: 0, inactive: 0, suspended: 0, pending: 0 };
+      }
+      levelStats[item.level].total++;
+      levelStats[item.level][item.status]++;
+    });
 
-  return {
-    total: result.total,
-    active: result.active,
-    inactive: result.inactive,
-    suspended: result.suspended,
-    pending: result.pending,
-    byLevel: levelStats,
-    totalSpent: result.totalSpent,
-    totalStays: result.totalStays,
-    totalNights: result.totalNights
-  };
+    return {
+      total: result.total,
+      active: result.active,
+      inactive: result.inactive,
+      suspended: result.suspended,
+      pending: result.pending,
+      byLevel: levelStats,
+      totalSpent: result.totalSpent,
+      totalStays: result.totalStays,
+      totalNights: result.totalNights
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get expiring VIPs
 vipGuestSchema.statics.getExpiringVIPs = async function(hotelId, days = 30) {
-  const futureDate = new Date();
-  futureDate.setDate(futureDate.getDate() + days);
+  try {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + days);
   
-  return await this.find({
-    hotelId: new mongoose.Types.ObjectId(hotelId),
-    status: 'active',
-    expiryDate: { $lte: futureDate, $gte: new Date() }
-  }).populate('guestId', 'name email phone');
+    return await this.find({
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      status: 'active',
+      expiryDate: { $lte: futureDate, $gte: new Date() }
+    }).populate('guestId', 'name email phone').lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to auto-expire VIPs
 vipGuestSchema.statics.autoExpireVIPs = async function(hotelId) {
-  const currentDate = new Date();
+  try {
+    const currentDate = new Date();
   
-  const result = await this.updateMany(
-    {
-      hotelId: new mongoose.Types.ObjectId(hotelId),
-      status: 'active',
-      expiryDate: { $lte: currentDate }
-    },
-    {
-      $set: {
-        status: 'inactive',
-        updatedBy: null // System update
+    const result = await this.updateMany(
+      {
+        hotelId: new mongoose.Types.ObjectId(hotelId),
+        status: 'active',
+        expiryDate: { $lte: currentDate }
+      },
+      {
+        $set: {
+          status: 'inactive',
+          updatedBy: null // System update
+        }
       }
-    }
-  );
+    );
 
-  return result.modifiedCount;
+    return result.modifiedCount;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance method to calculate VIP level based on criteria

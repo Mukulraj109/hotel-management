@@ -342,7 +342,7 @@ router.get('/:id', catchAsync(async (req, res) => {
     .populate('requestedBy', 'name email department')
     .populate('approvedBy', 'name email')
     .populate('items.receivedBy', 'name')
-    .populate('attachments.uploadedBy', 'name');
+    .populate('attachments.uploadedBy', 'name').lean();
 
   if (!supplyRequest) {
     throw new ApplicationError('Supply request not found', 404);
@@ -551,7 +551,7 @@ router.post('/:id/approve', authorize('admin', 'manager', 'frontdesk'), catchAsy
 router.post('/:id/reject', authorize('admin', 'manager', 'frontdesk'), catchAsync(async (req, res) => {
   const { reason } = req.body;
   
-  const supplyRequest = await SupplyRequest.findById(req.params.id);
+  const supplyRequest = await SupplyRequest.findById(req.params.id).lean();
   
   if (!supplyRequest) {
     throw new ApplicationError('Supply request not found', 404);
@@ -698,7 +698,7 @@ router.post('/:id/items/:itemIndex/receive', authorize('staff', 'admin', 'frontd
   const { receivedQuantity, condition, actualCost, invoiceNumber, notes } = req.body;
   const { itemIndex } = req.params;
   
-  const supplyRequest = await SupplyRequest.findById(req.params.id);
+  const supplyRequest = await SupplyRequest.findById(req.params.id).lean();
   
   if (!supplyRequest) {
     throw new ApplicationError('Supply request not found', 404);

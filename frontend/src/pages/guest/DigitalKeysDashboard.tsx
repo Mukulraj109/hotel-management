@@ -41,8 +41,9 @@ import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
 import { QRCodeSVG as QRCode } from 'qrcode.react';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function DigitalKeysDashboard() {
+function DigitalKeysDashboard() {
   const [activeTab, setActiveTab] = useState<'my-keys' | 'shared-keys' | 'stats'>('my-keys');
   const [selectedKey, setSelectedKey] = useState<DigitalKey | null>(null);
   const [showGenerateModal, setShowGenerateModal] = useState(false);
@@ -1221,3 +1222,6 @@ function KeyLogsModal({ digitalKey, onClose }: KeyLogsModalProps) {
     </div>
   );
 }
+
+
+export default withErrorBoundary(DigitalKeysDashboard, { level: 'page' });

@@ -111,7 +111,7 @@ router.post('/', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req
         status: { $in: ['checked_in'] },
         checkIn: { $lte: now },
         checkOut: { $gte: now }
-      });
+      }).lean();
 
       if (activeBooking) {
         throw new ApplicationError(
@@ -120,8 +120,8 @@ router.post('/', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req
         );
       }
 
-      room.status = 'maintenance';
-      await room.save();
+      await Room.findByIdAndUpdate(taskData.roomId, { status: 'maintenance' },
+        { new: true });
     }
   }
 
@@ -397,7 +397,7 @@ router.get('/available-staff', authorize('staff', 'admin', 'frontdesk'), catchAs
     hotelId: hotelId,
     role: 'staff',
     isActive: true
-  }).select('_id name email department');
+  }).select('_id name email department').lean().limit(1000);
 
   res.json({
     status: 'success',
@@ -435,7 +435,7 @@ router.get('/available-rooms', authorize('staff', 'admin', 'frontdesk'), catchAs
   const rooms = await Room.find({
     hotelId: hotelId,
     status: { $ne: 'out_of_order' } // Exclude out of order rooms
-  }).select('_id roomNumber type floor');
+  }).select('_id roomNumber type floor').lean().limit(1000);
   logger.debug('Rooms found for maintenance', { count: rooms.length });
   res.json({
     status: 'success',
@@ -466,7 +466,7 @@ router.get('/:id', catchAsync(async (req, res) => {
     .populate('hotelId', 'name contact')
     .populate('roomId', 'number type floor amenities')
     .populate('assignedTo', 'name email phone')
-    .populate('reportedBy', 'name email');
+    .populate('reportedBy', 'name email').lean();
 
   if (!task) {
     throw new ApplicationError('Maintenance task not found', 404);
@@ -529,17 +529,18 @@ router.patch('/:id', authorize('staff', 'admin', 'frontdesk'), catchAsync(async 
   const { id } = req.params;
   logger.debug('Updating maintenance task', { id });
 
-  const task = await MaintenanceTask.findById(id);
+  // Read-only check for existence and permissions
+  const existingTask = await MaintenanceTask.findById(id).lean();
 
-  if (!task) {
+  if (!existingTask) {
     logger.debug('Maintenance task not found', { id });
     throw new ApplicationError('Maintenance task not found', 404);
   }
 
-  logger.debug('Maintenance task found', { taskId: task._id, currentStatus: task.status });
+  logger.debug('Maintenance task found', { taskId: existingTask._id, currentStatus: existingTask.status });
 
   // Check access permissions
-  if (req.user.role === 'staff' && task.hotelId.toString() !== req.user.hotelId.toString()) {
+  if (req.user.role === 'staff' && existingTask.hotelId.toString() !== req.user.hotelId.toString()) {
     logger.debug('Permission denied - hotel mismatch for maintenance task', { taskId: id });
     throw new ApplicationError('You can only update tasks for your hotel', 403);
   }
@@ -559,32 +560,47 @@ router.patch('/:id', authorize('staff', 'admin', 'frontdesk'), catchAsync(async 
 
   logger.debug('Applying maintenance task updates', { taskId: id, updateKeys: Object.keys(updates) });
 
-  Object.assign(task, updates);
-
   // Special handling for status updates
   if (updates.status) {
-    task.updatedAt = new Date();
-    if (updates.status === 'in_progress' && !task.startedAt) {
-      task.startedAt = new Date();
-      task.assignedTo = task.assignedTo || req.user._id;
-    } else if (updates.status === 'completed' && !task.completedAt) {
-      task.completedAt = new Date();
+    updates.updatedAt = new Date();
+    if (updates.status === 'in_progress' && !existingTask.startedAt) {
+      updates.startedAt = new Date();
+      updates.assignedTo = updates.assignedTo || existingTask.assignedTo || req.user._id;
+    } else if (updates.status === 'completed' && !existingTask.completedAt) {
+      updates.completedAt = new Date();
     }
-    logger.debug('Maintenance task status changed', { from: task.status, to: updates.status });
+    logger.debug('Maintenance task status changed', { from: existingTask.status, to: updates.status });
   }
 
-  await task.save();
+  // When completing a task that has a room out of order, wrap both writes in a transaction
+  let task;
+  if (updates.status === 'completed' && existingTask.roomId && existingTask.roomOutOfOrder) {
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        task = await MaintenanceTask.findByIdAndUpdate(
+          id,
+          { $set: updates },
+          { new: true, runValidators: true, session }
+        );
+        await Room.findOneAndUpdate(
+          { _id: task.roomId, status: 'maintenance' },
+          { $set: { status: 'vacant_dirty' } },
+          { session, new: true }
+        );
+      });
+    } finally {
+      session.endSession();
+    }
+    logger.debug('Maintenance task and room status updated atomically');
+  } else {
+    task = await MaintenanceTask.findByIdAndUpdate(
+      id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    );
+  }
   logger.debug('Maintenance task saved successfully');
-
-  // Handle room status updates
-  if (updates.status === 'completed' && task.roomId && task.roomOutOfOrder) {
-    const room = await Room.findById(task.roomId);
-    if (room && room.status === 'maintenance') {
-      room.status = 'vacant_dirty'; // Room needs cleaning after maintenance
-      await room.save();
-      logger.debug('Room status updated after maintenance task completion');
-    }
-  }
 
   await task.populate([
     { path: 'hotelId', select: 'name' },
@@ -636,24 +652,31 @@ router.patch('/:id', authorize('staff', 'admin', 'frontdesk'), catchAsync(async 
  */
 router.post('/:id/assign', authorize('staff', 'admin', 'frontdesk'), catchAsync(async (req, res) => {
   const { assignedTo, scheduledDate, notes } = req.body;
-  
-  const task = await MaintenanceTask.findById(req.params.id);
-  
-  if (!task) {
+
+  const existingTask = await MaintenanceTask.findById(req.params.id).lean();
+
+  if (!existingTask) {
     throw new ApplicationError('Maintenance task not found', 404);
   }
 
   // Check access permissions
-  if (req.user.role === 'staff' && task.hotelId.toString() !== req.user.hotelId.toString()) {
+  if (req.user.role === 'staff' && existingTask.hotelId.toString() !== req.user.hotelId.toString()) {
     throw new ApplicationError('You can only assign tasks for your hotel', 403);
   }
 
-  await task.assignTask(assignedTo, scheduledDate);
-  
-  if (notes) {
-    task.notes = notes;
-    await task.save();
-  }
+  // Atomic update: assign task and set notes in one operation
+  const updateFields = {
+    assignedTo,
+    status: 'assigned'
+  };
+  if (scheduledDate) updateFields.scheduledDate = scheduledDate;
+  if (notes) updateFields.notes = notes;
+
+  const task = await MaintenanceTask.findByIdAndUpdate(
+    req.params.id,
+    { $set: updateFields },
+    { new: true, runValidators: true }
+  );
 
   await task.populate([
     { path: 'assignedTo', select: 'name email' }

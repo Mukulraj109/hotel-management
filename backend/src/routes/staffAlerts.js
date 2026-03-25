@@ -86,7 +86,7 @@ router.get('/', authenticate, ensurePropertyAccess, authorize('staff', 'admin', 
     .limit(parseInt(limit))
     .skip(parseInt(skip))
     .populate('assignedTo', 'name email role')
-    .populate('createdBy', 'name email role');
+    .populate('createdBy', 'name email role').lean();
 
   const totalCount = await StaffAlert.countDocuments(filter);
 
@@ -153,7 +153,7 @@ router.put('/:id', authenticate, ensurePropertyAccess, authorize('staff', 'admin
   let alert = await StaffAlert.findOne({
     _id: req.params.id,
     hotelId
-  });
+  }).lean();
 
   if (!alert) {
     return res.status(404).json({
@@ -212,7 +212,7 @@ router.patch('/:id/acknowledge', authenticate, ensurePropertyAccess, authorize('
   let alert = await StaffAlert.findOne({
     _id: req.params.id,
     hotelId
-  });
+  }).lean();
 
   if (!alert) {
     return res.status(404).json({
@@ -265,7 +265,7 @@ router.delete('/:id', authenticate, ensurePropertyAccess, authorize('admin', 'ma
   const alert = await StaffAlert.findOne({
     _id: req.params.id,
     hotelId
-  });
+  }).lean();
 
   if (!alert) {
     return res.status(404).json({

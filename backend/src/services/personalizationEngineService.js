@@ -128,7 +128,7 @@ class PersonalizationEngineService {
     try {
       // Get user profile and segmentation
       const profile = await GuestCRMProfile.findOne({ userId, hotelId })
-        .populate('userId', 'firstName lastName email preferences');
+        .populate('userId', 'firstName lastName email preferences').lean();
 
       if (!profile) {
         return this.getDefaultExperience(context);
@@ -143,7 +143,7 @@ class PersonalizationEngineService {
         userId,
         hotelId,
         timestamp: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
-      }).sort({ timestamp: -1 }).limit(50);
+      }).sort({ timestamp: -1 }).limit(50).lean();
 
       // Generate personalized content
       const personalizedContent = await this.generatePersonalizedContent(
@@ -220,218 +220,234 @@ class PersonalizationEngineService {
   }
 
   async generatePersonalizedContent(profile, userSegments, recentBehavior, context) {
-    const primarySegment = userSegments[0]?.segment || 'default';
-    const rules = this.personalizationRules.get(primarySegment) || this.getDefaultRules();
+    try {
+      const primarySegment = userSegments[0]?.segment || 'default';
+      const rules = this.personalizationRules.get(primarySegment) || this.getDefaultRules();
 
-    // Analyze recent behavior for content preferences
-    const behaviorInsights = this.analyzeBehaviorForContent(recentBehavior);
+      // Analyze recent behavior for content preferences
+      const behaviorInsights = this.analyzeBehaviorForContent(recentBehavior);
 
-    const content = {
-      heroSection: {
-        headline: this.personalizeHeadline(rules.heroMessage, profile, behaviorInsights),
-        subheadline: this.generateSubheadline(profile, primarySegment),
-        backgroundImage: this.selectBackgroundImage(primarySegment, behaviorInsights),
-        callToAction: {
-          text: rules.callToAction,
-          style: this.getCallToActionStyle(primarySegment),
-          urgency: rules.urgency
+      const content = {
+        heroSection: {
+          headline: this.personalizeHeadline(rules.heroMessage, profile, behaviorInsights),
+          subheadline: this.generateSubheadline(profile, primarySegment),
+          backgroundImage: this.selectBackgroundImage(primarySegment, behaviorInsights),
+          callToAction: {
+            text: rules.callToAction,
+            style: this.getCallToActionStyle(primarySegment),
+            urgency: rules.urgency
+          }
+        },
+        navigation: {
+          primaryMenuItems: this.getPersonalizedMenuItems(primarySegment),
+          quickActions: this.getQuickActions(profile, userSegments)
+        },
+        recommendations: {
+          rooms: rules.roomRecommendations,
+          amenities: this.getRecommendedAmenities(profile, userSegments),
+          services: this.getRecommendedServices(profile, userSegments)
+        },
+        socialProof: {
+          type: rules.socialProof,
+          content: this.getSocialProofContent(rules.socialProof, profile)
+        },
+        messaging: {
+          tone: rules.contentTone,
+          personalization: {
+            includeFirstName: true,
+            includeLoyaltyStatus: profile.loyaltyMetrics.tier !== 'Bronze',
+            includeSpecialOffers: true
+          }
         }
-      },
-      navigation: {
-        primaryMenuItems: this.getPersonalizedMenuItems(primarySegment),
-        quickActions: this.getQuickActions(profile, userSegments)
-      },
-      recommendations: {
-        rooms: rules.roomRecommendations,
-        amenities: this.getRecommendedAmenities(profile, userSegments),
-        services: this.getRecommendedServices(profile, userSegments)
-      },
-      socialProof: {
-        type: rules.socialProof,
-        content: this.getSocialProofContent(rules.socialProof, profile)
-      },
-      messaging: {
-        tone: rules.contentTone,
-        personalization: {
-          includeFirstName: true,
-          includeLoyaltyStatus: profile.loyaltyMetrics.tier !== 'Bronze',
-          includeSpecialOffers: true
-        }
-      }
-    };
+      };
 
-    return content;
+      return content;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async generatePersonalizedPricing(profile, userSegments, context) {
-    const primarySegment = userSegments[0]?.segment || 'default';
-    const pricingRules = this.pricingRules.get(primarySegment) || {};
+    try {
+      const primarySegment = userSegments[0]?.segment || 'default';
+      const pricingRules = this.pricingRules.get(primarySegment) || {};
 
-    const pricing = {
-      baseDiscountRange: pricingRules.discountRange || { min: 0, max: 5 },
-      loyaltyDiscount: this.calculateLoyaltyDiscount(profile),
-      dynamicPricing: {
-        enabled: true,
-        factors: {
-          loyaltyTier: profile.loyaltyMetrics.tier,
-          bookingHistory: profile.engagementMetrics.totalBookings,
-          segment: primarySegment,
-          seasonality: this.getSeasonalFactor(context.checkInDate)
+      const pricing = {
+        baseDiscountRange: pricingRules.discountRange || { min: 0, max: 5 },
+        loyaltyDiscount: this.calculateLoyaltyDiscount(profile),
+        dynamicPricing: {
+          enabled: true,
+          factors: {
+            loyaltyTier: profile.loyaltyMetrics.tier,
+            bookingHistory: profile.engagementMetrics.totalBookings,
+            segment: primarySegment,
+            seasonality: this.getSeasonalFactor(context.checkInDate)
+          }
+        },
+        offers: {
+          earlyBird: pricingRules.earlyBirdSpecials || false,
+          lastMinute: this.shouldOfferLastMinute(profile, userSegments),
+          packageDeals: this.getAvailablePackages(primarySegment),
+          upgrades: pricingRules.premiumUpgrades || false
+        },
+        complimentaryServices: pricingRules.complimentaryServices || [],
+        flexibleTerms: {
+          cancellation: pricingRules.flexibleCancellation || false,
+          modification: this.shouldOfferFlexibleModification(profile),
+          paymentOptions: this.getPaymentOptions(primarySegment)
         }
-      },
-      offers: {
-        earlyBird: pricingRules.earlyBirdSpecials || false,
-        lastMinute: this.shouldOfferLastMinute(profile, userSegments),
-        packageDeals: this.getAvailablePackages(primarySegment),
-        upgrades: pricingRules.premiumUpgrades || false
-      },
-      complimentaryServices: pricingRules.complimentaryServices || [],
-      flexibleTerms: {
-        cancellation: pricingRules.flexibleCancellation || false,
-        modification: this.shouldOfferFlexibleModification(profile),
-        paymentOptions: this.getPaymentOptions(primarySegment)
-      }
-    };
+      };
 
-    return pricing;
+      return pricing;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async generateRoomRecommendations(profile, userSegments, hotelId, context) {
-    const primarySegment = userSegments[0]?.segment || 'default';
-    const rules = this.personalizationRules.get(primarySegment) || this.getDefaultRules();
+    try {
+      const primarySegment = userSegments[0]?.segment || 'default';
+      const rules = this.personalizationRules.get(primarySegment) || this.getDefaultRules();
 
-    // Get user's historical preferences
-    const bookingHistory = await Booking.find({
-      userId: profile.userId,
-      hotelId,
-      status: { $in: ['confirmed', 'checked-in', 'checked-out'] }
-    }).sort({ createdAt: -1 }).limit(10);
+      // Get user's historical preferences
+      const bookingHistory = await Booking.find({
+        userId: profile.userId,
+        hotelId,
+        status: { $in: ['confirmed', 'checked-in', 'checked-out'] }
+      }).sort({ createdAt: -1 }).limit(10).lean();
 
-    const historicalPreferences = this.analyzeBookingPreferences(bookingHistory);
+      const historicalPreferences = this.analyzeBookingPreferences(bookingHistory);
 
-    // Get available room types
-    const availableRoomTypes = await RoomType.find({ hotelId, isActive: true });
+      // Get available room types
+      const availableRoomTypes = await RoomType.find({ hotelId, isActive: true }).lean().limit(1000);
 
-    const recommendations = [];
+      const recommendations = [];
 
-    for (const roomType of availableRoomTypes) {
-      const score = this.calculateRoomScore(
-        roomType,
-        rules.roomRecommendations,
-        historicalPreferences,
-        profile.preferences,
-        context
-      );
+      for (const roomType of availableRoomTypes) {
+        const score = this.calculateRoomScore(
+          roomType,
+          rules.roomRecommendations,
+          historicalPreferences,
+          profile.preferences,
+          context
+        );
 
-      if (score > 0.3) { // Minimum relevance threshold
-        recommendations.push({
-          roomType: roomType,
-          score: score,
-          reasons: this.generateRecommendationReasons(roomType, profile, primarySegment),
-          pricing: await this.calculatePersonalizedRoomPricing(roomType, profile, userSegments),
-          availability: await this.checkRoomAvailability(roomType, context),
-          highlights: this.getRoomHighlights(roomType, primarySegment)
-        });
+        if (score > 0.3) { // Minimum relevance threshold
+          recommendations.push({
+            roomType: roomType,
+            score: score,
+            reasons: this.generateRecommendationReasons(roomType, profile, primarySegment),
+            pricing: await this.calculatePersonalizedRoomPricing(roomType, profile, userSegments),
+            availability: await this.checkRoomAvailability(roomType, context),
+            highlights: this.getRoomHighlights(roomType, primarySegment)
+          });
+        }
       }
-    }
 
-    return recommendations
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 6); // Top 6 recommendations
+      return recommendations
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 6); // Top 6 recommendations
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async generatePersonalizedOffers(profile, userSegments, context) {
-    const primarySegment = userSegments[0]?.segment || 'default';
-    const offers = [];
+    try {
+      const primarySegment = userSegments[0]?.segment || 'default';
+      const offers = [];
 
-    // Segment-specific offers
-    switch (primarySegment) {
-      case 'high_value_prospects':
+      // Segment-specific offers
+      switch (primarySegment) {
+        case 'high_value_prospects':
+          offers.push({
+            type: 'vip_experience',
+            title: 'Complimentary VIP Welcome Package',
+            description: 'Airport pickup, welcome champagne, and room upgrade',
+            value: '$200',
+            conditions: 'Minimum 2-night stay',
+            expires: this.getOfferExpiration(7)
+          });
+          break;
+
+        case 'loyalty_builders':
+          offers.push({
+            type: 'loyalty_boost',
+            title: 'Double Points Weekend',
+            description: 'Earn 2x loyalty points on your next stay',
+            value: 'Double Points',
+            conditions: 'Valid for weekend bookings',
+            expires: this.getOfferExpiration(14)
+          });
+          break;
+
+        case 'price_sensitive':
+          offers.push({
+            type: 'discount',
+            title: 'Early Bird Special - 20% Off',
+            description: 'Book 30 days in advance and save',
+            value: '20% Discount',
+            conditions: 'Advance booking required',
+            expires: this.getOfferExpiration(3)
+          });
+          break;
+
+        case 'luxury_seekers':
+          offers.push({
+            type: 'luxury_package',
+            title: 'Presidential Suite Experience',
+            description: 'Suite upgrade with spa and fine dining credits',
+            value: '$500',
+            conditions: 'Subject to availability',
+            expires: this.getOfferExpiration(30)
+          });
+          break;
+
+        case 'business_travelers':
+          offers.push({
+            type: 'business_package',
+            title: 'Business Traveler Package',
+            description: 'Express check-in/out, meeting room access, business center',
+            value: '$100',
+            conditions: 'Valid Monday-Thursday',
+            expires: this.getOfferExpiration(30)
+          });
+          break;
+      }
+
+      // Behavior-based offers
+      const recentBehavior = await GuestBehavior.find({
+        userId: profile.userId,
+        hotelId: profile.hotelId,
+        timestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+      }).lean().limit(1000);
+
+      if (this.hasAbandonedBooking(recentBehavior)) {
         offers.push({
-          type: 'vip_experience',
-          title: 'Complimentary VIP Welcome Package',
-          description: 'Airport pickup, welcome champagne, and room upgrade',
-          value: '$200',
-          conditions: 'Minimum 2-night stay',
-          expires: this.getOfferExpiration(7)
+          type: 'comeback',
+          title: 'Complete Your Booking - 10% Off',
+          description: 'Finish your reservation and save',
+          value: '10% Discount',
+          conditions: 'Valid for 24 hours',
+          expires: this.getOfferExpiration(1)
         });
-        break;
+      }
 
-      case 'loyalty_builders':
+      if (this.isRepeatVisitor(profile)) {
         offers.push({
-          type: 'loyalty_boost',
-          title: 'Double Points Weekend',
-          description: 'Earn 2x loyalty points on your next stay',
-          value: 'Double Points',
-          conditions: 'Valid for weekend bookings',
+          type: 'loyalty',
+          title: 'Welcome Back Bonus',
+          description: 'Thank you for your loyalty - room upgrade included',
+          value: 'Free Upgrade',
+          conditions: 'Subject to availability',
           expires: this.getOfferExpiration(14)
         });
-        break;
+      }
 
-      case 'price_sensitive':
-        offers.push({
-          type: 'discount',
-          title: 'Early Bird Special - 20% Off',
-          description: 'Book 30 days in advance and save',
-          value: '20% Discount',
-          conditions: 'Advance booking required',
-          expires: this.getOfferExpiration(3)
-        });
-        break;
-
-      case 'luxury_seekers':
-        offers.push({
-          type: 'luxury_package',
-          title: 'Presidential Suite Experience',
-          description: 'Suite upgrade with spa and fine dining credits',
-          value: '$500',
-          conditions: 'Subject to availability',
-          expires: this.getOfferExpiration(30)
-        });
-        break;
-
-      case 'business_travelers':
-        offers.push({
-          type: 'business_package',
-          title: 'Business Traveler Package',
-          description: 'Express check-in/out, meeting room access, business center',
-          value: '$100',
-          conditions: 'Valid Monday-Thursday',
-          expires: this.getOfferExpiration(30)
-        });
-        break;
+      return offers;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Behavior-based offers
-    const recentBehavior = await GuestBehavior.find({
-      userId: profile.userId,
-      hotelId: profile.hotelId,
-      timestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-    });
-
-    if (this.hasAbandonedBooking(recentBehavior)) {
-      offers.push({
-        type: 'comeback',
-        title: 'Complete Your Booking - 10% Off',
-        description: 'Finish your reservation and save',
-        value: '10% Discount',
-        conditions: 'Valid for 24 hours',
-        expires: this.getOfferExpiration(1)
-      });
-    }
-
-    if (this.isRepeatVisitor(profile)) {
-      offers.push({
-        type: 'loyalty',
-        title: 'Welcome Back Bonus',
-        description: 'Thank you for your loyalty - room upgrade included',
-        value: 'Free Upgrade',
-        conditions: 'Subject to availability',
-        expires: this.getOfferExpiration(14)
-      });
-    }
-
-    return offers;
   }
 
   // Helper methods
@@ -592,7 +608,7 @@ class PersonalizationEngineService {
   async getPersonalizedDashboard(userId, hotelId) {
     try {
       const personalizedExperience = await this.generatePersonalizedExperience(userId, hotelId);
-      const profile = await GuestCRMProfile.findOne({ userId, hotelId });
+      const profile = await GuestCRMProfile.findOne({ userId, hotelId }).lean();
 
       const dashboard = {
         welcome: {
@@ -634,17 +650,21 @@ class PersonalizationEngineService {
   }
 
   async getRecentActivity(userId, hotelId) {
-    const recentBehaviors = await GuestBehavior.find({
-      userId,
-      hotelId,
-      timestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-    }).sort({ timestamp: -1 }).limit(5);
+    try {
+      const recentBehaviors = await GuestBehavior.find({
+        userId,
+        hotelId,
+        timestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+      }).sort({ timestamp: -1 }).limit(5).lean();
 
-    return recentBehaviors.map(behavior => ({
-      type: behavior.behaviorType,
-      timestamp: behavior.timestamp,
-      description: this.getBehaviorDescription(behavior)
-    }));
+      return recentBehaviors.map(behavior => ({
+        type: behavior.behaviorType,
+        timestamp: behavior.timestamp,
+        description: this.getBehaviorDescription(behavior)
+      }));
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   getBehaviorDescription(behavior) {
@@ -661,12 +681,16 @@ class PersonalizationEngineService {
   }
 
   async getUpcomingBookings(userId, hotelId) {
-    return await Booking.find({
-      userId,
-      hotelId,
-      checkInDate: { $gte: new Date() },
-      status: { $in: ['confirmed', 'checked-in'] }
-    }).sort({ checkInDate: 1 }).limit(3);
+    try {
+      return await Booking.find({
+        userId,
+        hotelId,
+        checkInDate: { $gte: new Date() },
+        status: { $in: ['confirmed', 'checked-in'] }
+      }).sort({ checkInDate: 1 }).limit(3).lean();
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   calculatePointsToNextTier(loyaltyMetrics) {

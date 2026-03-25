@@ -40,6 +40,7 @@ import toast from 'react-hot-toast';
 import { groupBookingService, CreateGroupBookingData } from '../../services/groupBookingService';
 import { corporateService, CorporateCompany } from '../../services/corporateService';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface GroupBooking {
   _id: string;
@@ -167,7 +168,7 @@ const GroupBookingDetails = React.memo(({ booking }: { booking: GroupBooking }) 
 ));
 GroupBookingDetails.displayName = 'GroupBookingDetails';
 
-export default function GroupBookingManagement() {
+function GroupBookingManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedBooking, setSelectedBooking] = useState<GroupBooking | null>(null);
   const [editingBooking, setEditingBooking] = useState<GroupBooking | null>(null);
@@ -777,6 +778,7 @@ export default function GroupBookingManagement() {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="text"
+            required
             placeholder="Search by group name, company, or contact person..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -907,7 +909,7 @@ export default function GroupBookingManagement() {
               <h3 className="text-lg font-semibold text-gray-900">
                 Group Booking Details
               </h3>
-              <button
+              <button aria-label="Close"
                 onClick={() => setSelectedBooking(null)}
                 className="text-gray-400 hover:text-gray-500"
               >
@@ -1125,7 +1127,7 @@ export default function GroupBookingManagement() {
               <h3 className="text-lg font-semibold text-gray-900">
                 Edit Group Booking
               </h3>
-              <button
+              <button aria-label="Edit"
                 onClick={() => setEditingBooking(null)}
                 className="text-gray-400 hover:text-gray-500"
               >
@@ -1167,6 +1169,7 @@ export default function GroupBookingManagement() {
                       <input
                         {...form.register('groupName')}
                         type="text"
+                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         placeholder="Enter group name"
                       />
@@ -1196,6 +1199,7 @@ export default function GroupBookingManagement() {
                       <input
                         {...form.register('checkIn')}
                         type="date"
+                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                       {formErrors.checkIn && (
@@ -1210,6 +1214,7 @@ export default function GroupBookingManagement() {
                       <input
                         {...form.register('checkOut')}
                         type="date"
+                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                       {formErrors.checkOut && (
@@ -1248,6 +1253,7 @@ export default function GroupBookingManagement() {
                       <input
                         {...form.register('contactPerson.name')}
                         type="text"
+                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         placeholder="Contact person name"
                       />
@@ -1263,6 +1269,7 @@ export default function GroupBookingManagement() {
                       <input
                         {...form.register('contactPerson.email')}
                         type="email"
+                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         placeholder="contact@example.com"
                       />
@@ -1278,6 +1285,7 @@ export default function GroupBookingManagement() {
                       <input
                         {...form.register('contactPerson.phone')}
                         type="tel"
+                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         placeholder="+1 (555) 123-4567"
                       />
@@ -1293,6 +1301,7 @@ export default function GroupBookingManagement() {
                       <input
                         {...form.register('contactPerson.designation')}
                         type="text"
+                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         placeholder="Job title"
                       />
@@ -1311,6 +1320,7 @@ export default function GroupBookingManagement() {
                       <input
                         {...form.register('eventDetails.eventName')}
                         type="text"
+                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         placeholder="Event name"
                       />
@@ -1420,6 +1430,7 @@ export default function GroupBookingManagement() {
                             <input
                               {...form.register(`rooms.${index}.guestName`)}
                               type="text"
+                              required
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                               placeholder="Guest name"
                             />
@@ -1543,7 +1554,7 @@ export default function GroupBookingManagement() {
               <h3 className="text-lg font-semibold text-gray-900">
                 Create New Group Booking
               </h3>
-              <button
+              <button aria-label="Close"
                 onClick={() => {
                   setCreatingBooking(false);
                   createForm.reset();
@@ -1589,6 +1600,7 @@ export default function GroupBookingManagement() {
                       <input
                         {...createForm.register('groupName')}
                         type="text"
+                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         placeholder="Enter group name"
                       />
@@ -1624,6 +1636,7 @@ export default function GroupBookingManagement() {
                       <input
                         {...createForm.register('checkIn')}
                         type="date"
+                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                       {createFormErrors.checkIn && (
@@ -1638,6 +1651,7 @@ export default function GroupBookingManagement() {
                       <input
                         {...createForm.register('checkOut')}
                         type="date"
+                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
                       {createFormErrors.checkOut && (
@@ -1675,6 +1689,7 @@ export default function GroupBookingManagement() {
                       <input
                         {...createForm.register('contactPerson.name')}
                         type="text"
+                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         placeholder="Contact person name"
                       />
@@ -1690,6 +1705,7 @@ export default function GroupBookingManagement() {
                       <input
                         {...createForm.register('contactPerson.email')}
                         type="email"
+                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         placeholder="Contact person email"
                       />
@@ -1705,6 +1721,7 @@ export default function GroupBookingManagement() {
                       <input
                         {...createForm.register('contactPerson.phone')}
                         type="tel"
+                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         placeholder="Contact person phone"
                       />
@@ -1720,6 +1737,7 @@ export default function GroupBookingManagement() {
                       <input
                         {...createForm.register('contactPerson.designation')}
                         type="text"
+                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         placeholder="Job title or designation"
                       />
@@ -1738,6 +1756,7 @@ export default function GroupBookingManagement() {
                       <input
                         {...createForm.register('eventDetails.eventName')}
                         type="text"
+                        required
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         placeholder="Event name"
                       />
@@ -1889,6 +1908,7 @@ export default function GroupBookingManagement() {
                             <input
                               {...createForm.register(`rooms.${index}.guestName`)}
                               type="text"
+                              required
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                               placeholder="Guest name"
                             />
@@ -1901,6 +1921,7 @@ export default function GroupBookingManagement() {
                             <input
                               {...createForm.register(`rooms.${index}.guestEmail`)}
                               type="email"
+                              required
                               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                               placeholder="Guest email"
                             />
@@ -2013,3 +2034,5 @@ export default function GroupBookingManagement() {
     </div>
   );
 }
+
+export default withErrorBoundary(GroupBookingManagement, { level: 'component' });

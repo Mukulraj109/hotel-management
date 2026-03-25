@@ -38,8 +38,12 @@ export const bookingEventMiddleware = {
 
   // Before booking update
   preUpdate: async function() {
-    // Store original values for comparison
-    this._originalBooking = await this.model.findOne(this.getQuery());
+    try {
+      // Store original values for comparison
+      this._originalBooking = await this.model.findOne(this.getQuery());
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   },
 
   // After booking update
@@ -208,7 +212,11 @@ export const stopSellRuleEventMiddleware = {
 
   // Before rule update
   preUpdate: async function() {
-    this._originalRule = await this.model.findOne(this.getQuery());
+    try {
+      this._originalRule = await this.model.findOne(this.getQuery());
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   },
 
   // After rule update
@@ -257,7 +265,11 @@ export const stopSellRuleEventMiddleware = {
 export const roomTypeEventMiddleware = {
   // Before room type update
   preUpdate: async function() {
-    this._originalRoomType = await this.model.findOne(this.getQuery());
+    try {
+      this._originalRoomType = await this.model.findOne(this.getQuery());
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   },
 
   // After room type update

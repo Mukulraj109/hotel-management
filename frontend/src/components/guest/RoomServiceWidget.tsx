@@ -444,7 +444,7 @@ export function RoomServiceWidget({
             All Services
           </button>
           {summary.availableServices.map(service => (
-            <button
+            <button aria-label="Close"
               key={service.category}
               onClick={() => setSelectedCategory(service.category)}
               className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center ${

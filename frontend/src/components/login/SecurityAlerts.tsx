@@ -210,7 +210,7 @@ const SecurityAlerts: React.FC<SecurityAlertsProps> = ({
               <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </button>
-            <button
+            <button aria-label="Close"
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600"
             >
@@ -339,7 +339,7 @@ const SecurityAlerts: React.FC<SecurityAlertsProps> = ({
                               {getDeviceIcon(alert.userAgent)}
                               <span className="ml-1">Device</span>
                             </div>
-                            <button
+                            <button aria-label="View"
                               onClick={() => setSelectedAlert(alert)}
                               className="text-blue-600 hover:text-blue-900"
                             >
@@ -365,7 +365,7 @@ const SecurityAlerts: React.FC<SecurityAlertsProps> = ({
                   {getSeverityIcon(selectedAlert.severity)}
                   <h3 className="text-lg font-medium text-gray-900 ml-2">Alert Details</h3>
                 </div>
-                <button
+                <button aria-label="Close"
                   onClick={() => setSelectedAlert(null)}
                   className="text-gray-400 hover:text-gray-600"
                 >

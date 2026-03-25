@@ -42,8 +42,9 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { PushNotificationSetup } from '../../components/notifications/PushNotificationSetup';
 import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function NotificationsDashboard() {
+function NotificationsDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState({
     status: '',
@@ -863,7 +864,7 @@ function NotificationPreferences({
           {notificationChannels.map((channel) => {
             const IconComponent = getChannelIcon(channel.id);
             return (
-              <button
+              <button aria-label="Close"
                 key={channel.id}
                 onClick={() => setActiveChannel(channel.id)}
                 className={`py-2 px-2 sm:px-1 border-b-2 font-medium text-sm flex items-center space-x-2 whitespace-nowrap flex-shrink-0 ${
@@ -1080,3 +1081,6 @@ function NotificationPreferences({
     </div>
   );
 }
+
+
+export default withErrorBoundary(NotificationsDashboard, { level: 'page' });

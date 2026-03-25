@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '../LoadingSpinner';
 import { roomInventoryService, CheckoutInspection } from '../../services/roomInventoryService';
 import { formatCurrency } from '../../utils/formatters';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface CheckoutInspectionFormProps {
   bookingId: string;
@@ -23,7 +24,7 @@ interface CheckoutInspectionFormProps {
   onCancel?: () => void;
 }
 
-export function CheckoutInspectionForm({ 
+function CheckoutInspectionForm({ 
   bookingId, 
   roomId, 
   guestId,
@@ -291,14 +292,14 @@ export function CheckoutInspectionForm({
       {/* Progress Steps */}
       <div className="flex items-center space-x-4 overflow-x-auto pb-2">
         {steps.map((step, index) => (
-          <div
+          <div role="button" tabIndex={0}
             key={`steps-${index}-${step}`}
             className={`flex items-center space-x-2 cursor-pointer ${
               index === currentStep ? 'text-blue-600' : 
               index < currentStep ? 'text-green-600' : 'text-gray-400'
             }`}
             onClick={() => setCurrentStep(index)}
-          >
+           onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => setCurrentStep(index); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
               index === currentStep ? 'bg-blue-100' : 
               index < currentStep ? 'bg-green-100' : 'bg-gray-100'
@@ -851,3 +852,6 @@ export function CheckoutInspectionForm({
     </div>
   );
 }
+
+export { CheckoutInspectionForm };
+export default withErrorBoundary(CheckoutInspectionForm, { level: 'component' });

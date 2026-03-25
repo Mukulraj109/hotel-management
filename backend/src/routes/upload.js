@@ -107,9 +107,9 @@ router.post('/avatar', upload.single('avatar'), catchAsync(async (req, res, next
 
 // Delete avatar endpoint
 router.delete('/avatar', catchAsync(async (req, res, next) => {
-  const user = await User.findById(req.user._id);
+  const user = await User.findById(req.user._id).lean();
 
-  if (!user.avatar) {
+  if (!user || !user.avatar) {
     return next(new ApplicationError('No avatar to delete', 400));
   }
 
@@ -123,9 +123,9 @@ router.delete('/avatar', catchAsync(async (req, res, next) => {
     }
   }
 
-  // Remove avatar from database
-  user.avatar = null;
-  await user.save();
+  // Remove avatar from database atomically
+  await User.findByIdAndUpdate(req.user._id, { $set: { avatar: null } },
+    { new: true });
 
   res.status(200).json({
     status: 'success',

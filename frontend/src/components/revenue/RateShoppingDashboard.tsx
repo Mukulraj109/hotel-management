@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -82,6 +82,12 @@ const RateShoppingDashboard: React.FC = () => {
     marketSegment: 'midscale',
     url: ''
   });
+
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     fetchCompetitorRates();
@@ -208,6 +214,7 @@ const RateShoppingDashboard: React.FC = () => {
     try {
       // Simulate API call to refresh rates from external sources
       await new Promise(resolve => setTimeout(resolve, 1500));
+    if (!isMountedRef.current) return;
       toast.success('Rates updated successfully');
       fetchCompetitorRates();
     } catch (error) {

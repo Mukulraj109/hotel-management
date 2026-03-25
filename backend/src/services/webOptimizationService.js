@@ -6,7 +6,7 @@ class WebOptimizationService {
   // A/B Testing Methods
   async createABTest(hotelId, testData, createdBy) {
     try {
-      let config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      let config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       
       if (!config) {
         config = new WebConfiguration({
@@ -256,7 +256,7 @@ class WebOptimizationService {
   
   async getPerformanceReport(hotelId, timeframe = 30) {
     try {
-      const config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      const config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       if (!config) {
         throw new Error('Web configuration not found');
       }
@@ -272,7 +272,7 @@ class WebOptimizationService {
   // User Behavior Tracking Methods
   async recordUserBehavior(hotelId, sessionData) {
     try {
-      let config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      let config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       
       if (!config) {
         config = new WebConfiguration({
@@ -309,7 +309,7 @@ class WebOptimizationService {
   // Conversion Funnel Methods
   async createConversionFunnel(hotelId, funnelData, createdBy) {
     try {
-      let config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      let config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       
       if (!config) {
         config = new WebConfiguration({
@@ -426,7 +426,7 @@ class WebOptimizationService {
   
   async getPersonalizationForUser(hotelId, userProfile) {
     try {
-      const config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      const config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       if (!config || !config.personalization.isEnabled) {
         return null;
       }
@@ -523,7 +523,7 @@ class WebOptimizationService {
   
   async getABTestReport(hotelId, testId) {
     try {
-      const config = await WebConfiguration.findOne({ hotelId, status: 'active' });
+      const config = await WebConfiguration.findOne({ hotelId, status: 'active' }).lean();
       if (!config) {
         throw new Error('Web configuration not found');
       }
@@ -570,35 +570,43 @@ class WebOptimizationService {
   }
   
   async findUserSession(sessionId) {
-    // This would typically query a separate user sessions collection
-    // For now, return null to create new session
-    return null;
+    try {
+      // This would typically query a separate user sessions collection
+      // For now, return null to create new session
+      return null;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   async generateOptimizationRecommendations(test) {
-    const recommendations = [];
+    try {
+      const recommendations = [];
     
-    if (test.results.statisticalSignificance.isSignificant) {
-      const winningVariant = test.results.variantResults.find(
-        v => v.variantId === test.results.statisticalSignificance.winningVariant
-      );
+      if (test.results.statisticalSignificance.isSignificant) {
+        const winningVariant = test.results.variantResults.find(
+          v => v.variantId === test.results.statisticalSignificance.winningVariant
+        );
       
-      if (winningVariant) {
+        if (winningVariant) {
+          recommendations.push({
+            type: 'winner_found',
+            message: `Variant ${winningVariant.variantId} shows significant improvement`,
+            action: 'Consider implementing the winning variant'
+          });
+        }
+      } else {
         recommendations.push({
-          type: 'winner_found',
-          message: `Variant ${winningVariant.variantId} shows significant improvement`,
-          action: 'Consider implementing the winning variant'
+          type: 'continue_test',
+          message: 'Test has not reached statistical significance yet',
+          action: 'Continue running the test to gather more data'
         });
       }
-    } else {
-      recommendations.push({
-        type: 'continue_test',
-        message: 'Test has not reached statistical significance yet',
-        action: 'Continue running the test to gather more data'
-      });
-    }
     
-    return recommendations;
+      return recommendations;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 

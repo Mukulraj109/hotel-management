@@ -49,7 +49,7 @@ class SmartReorderService {
             { $lte: ['$currentStock', '$reorderSettings.reorderPoint'] }
           ]
         }
-      }).sort({ currentStock: 1 }); // Sort by most urgent first
+      }).sort({ currentStock: 1 }).lean().limit(1000); // Sort by most urgent first
 
       if (itemsNeedingReorder.length === 0) {
         return {
@@ -214,7 +214,7 @@ class SmartReorderService {
         ...(prioritizePreferred && { status: -1 }), // Preferred vendors first
         'performance.overallRating': -1,
         'performance.onTimeDeliveryPercentage': -1
-      });
+      }).lean().limit(1000);
 
       return vendors.filter(vendor => this.isVendorEligible(vendor));
 
@@ -478,9 +478,14 @@ class SmartReorderService {
       // Group recommendations by vendor
       const vendorGroups = this.groupRecommendationsByVendor(approvedRecommendations);
 
+      // Batch: fetch all vendors in a single query
+      const allVendorIds = Object.keys(vendorGroups);
+      const allVendors = await Vendor.find({ _id: { $in: allVendorIds } }).limit(1000).lean();
+      const vendorMap = new Map(allVendors.map(v => [v._id.toString(), v]));
+
       for (const [vendorId, recommendations] of Object.entries(vendorGroups)) {
         try {
-          const vendor = await Vendor.findById(vendorId);
+          const vendor = vendorMap.get(vendorId);
           if (!vendor) {
             this.logger.error(`Vendor not found: ${vendorId}`);
             continue;
@@ -545,23 +550,30 @@ class SmartReorderService {
 
           const purchaseOrder = await PurchaseOrder.create(poData);
 
-          // Update reorder history for each item
-          for (const rec of recommendations) {
-            await InventoryItem.findByIdAndUpdate(rec.itemId, {
-              $push: {
-                'reorderSettings.reorderHistory': {
-                  quantity: rec.recommendedQuantity,
-                  supplier: vendor.name,
-                  estimatedCost: rec.estimatedCost,
-                  status: 'pending',
-                  orderDate: new Date(),
-                  expectedDeliveryDate,
-                  notes: `Smart reorder PO: ${purchaseOrder.poNumber}`,
-                  alertId: null // Could link to reorder alert if exists
-                }
-              },
-              'reorderSettings.lastReorderDate': new Date()
-            });
+          // Batch: update reorder history for all items with bulkWrite
+          const reorderBulkOps = recommendations.map(rec => ({
+            updateOne: {
+              filter: { _id: rec.itemId },
+              update: {
+                $push: {
+                  'reorderSettings.reorderHistory': {
+                    quantity: rec.recommendedQuantity,
+                    supplier: vendor.name,
+                    estimatedCost: rec.estimatedCost,
+                    status: 'pending',
+                    orderDate: new Date(),
+                    expectedDeliveryDate,
+                    notes: `Smart reorder PO: ${purchaseOrder.poNumber}`,
+                    alertId: null
+                  }
+                },
+                $set: { 'reorderSettings.lastReorderDate': new Date() }
+              }
+            }
+          }));
+
+          if (reorderBulkOps.length > 0) {
+            await InventoryItem.bulkWrite(reorderBulkOps);
           }
 
           results.push({

@@ -339,7 +339,7 @@ const InventoryTrendAnalysis: React.FC = () => {
             </label>
             <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
               {['trends', 'anomalies', 'seasonal'].map((tab) => (
-                <button
+                <button aria-label="Close"
                   key={tab}
                   onClick={() => setActiveTab(tab as typeof activeTab)}
                   className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition-colors ${

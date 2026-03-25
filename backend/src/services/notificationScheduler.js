@@ -107,31 +107,36 @@ class NotificationScheduler {
         status: { $in: ['pending', 'in_progress'] },
         checkDate: { $lt: twoHoursAgo }, // Check date was more than 2 hours ago
         createdAt: { $lt: twoHoursAgo } // Created more than 2 hours ago
-      }).populate('roomId', 'roomNumber').populate('hotelId', '_id');
+      }).populate('roomId', 'roomNumber').populate('hotelId', '_id').limit(1000).lean();
 
       logger.debug(`📋 Found ${overdueChecks.length} overdue daily checks`);
 
-      for (const check of overdueChecks) {
-        const now = new Date();
-        const overdueHours = Math.floor((now - check.checkDate) / (1000 * 60 * 60));
-
-        await NotificationAutomationService.triggerNotification(
-          'daily_check_overdue',
-          {
-            roomNumber: check.roomId?.roomNumber || 'Unknown',
-            checkId: check._id,
-            assignedTo: check.checkedBy,
-            overdueHours,
-            checkDate: check.checkDate
-          },
-          'auto',
-          'high',
-          check.hotelId
+      // Batch update all overdue checks to 'overdue' status
+      if (overdueChecks.length > 0) {
+        const overdueCheckIds = overdueChecks.map(c => c._id);
+        await DailyRoutineCheck.updateMany(
+          { _id: { $in: overdueCheckIds } },
+          { $set: { status: 'overdue' } }
         );
 
-        // Update check status to overdue
-        check.status = 'overdue';
-        await check.save();
+        // Send notifications in parallel
+        const now = new Date();
+        await Promise.all(overdueChecks.map(check => {
+          const overdueHours = Math.floor((now - check.checkDate) / (1000 * 60 * 60));
+          return NotificationAutomationService.triggerNotification(
+            'daily_check_overdue',
+            {
+              roomNumber: check.roomId?.roomNumber || 'Unknown',
+              checkId: check._id,
+              assignedTo: check.checkedBy,
+              overdueHours,
+              checkDate: check.checkDate
+            },
+            'auto',
+            'high',
+            check.hotelId
+          );
+        }));
       }
 
     } catch (error) {
@@ -168,7 +173,7 @@ class NotificationScheduler {
             scheduledDate: { $lt: new Date() } // Past scheduled date
           }
         ]
-      }).populate('roomId', 'roomNumber');
+      }).populate('roomId', 'roomNumber').lean().limit(1000);
 
       logger.debug(`🔧 Found ${overdueMaintenanceRequests.length} overdue maintenance requests`);
 
@@ -213,7 +218,7 @@ class NotificationScheduler {
       const overdueTasks = await MaintenanceTask.find({
         dueDate: { $lt: now },
         status: { $in: ['pending', 'assigned', 'in_progress'] }
-      }).populate('roomId', 'roomNumber');
+      }).populate('roomId', 'roomNumber').lean().limit(1000);
 
       logger.debug(`🔧 Found ${overdueTasks.length} overdue maintenance tasks`);
 
@@ -275,7 +280,7 @@ class NotificationScheduler {
             createdAt: { $lt: twoHoursAgo }
           }
         ]
-      }).populate('bookingId', 'rooms');
+      }).populate('bookingId', 'rooms').lean().limit(1000);
 
       logger.debug(`🛎️ Found ${overdueServices.length} overdue guest service requests`);
 
@@ -328,7 +333,7 @@ class NotificationScheduler {
 
       // Get all hotels to check their inventory
       const Hotel = mongoose.model('Hotel');
-      const hotels = await Hotel.find({ isActive: true }).select('_id');
+      const hotels = await Hotel.find({ isActive: true }).select('_id').lean().limit(1000);
 
       for (const hotel of hotels) {
         // Find items with low stock (using stockThreshold instead of reorderPoint)
@@ -337,14 +342,14 @@ class NotificationScheduler {
           $expr: { $lte: ['$currentStock', '$stockThreshold'] },
           currentStock: { $gt: 0 }, // Not completely out of stock
           isActive: true
-        });
+        }).lean().limit(1000);
 
         // Find items that are out of stock
         const outOfStockItems = await InventoryItem.find({
           hotelId: hotel._id,
           currentStock: { $lte: 0 },
           isActive: true
-        });
+        }).lean().limit(1000);
 
         // Find items that need reordering
         const reorderItems = await InventoryItem.find({
@@ -357,7 +362,7 @@ class NotificationScheduler {
               { $lte: ['$currentStock', '$reorderSettings.reorderPoint'] }
             ]
           }
-        });
+        }).lean().limit(1000);
 
         logger.debug(`📦 Hotel ${hotel._id}: ${lowStockItems.length} low stock, ${outOfStockItems.length} out of stock, ${reorderItems.length} need reordering`);
 
@@ -442,7 +447,7 @@ class NotificationScheduler {
 
       // Get all active hotels
       const Hotel = mongoose.model('Hotel');
-      const hotels = await Hotel.find({ isActive: true }).select('_id name');
+      const hotels = await Hotel.find({ isActive: true }).select('_id name').lean().limit(1000);
 
       for (const hotel of hotels) {
         const summary = await this.generateDailyOperationsSummary(hotel._id);
@@ -568,7 +573,7 @@ class NotificationScheduler {
       logger.debug('🌅 Sending end-of-day summary...');
 
       const Hotel = mongoose.model('Hotel');
-      const hotels = await Hotel.find({ isActive: true }).select('_id name');
+      const hotels = await Hotel.find({ isActive: true }).select('_id name').lean().limit(1000);
 
       for (const hotel of hotels) {
         const summary = await this.generateEndOfDaySummary(hotel._id);
@@ -650,38 +655,37 @@ class NotificationScheduler {
       const Housekeeping = mongoose.model('Housekeeping');
       const Hotel = mongoose.model('Hotel');
 
-      // Get all active hotels
-      const hotels = await Hotel.find({ isActive: true }).select('_id');
+      // Define deep cleaning frequency (30 days default)
+      const deepCleaningInterval = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
+      const deepCleaningDueDate = new Date(Date.now() - deepCleaningInterval);
 
-      for (const hotel of hotels) {
-        // Define deep cleaning frequency (30 days default)
-        const deepCleaningInterval = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
-        const deepCleaningDueDate = new Date(Date.now() - deepCleaningInterval);
+      // Find ALL rooms across all active hotels due for deep cleaning in a single query
+      const roomsDueForDeepCleaning = await Room.find({
+        hotelId: { $in: (await Hotel.find({ isActive: true }).select('_id').lean().limit(1000)).map(h => h._id) },
+        isActive: true,
+        $or: [
+          { lastCleaned: { $lt: deepCleaningDueDate } },
+          { lastCleaned: { $exists: false } }
+        ]
+      }).select('_id roomNumber hotelId lastCleaned').lean().limit(10000);
 
-        // Find rooms that haven't had deep cleaning in the last 30 days
-        const roomsDueForDeepCleaning = await Room.find({
-          hotelId: hotel._id,
-          isActive: true,
-          $or: [
-            { lastCleaned: { $lt: deepCleaningDueDate } },
-            { lastCleaned: { $exists: false } } // Never been cleaned
-          ]
-        }).select('_id roomNumber');
+      if (roomsDueForDeepCleaning.length > 0) {
+        // Batch check for existing deep cleaning tasks using $in
+        const roomIds = roomsDueForDeepCleaning.map(r => r._id);
+        const existingTasks = await Housekeeping.find({
+          roomId: { $in: roomIds },
+          taskType: 'deep_clean',
+          status: { $in: ['pending', 'assigned', 'in_progress'] }
+        }).select('roomId').limit(1000).lean();
 
-        logger.debug(`🏨 Hotel ${hotel._id}: ${roomsDueForDeepCleaning.length} rooms due for deep cleaning`);
+        const roomsWithExistingTasks = new Set(existingTasks.map(t => t.roomId.toString()));
 
-        for (const room of roomsDueForDeepCleaning) {
-          // Check if there's already a pending deep cleaning task
-          const existingDeepCleaningTask = await Housekeeping.findOne({
-            hotelId: hotel._id,
-            roomId: room._id,
-            taskType: 'deep_clean',
-            status: { $in: ['pending', 'assigned', 'in_progress'] }
-          });
-
-          // Only create notification if no pending deep cleaning task exists
-          if (!existingDeepCleaningTask) {
-            await NotificationAutomationService.triggerNotification(
+        // Send notifications in parallel only for rooms without existing tasks
+        const notificationPromises = roomsDueForDeepCleaning
+          .filter(room => !roomsWithExistingTasks.has(room._id.toString()))
+          .map(room => {
+            logger.debug(`🧽 Deep cleaning due notification sent for Room ${room.roomNumber}`);
+            return NotificationAutomationService.triggerNotification(
               'deep_cleaning_due',
               {
                 roomNumber: room.roomNumber,
@@ -691,12 +695,11 @@ class NotificationScheduler {
               },
               'auto',
               'medium',
-              hotel._id
+              room.hotelId
             );
+          });
 
-            logger.debug(`🧽 Deep cleaning due notification sent for Room ${room.roomNumber}`);
-          }
-        }
+        await Promise.all(notificationPromises);
       }
 
     } catch (error) {
@@ -715,23 +718,20 @@ class NotificationScheduler {
       const dueNotifications = await Notification.find({
         status: 'pending',
         scheduledFor: { $lte: new Date() }
-      });
+      }).lean().limit(1000);
 
       logger.debug(`📬 Processing ${dueNotifications.length} scheduled notifications`);
 
-      for (const notification of dueNotifications) {
-        try {
-          // Clear the scheduledFor field to avoid validation error when saving
-          notification.scheduledFor = undefined;
-          notification.status = 'sent';
-          notification.sentAt = new Date();
-          await notification.save();
+      if (dueNotifications.length > 0) {
+        // Batch update all due notifications to 'sent' status
+        const dueIds = dueNotifications.map(n => n._id);
+        await Notification.updateMany(
+          { _id: { $in: dueIds } },
+          { $set: { status: 'sent', sentAt: new Date() }, $unset: { scheduledFor: 1 } }
+        );
 
-          // Here you would integrate with your real-time notification system
+        for (const notification of dueNotifications) {
           logger.debug(`📤 Sent scheduled notification: ${notification.title}`);
-
-        } catch (error) {
-          logger.error('Error processing scheduled notification:', error);
         }
       }
 
@@ -754,64 +754,73 @@ class NotificationScheduler {
       const DailyRoutineCheck = mongoose.model('DailyRoutineCheck');
       const UserAnalytics = mongoose.model('UserAnalytics');
 
-      const hotels = await Hotel.find({ isActive: true }).select('_id name');
+      const hotels = await Hotel.find({ isActive: true }).select('_id name').lean().limit(1000);
+      const hotelIds = hotels.map(h => h._id);
 
-      for (const hotel of hotels) {
-        // Get staff members for this hotel
-        const staffMembers = await User.find({
-          hotelId: hotel._id,
-          role: { $in: ['staff', 'housekeeping', 'maintenance'] },
-          isActive: true
-        });
+      // Batch: get all relevant staff across all active hotels
+      const staffMembers = await User.find({
+        hotelId: { $in: hotelIds },
+        role: { $in: ['staff', 'housekeeping', 'maintenance'] },
+        isActive: true
+      }).lean().limit(10000);
 
-        const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      if (staffMembers.length === 0) return;
 
-        for (const staff of staffMembers) {
-          // Get task completion metrics
-          const assignedTasks = await DailyRoutineCheck.countDocuments({
-            checkedBy: staff._id,
-            createdAt: { $gte: last24Hours }
-          });
+      const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const staffIds = staffMembers.map(s => s._id);
 
-          const completedTasks = await DailyRoutineCheck.countDocuments({
-            checkedBy: staff._id,
-            status: 'completed',
-            createdAt: { $gte: last24Hours }
-          });
+      // Batch: aggregate task counts per staff member in a single query
+      const [taskCounts, analyticsRecords] = await Promise.all([
+        DailyRoutineCheck.aggregate([
+          { $match: { checkedBy: { $in: staffIds }, createdAt: { $gte: last24Hours } } },
+          { $group: {
+            _id: '$checkedBy',
+            assignedTasks: { $sum: 1 },
+            completedTasks: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } }
+          }}
+        ]),
+        UserAnalytics.find({
+          userId: { $in: staffIds },
+          date: { $gte: last24Hours }
+        }).lean()
+      ]);
 
-          // Get user analytics if available
-          const analytics = await UserAnalytics.findOne({
-            userId: staff._id,
-            date: { $gte: last24Hours }
-          });
+      const taskCountMap = new Map(taskCounts.map(tc => [tc._id.toString(), tc]));
+      const analyticsMap = new Map(analyticsRecords.map(a => [a.userId.toString(), a]));
+      const hotelMap = new Map(hotels.map(h => [h._id.toString(), h]));
 
-          const completionRate = assignedTasks > 0 ? (completedTasks / assignedTasks) * 100 : 100;
-          const efficiencyScore = analytics?.performanceMetrics?.efficiencyScore || 75;
+      // Send notifications in parallel for underperforming staff
+      const notificationPromises = [];
+      for (const staff of staffMembers) {
+        const tc = taskCountMap.get(staff._id.toString()) || { assignedTasks: 0, completedTasks: 0 };
+        const analytics = analyticsMap.get(staff._id.toString());
+        const completionRate = tc.assignedTasks > 0 ? (tc.completedTasks / tc.assignedTasks) * 100 : 100;
+        const efficiencyScore = analytics?.performanceMetrics?.efficiencyScore || 75;
 
-          // Trigger alerts for poor performance
-          if (assignedTasks > 0 && (completionRate < 70 || efficiencyScore < 60)) {
-            const priority = completionRate < 50 ? 'high' : 'medium';
-
-            await NotificationAutomationService.triggerNotification(
+        if (tc.assignedTasks > 0 && (completionRate < 70 || efficiencyScore < 60)) {
+          const priority = completionRate < 50 ? 'high' : 'medium';
+          notificationPromises.push(
+            NotificationAutomationService.triggerNotification(
               'staff_performance_alert',
               {
                 staffName: `${staff.firstName} ${staff.lastName}`,
                 staffId: staff._id,
                 completionRate: Math.round(completionRate),
                 efficiencyScore: Math.round(efficiencyScore),
-                assignedTasks,
-                completedTasks,
+                assignedTasks: tc.assignedTasks,
+                completedTasks: tc.completedTasks,
                 metric: completionRate < 70 ? 'Low task completion rate' : 'Low efficiency score',
                 timeFrame: '24 hours',
                 recommendations: this.generatePerformanceRecommendations(completionRate, efficiencyScore)
               },
               'auto',
               priority,
-              hotel._id
-            );
-          }
+              staff.hotelId
+            )
+          );
         }
       }
+      await Promise.all(notificationPromises);
 
     } catch (error) {
       logger.error('❌ Error checking staff performance:', error);
@@ -830,63 +839,78 @@ class NotificationScheduler {
       const RoomType = mongoose.model('RoomType');
       const MaintenanceRequest = mongoose.model('MaintenanceRequest');
 
-      const hotels = await Hotel.find({ isActive: true }).select('_id name');
+      const hotels = await Hotel.find({ isActive: true }).select('_id name').lean().limit(1000);
+      const hotelIds = hotels.map(h => h._id);
 
-      for (const hotel of hotels) {
-        // Get out-of-order rooms
-        const outOfOrderRooms = await Room.find({
-          hotelId: hotel._id,
-          status: 'out_of_order'
-        }).populate('roomTypeId', 'basePrice name');
+      // Batch: get all out-of-order rooms and counts across all hotels in parallel
+      const [outOfOrderRooms, roomCountsByHotel, maintenanceCounts] = await Promise.all([
+        Room.find({ hotelId: { $in: hotelIds }, status: 'out_of_order' })
+          .populate('roomTypeId', 'basePrice name').lean().limit(10000),
+        Room.aggregate([
+          { $match: { hotelId: { $in: hotelIds } } },
+          { $group: { _id: '$hotelId', count: { $sum: 1 } } }
+        ]),
+        MaintenanceRequest.aggregate([
+          { $match: { hotelId: { $in: hotelIds }, status: { $in: ['pending', 'in_progress'] }, priority: { $in: ['high', 'urgent'] } } },
+          { $group: { _id: '$hotelId', count: { $sum: 1 } } }
+        ])
+      ]);
 
-        if (outOfOrderRooms.length > 0) {
-          // Calculate potential revenue loss
-          let totalDailyRevenueLoss = 0;
-          let roomDetails = [];
+      const roomCountMap = new Map(roomCountsByHotel.map(r => [r._id.toString(), r.count]));
+      const maintenanceCountMap = new Map(maintenanceCounts.map(m => [m._id.toString(), m.count]));
+      const hotelMap = new Map(hotels.map(h => [h._id.toString(), h]));
 
-          for (const room of outOfOrderRooms) {
-            const dailyRate = room.roomTypeId?.basePrice || 100;
-            totalDailyRevenueLoss += dailyRate;
-
-            roomDetails.push({
-              roomNumber: room.roomNumber,
-              roomType: room.roomTypeId?.name || 'Standard',
-              dailyRate,
-              daysOutOfOrder: room.outOfOrderSince ?
-                Math.floor((new Date() - new Date(room.outOfOrderSince)) / (1000 * 60 * 60 * 24)) : 1
-            });
-          }
-
-          // Get related maintenance requests
-          const maintenanceRequests = await MaintenanceRequest.countDocuments({
-            hotelId: hotel._id,
-            status: { $in: ['pending', 'in_progress'] },
-            priority: { $in: ['high', 'urgent'] }
-          });
-
-          // Send alert if revenue impact is significant
-          const priority = totalDailyRevenueLoss > 500 ? 'urgent' :
-                          totalDailyRevenueLoss > 200 ? 'high' : 'medium';
-
-          await NotificationAutomationService.triggerNotification(
-            'revenue_impact_alert',
-            {
-              hotelName: hotel.name,
-              outOfOrderRooms: outOfOrderRooms.length,
-              dailyRevenueLoss: Math.round(totalDailyRevenueLoss),
-              roomDetails,
-              maintenanceRequests,
-              totalRooms: await Room.countDocuments({ hotelId: hotel._id }),
-              impactPercentage: Math.round((outOfOrderRooms.length / await Room.countDocuments({ hotelId: hotel._id })) * 100),
-              urgentMaintenance: maintenanceRequests,
-              estimatedWeeklyLoss: Math.round(totalDailyRevenueLoss * 7)
-            },
-            'auto',
-            priority,
-            hotel._id
-          );
-        }
+      // Group out-of-order rooms by hotel
+      const roomsByHotel = new Map();
+      for (const room of outOfOrderRooms) {
+        const hid = room.hotelId.toString();
+        if (!roomsByHotel.has(hid)) roomsByHotel.set(hid, []);
+        roomsByHotel.get(hid).push(room);
       }
+
+      // Send notifications in parallel
+      const notificationPromises = [];
+      for (const [hotelIdStr, rooms] of roomsByHotel) {
+        const hotel = hotelMap.get(hotelIdStr);
+        if (!hotel) continue;
+
+        let totalDailyRevenueLoss = 0;
+        const roomDetails = rooms.map(room => {
+          const dailyRate = room.roomTypeId?.basePrice || 100;
+          totalDailyRevenueLoss += dailyRate;
+          return {
+            roomNumber: room.roomNumber,
+            roomType: room.roomTypeId?.name || 'Standard',
+            dailyRate,
+            daysOutOfOrder: room.outOfOrderSince ?
+              Math.floor((new Date() - new Date(room.outOfOrderSince)) / (1000 * 60 * 60 * 24)) : 1
+          };
+        });
+
+        const maintenanceRequests = maintenanceCountMap.get(hotelIdStr) || 0;
+        const totalRooms = roomCountMap.get(hotelIdStr) || 1;
+        const priority = totalDailyRevenueLoss > 500 ? 'urgent' :
+                        totalDailyRevenueLoss > 200 ? 'high' : 'medium';
+
+        notificationPromises.push(NotificationAutomationService.triggerNotification(
+          'revenue_impact_alert',
+          {
+            hotelName: hotel.name,
+            outOfOrderRooms: rooms.length,
+            dailyRevenueLoss: Math.round(totalDailyRevenueLoss),
+            roomDetails,
+            maintenanceRequests,
+            totalRooms,
+            impactPercentage: Math.round((rooms.length / totalRooms) * 100),
+            urgentMaintenance: maintenanceRequests,
+            estimatedWeeklyLoss: Math.round(totalDailyRevenueLoss * 7)
+          },
+          'auto',
+          priority,
+          hotel._id
+        ));
+      }
+      await Promise.all(notificationPromises);
 
     } catch (error) {
       logger.error('❌ Error checking revenue impact:', error);
@@ -904,26 +928,33 @@ class NotificationScheduler {
       const Review = mongoose.model('Review');
       const Room = mongoose.model('Room');
 
-      const hotels = await Hotel.find({ isActive: true }).select('_id name');
+      const hotels = await Hotel.find({ isActive: true }).select('_id name').lean().limit(1000);
+      const hotelIds = hotels.map(h => h._id);
 
       const last24Hours = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-      for (const hotel of hotels) {
-        // Get recent low-rating reviews
-        const lowRatingReviews = await Review.find({
-          hotelId: hotel._id,
-          rating: { $lte: 2 }, // 2 stars or less
-          createdAt: { $gte: last24Hours }
-        }).populate('userId', 'firstName lastName email').populate('bookingId', 'roomId');
+      // Batch: get all low-rating reviews across all active hotels
+      const lowRatingReviews = await Review.find({
+        hotelId: { $in: hotelIds },
+        rating: { $lte: 2 },
+        createdAt: { $gte: last24Hours }
+      }).populate('userId', 'firstName lastName email').populate('bookingId', 'roomId').lean().limit(10000);
 
-        for (const review of lowRatingReviews) {
-          let roomNumber = 'Unknown';
-          if (review.bookingId?.roomId) {
-            const room = await Room.findById(review.bookingId.roomId).select('roomNumber');
-            roomNumber = room?.roomNumber || 'Unknown';
-          }
+      if (lowRatingReviews.length > 0) {
+        // Batch: fetch all rooms referenced by reviews in a single query
+        const roomIds = [...new Set(lowRatingReviews.filter(r => r.bookingId?.roomId).map(r => r.bookingId.roomId.toString()))];
+        const rooms = roomIds.length > 0
+          ? await Room.find({ _id: { $in: roomIds } }).select('_id roomNumber').limit(1000).lean()
+          : [];
+        const roomMap = new Map(rooms.map(r => [r._id.toString(), r.roomNumber]));
 
-          await NotificationAutomationService.triggerNotification(
+        // Send notifications in parallel
+        await Promise.all(lowRatingReviews.map(review => {
+          const roomNumber = review.bookingId?.roomId
+            ? (roomMap.get(review.bookingId.roomId.toString()) || 'Unknown')
+            : 'Unknown';
+
+          return NotificationAutomationService.triggerNotification(
             'guest_satisfaction_low',
             {
               guestName: `${review.userId?.firstName || ''} ${review.userId?.lastName || ''}`.trim() || 'Anonymous',
@@ -940,16 +971,18 @@ class NotificationScheduler {
             },
             'auto',
             review.rating === 1 ? 'urgent' : 'high',
-            hotel._id
+            review.hotelId
           );
-        }
+        }));
+      }
 
-        // Calculate overall satisfaction trends
+      // Calculate overall satisfaction trends per hotel
+      for (const hotel of hotels) {
         const last7Days = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         const recentReviews = await Review.find({
           hotelId: hotel._id,
           createdAt: { $gte: last7Days }
-        });
+        }).lean().limit(1000);
 
         if (recentReviews.length >= 5) { // Only analyze if we have enough data
           const averageRating = recentReviews.reduce((sum, review) => sum + review.rating, 0) / recentReviews.length;
@@ -988,7 +1021,7 @@ class NotificationScheduler {
       const Hotel = mongoose.model('Hotel');
       const MaintenanceRequest = mongoose.model('MaintenanceRequest');
 
-      const hotels = await Hotel.find({ isActive: true }).select('_id name');
+      const hotels = await Hotel.find({ isActive: true }).select('_id name').lean().limit(1000);
 
       const last30Days = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 

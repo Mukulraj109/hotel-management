@@ -23,7 +23,7 @@ class DynamicPricingEngine {
           { applicableRoomTypes: roomTypeId },
           { applicableRoomTypes: { $size: 0 } } // Rules that apply to all room types
         ]
-      }).sort({ priority: -1 });
+      }).sort({ priority: -1 }).lean().limit(1000);
 
       // Apply pricing rules in order of priority
       for (const rule of pricingRules) {
@@ -60,34 +60,38 @@ class DynamicPricingEngine {
    * Apply a specific pricing rule
    */
   async applyPricingRule(rule, roomTypeId, checkInDate, checkOutDate, guestProfile) {
-    let adjustment = 0;
+    try {
+      let adjustment = 0;
 
-    switch (rule.type) {
-      case 'occupancy_based':
-        adjustment = await this.getOccupancyBasedAdjustment(rule, checkInDate);
-        break;
+      switch (rule.type) {
+        case 'occupancy_based':
+          adjustment = await this.getOccupancyBasedAdjustment(rule, checkInDate);
+          break;
       
-      case 'day_of_week':
-        adjustment = this.getDayOfWeekAdjustment(rule, checkInDate);
-        break;
+        case 'day_of_week':
+          adjustment = this.getDayOfWeekAdjustment(rule, checkInDate);
+          break;
       
-      case 'seasonal':
-        adjustment = this.getSeasonalAdjustment(rule, checkInDate);
-        break;
+        case 'seasonal':
+          adjustment = this.getSeasonalAdjustment(rule, checkInDate);
+          break;
       
-      case 'length_of_stay':
-        adjustment = this.getLengthOfStayAdjustment(rule, checkInDate, checkOutDate);
-        break;
+        case 'length_of_stay':
+          adjustment = this.getLengthOfStayAdjustment(rule, checkInDate, checkOutDate);
+          break;
       
-      case 'geographic':
-        adjustment = this.getGeographicAdjustment(rule, guestProfile);
-        break;
+        case 'geographic':
+          adjustment = this.getGeographicAdjustment(rule, guestProfile);
+          break;
       
-      default:
-        adjustment = 0;
+        default:
+          adjustment = 0;
+      }
+
+      return adjustment;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return adjustment;
   }
 
   /**
@@ -197,7 +201,7 @@ class DynamicPricingEngine {
       const competitorRates = await RateShopping.find({
         'rates.date': date,
         isActive: true
-      });
+      }).lean().limit(1000);
 
       if (competitorRates.length === 0) return 0;
 
@@ -253,9 +257,13 @@ class DynamicPricingEngine {
    * Get base rate for room type
    */
   async getBaseRate(roomTypeId) {
-    // This would typically come from a rate table or room type configuration
-    // For now, returning a default base rate
-    return 5000; // Base rate in cents/paise
+    try {
+      // This would typically come from a rate table or room type configuration
+      // For now, returning a default base rate
+      return 5000; // Base rate in cents/paise
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -315,26 +323,30 @@ class DynamicPricingEngine {
    * Get historical booking data
    */
   async getHistoricalData(roomTypeId, date) {
-    // Get same day/month from previous years
-    const historicalBookings = [];
+    try {
+      // Get same day/month from previous years
+      const historicalBookings = [];
     
-    for (let year = 1; year <= 3; year++) {
-      const historicalDate = new Date(date);
-      historicalDate.setFullYear(historicalDate.getFullYear() - year);
+      for (let year = 1; year <= 3; year++) {
+        const historicalDate = new Date(date);
+        historicalDate.setFullYear(historicalDate.getFullYear() - year);
       
-      const bookings = await Booking.countDocuments({
-        roomType: roomTypeId,
-        checkInDate: historicalDate,
-        status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-      });
+        const bookings = await Booking.countDocuments({
+          roomType: roomTypeId,
+          checkInDate: historicalDate,
+          status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+        });
       
-      historicalBookings.push(bookings);
+        historicalBookings.push(bookings);
+      }
+    
+      const avgBookings = historicalBookings.reduce((sum, b) => sum + b, 0) / historicalBookings.length;
+      const seasonalityFactor = this.calculateSeasonality(date);
+    
+      return { avgBookings, seasonalityFactor };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    const avgBookings = historicalBookings.reduce((sum, b) => sum + b, 0) / historicalBookings.length;
-    const seasonalityFactor = this.calculateSeasonality(date);
-    
-    return { avgBookings, seasonalityFactor };
   }
 
   /**
@@ -365,18 +377,25 @@ class DynamicPricingEngine {
    */
   async storeRateShoppingData(competitorData) {
     try {
-      for (const competitor of competitorData) {
-        await RateShopping.findOneAndUpdate(
-          { competitorId: competitor.competitorId },
-          {
-            competitorName: competitor.name,
-            url: competitor.url,
-            roomType: competitor.roomType,
-            rates: competitor.rates,
-            lastUpdated: new Date()
+      // Batch: use bulkWrite with upsert to store all competitor data at once
+      const rateBulkOps = competitorData.map(competitor => ({
+        updateOne: {
+          filter: { competitorId: competitor.competitorId },
+          update: {
+            $set: {
+              competitorName: competitor.name,
+              url: competitor.url,
+              roomType: competitor.roomType,
+              rates: competitor.rates,
+              lastUpdated: new Date()
+            }
           },
-          { upsert: true, new: true }
-        );
+          upsert: true
+        }
+      }));
+
+      if (rateBulkOps.length > 0) {
+        await RateShopping.bulkWrite(rateBulkOps);
       }
     } catch (error) {
       logger.error('Error storing rate shopping data:', error);
@@ -395,7 +414,7 @@ class DynamicPricingEngine {
         checkInDate: { $lte: date },
         checkOutDate: { $gt: date },
         status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-      });
+      }).lean().limit(1000);
 
       const revenue = bookings.reduce((sum, booking) => sum + booking.totalAmount, 0);
       const roomsSold = bookings.length;
@@ -425,21 +444,33 @@ class DynamicPricingEngine {
 
   // Helper methods
   async getTotalRooms(roomTypeId = null) {
-    const filter = { isActive: true };
-    if (roomTypeId) filter.roomType = roomTypeId;
-    return await Room.countDocuments(filter);
+    try {
+      const filter = { isActive: true };
+      if (roomTypeId) filter.roomType = roomTypeId;
+      return await Room.countDocuments(filter);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getUpcomingEvents(date) {
-    // This would integrate with an events API or database
-    // For now, returning empty array
-    return [];
+    try {
+      // This would integrate with an events API or database
+      // For now, returning empty array
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getWeatherForecast(date) {
-    // This would integrate with a weather API
-    // For now, returning default
-    return { condition: 'clear', temperature: 25 };
+    try {
+      // This would integrate with a weather API
+      // For now, returning default
+      return { condition: 'clear', temperature: 25 };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   calculatePredictedDemand(historical, events, weather) {
@@ -482,19 +513,23 @@ class DynamicPricingEngine {
   }
 
   async getAvgCompetitorRate(date) {
-    const rates = await RateShopping.find({
-      'rates.date': date,
-      isActive: true
-    });
+    try {
+      const rates = await RateShopping.find({
+        'rates.date': date,
+        isActive: true
+      }).lean().limit(1000);
     
-    if (rates.length === 0) return 0;
+      if (rates.length === 0) return 0;
     
-    const total = rates.reduce((sum, comp) => {
-      const rate = comp.rates.find(r => r.date.getTime() === date.getTime());
-      return sum + (rate ? rate.rate : 0);
-    }, 0);
+      const total = rates.reduce((sum, comp) => {
+        const rate = comp.rates.find(r => r.date.getTime() === date.getTime());
+        return sum + (rate ? rate.rate : 0);
+      }, 0);
     
-    return total / rates.length;
+      return total / rates.length;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   matchesGeographic(guestLocation, rule) {
@@ -506,33 +541,37 @@ class DynamicPricingEngine {
   }
 
   async getAppliedAdjustments(pricingRules, demandAdjustment, competitorAdjustment) {
-    const adjustments = [];
+    try {
+      const adjustments = [];
     
-    pricingRules.forEach(rule => {
-      adjustments.push({
-        rule: rule.name,
-        type: rule.type,
-        adjustment: 0 // This would be calculated based on the specific conditions
+      pricingRules.forEach(rule => {
+        adjustments.push({
+          rule: rule.name,
+          type: rule.type,
+          adjustment: 0 // This would be calculated based on the specific conditions
+        });
       });
-    });
     
-    if (demandAdjustment !== 0) {
-      adjustments.push({
-        rule: 'Demand-based pricing',
-        type: 'demand_based',
-        adjustment: demandAdjustment
-      });
+      if (demandAdjustment !== 0) {
+        adjustments.push({
+          rule: 'Demand-based pricing',
+          type: 'demand_based',
+          adjustment: demandAdjustment
+        });
+      }
+    
+      if (competitorAdjustment !== 0) {
+        adjustments.push({
+          rule: 'Competitor-based pricing',
+          type: 'competitor_based',
+          adjustment: competitorAdjustment
+        });
+      }
+    
+      return adjustments;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    if (competitorAdjustment !== 0) {
-      adjustments.push({
-        rule: 'Competitor-based pricing',
-        type: 'competitor_based',
-        adjustment: competitorAdjustment
-      });
-    }
-    
-    return adjustments;
   }
 }
 

@@ -249,94 +249,106 @@ reviewSchema.virtual('averageCategoryRating').get(function() {
 
 // Pre-save middleware to set verification status
 reviewSchema.pre('save', async function(next) {
-  if (this.isNew && this.bookingId) {
-    // Auto-verify if review is linked to a completed booking
-    const Booking = mongoose.model('Booking');
-    const booking = await Booking.findById(this.bookingId);
+  try {
+    if (this.isNew && this.bookingId) {
+      // Auto-verify if review is linked to a completed booking
+      const Booking = mongoose.model('Booking');
+      const booking = await Booking.findById(this.bookingId).lean();
     
-    if (booking && booking.status === 'checked_out' && booking.userId.toString() === this.userId.toString()) {
-      this.isVerified = true;
-      this.stayDate = booking.checkOut;
+      if (booking && booking.status === 'checked_out' && booking.userId.toString() === this.userId.toString()) {
+        this.isVerified = true;
+        this.stayDate = booking.checkOut;
+      }
     }
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  next();
 });
 
 // Static method to get hotel rating summary
 reviewSchema.statics.getHotelRatingSummary = async function(hotelId) {
-  const pipeline = [
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        isPublished: true,
-        moderationStatus: 'approved'
-      }
-    },
-    {
-      $group: {
-        _id: '$hotelId',
-        averageRating: { $avg: '$rating' },
-        totalReviews: { $sum: 1 },
-        ratingDistribution: {
-          $push: '$rating'
-        },
-        categoryAverages: {
-          $push: {
-            cleanliness: '$categories.cleanliness',
-            service: '$categories.service',
-            location: '$categories.location',
-            value: '$categories.value',
-            amenities: '$categories.amenities'
+  try {
+    const pipeline = [
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          isPublished: true,
+          moderationStatus: 'approved'
+        }
+      },
+      {
+        $group: {
+          _id: '$hotelId',
+          averageRating: { $avg: '$rating' },
+          totalReviews: { $sum: 1 },
+          ratingDistribution: {
+            $push: '$rating'
+          },
+          categoryAverages: {
+            $push: {
+              cleanliness: '$categories.cleanliness',
+              service: '$categories.service',
+              location: '$categories.location',
+              value: '$categories.value',
+              amenities: '$categories.amenities'
+            }
           }
         }
       }
-    }
-  ];
+    ];
 
-  const result = await this.aggregate(pipeline);
-  if (!result.length) return null;
+    const result = await this.aggregate(pipeline);
+    if (!result.length) return null;
 
-  const summary = result[0];
+    const summary = result[0];
   
-  // Calculate rating distribution
-  const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-  summary.ratingDistribution.forEach(rating => {
-    distribution[Math.floor(rating)]++;
-  });
+    // Calculate rating distribution
+    const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    summary.ratingDistribution.forEach(rating => {
+      distribution[Math.floor(rating)]++;
+    });
 
-  // Calculate category averages
-  const categoryAverages = {};
-  const categories = ['cleanliness', 'service', 'location', 'value', 'amenities'];
+    // Calculate category averages
+    const categoryAverages = {};
+    const categories = ['cleanliness', 'service', 'location', 'value', 'amenities'];
   
-  categories.forEach(category => {
-    const ratings = summary.categoryAverages
-      .map(cat => cat[category])
-      .filter(rating => rating != null);
+    categories.forEach(category => {
+      const ratings = summary.categoryAverages
+        .map(cat => cat[category])
+        .filter(rating => rating != null);
     
-    if (ratings.length > 0) {
-      categoryAverages[category] = ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length;
-    }
-  });
+      if (ratings.length > 0) {
+        categoryAverages[category] = ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length;
+      }
+    });
 
-  return {
-    averageRating: Math.round(summary.averageRating * 10) / 10,
-    totalReviews: summary.totalReviews,
-    ratingDistribution: distribution,
-    categoryAverages
-  };
+    return {
+      averageRating: Math.round(summary.averageRating * 10) / 10,
+      totalReviews: summary.totalReviews,
+      ratingDistribution: distribution,
+      categoryAverages
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get recent reviews
 reviewSchema.statics.getRecentReviews = async function(hotelId, limit = 10) {
-  return await this.find({
-    hotelId: new mongoose.Types.ObjectId(hotelId),
-    isPublished: true,
-    moderationStatus: 'approved'
-  })
-  .populate('userId', 'name')
-  .sort('-createdAt')
-  .limit(limit)
-  .select('rating title content categories stayDate visitType response createdAt');
+  try {
+    return await this.find({
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      isPublished: true,
+      moderationStatus: 'approved'
+    })
+    .populate('userId', 'name')
+    .sort('-createdAt')
+    .limit(limit)
+    .select('rating title content categories stayDate visitType response createdAt').lean();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance method to add response
@@ -366,13 +378,13 @@ reviewSchema.post('save', async function(doc) {
       let roomNumber = 'Unknown';
       if (doc.bookingId) {
         const Booking = mongoose.model('Booking');
-        const booking = await Booking.findById(doc.bookingId).populate('roomId', 'roomNumber');
+        const booking = await Booking.findById(doc.bookingId).populate('roomId', 'roomNumber').lean();
         roomNumber = booking?.roomId?.roomNumber || 'Unknown';
       }
 
       // Get user information
       const User = mongoose.model('User');
-      const user = await User.findById(doc.userId).select('firstName lastName email');
+      const user = await User.findById(doc.userId).select('firstName lastName email').lean();
 
       const priority = doc.rating === 1 ? 'urgent' : 'high';
 

@@ -94,7 +94,7 @@ export const OccupancyBreakdownPopup: React.FC<OccupancyBreakdownPopupProps> = (
                 <h3 className="text-lg font-bold text-gray-800">Occupancy Breakdown</h3>
               </div>
               {onClose && (
-                <button
+                <button aria-label="Close"
                   onClick={onClose}
                   className="text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-white rounded-full"
                 >

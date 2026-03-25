@@ -20,17 +20,24 @@ const ComponentTestSuite: React.FC = () => {
     tabComponents: { status: 'pending', message: 'Testing tab components...' },
     iconComponents: { status: 'pending', message: 'Testing icon components...' }
   });
+  const isMountedRef = React.useRef(true);
+
+  React.useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   React.useEffect(() => {
     // Simulate component testing
     const testComponents = async () => {
       // Test UI Components
+      if (!isMountedRef.current) return;
       setTestResults(prev => ({
         ...prev,
         uiComponents: { status: 'pass', message: 'All UI components render correctly' }
       }));
 
       await new Promise(resolve => setTimeout(resolve, 500));
+      if (!isMountedRef.current) return;
 
       // Test Form Components
       setTestResults(prev => ({
@@ -39,6 +46,7 @@ const ComponentTestSuite: React.FC = () => {
       }));
 
       await new Promise(resolve => setTimeout(resolve, 500));
+      if (!isMountedRef.current) return;
 
       // Test Dialog Components
       setTestResults(prev => ({
@@ -47,6 +55,7 @@ const ComponentTestSuite: React.FC = () => {
       }));
 
       await new Promise(resolve => setTimeout(resolve, 500));
+      if (!isMountedRef.current) return;
 
       // Test Tab Components
       setTestResults(prev => ({
@@ -55,6 +64,7 @@ const ComponentTestSuite: React.FC = () => {
       }));
 
       await new Promise(resolve => setTimeout(resolve, 500));
+      if (!isMountedRef.current) return;
 
       // Test Icon Components
       setTestResults(prev => ({

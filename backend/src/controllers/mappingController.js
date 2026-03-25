@@ -52,7 +52,7 @@ export const getRoomMappings = catchAsync(async (req, res, next) => {
 export const getRoomMapping = catchAsync(async (req, res, next) => {
   const mapping = await RoomMapping.findById(req.params.id)
     .populate('roomTypeDetails', 'name category capacity amenities baseRate')
-    .populate('createdBy updatedBy', 'name email');
+    .populate('createdBy updatedBy', 'name email').lean();
   
   if (!mapping) {
     return next(new ApplicationError('Room mapping not found', 404));
@@ -78,7 +78,7 @@ export const createRoomMapping = catchAsync(async (req, res, next) => {
   } = req.body;
   
   // Validate room type exists
-  const roomType = await RoomType.findById(pmsRoomTypeId);
+  const roomType = await RoomType.findById(pmsRoomTypeId).lean();
   if (!roomType) {
     return next(new ApplicationError('Room type not found', 404));
   }
@@ -87,7 +87,7 @@ export const createRoomMapping = catchAsync(async (req, res, next) => {
   const existingMapping = await RoomMapping.findOne({
     channel,
     channelRoomId
-  });
+  }).lean();
   
   if (existingMapping) {
     return next(new ApplicationError('Channel room ID already mapped', 409));
@@ -135,7 +135,7 @@ export const updateRoomMapping = catchAsync(async (req, res, next) => {
       _id: { $ne: id },
       channel: updates.channel || undefined,
       channelRoomId: updates.channelRoomId
-    });
+    }).lean();
     
     if (existingMapping) {
       return next(new ApplicationError('Channel room ID already mapped', 409));
@@ -168,7 +168,7 @@ export const updateRoomMapping = catchAsync(async (req, res, next) => {
 
 // Delete room mapping
 export const deleteRoomMapping = catchAsync(async (req, res, next) => {
-  const mapping = await RoomMapping.findById(req.params.id);
+  const mapping = await RoomMapping.findById(req.params.id).lean();
   
   if (!mapping) {
     return next(new ApplicationError('Room mapping not found', 404));
@@ -279,7 +279,7 @@ export const getRateMapping = catchAsync(async (req, res, next) => {
   const mapping = await RateMapping.findById(req.params.id)
     .populate('roomMappingDetails')
     .populate('channelInfo')
-    .populate('createdBy updatedBy', 'name email');
+    .populate('createdBy updatedBy', 'name email').lean();
   
   if (!mapping) {
     return next(new ApplicationError('Rate mapping not found', 404));
@@ -305,7 +305,7 @@ export const createRateMapping = catchAsync(async (req, res, next) => {
   } = req.body;
   
   // Validate room mapping exists
-  const roomMapping = await RoomMapping.findById(roomMappingId);
+  const roomMapping = await RoomMapping.findById(roomMappingId).lean();
   if (!roomMapping) {
     return next(new ApplicationError('Room mapping not found', 404));
   }
@@ -314,7 +314,7 @@ export const createRateMapping = catchAsync(async (req, res, next) => {
   const existingMapping = await RateMapping.findOne({
     roomMappingId,
     channelRatePlanId
-  });
+  }).lean();
   
   if (existingMapping) {
     return next(new ApplicationError('Channel rate plan ID already mapped for this room mapping', 409));
@@ -362,7 +362,7 @@ export const updateRateMapping = catchAsync(async (req, res, next) => {
       _id: { $ne: id },
       roomMappingId: updates.roomMappingId,
       channelRatePlanId: updates.channelRatePlanId
-    });
+    }).lean();
     
     if (existingMapping) {
       return next(new ApplicationError('Channel rate plan ID already mapped for this room mapping', 409));
@@ -449,7 +449,7 @@ export const testRateCalculation = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const { baseRate, checkIn, dayOfWeek } = req.body;
   
-  const mapping = await RateMapping.findById(id);
+  const mapping = await RateMapping.findById(id).lean();
   if (!mapping) {
     return next(new ApplicationError('Rate mapping not found', 404));
   }
@@ -507,13 +507,18 @@ export const bulkCreateRoomMappings = catchAsync(async (req, res, next) => {
 export const bulkUpdateSyncStatus = catchAsync(async (req, res, next) => {
   const { mappings } = req.body; // Array of {id, status, error}
   
+  // Batch: fetch all mappings in a single query then update
+  const mappingIds = mappings.map(m => m.id);
+  const allMappings = await RoomMapping.find({ _id: { $in: mappingIds } });
+  const mappingMap = new Map(allMappings.map(m => [m._id.toString(), m]));
+
   const promises = mappings.map(async ({ id, status, error }) => {
-    const mapping = await RoomMapping.findById(id);
+    const mapping = mappingMap.get(id.toString());
     if (mapping) {
       return mapping.updateSyncStatus(status, error);
     }
   });
-  
+
   const results = await Promise.allSettled(promises);
   const successful = results.filter(r => r.status === 'fulfilled').length;
   

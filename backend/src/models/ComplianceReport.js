@@ -567,164 +567,180 @@ complianceReportSchema.pre('save', function(next) {
 
 // Static method to create FDA compliance report
 complianceReportSchema.statics.createFDAReport = async function(hotelId) {
-  const InventoryItem = mongoose.model('InventoryItem');
+  try {
+    const InventoryItem = mongoose.model('InventoryItem');
 
-  // Get food-related inventory items
-  const foodItems = await InventoryItem.find({
-    hotelId,
-    category: { $in: ['minibar', 'amenities'] },
-    isActive: true
-  });
+    // Get food-related inventory items
+    const foodItems = await InventoryItem.find({
+      hotelId,
+      category: { $in: ['minibar', 'amenities'] },
+      isActive: true
+    }).lean().limit(1000);
 
-  const complianceAreas = [
-    {
-      area: 'food_safety',
-      description: 'Food storage and handling compliance',
-      requirements: [
-        {
-          code: 'FDA-21CFR117',
-          description: 'Preventive Controls for Human Food',
-          mandatory: true,
-          frequency: 'daily'
-        }
-      ],
-      score: 95,
-      status: 'compliant',
-      findings: [],
-      inventoryItems: foodItems.map(item => ({
-        itemId: item._id,
-        complianceStatus: 'compliant',
-        lastInspected: new Date(),
-        certifications: ['FDA-approved']
-      }))
-    },
-    {
-      area: 'temperature_control',
-      description: 'Temperature monitoring for perishables',
-      requirements: [
-        {
-          code: 'HACCP-CCP',
-          description: 'Critical Control Points monitoring',
-          mandatory: true,
-          frequency: 'continuous'
-        }
-      ],
-      score: 90,
-      status: 'compliant',
-      findings: []
-    }
-  ];
+    const complianceAreas = [
+      {
+        area: 'food_safety',
+        description: 'Food storage and handling compliance',
+        requirements: [
+          {
+            code: 'FDA-21CFR117',
+            description: 'Preventive Controls for Human Food',
+            mandatory: true,
+            frequency: 'daily'
+          }
+        ],
+        score: 95,
+        status: 'compliant',
+        findings: [],
+        inventoryItems: foodItems.map(item => ({
+          itemId: item._id,
+          complianceStatus: 'compliant',
+          lastInspected: new Date(),
+          certifications: ['FDA-approved']
+        }))
+      },
+      {
+        area: 'temperature_control',
+        description: 'Temperature monitoring for perishables',
+        requirements: [
+          {
+            code: 'HACCP-CCP',
+            description: 'Critical Control Points monitoring',
+            mandatory: true,
+            frequency: 'continuous'
+          }
+        ],
+        score: 90,
+        status: 'compliant',
+        findings: []
+      }
+    ];
 
-  return await this.create({
-    hotelId,
-    reportType: 'fda',
-    reportPeriod: {
-      startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-      endDate: new Date(),
-      frequency: 'monthly'
-    },
-    inspector: {
-      name: 'System Generated',
-      agency: 'Internal Compliance',
-      isExternal: false
-    },
-    regulatoryFramework: {
-      jurisdiction: 'Federal',
-      regulations: [
-        {
-          code: '21 CFR 117',
-          title: 'Current Good Manufacturing Practice, Hazard Analysis, and Risk-Based Preventive Controls for Human Food',
-          effectiveDate: new Date('2015-09-17')
-        }
-      ]
-    },
-    complianceAreas,
-    training: {
-      requiredTraining: [
-        {
-          name: 'Food Safety Certification',
-          description: 'Basic food safety and handling training',
-          frequency: 'annually',
-          applicableRoles: ['kitchen_staff', 'housekeeping'],
-          certificationRequired: true,
-          duration: 8,
-          expiryPeriod: 365
-        }
-      ],
-      complianceRate: 95
-    },
-    followUp: {
-      nextInspectionDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
-      reinspectionRequired: false
-    }
-  });
+    return await this.create({
+      hotelId,
+      reportType: 'fda',
+      reportPeriod: {
+        startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+        endDate: new Date(),
+        frequency: 'monthly'
+      },
+      inspector: {
+        name: 'System Generated',
+        agency: 'Internal Compliance',
+        isExternal: false
+      },
+      regulatoryFramework: {
+        jurisdiction: 'Federal',
+        regulations: [
+          {
+            code: '21 CFR 117',
+            title: 'Current Good Manufacturing Practice, Hazard Analysis, and Risk-Based Preventive Controls for Human Food',
+            effectiveDate: new Date('2015-09-17')
+          }
+        ]
+      },
+      complianceAreas,
+      training: {
+        requiredTraining: [
+          {
+            name: 'Food Safety Certification',
+            description: 'Basic food safety and handling training',
+            frequency: 'annually',
+            applicableRoles: ['kitchen_staff', 'housekeeping'],
+            certificationRequired: true,
+            duration: 8,
+            expiryPeriod: 365
+          }
+        ],
+        complianceRate: 95
+      },
+      followUp: {
+        nextInspectionDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+        reinspectionRequired: false
+      }
+    });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to create health department report
 complianceReportSchema.statics.createHealthDepartmentReport = async function(hotelId) {
-  const complianceAreas = [
-    {
-      area: 'hygiene_standards',
-      description: 'Guest room hygiene and cleanliness standards',
-      score: 92,
-      status: 'compliant',
-      findings: []
-    },
-    {
-      area: 'water_quality',
-      description: 'Water quality testing and monitoring',
-      score: 88,
-      status: 'compliant',
-      findings: []
-    },
-    {
-      area: 'waste_management',
-      description: 'Proper waste disposal and recycling',
-      score: 85,
-      status: 'compliant',
-      findings: []
-    }
-  ];
+  try {
+    const complianceAreas = [
+      {
+        area: 'hygiene_standards',
+        description: 'Guest room hygiene and cleanliness standards',
+        score: 92,
+        status: 'compliant',
+        findings: []
+      },
+      {
+        area: 'water_quality',
+        description: 'Water quality testing and monitoring',
+        score: 88,
+        status: 'compliant',
+        findings: []
+      },
+      {
+        area: 'waste_management',
+        description: 'Proper waste disposal and recycling',
+        score: 85,
+        status: 'compliant',
+        findings: []
+      }
+    ];
 
-  return await this.create({
-    hotelId,
-    reportType: 'health_department',
-    reportPeriod: {
-      startDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
-      endDate: new Date(),
-      frequency: 'quarterly'
-    },
-    complianceAreas,
-    followUp: {
-      nextInspectionDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000)
-    }
-  });
+    return await this.create({
+      hotelId,
+      reportType: 'health_department',
+      reportPeriod: {
+        startDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+        endDate: new Date(),
+        frequency: 'quarterly'
+      },
+      complianceAreas,
+      followUp: {
+        nextInspectionDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000)
+      }
+    });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get expiring certifications
 complianceReportSchema.statics.getExpiringCertifications = async function(hotelId, daysAhead = 30) {
-  const cutoffDate = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000);
+  try {
+    const cutoffDate = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000);
 
-  return await this.find({
-    hotelId,
-    'regulatoryFramework.certifications.expiryDate': { $lte: cutoffDate },
-    'regulatoryFramework.certifications.status': 'active'
-  })
-  .select('regulatoryFramework.certifications reportType')
-  .lean();
+    return await this.find({
+      hotelId,
+      'regulatoryFramework.certifications.expiryDate': { $lte: cutoffDate },
+      'regulatoryFramework.certifications.status': 'active'
+    })
+    .select('regulatoryFramework.certifications reportType')
+    .lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get overdue corrective actions
 complianceReportSchema.statics.getOverdueCorrectiveActions = async function(hotelId) {
-  const now = new Date();
+  try {
+    const now = new Date();
 
-  return await this.find({
-    hotelId,
-    'complianceAreas.findings.correctiveAction.deadline': { $lt: now },
-    'complianceAreas.findings.correctiveAction.status': { $in: ['pending', 'in_progress'] }
-  })
-  .populate('complianceAreas.findings.correctiveAction.assignedTo', 'name email')
-  .lean();
+    return await this.find({
+      hotelId,
+      'complianceAreas.findings.correctiveAction.deadline': { $lt: now },
+      'complianceAreas.findings.correctiveAction.status': { $in: ['pending', 'in_progress'] }
+    })
+    .populate('complianceAreas.findings.correctiveAction.assignedTo', 'name email')
+    .lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance method to add finding
@@ -749,5 +765,8 @@ complianceReportSchema.methods.completeCorrectiveAction = function(findingId, co
   });
   return this.save();
 };
+
+// Data retention TTL: auto-delete compliance reports after 7 years (regulatory requirement)
+complianceReportSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2555 * 24 * 60 * 60 });
 
 export default mongoose.model('ComplianceReport', complianceReportSchema);

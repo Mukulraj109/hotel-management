@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { useLanguageDetection } from '../../hooks/useLanguageDetection';
 import { useLocalization } from '../../context/LocalizationContext';
 import { cn } from '../../utils/cn';
-import { Globe, X, Check, AlertCircle } from 'lucide-react';
+import { Globe, X, Check, AlertCircle, Loader2 } from 'lucide-react';
 
 interface LanguageDetectionBannerProps {
   className?: string;
@@ -33,9 +33,11 @@ export const LanguageDetectionBanner: React.FC<LanguageDetectionBannerProps> = (
 
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
-  const [autoHideTimer, setAutoHideTimer] = useState<NodeJS.Timeout | null>(null);
+  const autoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Show banner when language is detected and different from current
+  const isVisibleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     const shouldShow = detectedLanguage && 
                       detectedLanguage !== currentLanguage &&
@@ -49,18 +51,18 @@ export const LanguageDetectionBanner: React.FC<LanguageDetectionBannerProps> = (
 
       // Set auto-hide timer
       if (autoHideDurationMs > 0) {
-        const timer = setTimeout(() => {
+        if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
+        autoHideTimerRef.current = setTimeout(() => {
           handleDismiss();
         }, autoHideDurationMs);
-        setAutoHideTimer(timer);
       }
     } else {
       setIsVisible(false);
     }
 
     return () => {
-      if (autoHideTimer) {
-        clearTimeout(autoHideTimer);
+      if (autoHideTimerRef.current) {
+        clearTimeout(autoHideTimerRef.current);
       }
     };
   }, [detectedLanguage, currentLanguage, confidence, error, isDetecting, autoHideDurationMs]);
@@ -90,10 +92,11 @@ export const LanguageDetectionBanner: React.FC<LanguageDetectionBannerProps> = (
 
   const handleDismiss = () => {
     setIsAnimating(false);
-    setTimeout(() => setIsVisible(false), 300); // Wait for animation to complete
+    if (isVisibleTimerRef.current) clearTimeout(isVisibleTimerRef.current);
+    isVisibleTimerRef.current = setTimeout(() => setIsVisible(false), 300); // Wait for animation to complete
     
-    if (autoHideTimer) {
-      clearTimeout(autoHideTimer);
+    if (autoHideTimerRef.current) {
+      clearTimeout(autoHideTimerRef.current);
       setAutoHideTimer(null);
     }
   };
@@ -123,6 +126,17 @@ export const LanguageDetectionBanner: React.FC<LanguageDetectionBannerProps> = (
         return '🔍';
     }
   };
+
+  if (isDetecting) {
+    return (
+      <div className={cn("fixed top-4 right-4 max-w-md z-50", className)}>
+        <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-4 flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+          <span className="text-sm text-gray-600">Detecting language...</span>
+        </div>
+      </div>
+    );
+  }
 
   if (!isVisible || !detectedLanguage) {
     return null;
@@ -194,7 +208,7 @@ export const LanguageDetectionBanner: React.FC<LanguageDetectionBannerProps> = (
             </div>
           </div>
           
-          <button
+          <button aria-label="Close"
             onClick={handleDismiss}
             className="flex-shrink-0 ml-2 text-gray-400 hover:text-gray-600 transition-colors"
           >

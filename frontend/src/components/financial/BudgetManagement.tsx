@@ -397,7 +397,7 @@ const BudgetManagement: React.FC = () => {
                     return (
                       <TableRow key={budget._id}>
                         <TableCell>
-                          <div className="cursor-pointer" onClick={() => setSelectedBudget(budget)}>
+                          <div role="button" tabIndex={0} className="cursor-pointer" onClick={() => setSelectedBudget(budget)} onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => setSelectedBudget(budget); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                             <p className="font-medium">{budget.budgetName}</p>
                           </div>
                         </TableCell>

@@ -280,70 +280,86 @@ eventQueueSchema.methods.cancel = function(reason) {
 
 // Static methods
 eventQueueSchema.statics.getNextPendingEvents = async function(limit = 10, eventTypes = null) {
-  const filter = {
-    status: 'pending',
-    scheduledFor: { $lte: new Date() }
-  };
+  try {
+    const filter = {
+      status: 'pending',
+      scheduledFor: { $lte: new Date() }
+    };
   
-  if (eventTypes && eventTypes.length > 0) {
-    filter.eventType = { $in: eventTypes };
+    if (eventTypes && eventTypes.length > 0) {
+      filter.eventType = { $in: eventTypes };
+    }
+  
+    return this.find(filter)
+      .sort({ priority: 1, createdAt: 1 })
+      .limit(limit);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  return this.find(filter)
-    .sort({ priority: 1, createdAt: 1 })
-    .limit(limit);
 };
 
 eventQueueSchema.statics.getRetryableEvents = async function(limit = 10) {
-  const now = new Date();
+  try {
+    const now = new Date();
   
-  return this.find({
-    status: 'failed',
-    'processing.attempts': { $lt: this.schema.obj.processing.maxAttempts.default },
-    $or: [
-      { 'processing.nextRetryAt': { $exists: false } },
-      { 'processing.nextRetryAt': { $lte: now } }
-    ]
-  })
-  .sort({ priority: 1, 'processing.nextRetryAt': 1 })
-  .limit(limit);
+    return this.find({
+      status: 'failed',
+      'processing.attempts': { $lt: this.schema.obj.processing.maxAttempts.default },
+      $or: [
+        { 'processing.nextRetryAt': { $exists: false } },
+        { 'processing.nextRetryAt': { $lte: now } }
+      ]
+    })
+    .sort({ priority: 1, 'processing.nextRetryAt': 1 })
+    .limit(limit);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 eventQueueSchema.statics.getEventsByBatch = async function(batchId) {
-  return this.find({ batchId }).sort({ createdAt: 1 });
+  try {
+    return this.find({ batchId }).sort({ createdAt: 1 });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 eventQueueSchema.statics.getEventStats = async function(hotelId = null, dateFrom = null) {
-  const matchStage = {};
-  if (hotelId) matchStage['payload.hotelId'] = new mongoose.Types.ObjectId(hotelId);
-  if (dateFrom) matchStage.createdAt = { $gte: dateFrom };
+  try {
+    const matchStage = {};
+    if (hotelId) matchStage['payload.hotelId'] = new mongoose.Types.ObjectId(hotelId);
+    if (dateFrom) matchStage.createdAt = { $gte: dateFrom };
   
-  return this.aggregate([
-    { $match: matchStage },
-    {
-      $group: {
-        _id: {
-          eventType: '$eventType',
-          status: '$status'
-        },
-        count: { $sum: 1 },
-        avgProcessingTime: { $avg: '$processing.processingDuration' }
+    return this.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: {
+            eventType: '$eventType',
+            status: '$status'
+          },
+          count: { $sum: 1 },
+          avgProcessingTime: { $avg: '$processing.processingDuration' }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.eventType',
+          stats: {
+            $push: {
+              status: '$_id.status',
+              count: '$count',
+              avgProcessingTime: '$avgProcessingTime'
+            }
+          },
+          totalCount: { $sum: '$count' }
+        }
       }
-    },
-    {
-      $group: {
-        _id: '$_id.eventType',
-        stats: {
-          $push: {
-            status: '$_id.status',
-            count: '$count',
-            avgProcessingTime: '$avgProcessingTime'
-          }
-        },
-        totalCount: { $sum: '$count' }
-      }
-    }
-  ]);
+    ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 export default mongoose.model('EventQueue', eventQueueSchema);

@@ -4,10 +4,8 @@ import User from '../models/User.js';
 import AuditLog from '../models/AuditLog.js';
 import bypassFinancialService from './bypassFinancialService.js';
 import workflowAutomationService from './workflowAutomationService.js';
-import {
 import logger from '../utils/logger.js';
-    sendNotification
-} from './notificationService.js';
+import { sendNotification } from './notificationService.js';
 
 class BypassApprovalService {
     constructor() {
@@ -110,29 +108,33 @@ class BypassApprovalService {
      * Determine if approval is required and create workflow
      */
     async evaluateApprovalRequirement(bypassAuditId) {
-        const auditRecord = await AdminBypassAudit.findById(bypassAuditId)
-            .populate('adminId', 'name email role')
-            .populate('hotelId', 'name');
+      try {
+          const auditRecord = await AdminBypassAudit.findById(bypassAuditId)
+              .populate('adminId', 'name email role')
+              .populate('hotelId', 'name').lean();
 
-        if (!auditRecord) {
-            throw new Error('Bypass audit record not found');
-        }
+          if (!auditRecord) {
+              throw new Error('Bypass audit record not found');
+          }
 
-        // Analyze approval requirements
-        const approvalAnalysis = this.analyzeApprovalRequirements(auditRecord);
+          // Analyze approval requirements
+          const approvalAnalysis = this.analyzeApprovalRequirements(auditRecord);
 
-        // If no approval required, return null
-        if (!approvalAnalysis.required) {
-            return null;
-        }
+          // If no approval required, return null
+          if (!approvalAnalysis.required) {
+              return null;
+          }
 
-        // Create approval workflow
-        const workflow = await this.createApprovalWorkflow(auditRecord, approvalAnalysis);
+          // Create approval workflow
+          const workflow = await this.createApprovalWorkflow(auditRecord, approvalAnalysis);
 
-        // Send initial notifications
-        await this.sendApprovalNotifications(workflow, 'approval_request');
+          // Send initial notifications
+          await this.sendApprovalNotifications(workflow, 'approval_request');
 
-        return workflow;
+          return workflow;
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
@@ -367,283 +369,342 @@ class BypassApprovalService {
      * Create approval workflow
      */
     async createApprovalWorkflow(auditRecord, approvalAnalysis) {
-        const workflowData = {
-            hotelId: auditRecord.hotelId,
-            bypassAuditId: auditRecord._id,
-            initiatedBy: auditRecord.adminId,
-            approvalRules: {
-                triggeredBy: approvalAnalysis.rules,
-                requiredApprovals: approvalAnalysis.approvalLevels.length,
-                timeoutMinutes: approvalAnalysis.timeoutMinutes,
-                escalationEnabled: true
-            },
-            approvalLevels: approvalAnalysis.approvalLevels,
-            escalation: {
-                enabled: true,
-                timeoutMinutes: approvalAnalysis.timeoutMinutes,
-                maxEscalationLevel: 3,
-                finalEscalationAction: 'manual_review'
-            }
-        };
+      try {
+          const workflowData = {
+              hotelId: auditRecord.hotelId,
+              bypassAuditId: auditRecord._id,
+              initiatedBy: auditRecord.adminId,
+              approvalRules: {
+                  triggeredBy: approvalAnalysis.rules,
+                  requiredApprovals: approvalAnalysis.approvalLevels.length,
+                  timeoutMinutes: approvalAnalysis.timeoutMinutes,
+                  escalationEnabled: true
+              },
+              approvalLevels: approvalAnalysis.approvalLevels,
+              escalation: {
+                  enabled: true,
+                  timeoutMinutes: approvalAnalysis.timeoutMinutes,
+                  maxEscalationLevel: 3,
+                  finalEscalationAction: 'manual_review'
+              }
+          };
 
-        const workflow = await BypassApprovalWorkflow.createWorkflow(workflowData);
+          const workflow = await BypassApprovalWorkflow.createWorkflow(workflowData);
 
-        // Assign approvers to each level
-        for (const level of approvalAnalysis.approvalLevels) {
-            const approver = await this.findApprover(auditRecord.hotelId, level.requiredRole);
-            if (approver) {
-                workflow.assignApprover(level.level, approver._id);
-            }
-        }
+          // Assign approvers to each level
+          for (const level of approvalAnalysis.approvalLevels) {
+              const approver = await this.findApprover(auditRecord.hotelId, level.requiredRole);
+              if (approver) {
+                  workflow.assignApprover(level.level, approver._id);
+              }
+          }
 
-        await workflow.save();
+          await workflow.save();
 
-        // Update the bypass audit record to link to workflow
-        auditRecord.operationStatus.status = 'pending_approval';
-        await auditRecord.save();
+          // Update the bypass audit record to link to workflow
+          auditRecord.operationStatus.status = 'pending_approval';
+          await auditRecord.save();
 
-        // Log workflow creation
-        await AuditLog.logChange({
-            hotelId: auditRecord.hotelId,
-            tableName: 'BypassApprovalWorkflow',
-            recordId: workflow._id,
-            changeType: 'workflow_created',
-            userId: auditRecord.adminId,
-            source: 'bypass_approval_service',
-            newValues: {
-                workflowId: workflow.workflowId,
-                requiredApprovals: approvalAnalysis.approvalLevels.length,
-                reasons: approvalAnalysis.reasons
-            },
-            metadata: {
-                urgencyLevel: approvalAnalysis.urgencyLevel,
-                timeoutMinutes: approvalAnalysis.timeoutMinutes,
-                tags: ['approval_workflow', 'bypass_operation']
-            }
-        });
+          // Log workflow creation
+          await AuditLog.logChange({
+              hotelId: auditRecord.hotelId,
+              tableName: 'BypassApprovalWorkflow',
+              recordId: workflow._id,
+              changeType: 'workflow_created',
+              userId: auditRecord.adminId,
+              source: 'bypass_approval_service',
+              newValues: {
+                  workflowId: workflow.workflowId,
+                  requiredApprovals: approvalAnalysis.approvalLevels.length,
+                  reasons: approvalAnalysis.reasons
+              },
+              metadata: {
+                  urgencyLevel: approvalAnalysis.urgencyLevel,
+                  timeoutMinutes: approvalAnalysis.timeoutMinutes,
+                  tags: ['approval_workflow', 'bypass_operation']
+              }
+          });
 
-        return workflow;
+          return workflow;
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Find an appropriate approver for a given role
      */
     async findApprover(hotelId, requiredRole) {
-        // Find users with the required role in the hotel
-        const approvers = await User.find({
-            hotelId,
-            role: {
-                $in: [requiredRole, 'admin']
-            }, // Admin can approve any level
-            status: 'active'
-        }).sort({
-            lastLogin: -1
-        }); // Prefer recently active users
+      try {
+          // Find users with the required role in the hotel
+          const approvers = await User.find({
+              hotelId,
+              role: {
+                  $in: [requiredRole, 'admin']
+              }, // Admin can approve any level
+              status: 'active'
+          }).sort({
+              lastLogin: -1
+          }).lean().limit(1000); // Prefer recently active users
 
-        if (approvers.length === 0) {
-            // Fallback to admin role if no specific role found
-            const adminApprovers = await User.find({
-                hotelId,
-                role: 'admin',
-                status: 'active'
-            }).sort({
-                lastLogin: -1
-            });
+          if (approvers.length === 0) {
+              // Fallback to admin role if no specific role found
+              const adminApprovers = await User.find({
+                  hotelId,
+                  role: 'admin',
+                  status: 'active'
+              }).sort({
+                  lastLogin: -1
+              }).lean().limit(1000);
 
-            return adminApprovers[0] || null;
-        }
+              return adminApprovers[0] || null;
+          }
 
-        // Return the most recently active approver
-        return approvers[0];
+          // Return the most recently active approver
+          return approvers[0];
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Process an approval response
      */
     async processApproval(workflowId, approverId, action, notes, ipAddress, userAgent) {
-        const workflow = await BypassApprovalWorkflow.findOne({
-                workflowId
-            })
-            .populate('bypassAuditId')
-            .populate('initiatedBy', 'name email');
+      try {
+          const workflow = await BypassApprovalWorkflow.findOne({
+                  workflowId
+              })
+              .populate('bypassAuditId')
+              .populate('initiatedBy', 'name email');
 
-        if (!workflow) {
-            throw new Error('Approval workflow not found');
-        }
+          if (!workflow) {
+              throw new Error('Approval workflow not found');
+          }
 
-        // Verify approver is authorized for current level
-        const currentApproval = workflow.approvalChain.find(a => a.level === workflow.currentLevel);
-        if (!currentApproval || currentApproval.assignedTo.toString() !== approverId.toString()) {
-            throw new Error('Unauthorized to approve this request');
-        }
+          // Verify approver is authorized for current level
+          const currentApproval = workflow.approvalChain.find(a => a.level === workflow.currentLevel);
+          if (!currentApproval || currentApproval.assignedTo.toString() !== approverId.toString()) {
+              throw new Error('Unauthorized to approve this request');
+          }
 
-        // Process the approval
-        workflow.processApproval(
-            workflow.currentLevel,
-            approverId,
-            action, // 'approved' or 'rejected'
-            notes,
-            'web',
-            ipAddress,
-            userAgent
-        );
+          // Process the approval
+          workflow.processApproval(
+              workflow.currentLevel,
+              approverId,
+              action, // 'approved' or 'rejected'
+              notes,
+              'web',
+              ipAddress,
+              userAgent
+          );
 
-        await workflow.save();
+          await workflow.save();
 
-        // Update bypass audit status
-        const auditRecord = workflow.bypassAuditId;
-        if (workflow.workflowStatus === 'approved') {
-            auditRecord.operationStatus.status = 'approved';
+          // Update bypass audit status
+          const auditRecord = workflow.bypassAuditId;
+          if (workflow.workflowStatus === 'approved') {
+              auditRecord.operationStatus.status = 'approved';
 
-            // Create financial impact tracking for approved bypasses
-            try {
-                await bypassFinancialService.createFinancialImpact(auditRecord._id, {
-                    approvalWorkflowId: workflow._id
-                });
-                logger.debug(`Financial impact tracking created for approved bypass: ${auditRecord.bypassId}`);
-            } catch (error) {
-                logger.error('Failed to create financial impact tracking:', error);
-                // Don't fail the approval process if financial tracking fails
-            }
+              // Create financial impact tracking for approved bypasses
+              try {
+                  await bypassFinancialService.createFinancialImpact(auditRecord._id, {
+                      approvalWorkflowId: workflow._id
+                  });
+                  logger.debug(`Financial impact tracking created for approved bypass: ${auditRecord.bypassId}`);
+              } catch (error) {
+                  logger.error('Failed to create financial impact tracking:', error);
+                  // Don't fail the approval process if financial tracking fails
+              }
 
-            // Trigger workflow automation for post-approval processing
-            try {
-                const automationResult = await workflowAutomationService.processAutomatedBypass(auditRecord._id);
-                if (automationResult.automated) {
-                    logger.debug(`Post-approval automation completed for bypass: ${auditRecord.bypassId}`);
-                }
-            } catch (error) {
-                logger.error('Post-approval automation failed:', error);
-                // Don't fail the approval process if automation fails
-            }
-        } else if (workflow.workflowStatus === 'rejected') {
-            auditRecord.operationStatus.status = 'failed';
-        }
-        await auditRecord.save();
+              // Trigger workflow automation for post-approval processing
+              try {
+                  const automationResult = await workflowAutomationService.processAutomatedBypass(auditRecord._id);
+                  if (automationResult.automated) {
+                      logger.debug(`Post-approval automation completed for bypass: ${auditRecord.bypassId}`);
+                  }
+              } catch (error) {
+                  logger.error('Post-approval automation failed:', error);
+                  // Don't fail the approval process if automation fails
+              }
+          } else if (workflow.workflowStatus === 'rejected') {
+              auditRecord.operationStatus.status = 'failed';
+          }
+          await auditRecord.save();
 
-        // Send notifications based on workflow status
-        if (workflow.workflowStatus === 'approved') {
-            await this.sendApprovalNotifications(workflow, 'approval_completed');
-        } else if (workflow.workflowStatus === 'rejected') {
-            await this.sendApprovalNotifications(workflow, 'approval_rejected');
-        } else {
-            // Workflow continues, notify next approver
-            await this.sendApprovalNotifications(workflow, 'approval_request');
-        }
+          // Send notifications based on workflow status
+          if (workflow.workflowStatus === 'approved') {
+              await this.sendApprovalNotifications(workflow, 'approval_completed');
+          } else if (workflow.workflowStatus === 'rejected') {
+              await this.sendApprovalNotifications(workflow, 'approval_rejected');
+          } else {
+              // Workflow continues, notify next approver
+              await this.sendApprovalNotifications(workflow, 'approval_request');
+          }
 
-        return workflow;
+          return workflow;
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Handle workflow timeouts and escalations
      */
     async processTimeouts() {
-        const expiredWorkflows = await BypassApprovalWorkflow.getExpiredWorkflows();
+      try {
+          const expiredWorkflows = await BypassApprovalWorkflow.getExpiredWorkflows();
 
-        for (const workflow of expiredWorkflows) {
-            if (workflow.canEscalate()) {
-                await this.escalateWorkflow(workflow._id, 'timeout');
-            } else {
-                // Mark as expired
-                workflow.workflowStatus = 'expired';
-                workflow.timing.completedAt = new Date();
+          // Separate escalatable and expired workflows
+          const toEscalate = [];
+          const toExpire = [];
+          for (const workflow of expiredWorkflows) {
+              if (workflow.canEscalate()) {
+                  toEscalate.push(workflow);
+              } else {
+                  toExpire.push(workflow);
+              }
+          }
 
-                // Update current approval to expired
-                const currentApproval = workflow.approvalChain.find(a => a.level === workflow.currentLevel);
-                if (currentApproval) {
-                    currentApproval.status = 'expired';
-                }
+          // Process escalations
+          await Promise.all(toEscalate.map(w => this.escalateWorkflow(w._id, 'timeout')));
 
-                await workflow.save();
+          if (toExpire.length > 0) {
+              // Batch: collect all audit IDs and fetch in one query
+              const auditIds = toExpire.map(w => w.bypassAuditId).filter(Boolean);
+              const auditRecords = auditIds.length > 0
+                ? await AdminBypassAudit.find({ _id: { $in: auditIds } }).limit(1000).lean()
+                : [];
+              const auditMap = new Map(auditRecords.map(a => [a._id.toString(), a]));
 
-                // Update bypass audit
-                const auditRecord = await AdminBypassAudit.findById(workflow.bypassAuditId);
-                if (auditRecord) {
-                    auditRecord.operationStatus.status = 'failed';
-                    auditRecord.operationStatus.errorDetails = {
-                        code: 'APPROVAL_TIMEOUT',
-                        message: 'Approval workflow expired due to timeout',
-                        recoverable: true
-                    };
-                    await auditRecord.save();
-                }
+              // Prepare bulk operations for workflows
+              const workflowBulkOps = toExpire.map(workflow => {
+                  const currentApproval = workflow.approvalChain.find(a => a.level === workflow.currentLevel);
+                  const updateFields = {
+                      workflowStatus: 'expired',
+                      'timing.completedAt': new Date()
+                  };
+                  if (currentApproval) {
+                      updateFields[`approvalChain.${workflow.approvalChain.indexOf(currentApproval)}.status`] = 'expired';
+                  }
+                  return {
+                      updateOne: {
+                          filter: { _id: workflow._id },
+                          update: { $set: updateFields }
+                      }
+                  };
+              });
 
-                // Send timeout notifications
-                await this.sendApprovalNotifications(workflow, 'approval_timeout');
-            }
-        }
+              // Prepare bulk operations for audit records
+              const auditBulkOps = toExpire
+                  .filter(w => auditMap.has(w.bypassAuditId?.toString()))
+                  .map(w => ({
+                      updateOne: {
+                          filter: { _id: w.bypassAuditId },
+                          update: {
+                              $set: {
+                                  'operationStatus.status': 'failed',
+                                  'operationStatus.errorDetails': {
+                                      code: 'APPROVAL_TIMEOUT',
+                                      message: 'Approval workflow expired due to timeout',
+                                      recoverable: true
+                                  }
+                              }
+                          }
+                      }
+                  }));
+
+              await Promise.all([
+                  workflowBulkOps.length > 0 ? BypassApprovalWorkflow.bulkWrite(workflowBulkOps) : Promise.resolve(),
+                  auditBulkOps.length > 0 ? AdminBypassAudit.bulkWrite(auditBulkOps) : Promise.resolve()
+              ]);
+
+              // Send timeout notifications in parallel
+              await Promise.all(toExpire.map(w => this.sendApprovalNotifications(w, 'approval_timeout')));
+          }
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Escalate a workflow
      */
     async escalateWorkflow(workflowId, reason = 'manual') {
-        const workflow = await BypassApprovalWorkflow.findById(workflowId);
-        if (!workflow) {
-            throw new Error('Workflow not found');
-        }
+      try {
+          const workflow = await BypassApprovalWorkflow.findById(workflowId);
+          if (!workflow) {
+              throw new Error('Workflow not found');
+          }
 
-        workflow.escalateWorkflow(reason);
+          workflow.escalateWorkflow(reason);
 
-        // Find escalation approver
-        const escalationLevel = workflow.escalation.currentEscalationLevel;
-        const escalationConfig = workflow.escalation.escalationChain[escalationLevel - 1];
+          // Find escalation approver
+          const escalationLevel = workflow.escalation.currentEscalationLevel;
+          const escalationConfig = workflow.escalation.escalationChain[escalationLevel - 1];
 
-        if (escalationConfig) {
-            let escalationApprover;
+          if (escalationConfig) {
+              let escalationApprover;
 
-            if (escalationConfig.escalateTo) {
-                escalationApprover = await User.findById(escalationConfig.escalateTo);
-            } else if (escalationConfig.escalateToRole) {
-                escalationApprover = await this.findApprover(workflow.hotelId, escalationConfig.escalateToRole);
-            }
+              if (escalationConfig.escalateTo) {
+                  escalationApprover = await User.findById(escalationConfig.escalateTo).lean();
+              } else if (escalationConfig.escalateToRole) {
+                  escalationApprover = await this.findApprover(workflow.hotelId, escalationConfig.escalateToRole);
+              }
 
-            if (escalationApprover) {
-                // Assign escalation approver to current level
-                workflow.assignApprover(workflow.currentLevel, escalationApprover._id);
+              if (escalationApprover) {
+                  // Assign escalation approver to current level
+                  workflow.assignApprover(workflow.currentLevel, escalationApprover._id);
 
-                // Reset timeout for escalation
-                const timeoutMinutes = escalationConfig.timeoutMinutes || 30;
-                workflow.timing.timeoutAt = new Date(Date.now() + timeoutMinutes * 60 * 1000);
-            }
-        }
+                  // Reset timeout for escalation
+                  const timeoutMinutes = escalationConfig.timeoutMinutes || 30;
+                  workflow.timing.timeoutAt = new Date(Date.now() + timeoutMinutes * 60 * 1000);
+              }
+          }
 
-        await workflow.save();
+          await workflow.save();
 
-        // Send escalation notifications
-        await this.sendApprovalNotifications(workflow, 'approval_escalated');
+          // Send escalation notifications
+          await this.sendApprovalNotifications(workflow, 'approval_escalated');
 
-        return workflow;
+          return workflow;
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Delegate an approval to another user
      */
     async delegateApproval(workflowId, fromApproverId, toApproverId, delegationReason) {
-        const workflow = await BypassApprovalWorkflow.findById(workflowId);
-        if (!workflow) {
-            throw new Error('Workflow not found');
-        }
+      try {
+          const workflow = await BypassApprovalWorkflow.findById(workflowId);
+          if (!workflow) {
+              throw new Error('Workflow not found');
+          }
 
-        // Verify the delegator is the current approver
-        const currentApproval = workflow.approvalChain.find(a => a.level === workflow.currentLevel);
-        if (!currentApproval || currentApproval.assignedTo.toString() !== fromApproverId.toString()) {
-            throw new Error('Unauthorized to delegate this approval');
-        }
+          // Verify the delegator is the current approver
+          const currentApproval = workflow.approvalChain.find(a => a.level === workflow.currentLevel);
+          if (!currentApproval || currentApproval.assignedTo.toString() !== fromApproverId.toString()) {
+              throw new Error('Unauthorized to delegate this approval');
+          }
 
-        // Verify the delegate exists and is active
-        const delegate = await User.findById(toApproverId);
-        if (!delegate || delegate.status !== 'active') {
-            throw new Error('Invalid delegate user');
-        }
+          // Verify the delegate exists and is active
+          const delegate = await User.findById(toApproverId).lean();
+          if (!delegate || delegate.status !== 'active') {
+              throw new Error('Invalid delegate user');
+          }
 
-        workflow.delegateApproval(workflow.currentLevel, toApproverId, delegationReason);
-        await workflow.save();
+          workflow.delegateApproval(workflow.currentLevel, toApproverId, delegationReason);
+          await workflow.save();
 
-        // Send delegation notifications
-        await this.sendApprovalNotifications(workflow, 'approval_delegated');
+          // Send delegation notifications
+          await this.sendApprovalNotifications(workflow, 'approval_delegated');
 
-        return workflow;
+          return workflow;
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
@@ -652,7 +713,7 @@ class BypassApprovalService {
     async sendApprovalNotifications(workflow, notificationType) {
         try {
             const auditRecord = await AdminBypassAudit.findById(workflow.bypassAuditId)
-                .populate('adminId', 'name email');
+                .populate('adminId', 'name email').lean();
 
             let recipients = [];
             let message = '';
@@ -715,15 +776,20 @@ class BypassApprovalService {
                     break;
             }
 
-            // Send notifications to recipients
+            // Batch: fetch all recipients in a single query
+            const recipientUsers = recipients.length > 0
+                ? await User.find({ _id: { $in: recipients } }).limit(1000).lean()
+                : [];
+            const recipientMap = new Map(recipientUsers.map(u => [u._id.toString(), u]));
+
+            // Send notifications in parallel
+            const notifPromises = [];
             for (const recipientId of recipients) {
-                const recipient = await User.findById(recipientId);
+                const recipient = recipientMap.get(recipientId.toString());
                 if (recipient && recipient.email) {
-                    // Record notification in workflow
                     workflow.addNotification(notificationType, 'email', recipientId, `email_${Date.now()}`);
 
-                    // Send actual notification (implement based on your notification system)
-                    await sendNotification({
+                    notifPromises.push(sendNotification({
                         type: 'email',
                         recipient: recipient.email,
                         subject,
@@ -733,10 +799,11 @@ class BypassApprovalService {
                             notificationType,
                             urgency: workflow.analytics.urgencyLevel || 'normal'
                         }
-                    });
+                    }));
                 }
             }
 
+            await Promise.all(notifPromises);
             await workflow.save();
         } catch (error) {
             logger.error('Failed to send approval notifications:', error);
@@ -747,41 +814,53 @@ class BypassApprovalService {
      * Get pending approvals for a user
      */
     async getPendingApprovalsForUser(userId, hotelId) {
-        return await BypassApprovalWorkflow.getPendingApprovals(userId, hotelId);
+      try {
+          return await BypassApprovalWorkflow.getPendingApprovals(userId, hotelId);
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Get workflow statistics
      */
     async getWorkflowStatistics(hotelId, timeRange = 30) {
-        return await BypassApprovalWorkflow.getWorkflowStatistics(hotelId, timeRange);
+      try {
+          return await BypassApprovalWorkflow.getWorkflowStatistics(hotelId, timeRange);
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Auto-approve low-risk bypasses (if configured)
      */
     async checkAutoApproval(auditRecord) {
-        const riskScore = auditRecord.securityMetadata.riskScore || 0;
-        const financialImpact = auditRecord.financialImpact.estimatedLoss || 0;
-        const criticalFlags = auditRecord.securityMetadata.securityFlags.filter(f => f.severity === 'critical');
+      try {
+          const riskScore = auditRecord.securityMetadata.riskScore || 0;
+          const financialImpact = auditRecord.financialImpact.estimatedLoss || 0;
+          const criticalFlags = auditRecord.securityMetadata.securityFlags.filter(f => f.severity === 'critical');
 
-        // Auto-approve only very low risk operations
-        if (riskScore < 20 && financialImpact < 100 && criticalFlags.length === 0) {
-            auditRecord.operationStatus.status = 'approved';
-            auditRecord.approvalChain = [{
-                approvalLevel: 1,
-                status: 'approved',
-                autoApproved: true,
-                autoApprovalReason: 'Low risk automatic approval',
-                requestedAt: new Date(),
-                respondedAt: new Date()
-            }];
+          // Auto-approve only very low risk operations
+          if (riskScore < 20 && financialImpact < 100 && criticalFlags.length === 0) {
+              auditRecord.operationStatus.status = 'approved';
+              auditRecord.approvalChain = [{
+                  approvalLevel: 1,
+                  status: 'approved',
+                  autoApproved: true,
+                  autoApprovalReason: 'Low risk automatic approval',
+                  requestedAt: new Date(),
+                  respondedAt: new Date()
+              }];
 
-            await auditRecord.save();
-            return true;
-        }
+              await auditRecord.save();
+              return true;
+          }
 
-        return false;
+          return false;
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 }
 

@@ -338,151 +338,176 @@ competitorAlertSchema.pre('save', function(next) {
 
 // Instance methods for Competitor
 competitorSchema.methods.updatePerformance = async function() {
-  const CompetitorRate = mongoose.model('CompetitorRate');
+  try {
+    const CompetitorRate = mongoose.model('CompetitorRate');
   
-  // Get recent rates (last 30 days)
-  const recentRates = await CompetitorRate.find({
-    competitorId: this._id,
-    date: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
-  });
+    // Get recent rates (last 30 days)
+    const recentRates = await CompetitorRate.find({
+      competitorId: this._id,
+      date: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+    }).lean().limit(1000);
   
-  if (recentRates.length > 0) {
-    const totalRate = recentRates.reduce((sum, rate) => sum + rate.rate.amount, 0);
-    this.performance.averageRate = totalRate / recentRates.length;
+    if (recentRates.length > 0) {
+      const totalRate = recentRates.reduce((sum, rate) => sum + rate.rate.amount, 0);
+      this.performance.averageRate = totalRate / recentRates.length;
     
-    // Estimate occupancy based on availability patterns
-    const availableCount = recentRates.filter(rate => rate.availability.status === 'available').length;
-    this.performance.occupancyEstimate = ((recentRates.length - availableCount) / recentRates.length) * 100;
-  }
+      // Estimate occupancy based on availability patterns
+      const availableCount = recentRates.filter(rate => rate.availability.status === 'available').length;
+      this.performance.occupancyEstimate = ((recentRates.length - availableCount) / recentRates.length) * 100;
+    }
   
-  this.performance.lastUpdated = new Date();
-  await this.save();
+    this.performance.lastUpdated = new Date();
+    await this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 competitorSchema.methods.generateAlerts = async function(newRate, oldRate = null) {
-  const CompetitorAlert = mongoose.model('CompetitorAlert');
-  const alerts = [];
+  try {
+    const CompetitorAlert = mongoose.model('CompetitorAlert');
+    const alerts = [];
   
-  if (oldRate) {
-    const priceDifference = newRate.rate.amount - oldRate.rate.amount;
-    const percentageChange = (priceDifference / oldRate.rate.amount) * 100;
+    if (oldRate) {
+      const priceDifference = newRate.rate.amount - oldRate.rate.amount;
+      const percentageChange = (priceDifference / oldRate.rate.amount) * 100;
     
-    // Significant price drop
-    if (percentageChange < -15) {
-      alerts.push({
-        hotelId: this.hotelId,
-        competitorId: this._id,
-        alertType: 'price_drop',
-        severity: 'high',
-        message: `${this.name} dropped prices by ${Math.abs(percentageChange).toFixed(1)}%`,
-        details: {
-          oldValue: oldRate.rate.amount,
-          newValue: newRate.rate.amount,
-          difference: priceDifference,
-          percentageChange,
-          roomType: newRate.roomType,
-          date: newRate.date
-        },
-        actionRecommendations: [
-          {
-            action: 'Review and consider matching price reduction',
-            priority: 'high',
-            estimatedImpact: 'May lose bookings if price gap is too wide'
-          }
-        ]
-      });
-    }
+      // Significant price drop
+      if (percentageChange < -15) {
+        alerts.push({
+          hotelId: this.hotelId,
+          competitorId: this._id,
+          alertType: 'price_drop',
+          severity: 'high',
+          message: `${this.name} dropped prices by ${Math.abs(percentageChange).toFixed(1)}%`,
+          details: {
+            oldValue: oldRate.rate.amount,
+            newValue: newRate.rate.amount,
+            difference: priceDifference,
+            percentageChange,
+            roomType: newRate.roomType,
+            date: newRate.date
+          },
+          actionRecommendations: [
+            {
+              action: 'Review and consider matching price reduction',
+              priority: 'high',
+              estimatedImpact: 'May lose bookings if price gap is too wide'
+            }
+          ]
+        });
+      }
     
-    // Significant price increase
-    if (percentageChange > 20) {
-      alerts.push({
-        hotelId: this.hotelId,
-        competitorId: this._id,
-        alertType: 'price_increase',
-        severity: 'medium',
-        message: `${this.name} increased prices by ${percentageChange.toFixed(1)}%`,
-        details: {
-          oldValue: oldRate.rate.amount,
-          newValue: newRate.rate.amount,
-          difference: priceDifference,
-          percentageChange,
-          roomType: newRate.roomType,
-          date: newRate.date
-        },
-        actionRecommendations: [
-          {
-            action: 'Consider increasing rates to capture additional revenue',
-            priority: 'medium',
-            estimatedImpact: 'Opportunity to increase revenue without losing competitiveness'
-          }
-        ]
-      });
+      // Significant price increase
+      if (percentageChange > 20) {
+        alerts.push({
+          hotelId: this.hotelId,
+          competitorId: this._id,
+          alertType: 'price_increase',
+          severity: 'medium',
+          message: `${this.name} increased prices by ${percentageChange.toFixed(1)}%`,
+          details: {
+            oldValue: oldRate.rate.amount,
+            newValue: newRate.rate.amount,
+            difference: priceDifference,
+            percentageChange,
+            roomType: newRate.roomType,
+            date: newRate.date
+          },
+          actionRecommendations: [
+            {
+              action: 'Consider increasing rates to capture additional revenue',
+              priority: 'medium',
+              estimatedImpact: 'Opportunity to increase revenue without losing competitiveness'
+            }
+          ]
+        });
+      }
     }
-  }
   
-  // Create alerts in database
-  for (const alertData of alerts) {
-    const alert = new CompetitorAlert(alertData);
-    await alert.save();
-  }
+    // Create alerts in database
+    for (const alertData of alerts) {
+      const alert = new CompetitorAlert(alertData);
+      await alert.save();
+    }
   
-  return alerts;
+    return alerts;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static methods for CompetitorRate
 competitorRateSchema.statics.getCompetitivePosition = async function(hotelId, roomType, date) {
-  const rates = await this.find({
-    hotelId,
-    roomType,
-    date,
-    'dataQuality.confidence': { $gte: 60 }
-  }).populate('competitorId');
+  try {
+    const rates = await this.find({
+      hotelId,
+      roomType,
+      date,
+      'dataQuality.confidence': { $gte: 60 }
+    }).populate('competitorId').lean().limit(1000);
   
-  if (rates.length === 0) return null;
+    if (rates.length === 0) return null;
   
-  const sortedRates = rates.sort((a, b) => a.rate.amount - b.rate.amount);
-  const averageRate = rates.reduce((sum, rate) => sum + rate.rate.amount, 0) / rates.length;
+    const sortedRates = rates.sort((a, b) => a.rate.amount - b.rate.amount);
+    const averageRate = rates.reduce((sum, rate) => sum + rate.rate.amount, 0) / rates.length;
   
-  return {
-    totalCompetitors: rates.length,
-    lowestRate: sortedRates[0],
-    highestRate: sortedRates[sortedRates.length - 1],
-    averageRate,
-    medianRate: sortedRates[Math.floor(sortedRates.length / 2)].rate.amount,
-    rateDistribution: {
-      budget: rates.filter(r => r.rate.amount < averageRate * 0.8).length,
-      midRange: rates.filter(r => r.rate.amount >= averageRate * 0.8 && r.rate.amount <= averageRate * 1.2).length,
-      premium: rates.filter(r => r.rate.amount > averageRate * 1.2).length
-    }
-  };
+    return {
+      totalCompetitors: rates.length,
+      lowestRate: sortedRates[0],
+      highestRate: sortedRates[sortedRates.length - 1],
+      averageRate,
+      medianRate: sortedRates[Math.floor(sortedRates.length / 2)].rate.amount,
+      rateDistribution: {
+        budget: rates.filter(r => r.rate.amount < averageRate * 0.8).length,
+        midRange: rates.filter(r => r.rate.amount >= averageRate * 0.8 && r.rate.amount <= averageRate * 1.2).length,
+        premium: rates.filter(r => r.rate.amount > averageRate * 1.2).length
+      }
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 competitorRateSchema.statics.updateComparison = async function(rateId, ourRate) {
-  const rate = await this.findById(rateId);
-  if (!rate) return;
+  try {
+    const rate = await this.findById(rateId);
+    if (!rate) return;
   
-  rate.comparison.ourRate = ourRate;
-  rate.comparison.difference = rate.rate.amount - ourRate;
-  rate.comparison.percentageDifference = ((rate.rate.amount - ourRate) / ourRate) * 100;
+    rate.comparison.ourRate = ourRate;
+    rate.comparison.difference = rate.rate.amount - ourRate;
+    rate.comparison.percentageDifference = ((rate.rate.amount - ourRate) / ourRate) * 100;
   
-  if (rate.rate.amount < ourRate * 0.95) {
-    rate.comparison.competitivePosition = 'cheaper';
-  } else if (rate.rate.amount > ourRate * 1.05) {
-    rate.comparison.competitivePosition = 'more_expensive';
-  } else {
-    rate.comparison.competitivePosition = 'same';
+    if (rate.rate.amount < ourRate * 0.95) {
+      rate.comparison.competitivePosition = 'cheaper';
+    } else if (rate.rate.amount > ourRate * 1.05) {
+      rate.comparison.competitivePosition = 'more_expensive';
+    } else {
+      rate.comparison.competitivePosition = 'same';
+    }
+  
+    await rate.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  await rate.save();
 };
 
 // Static methods for Competitor
 competitorSchema.statics.getActiveCompetitors = async function(hotelId) {
-  return this.find({
-    hotelId,
-    'monitoring.isActive': true
-  }).sort({ 'monitoring.priority': -1 });
+  try {
+    return this.find({
+      hotelId,
+      'monitoring.isActive': true
+    }).sort({ 'monitoring.priority': -1 });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
+
+// Data retention TTL: auto-delete competitor rate snapshots after 365 days
+competitorRateSchema.index({ createdAt: 1 }, { expireAfterSeconds: 365 * 24 * 60 * 60 });
+// Data retention TTL: auto-delete competitor alerts after 90 days
+competitorAlertSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
 
 const CompetitorRate = mongoose.model('CompetitorRate', competitorRateSchema);
 const Competitor = mongoose.model('Competitor', competitorSchema);

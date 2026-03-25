@@ -25,6 +25,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
+import { withErrorBoundary } from '../ErrorBoundary';
 import waitingListService, {
   WaitingListEntry,
   RoomAvailability,
@@ -777,3 +778,5 @@ export const WaitingListManager: React.FC = () => {
     </div>
   );
 };
+
+export default withErrorBoundary(WaitingListManager, { level: 'component' });

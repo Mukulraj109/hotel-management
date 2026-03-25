@@ -43,7 +43,7 @@ export const getVIPGuest = catchAsync(async (req, res) => {
     .populate('guestId', 'name email phone')
     .populate('createdBy', 'name email')
     .populate('updatedBy', 'name email')
-    .populate('assignedConcierge', 'name email');
+    .populate('assignedConcierge', 'name email').lean();
 
   if (!vipGuest) {
     throw new ApplicationError('VIP guest not found', 404);
@@ -305,7 +305,7 @@ export const getConciergeStaff = catchAsync(async (req, res) => {
     hotelId: req.user.hotelId,
     role: { $in: ['admin', 'manager', 'staff'] },
     isActive: true
-  }).select('name email role');
+  }).select('name email role').lean().limit(1000);
 
   res.json({
     status: 'success',

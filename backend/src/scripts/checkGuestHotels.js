@@ -20,11 +20,11 @@ async function checkGuestHotels() {
     const Hotel = mongoose.connection.collection('hotels');
 
     // Find all guest users
-    const guestUsers = await User.find({ role: 'guest' }).toArray();
+    const guestUsers = await User.find({ role: 'guest' }).toArray().lean().limit(1000);
     console.log(`📊 Total Guest Users: ${guestUsers.length}\n`);
 
     // Get all hotels
-    const hotels = await Hotel.find({}).toArray();
+    const hotels = await Hotel.find({}).toArray().lean().limit(1000);
     console.log(`🏨 Total Hotels: ${hotels.length}\n`);
 
     console.log('🏨 Hotels in Database:');

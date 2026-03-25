@@ -249,26 +249,30 @@ pricingStrategySchema.pre('save', function(next) {
 
 // Instance methods
 pricingStrategySchema.methods.calculateRate = async function(roomTypeId, date, currentOccupancy = 0) {
-  const roomType = this.roomTypes.find(rt => rt.roomTypeId.toString() === roomTypeId.toString());
-  if (!roomType || !roomType.enabled) {
-    return null;
+  try {
+    const roomType = this.roomTypes.find(rt => rt.roomTypeId.toString() === roomTypeId.toString());
+    if (!roomType || !roomType.enabled) {
+      return null;
+    }
+
+    let finalRate = roomType.baseRate;
+
+    // Apply pricing rules in priority order
+    const applicableRules = this.rules
+      .filter(rule => rule.isActive && this.isRuleApplicable(rule, date, currentOccupancy))
+      .sort((a, b) => b.priority - a.priority);
+
+    for (const rule of applicableRules) {
+      finalRate = this.applyRuleAdjustment(finalRate, rule.adjustments);
+    }
+
+    // Apply constraints
+    finalRate = Math.max(this.constraints.minRate, Math.min(this.constraints.maxRate, finalRate));
+
+    return Math.round(finalRate);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  let finalRate = roomType.baseRate;
-
-  // Apply pricing rules in priority order
-  const applicableRules = this.rules
-    .filter(rule => rule.isActive && this.isRuleApplicable(rule, date, currentOccupancy))
-    .sort((a, b) => b.priority - a.priority);
-
-  for (const rule of applicableRules) {
-    finalRate = this.applyRuleAdjustment(finalRate, rule.adjustments);
-  }
-
-  // Apply constraints
-  finalRate = Math.max(this.constraints.minRate, Math.min(this.constraints.maxRate, finalRate));
-
-  return Math.round(finalRate);
 };
 
 pricingStrategySchema.methods.isRuleApplicable = function(rule, date, occupancy) {
@@ -350,51 +354,63 @@ pricingStrategySchema.methods.applyRuleAdjustment = function(currentRate, adjust
 
 // Static methods
 pricingStrategySchema.statics.getActiveStrategies = async function(hotelId) {
-  return this.find({ hotelId, isActive: true })
-    .populate('roomTypes.roomTypeId')
-    .sort({ priority: -1 });
+  try {
+    return this.find({ hotelId, isActive: true })
+      .populate('roomTypes.roomTypeId')
+      .sort({ priority: -1 });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 pricingStrategySchema.statics.calculateOptimalRates = async function(hotelId, date) {
-  const strategies = await this.getActiveStrategies(hotelId);
-  const RoomAvailability = mongoose.model('RoomAvailability');
+  try {
+    const strategies = await this.getActiveStrategies(hotelId);
+    const RoomAvailability = mongoose.model('RoomAvailability');
   
-  const rates = [];
+    const rates = [];
 
-  for (const strategy of strategies) {
-    for (const roomTypeConfig of strategy.roomTypes) {
-      if (!roomTypeConfig.enabled) continue;
+    // Batch: fetch all room availabilities in a single query
+    const allRoomTypeIds = strategies.flatMap(s =>
+      s.roomTypes.filter(rt => rt.enabled).map(rt => rt.roomTypeId)
+    );
+    const availabilities = allRoomTypeIds.length > 0
+      ? await RoomAvailability.find({ hotelId, roomTypeId: { $in: allRoomTypeIds }, date }).lean()
+      : [];
+    const availabilityMap = new Map(availabilities.map(a => [a.roomTypeId.toString(), a]));
 
-      // Get current occupancy for this room type
-      const availability = await RoomAvailability.findOne({
-        hotelId,
-        roomTypeId: roomTypeConfig.roomTypeId,
-        date
-      });
+    for (const strategy of strategies) {
+      for (const roomTypeConfig of strategy.roomTypes) {
+        if (!roomTypeConfig.enabled) continue;
 
-      const currentOccupancy = availability ? 
-        ((availability.soldRooms / availability.totalRooms) * 100) : 0;
+        const availability = availabilityMap.get(roomTypeConfig.roomTypeId.toString());
 
-      const calculatedRate = await strategy.calculateRate(
-        roomTypeConfig.roomTypeId,
-        date,
-        currentOccupancy
-      );
+        const currentOccupancy = availability ? 
+          ((availability.soldRooms / availability.totalRooms) * 100) : 0;
 
-      if (calculatedRate) {
-        rates.push({
-          strategyId: strategy.strategyId,
-          strategyName: strategy.name,
-          roomTypeId: roomTypeConfig.roomTypeId,
+        const calculatedRate = await strategy.calculateRate(
+          roomTypeConfig.roomTypeId,
           date,
-          calculatedRate,
           currentOccupancy
-        });
+        );
+
+        if (calculatedRate) {
+          rates.push({
+            strategyId: strategy.strategyId,
+            strategyName: strategy.name,
+            roomTypeId: roomTypeConfig.roomTypeId,
+            date,
+            calculatedRate,
+            currentOccupancy
+          });
+        }
       }
     }
-  }
 
-  return rates;
+    return rates;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 export default mongoose.model('PricingStrategy', pricingStrategySchema);

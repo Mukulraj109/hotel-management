@@ -3,6 +3,7 @@ import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
+import { validateStatusTransition, HOUSEKEEPING_TRANSITIONS } from '../utils/statusTransitions.js';
 
 const router = express.Router();
 
@@ -145,7 +146,7 @@ router.get('/tasks', authorize('admin', 'manager', 'staff', 'frontdesk'), catchA
     .populate('roomId', 'roomNumber type floor')
     .populate('assignedTo', 'name email')
     .populate('assignedToUserId', 'name email') // For backward compatibility
-    .sort({ priority: 1, createdAt: -1 });
+    .sort({ priority: 1, createdAt: -1 }).lean().limit(1000);
 
   res.status(200).json({
     status: 'success',
@@ -186,7 +187,7 @@ router.get('/tasks/:taskId', authorize('admin', 'manager', 'staff', 'frontdesk')
   const task = await Housekeeping.findOne({ _id: taskId, hotelId })
     .populate('roomId', 'roomNumber type floor')
     .populate('assignedTo', 'name email')
-    .populate('assignedToUserId', 'name email'); // For backward compatibility
+    .populate('assignedToUserId', 'name email').lean(); // For backward compatibility
 
   if (!task) {
     throw new ApplicationError('Housekeeping task not found', 404);
@@ -242,25 +243,44 @@ router.put('/tasks/:taskId/assign', authorize('admin', 'manager', 'frontdesk'), 
   const Housekeeping = (await import('../models/Housekeeping.js')).default;
   const User = (await import('../models/User.js')).default;
   
-  const task = await Housekeeping.findOne({ _id: taskId, hotelId });
-  if (!task) {
-    throw new ApplicationError('Housekeeping task not found', 404);
-  }
-
-  const staff = await User.findOne({ _id: staffId, hotelId, isActive: true });
+  const staff = await User.findOne({ _id: staffId, hotelId, isActive: true }).lean();
   if (!staff) {
     throw new ApplicationError('Staff member not found or inactive', 404);
   }
 
-  task.assignedTo = staffId;
-  task.assignedToUserId = staffId; // For backward compatibility
-  task.status = 'assigned';
-  await task.save();
+  // Determine valid source statuses for 'assigned' transition
+  const validFromStatuses = Object.keys(HOUSEKEEPING_TRANSITIONS).filter(
+    fromStatus => {
+      const t = validateStatusTransition(HOUSEKEEPING_TRANSITIONS, fromStatus, 'assigned');
+      return t.valid;
+    }
+  );
+
+  const task = await Housekeeping.findOneAndUpdate(
+    { _id: taskId, hotelId, status: { $in: validFromStatuses } },
+    {
+      $set: {
+        assignedTo: staffId,
+        assignedToUserId: staffId,
+        status: 'assigned'
+      }
+    },
+    { new: true }
+  );
+
+  if (!task) {
+    const exists = await Housekeeping.findOne({ _id: taskId, hotelId }).lean();
+    if (!exists) {
+      throw new ApplicationError('Housekeeping task not found', 404);
+    }
+    const transition = validateStatusTransition(HOUSEKEEPING_TRANSITIONS, exists.status, 'assigned');
+    throw new ApplicationError(transition.error, 400);
+  }
 
   res.status(200).json({
     status: 'success',
     message: 'Task assigned successfully',
-    data: { 
+    data: {
       taskId,
       assignedTo: staffId,
       assignedToName: staff.name
@@ -295,23 +315,34 @@ router.put('/tasks/:taskId/start', authorize('admin', 'manager', 'staff', 'front
   // Import models
   const Housekeeping = (await import('../models/Housekeeping.js')).default;
   
-  const task = await Housekeeping.findOne({ _id: taskId, hotelId });
+  // Determine valid source statuses for 'in_progress' transition
+  const validStartFromStatuses = Object.keys(HOUSEKEEPING_TRANSITIONS).filter(
+    fromStatus => {
+      const t = validateStatusTransition(HOUSEKEEPING_TRANSITIONS, fromStatus, 'in_progress');
+      return t.valid;
+    }
+  );
+
+  const startedAt = new Date();
+  const task = await Housekeeping.findOneAndUpdate(
+    { _id: taskId, hotelId, status: { $in: validStartFromStatuses } },
+    { $set: { status: 'in_progress', startedAt } },
+    { new: true }
+  );
+
   if (!task) {
-    throw new ApplicationError('Housekeeping task not found', 404);
+    const exists = await Housekeeping.findOne({ _id: taskId, hotelId }).lean();
+    if (!exists) {
+      throw new ApplicationError('Housekeeping task not found', 404);
+    }
+    const startTransition = validateStatusTransition(HOUSEKEEPING_TRANSITIONS, exists.status, 'in_progress');
+    throw new ApplicationError(startTransition.error, 400);
   }
-
-  if (task.status !== 'assigned' && task.status !== 'pending') {
-    throw new ApplicationError('Task cannot be started in current status', 400);
-  }
-
-  task.status = 'in_progress';
-  task.startedAt = new Date();
-  await task.save();
 
   res.status(200).json({
     status: 'success',
     message: 'Task started successfully',
-    data: { 
+    data: {
       taskId,
       status: task.status,
       startedAt: task.startedAt
@@ -366,28 +397,40 @@ router.put('/tasks/:taskId/complete', authorize('admin', 'manager', 'staff', 'fr
   // Import models
   const Housekeeping = (await import('../models/Housekeeping.js')).default;
   
-  const task = await Housekeeping.findOne({ _id: taskId, hotelId });
+  // Determine valid source statuses for 'completed' transition
+  const validCompleteFromStatuses = Object.keys(HOUSEKEEPING_TRANSITIONS).filter(
+    fromStatus => {
+      const t = validateStatusTransition(HOUSEKEEPING_TRANSITIONS, fromStatus, 'completed');
+      return t.valid;
+    }
+  );
+
+  const completedAt = new Date();
+  const completeFields = { status: 'completed', completedAt };
+  if (actualDuration) completeFields.actualDuration = actualDuration;
+  if (notes) completeFields.notes = notes;
+  if (beforeImages) completeFields.beforeImages = beforeImages;
+  if (afterImages) completeFields.afterImages = afterImages;
+
+  const task = await Housekeeping.findOneAndUpdate(
+    { _id: taskId, hotelId, status: { $in: validCompleteFromStatuses } },
+    { $set: completeFields },
+    { new: true }
+  );
+
   if (!task) {
-    throw new ApplicationError('Housekeeping task not found', 404);
+    const exists = await Housekeeping.findOne({ _id: taskId, hotelId }).lean();
+    if (!exists) {
+      throw new ApplicationError('Housekeeping task not found', 404);
+    }
+    const completeTransition = validateStatusTransition(HOUSEKEEPING_TRANSITIONS, exists.status, 'completed');
+    throw new ApplicationError(completeTransition.error, 400);
   }
-
-  if (task.status !== 'in_progress') {
-    throw new ApplicationError('Task must be in progress to complete', 400);
-  }
-
-  task.status = 'completed';
-  task.completedAt = new Date();
-  if (actualDuration) task.actualDuration = actualDuration;
-  if (notes) task.notes = notes;
-  if (beforeImages) task.beforeImages = beforeImages;
-  if (afterImages) task.afterImages = afterImages;
-
-  await task.save();
 
   res.status(200).json({
     status: 'success',
     message: 'Task completed successfully',
-    data: { 
+    data: {
       taskId,
       status: task.status,
       completedAt: task.completedAt,
@@ -418,7 +461,7 @@ router.get('/available-staff', authorize('admin', 'manager', 'frontdesk'), catch
     hotelId,
     role: { $in: ['housekeeping', 'staff'] },
     isActive: true
-  }).select('_id name email role');
+  }).select('_id name email role').lean().limit(1000);
 
   res.status(200).json({
     status: 'success',
@@ -526,12 +569,12 @@ router.post('/auto-assign', authorize('admin', 'manager', 'frontdesk'), catchAsy
     filter.priority = { $in: priorities };
   }
 
-  const pendingTasks = await Housekeeping.find(filter).sort({ priority: 1, createdAt: 1 });
+  const pendingTasks = await Housekeeping.find(filter).sort({ priority: 1, createdAt: 1 }).lean().limit(1000);
   const availableStaff = await User.find({
     hotelId,
     role: { $in: ['housekeeping', 'staff'] },
     isActive: true
-  }).select('_id name email');
+  }).select('_id name email').lean().limit(1000);
 
   if (availableStaff.length === 0) {
     throw new ApplicationError('No available staff found for assignment', 400);
@@ -540,16 +583,26 @@ router.post('/auto-assign', authorize('admin', 'manager', 'frontdesk'), catchAsy
   let assignedCount = 0;
   let staffIndex = 0;
 
-  for (const task of pendingTasks) {
-    const staff = availableStaff[staffIndex % availableStaff.length];
-    
-    task.assignedTo = staff._id;
-    task.assignedToUserId = staff._id; // For backward compatibility
-    task.status = 'assigned';
-    await task.save();
-    
-    assignedCount++;
-    staffIndex++;
+  // Batch: use bulkWrite to assign all tasks at once
+  const assignBulkOps = pendingTasks.map((task, idx) => {
+    const staff = availableStaff[idx % availableStaff.length];
+    return {
+      updateOne: {
+        filter: { _id: task._id, status: 'pending' },
+        update: {
+          $set: {
+            assignedTo: staff._id,
+            assignedToUserId: staff._id,
+            status: 'assigned'
+          }
+        }
+      }
+    };
+  });
+
+  if (assignBulkOps.length > 0) {
+    const writeResult = await Housekeeping.bulkWrite(assignBulkOps);
+    assignedCount = writeResult.modifiedCount;
   }
 
   res.status(200).json({

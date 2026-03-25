@@ -33,7 +33,7 @@ export const getSupervisionMeetUps = catchAsync(async (req, res, next) => {
     .populate('assignedStaff', 'name email')
     .sort({ proposedDate: 1, createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   // Apply post-query filters for supervision priority
   if (priority || safetyLevel) {
@@ -90,21 +90,21 @@ export const assignStaffToMeetUp = catchAsync(async (req, res, next) => {
   const { staffId, supervisionNotes } = req.body;
   const { hotelId } = req.user;
 
-  const meetUp = await MeetUpRequest.findOne({
-    _id: meetUpId,
-    hotelId
-  });
+  const meetUp = await MeetUpRequest.findOneAndUpdate(
+    { _id: meetUpId, hotelId },
+    {
+      $set: {
+        assignedStaff: staffId,
+        supervisionStatus: 'assigned',
+        supervisionNotes: supervisionNotes || ''
+      }
+    },
+    { new: true, runValidators: true }
+  ).populate('assignedStaff', 'name email');
 
   if (!meetUp) {
     return next(new ApplicationError('Meet-up not found', 404));
   }
-
-  // Update meet-up with staff assignment
-  meetUp.assignedStaff = staffId;
-  meetUp.supervisionStatus = 'assigned';
-  meetUp.supervisionNotes = supervisionNotes || '';
-
-  await meetUp.save();
 
   // Update related alert
   try {
@@ -116,9 +116,6 @@ export const assignStaffToMeetUp = catchAsync(async (req, res, next) => {
   } catch (error) {
     logger.warn('Failed to update supervision alert', { meetUpId, error: error.message });
   }
-
-  // Populate the updated meet-up
-  await meetUp.populate('assignedStaff', 'name email');
 
   res.status(200).json({
     success: true,
@@ -149,7 +146,7 @@ export const getStaffAssignments = catchAsync(async (req, res, next) => {
     .populate('hotelId', 'name address')
     .sort({ proposedDate: 1, createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   const assignmentsWithSupervision = assignments.map(meetUp => {
     const supervisionData = {
@@ -192,25 +189,23 @@ export const updateSupervisionStatus = catchAsync(async (req, res, next) => {
   const { supervisionStatus, supervisionNotes } = req.body;
   const { _id: staffId, hotelId } = req.user;
 
-  const meetUp = await MeetUpRequest.findOne({
-    _id: meetUpId,
-    hotelId,
-    assignedStaff: staffId
-  });
+  const updateFields = {
+    supervisionStatus
+  };
+  if (supervisionNotes) updateFields.supervisionNotes = supervisionNotes;
+  if (supervisionStatus === 'completed') {
+    updateFields.supervisionCompletedAt = new Date();
+  }
+
+  const meetUp = await MeetUpRequest.findOneAndUpdate(
+    { _id: meetUpId, hotelId, assignedStaff: staffId },
+    { $set: updateFields },
+    { new: true, runValidators: true }
+  );
 
   if (!meetUp) {
     return next(new ApplicationError('Meet-up assignment not found', 404));
   }
-
-  // Update supervision status
-  meetUp.supervisionStatus = supervisionStatus;
-  if (supervisionNotes) meetUp.supervisionNotes = supervisionNotes;
-
-  if (supervisionStatus === 'completed') {
-    meetUp.supervisionCompletedAt = new Date();
-  }
-
-  await meetUp.save();
 
   // Update related alert
   try {
@@ -363,7 +358,7 @@ export const getUrgentSupervisionTasks = catchAsync(async (req, res, next) => {
     .populate('requesterId', 'name email')
     .populate('targetUserId', 'name email')
     .populate('assignedStaff', 'name email')
-    .sort({ proposedDate: 1 });
+    .sort({ proposedDate: 1 }).lean().limit(1000);
 
   const urgentWithPriority = urgentMeetUps.map(meetUp => ({
     ...meetUp.toJSON(),

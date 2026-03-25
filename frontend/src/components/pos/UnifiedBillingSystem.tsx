@@ -42,6 +42,7 @@ import { api } from '../../services/api';
 import billingSessionService, { BillingSession as BackendBillingSession, CreateBillingSessionRequest } from '../../services/billingSessionService';
 import guestLookupService from '../../services/guestLookupService';
 import { useAuth } from '../../context/AuthContext';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface OutletItem {
   id: string;
@@ -924,11 +925,11 @@ const UnifiedBillingSystem: React.FC = () => {
                  {/* Grid Container */}
                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                    {outletItems[selectedOutlet]?.map((item) => (
-                     <div 
+                     <div role="button" tabIndex={0} 
                        key={item._id || item.id} 
                        className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer overflow-hidden group"
                        onClick={() => addItemToSession(item)}
-                     >
+                      onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => addItemToSession(item); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                        {/* Item Image Placeholder */}
                        <div className="h-40 bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center group-hover:from-blue-100 group-hover:to-indigo-200 transition-colors">
                          <div className="text-5xl">
@@ -1197,4 +1198,4 @@ const UnifiedBillingSystem: React.FC = () => {
   );
 };
 
-export default UnifiedBillingSystem;
+export default withErrorBoundary(UnifiedBillingSystem, { level: 'component' });

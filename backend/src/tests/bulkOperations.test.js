@@ -231,7 +231,7 @@ describe('Bulk Operations System', () => {
 
     it('should detect and report conflicts', async () => {
       // First assign a room
-      await Room.findByIdAndUpdate(testRooms[0]._id, { status: 'occupied' });
+      await Room.findByIdAndUpdate(testRooms[0]._id, { status: 'occupied' }, { new: true });
 
       const assignments = [
         { roomId: testRooms[0]._id, bookingId: testBookings[0]._id }
@@ -254,7 +254,7 @@ describe('Bulk Operations System', () => {
 
     it('should allow overriding conflicts when confirmed', async () => {
       // Set room as occupied
-      await Room.findByIdAndUpdate(testRooms[0]._id, { status: 'occupied' });
+      await Room.findByIdAndUpdate(testRooms[0]._id, { status: 'occupied' }, { new: true });
 
       const assignments = [
         { roomId: testRooms[0]._id, bookingId: testBookings[0]._id }

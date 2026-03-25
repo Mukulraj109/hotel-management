@@ -40,7 +40,7 @@ export const getChannels = async (req, res) => {
     
     const channels = await Channel.find(filter)
       .populate('roomMappings.hotelRoomTypeId', 'name')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }).lean().limit(1000);
     
     res.json({
       success: true,
@@ -57,7 +57,7 @@ export const getChannels = async (req, res) => {
 export const getChannel = async (req, res) => {
   try {
     const channel = await Channel.findById(req.params.id)
-      .populate('roomMappings.hotelRoomTypeId', 'name');
+      .populate('roomMappings.hotelRoomTypeId', 'name').lean();
     
     if (!channel) {
       return res.status(404).json({
@@ -131,7 +131,7 @@ export const deleteChannel = async (req, res) => {
 export const testChannelConnection = async (req, res) => {
   try {
     const { channelId } = req.params;
-    const channel = await Channel.findById(channelId);
+    const channel = await Channel.findById(channelId).lean();
 
     if (!channel) {
       return res.status(404).json({
@@ -159,6 +159,8 @@ export const testChannelConnection = async (req, res) => {
       await Channel.findByIdAndUpdate(
         channelId,
         { $set: { connectionStatus: newStatus, updatedAt: new Date() } }
+      ,
+        { new: true }
       );
 
       res.json({
@@ -172,6 +174,8 @@ export const testChannelConnection = async (req, res) => {
       await Channel.findByIdAndUpdate(
         channelId,
         { $set: { connectionStatus: 'error', updatedAt: new Date() } }
+      ,
+        { new: true }
       );
 
       res.status(400).json({
@@ -265,7 +269,7 @@ export const getSyncHistory = async (req, res) => {
       .populate('channel', 'name category')
       .populate('roomType', 'name')
       .sort({ createdAt: -1 })
-      .limit(100);
+      .limit(100).lean();
     
     res.json({
       success: true,
@@ -316,7 +320,7 @@ export const getReservationMappings = async (req, res) => {
       .populate('hotelReservationId')
       .populate('channel', 'name category')
       .sort({ createdAt: -1 })
-      .limit(100);
+      .limit(100).lean();
     
     res.json({
       success: true,
@@ -382,7 +386,7 @@ export const getRateParityLogs = async (req, res) => {
       .populate('channelRates.channel', 'name category')
       .populate('violations.channel', 'name category')
       .sort({ date: -1 })
-      .limit(100);
+      .limit(100).lean();
     
     res.json({
       success: true,
@@ -437,7 +441,7 @@ export const getAllChannelsPerformance = async (req, res) => {
       });
     }
     
-    const channels = await Channel.find({ isActive: true });
+    const channels = await Channel.find({ isActive: true }).lean().limit(1000);
     const performanceData = [];
     
     for (const channel of channels) {
@@ -486,7 +490,13 @@ export const checkOverbooking = async (req, res) => {
     }
 
     const result = await withTransaction(async (session) => {
-      return await channelManager.preventOverbooking(roomTypeId, new Date(date), { session });
+      try {
+        return await channelManager.preventOverbooking(roomTypeId, new Date(date), { session });
+    
+      } catch (error) {
+        console.error('Operation failed:', error.message);
+        throw error;
+      }
     });
 
     res.json({
@@ -528,7 +538,7 @@ export const getOverbookingRules = async (req, res) => {
     const rules = await OverbookingRule.find()
       .populate('roomType', 'name')
       .populate('channels.channel', 'name category')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 }).lean().limit(1000);
     
     res.json({
       success: true,
@@ -583,7 +593,7 @@ export const getDashboardStats = async (req, res) => {
     .populate('channel', 'name category')
     .populate('roomType', 'name')
     .sort({ createdAt: -1 })
-    .limit(5);
+    .limit(5).lean();
     
     res.json({
       success: true,

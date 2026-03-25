@@ -53,7 +53,7 @@ async function migratePaymentData() {
         { paymentMethods: { $exists: true } },
         { remainingAmount: { $exists: true } }
       ]
-    }).toArray();
+    }).toArray().lean().limit(1000);
 
     console.log(`📊 Found ${bookingsWithOldStructure.length} bookings to migrate\n`);
 

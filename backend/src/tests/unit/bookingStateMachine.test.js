@@ -48,6 +48,26 @@ describe('Booking State Machine', () => {
       expect(result.valid).toBe(false);
     });
 
+    test('allows confirmed → modified (OTA amendment)', () => {
+      const result = validateTransition('confirmed', 'modified');
+      expect(result.valid).toBe(true);
+    });
+
+    test('allows modified → confirmed (amendment accepted)', () => {
+      const result = validateTransition('modified', 'confirmed');
+      expect(result.valid).toBe(true);
+    });
+
+    test('allows modified → cancelled', () => {
+      const result = validateTransition('modified', 'cancelled');
+      expect(result.valid).toBe(true);
+    });
+
+    test('allows modified → checked_in', () => {
+      const result = validateTransition('modified', 'checked_in');
+      expect(result.valid).toBe(true);
+    });
+
     test('rejects pending → checked_in (invalid skip)', () => {
       const result = validateTransition('pending', 'checked_in');
       expect(result.valid).toBe(false);
@@ -68,7 +88,7 @@ describe('Booking State Machine', () => {
 
   describe('VALID_TRANSITIONS', () => {
     test('all defined statuses have transition rules', () => {
-      const statuses = ['pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled', 'no_show'];
+      const statuses = ['pending', 'confirmed', 'modified', 'checked_in', 'checked_out', 'cancelled', 'no_show'];
       statuses.forEach(s => {
         expect(VALID_TRANSITIONS).toHaveProperty(s);
         expect(Array.isArray(VALID_TRANSITIONS[s])).toBe(true);

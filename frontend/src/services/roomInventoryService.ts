@@ -350,25 +350,37 @@ class RoomInventoryService {
     page?: number;
     limit?: number;
   } = {}): Promise<ApiResponse<{ items: InventoryItem[] }>> {
-    const searchParams = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        searchParams.append(key, value.toString());
-      }
-    });
+    try {
+      const searchParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          searchParams.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`${this.baseUrl}/items?${searchParams.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/items?${searchParams.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async createInventoryItem(itemData: Partial<InventoryItem>): Promise<ApiResponse<{ item: InventoryItem }>> {
-    const response = await api.post(`${this.baseUrl}/items`, itemData);
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseUrl}/items`, itemData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateInventoryItem(id: string, itemData: Partial<InventoryItem>): Promise<ApiResponse<{ item: InventoryItem }>> {
-    const response = await api.put(`${this.baseUrl}/items/${id}`, itemData);
-    return response.data;
+    try {
+      const response = await api.put(`${this.baseUrl}/items/${id}`, itemData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Templates
@@ -376,26 +388,38 @@ class RoomInventoryService {
     roomType?: string;
     active?: boolean;
   } = {}): Promise<ApiResponse<{ templates: RoomInventoryTemplate[] }>> {
-    const searchParams = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        searchParams.append(key, value.toString());
-      }
-    });
+    try {
+      const searchParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          searchParams.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`${this.baseUrl}/templates?${searchParams.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/templates?${searchParams.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async createInventoryTemplate(templateData: Partial<RoomInventoryTemplate>): Promise<ApiResponse<{ template: RoomInventoryTemplate }>> {
-    const response = await api.post(`${this.baseUrl}/templates`, templateData);
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseUrl}/templates`, templateData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Room Inventory
   async getRoomInventory(roomId: string): Promise<ApiResponse<{ roomInventory: RoomInventory }>> {
-    const response = await api.get(`${this.baseUrl}/rooms/${roomId}`);
-    return response.data;
+    try {
+      const response = await api.get(`${this.baseUrl}/rooms/${roomId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async recordRoomInspection(roomId: string, inspectionData: {
@@ -412,8 +436,12 @@ class RoomInventoryService {
       notes?: string;
     }>;
   }): Promise<ApiResponse<{ roomInventory: RoomInventory }>> {
-    const response = await api.post(`${this.baseUrl}/rooms/${roomId}/inspect`, inspectionData);
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseUrl}/rooms/${roomId}/inspect`, inspectionData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async requestItemReplacement(roomId: string, replacementData: {
@@ -425,8 +453,12 @@ class RoomInventoryService {
     reason: string;
     notes?: string;
   }): Promise<ApiResponse<{ message: string }>> {
-    const response = await api.post(`${this.baseUrl}/rooms/${roomId}/replace`, replacementData);
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseUrl}/rooms/${roomId}/replace`, replacementData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Transactions
@@ -439,15 +471,19 @@ class RoomInventoryService {
     page?: number;
     limit?: number;
   } = {}): Promise<ApiResponse<{ transactions: InventoryTransaction[] }>> {
-    const searchParams = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        searchParams.append(key, value.toString());
-      }
-    });
+    try {
+      const searchParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          searchParams.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`${this.baseUrl}/transactions?${searchParams.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/transactions?${searchParams.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Analytics
@@ -460,15 +496,19 @@ class RoomInventoryService {
     lowStockItems: InventoryItem[];
     roomsNeedingInspection: RoomInventory[];
   }>> {
-    const searchParams = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        searchParams.append(key, value.toString());
-      }
-    });
+    try {
+      const searchParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          searchParams.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`${this.baseUrl}/analytics?${searchParams.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/analytics?${searchParams.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Checkout Inspection
@@ -477,18 +517,30 @@ class RoomInventoryService {
     bookingId: string;
     guestId?: string;
   }): Promise<ApiResponse<{ inspection: CheckoutInspection }>> {
-    const response = await api.post(`${this.baseUrl}/checkout-inspection`, inspectionData);
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseUrl}/checkout-inspection`, inspectionData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getCheckoutInspection(bookingId: string): Promise<ApiResponse<{ inspection: CheckoutInspection }>> {
-    const response = await api.get(`${this.baseUrl}/checkout-inspection/${bookingId}`);
-    return response.data;
+    try {
+      const response = await api.get(`${this.baseUrl}/checkout-inspection/${bookingId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateCheckoutInspection(bookingId: string, inspectionData: Partial<CheckoutInspection>): Promise<ApiResponse<{ inspection: CheckoutInspection }>> {
-    const response = await api.put(`${this.baseUrl}/checkout-inspection/${bookingId}`, inspectionData);
-    return response.data;
+    try {
+      const response = await api.put(`${this.baseUrl}/checkout-inspection/${bookingId}`, inspectionData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

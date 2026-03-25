@@ -206,7 +206,7 @@ router.get('/rooms-needing-attention', authorize('admin', 'manager', 'staff'), c
   const rooms = await RoomInventory.find(filter)
     .populate('roomId', 'roomNumber type floor')
     .populate('currentBookingId', 'bookingNumber checkIn checkOut')
-    .sort({ lastInspectionDate: 1 });
+    .sort({ lastInspectionDate: 1 }).lean().limit(1000);
 
   // Filter by priority if specified
   let filteredRooms = rooms;

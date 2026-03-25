@@ -179,7 +179,11 @@ apiKeySchema.statics.generateKey = function(type, environment) {
 
 // Hash API Key
 apiKeySchema.methods.hashKey = async function(key) {
-  return await bcrypt.hash(key, 12);
+  try {
+    return await bcrypt.hash(key, 12);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Verify API Key
@@ -189,7 +193,7 @@ apiKeySchema.statics.verifyKey = async function(providedKey) {
     const apiKey = await this.findOne({ 
       keyId: providedKey,
       isActive: true
-    }).select('+keyHash');
+    }).select('+keyHash').lean();
     
     if (!apiKey) return null;
     
@@ -207,37 +211,41 @@ apiKeySchema.statics.verifyKey = async function(providedKey) {
 
 // Update usage statistics
 apiKeySchema.methods.recordUsage = async function(req) {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const thisHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours());
-  const thisMinute = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes());
+  try {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const thisHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours());
+    const thisMinute = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes());
   
-  // Update usage statistics
-  this.usage.totalRequests += 1;
-  this.usage.lastUsed = now;
-  this.usage.lastUserAgent = req.headers['user-agent'];
-  this.usage.lastIP = req.ip;
+    // Update usage statistics
+    this.usage.totalRequests += 1;
+    this.usage.lastUsed = now;
+    this.usage.lastUserAgent = req.headers['user-agent'];
+    this.usage.lastIP = req.ip;
   
-  // Update rate limit tracking
-  if (!this.rateLimitUsage.today.date || this.rateLimitUsage.today.date.getTime() !== today.getTime()) {
-    this.rateLimitUsage.today = { date: today, requests: 1 };
-  } else {
-    this.rateLimitUsage.today.requests += 1;
+    // Update rate limit tracking
+    if (!this.rateLimitUsage.today.date || this.rateLimitUsage.today.date.getTime() !== today.getTime()) {
+      this.rateLimitUsage.today = { date: today, requests: 1 };
+    } else {
+      this.rateLimitUsage.today.requests += 1;
+    }
+  
+    if (!this.rateLimitUsage.thisHour.hour || this.rateLimitUsage.thisHour.hour.getTime() !== thisHour.getTime()) {
+      this.rateLimitUsage.thisHour = { hour: thisHour, requests: 1 };
+    } else {
+      this.rateLimitUsage.thisHour.requests += 1;
+    }
+  
+    if (!this.rateLimitUsage.thisMinute.minute || this.rateLimitUsage.thisMinute.minute.getTime() !== thisMinute.getTime()) {
+      this.rateLimitUsage.thisMinute = { minute: thisMinute, requests: 1 };
+    } else {
+      this.rateLimitUsage.thisMinute.requests += 1;
+    }
+  
+    await this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  if (!this.rateLimitUsage.thisHour.hour || this.rateLimitUsage.thisHour.hour.getTime() !== thisHour.getTime()) {
-    this.rateLimitUsage.thisHour = { hour: thisHour, requests: 1 };
-  } else {
-    this.rateLimitUsage.thisHour.requests += 1;
-  }
-  
-  if (!this.rateLimitUsage.thisMinute.minute || this.rateLimitUsage.thisMinute.minute.getTime() !== thisMinute.getTime()) {
-    this.rateLimitUsage.thisMinute = { minute: thisMinute, requests: 1 };
-  } else {
-    this.rateLimitUsage.thisMinute.requests += 1;
-  }
-  
-  await this.save();
 };
 
 // Check rate limits

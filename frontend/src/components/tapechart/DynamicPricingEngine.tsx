@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +15,7 @@ import {
   Building2, Star, Trophy, Activity, Lightbulb, Sparkles
 } from 'lucide-react';
 import { format, addDays, isWeekend } from 'date-fns';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 // Dynamic Pricing Interfaces
 interface PricingRule {
@@ -82,6 +83,12 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
   const [loading, setLoading] = useState(false);
 
   // Mock data generation for realistic business scenarios
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   useEffect(() => {
     generateMockPricingRules();
     generateMockMarketIntelligence();
@@ -281,6 +288,7 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
     try {
       // Simulate API call to apply pricing
       await new Promise(resolve => setTimeout(resolve, 2000));
+    if (!isMountedRef.current) return;
 
       toast.success('Optimal pricing applied to all room types');
 
@@ -856,3 +864,5 @@ export const DynamicPricingEngine: React.FC<DynamicPricingEngineProps> = () => {
     </Dialog>
   );
 };
+
+export default withErrorBoundary(DynamicPricingEngine, { level: 'component' });

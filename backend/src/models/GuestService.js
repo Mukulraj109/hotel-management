@@ -350,112 +350,122 @@ guestServiceSchema.methods.canCancel = function() {
 
 // Static method to get service statistics
 guestServiceSchema.statics.getServiceStats = async function(hotelId, startDate, endDate) {
-  const matchQuery = { hotelId };
+  try {
+    const matchQuery = { hotelId };
   
-  if (startDate && endDate) {
-    matchQuery.createdAt = {
-      $gte: new Date(startDate),
-      $lte: new Date(endDate)
-    };
-  }
-
-  const pipeline = [
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: {
-          serviceType: '$serviceType',
-          status: '$status'
-        },
-        count: { $sum: 1 },
-        avgCost: { $avg: '$actualCost' },
-        totalRevenue: { $sum: '$actualCost' }
-      }
-    },
-    {
-      $group: {
-        _id: '$_id.serviceType',
-        stats: {
-          $push: {
-            status: '$_id.status',
-            count: '$count',
-            avgCost: '$avgCost',
-            totalRevenue: '$totalRevenue'
-          }
-        },
-        totalRequests: { $sum: '$count' }
-      }
+    if (startDate && endDate) {
+      matchQuery.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
     }
-  ];
 
-  return await this.aggregate(pipeline);
+    const pipeline = [
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: {
+            serviceType: '$serviceType',
+            status: '$status'
+          },
+          count: { $sum: 1 },
+          avgCost: { $avg: '$actualCost' },
+          totalRevenue: { $sum: '$actualCost' }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.serviceType',
+          stats: {
+            $push: {
+              status: '$_id.status',
+              count: '$count',
+              avgCost: '$avgCost',
+              totalRevenue: '$totalRevenue'
+            }
+          },
+          totalRequests: { $sum: '$count' }
+        }
+      }
+    ];
+
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to auto-assign service request to appropriate staff
 guestServiceSchema.statics.autoAssignToStaff = async function(serviceRequest, hotelId) {
-  const HotelService = mongoose.model('HotelService');
+  try {
+    const HotelService = mongoose.model('HotelService');
 
-  // Try to find a matching hotel service based on service type
-  const matchingHotelServices = await HotelService.find({
-    hotelId,
-    type: this.mapServiceTypeToHotelServiceType(serviceRequest.serviceType),
-    isActive: true,
-    'assignedStaff.isActive': true
-  }).populate('assignedStaff.staffId', 'name email');
+    // Try to find a matching hotel service based on service type
+    const matchingHotelServices = await HotelService.find({
+      hotelId,
+      type: this.mapServiceTypeToHotelServiceType(serviceRequest.serviceType),
+      isActive: true,
+      'assignedStaff.isActive': true
+    }).populate('assignedStaff.staffId', 'name email').lean().limit(1000);
 
-  if (matchingHotelServices.length > 0) {
-    // Prefer services with auto-assignment enabled
-    let targetService = matchingHotelServices.find(
-      service => service.serviceSettings?.autoAssignRequests
-    ) || matchingHotelServices[0];
+    if (matchingHotelServices.length > 0) {
+      // Prefer services with auto-assignment enabled
+      let targetService = matchingHotelServices.find(
+        service => service.serviceSettings?.autoAssignRequests
+      ) || matchingHotelServices[0];
 
-    // Get available staff from the service
-    const availableStaff = targetService.getActiveStaff();
+      // Get available staff from the service
+      const availableStaff = targetService.getActiveStaff();
 
-    if (availableStaff.length > 0) {
-      // Prefer primary contact, otherwise use least loaded staff
-      let assignedStaff = availableStaff.find(staff => staff.primaryContact);
+      if (availableStaff.length > 0) {
+        // Prefer primary contact, otherwise use least loaded staff
+        let assignedStaff = availableStaff.find(staff => staff.primaryContact);
 
-      if (!assignedStaff) {
-        // Find staff member with least current assignments
-        const staffWorkloads = await Promise.all(
-          availableStaff.map(async (staff) => {
-            const currentAssignments = await this.countDocuments({
-              assignedTo: staff.staffId._id,
-              status: { $in: ['assigned', 'in_progress'] }
-            });
-            return { staff, workload: currentAssignments };
-          })
-        );
+        if (!assignedStaff) {
+          // Find staff member with least current assignments
+          // Batch: get workload counts for all staff in a single aggregation
+          const staffIds = availableStaff.map(s => s.staffId._id);
+          const workloadCounts = await this.aggregate([
+            { $match: { assignedTo: { $in: staffIds }, status: { $in: ['assigned', 'in_progress'] } } },
+            { $group: { _id: '$assignedTo', count: { $sum: 1 } } }
+          ]);
+          const workloadMap = new Map(workloadCounts.map(w => [w._id.toString(), w.count]));
+          const staffWorkloads = availableStaff.map(staff => ({
+            staff,
+            workload: workloadMap.get(staff.staffId._id.toString()) || 0
+          }));
 
-        staffWorkloads.sort((a, b) => a.workload - b.workload);
-        assignedStaff = staffWorkloads[0].staff;
-      }
+          staffWorkloads.sort((a, b) => a.workload - b.workload);
+          assignedStaff = staffWorkloads[0].staff;
+        }
 
-      if (assignedStaff) {
-        serviceRequest.assignedTo = assignedStaff.staffId._id;
-        serviceRequest.relatedHotelService = targetService._id;
-        serviceRequest.status = 'assigned';
-        return serviceRequest;
+        if (assignedStaff) {
+          serviceRequest.assignedTo = assignedStaff.staffId._id;
+          serviceRequest.relatedHotelService = targetService._id;
+          serviceRequest.status = 'assigned';
+          return serviceRequest;
+        }
       }
     }
+
+    // Fallback to random staff assignment if no hotel service match
+    const User = mongoose.model('User');
+    const availableStaff = await User.find({
+      hotelId,
+      role: 'staff',
+      isActive: true
+    }).lean().limit(1000);
+
+    if (availableStaff.length > 0) {
+      const randomStaff = availableStaff[Math.floor(Math.random() * availableStaff.length)];
+      serviceRequest.assignedTo = randomStaff._id;
+      serviceRequest.status = 'assigned';
+    }
+
+    return serviceRequest;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  // Fallback to random staff assignment if no hotel service match
-  const User = mongoose.model('User');
-  const availableStaff = await User.find({
-    hotelId,
-    role: 'staff',
-    isActive: true
-  });
-
-  if (availableStaff.length > 0) {
-    const randomStaff = availableStaff[Math.floor(Math.random() * availableStaff.length)];
-    serviceRequest.assignedTo = randomStaff._id;
-    serviceRequest.status = 'assigned';
-  }
-
-  return serviceRequest;
 };
 
 // Helper method to map guest service types to hotel service types

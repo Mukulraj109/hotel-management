@@ -28,17 +28,35 @@ class ETLService {
   scheduleETLJobs() {
     // Full ETL runs daily at 2 AM
     cron.schedule('0 2 * * *', async () => {
-      await this.executeFullETL();
+      try {
+        await this.executeFullETL();
+    
+      } catch (error) {
+        console.error('Operation failed:', error.message);
+        throw error;
+      }
     });
     
     // Incremental updates every hour
     cron.schedule('0 * * * *', async () => {
-      await this.executeIncrementalETL();
+      try {
+        await this.executeIncrementalETL();
+    
+      } catch (error) {
+        console.error('Operation failed:', error.message);
+        throw error;
+      }
     });
     
     // Monthly aggregation on the 1st of each month
     cron.schedule('0 3 1 * *', async () => {
-      await this.executeMonthlyAggregation();
+      try {
+        await this.executeMonthlyAggregation();
+    
+      } catch (error) {
+        console.error('Operation failed:', error.message);
+        throw error;
+      }
     });
     
     this.logger.info('ETL jobs scheduled successfully');
@@ -123,117 +141,133 @@ class ETLService {
    * Extract data from operational database
    */
   async extractOperationalData() {
-    this.logger.info('Extracting operational data');
+    try {
+      this.logger.info('Extracting operational data');
     
-    // Extract bookings with related data
-    const bookings = await Booking.aggregate([
-      {
-        $match: {
-          status: { $in: ['confirmed', 'checked_in', 'checked_out'] },
-          createdAt: { $gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) } // Last year
+      // Extract bookings with related data
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const bookings = await Booking.aggregate([
+        {
+          $match: {
+            status: { $in: ['confirmed', 'checked_in', 'checked_out'] },
+            createdAt: { $gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) } // Last year
+          }
+        },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'guestId',
+            foreignField: '_id',
+            as: 'guest'
+          }
+        },
+        {
+          $lookup: {
+            from: 'rooms',
+            localField: 'roomId',
+            foreignField: '_id',
+            as: 'room'
+          }
+        },
+        {
+          $lookup: {
+            from: 'hotels',
+            localField: 'hotelId',
+            foreignField: '_id',
+            as: 'hotel'
+          }
+        },
+        {
+          $unwind: '$guest'
+        },
+        {
+          $unwind: '$room'
+        },
+        {
+          $unwind: '$hotel'
         }
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'guestId',
-          foreignField: '_id',
-          as: 'guest'
-        }
-      },
-      {
-        $lookup: {
-          from: 'rooms',
-          localField: 'roomId',
-          foreignField: '_id',
-          as: 'room'
-        }
-      },
-      {
-        $lookup: {
-          from: 'hotels',
-          localField: 'hotelId',
-          foreignField: '_id',
-          as: 'hotel'
-        }
-      },
-      {
-        $unwind: '$guest'
-      },
-      {
-        $unwind: '$room'
-      },
-      {
-        $unwind: '$hotel'
-      }
-    ]);
+      ]);
     
-    // Extract guest profiles for dimension table
-    const guests = await User.find({
-      role: 'guest',
-      updatedAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // Last 30 days
-    }).lean();
+      // Extract guest profiles for dimension table
+      const guests = await User.find({
+        role: 'guest',
+        updatedAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // Last 30 days
+      }).lean().limit(1000);
     
-    this.logger.info(`Extracted ${bookings.length} bookings and ${guests.length} guests`);
+      this.logger.info(`Extracted ${bookings.length} bookings and ${guests.length} guests`);
     
-    return {
-      bookings,
-      guests
-    };
+      return {
+        bookings,
+        guests
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   /**
    * Extract incremental data since last run
    */
   async extractIncrementalData(lastRunTime) {
-    const bookings = await Booking.aggregate([
-      {
-        $match: {
-          updatedAt: { $gte: lastRunTime },
-          status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+    try {
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const bookings = await Booking.aggregate([
+        {
+          $match: {
+            updatedAt: { $gte: lastRunTime },
+            status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+          }
+        },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'guestId',
+            foreignField: '_id',
+            as: 'guest'
+          }
+        },
+        {
+          $lookup: {
+            from: 'rooms',
+            localField: 'roomId',
+            foreignField: '_id',
+            as: 'room'
+          }
+        },
+        {
+          $lookup: {
+            from: 'hotels',
+            localField: 'hotelId',
+            foreignField: '_id',
+            as: 'hotel'
+          }
+        },
+        {
+          $unwind: '$guest'
+        },
+        {
+          $unwind: '$room'
+        },
+        {
+          $unwind: '$hotel'
         }
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'guestId',
-          foreignField: '_id',
-          as: 'guest'
-        }
-      },
-      {
-        $lookup: {
-          from: 'rooms',
-          localField: 'roomId',
-          foreignField: '_id',
-          as: 'room'
-        }
-      },
-      {
-        $lookup: {
-          from: 'hotels',
-          localField: 'hotelId',
-          foreignField: '_id',
-          as: 'hotel'
-        }
-      },
-      {
-        $unwind: '$guest'
-      },
-      {
-        $unwind: '$room'
-      },
-      {
-        $unwind: '$hotel'
-      }
-    ]);
+      ]);
     
-    const guests = await User.find({
-      role: 'guest',
-      updatedAt: { $gte: lastRunTime }
-    }).lean();
+      const guests = await User.find({
+        role: 'guest',
+        updatedAt: { $gte: lastRunTime }
+      }).lean().limit(1000);
     
-    return { bookings, guests };
+      return { bookings, guests };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   /**
@@ -332,7 +366,7 @@ class ETLService {
     // Transform guests for dimension table
     for (const guest of extractedData.guests) {
       try {
-        const guestBookings = await Booking.find({ guestId: guest._id }).lean();
+        const guestBookings = await Booking.find({ guestId: guest._id }).lean().limit(1000);
         const avgBookingValue = guestBookings.reduce((sum, b) => sum + b.totalAmount, 0) / guestBookings.length;
         
         const transformedGuest = {
@@ -381,16 +415,16 @@ class ETLService {
       // Load bookings fact table
       if (transformedData.bookings.length > 0) {
         if (isIncremental) {
-          // Update existing records or insert new ones
-          for (const booking of transformedData.bookings) {
-            await FactBookings.findOneAndUpdate(
-              { booking_key: booking.booking_key, hotel_key: booking.hotel_key },
-              booking,
-              { upsert: true, new: true }
-            );
-          }
+          // Batch: use bulkWrite with upsert for incremental updates
+          const bookingBulkOps = transformedData.bookings.map(booking => ({
+            updateOne: {
+              filter: { booking_key: booking.booking_key, hotel_key: booking.hotel_key },
+              update: { $set: booking },
+              upsert: true
+            }
+          }));
+          await FactBookings.bulkWrite(bookingBulkOps);
         } else {
-          // Bulk insert for full load - each record already has hotel_key from transform
           await FactBookings.insertMany(transformedData.bookings, { ordered: false });
         }
       }
@@ -398,19 +432,20 @@ class ETLService {
       // Load revenue fact table
       if (transformedData.revenue.length > 0) {
         if (isIncremental) {
-          for (const revenue of transformedData.revenue) {
-            await FactRevenue.findOneAndUpdate(
-              {
+          // Batch: use bulkWrite with upsert for incremental revenue updates
+          const revenueBulkOps = transformedData.revenue.map(revenue => ({
+            updateOne: {
+              filter: {
                 date_key: revenue.date_key,
                 hotel_key: revenue.hotel_key,
                 room_type_key: revenue.room_type_key
               },
-              revenue,
-              { upsert: true, new: true }
-            );
-          }
+              update: { $set: revenue },
+              upsert: true
+            }
+          }));
+          await FactRevenue.bulkWrite(revenueBulkOps);
         } else {
-          // Bulk insert for full load - each record already has hotel_key from transform
           await FactRevenue.insertMany(transformedData.revenue, { ordered: false });
         }
       }
@@ -432,28 +467,32 @@ class ETLService {
    * Load guest dimension with SCD Type 2 logic
    */
   async loadGuestDimension(guestData) {
-    // Check for existing current record
-    const existingGuest = await DimGuest.findOne({
-      guest_id: guestData.guest_id,
-      is_current: true
-    });
+    try {
+      // Check for existing current record
+      const existingGuest = await DimGuest.findOne({
+        guest_id: guestData.guest_id,
+        is_current: true
+      });
     
-    if (existingGuest) {
-      // Check if attributes have changed
-      const hasChanged = this.checkGuestAttributesChanged(existingGuest, guestData);
+      if (existingGuest) {
+        // Check if attributes have changed
+        const hasChanged = this.checkGuestAttributesChanged(existingGuest, guestData);
       
-      if (hasChanged) {
-        // Expire old record
-        existingGuest.expiry_date = new Date();
-        existingGuest.is_current = false;
-        await existingGuest.save();
+        if (hasChanged) {
+          // Expire old record
+          existingGuest.expiry_date = new Date();
+          existingGuest.is_current = false;
+          await existingGuest.save();
         
+          // Insert new record
+          await DimGuest.create(guestData);
+        }
+      } else {
         // Insert new record
         await DimGuest.create(guestData);
       }
-    } else {
-      // Insert new record
-      await DimGuest.create(guestData);
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
   
@@ -461,123 +500,141 @@ class ETLService {
    * Update monthly aggregation tables
    */
   async updateAggregates() {
-    this.logger.info('Updating aggregate tables');
+    try {
+      this.logger.info('Updating aggregate tables');
     
-    const currentDate = new Date();
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth() + 1;
+      const currentDate = new Date();
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth() + 1;
     
-    // Get all hotels
-    const hotels = await Hotel.find({}).select('_id').lean();
+      // Get all hotels
+      const hotels = await Hotel.find({}).select('_id').lean().limit(1000);
     
-    for (const hotel of hotels) {
-      await this.updateMonthlyRevenueAggregate(hotel._id, year, month);
+      for (const hotel of hotels) {
+        await this.updateMonthlyRevenueAggregate(hotel._id, year, month);
+      }
+    
+      this.logger.info('Aggregate tables updated');
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    this.logger.info('Aggregate tables updated');
   }
   
   /**
    * Update monthly revenue aggregate for a specific hotel
    */
   async updateMonthlyRevenueAggregate(hotelId, year, month) {
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0);
-    const startDateKey = DataWarehouseHelpers.generateDateKey(startDate);
-    const endDateKey = DataWarehouseHelpers.generateDateKey(endDate);
+    try {
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 0);
+      const startDateKey = DataWarehouseHelpers.generateDateKey(startDate);
+      const endDateKey = DataWarehouseHelpers.generateDateKey(endDate);
     
-    // Aggregate data from fact tables
-    const revenueData = await FactRevenue.aggregate([
-      {
-        $match: {
-          hotel_key: hotelId,
-          date_key: { $gte: startDateKey, $lte: endDateKey }
+      // Aggregate data from fact tables
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const revenueData = await FactRevenue.aggregate([
+        {
+          $match: {
+            hotel_key: hotelId,
+            date_key: { $gte: startDateKey, $lte: endDateKey }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total_revenue: { $sum: '$gross_revenue' },
+            rooms_revenue: { $sum: '$gross_revenue' },
+            ancillary_revenue: { $sum: '$ancillary_revenue' },
+            avg_adr: { $avg: '$adr' },
+            avg_revpar: { $avg: '$revpar' },
+            avg_occupancy: { $avg: '$occupancy_rate' }
+          }
         }
-      },
-      {
-        $group: {
-          _id: null,
-          total_revenue: { $sum: '$gross_revenue' },
-          rooms_revenue: { $sum: '$gross_revenue' },
-          ancillary_revenue: { $sum: '$ancillary_revenue' },
-          avg_adr: { $avg: '$adr' },
-          avg_revpar: { $avg: '$revpar' },
-          avg_occupancy: { $avg: '$occupancy_rate' }
-        }
-      }
-    ]);
+      ]);
     
-    const bookingData = await FactBookings.aggregate([
-      {
-        $match: {
-          hotel_key: hotelId,
-          date_key: { $gte: startDateKey, $lte: endDateKey }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          total_bookings: { $sum: 1 },
-          total_nights: { $sum: '$nights_stayed' },
-          unique_guests: { $addToSet: '$guest_key' },
-          avg_los: { $avg: '$nights_stayed' },
+      // Consider caching this aggregation result for 5 minutes
+
+    
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+    
+      const bookingData = await FactBookings.aggregate([
+        {
+          $match: {
+            hotel_key: hotelId,
+            date_key: { $gte: startDateKey, $lte: endDateKey }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total_bookings: { $sum: 1 },
+            total_nights: { $sum: '$nights_stayed' },
+            unique_guests: { $addToSet: '$guest_key' },
+            avg_los: { $avg: '$nights_stayed' },
           
-          // Segment breakdown
-          leisure_revenue: {
-            $sum: {
-              $cond: [{ $eq: ['$guest_segment', 'leisure'] }, '$revenue_amount', 0]
-            }
-          },
-          business_revenue: {
-            $sum: {
-              $cond: [{ $eq: ['$guest_segment', 'business'] }, '$revenue_amount', 0]
-            }
-          },
-          corporate_revenue: {
-            $sum: {
-              $cond: [{ $eq: ['$guest_segment', 'corporate'] }, '$revenue_amount', 0]
-            }
-          },
+            // Segment breakdown
+            leisure_revenue: {
+              $sum: {
+                $cond: [{ $eq: ['$guest_segment', 'leisure'] }, '$revenue_amount', 0]
+              }
+            },
+            business_revenue: {
+              $sum: {
+                $cond: [{ $eq: ['$guest_segment', 'business'] }, '$revenue_amount', 0]
+              }
+            },
+            corporate_revenue: {
+              $sum: {
+                $cond: [{ $eq: ['$guest_segment', 'corporate'] }, '$revenue_amount', 0]
+              }
+            },
           
-          // Channel breakdown
-          direct_bookings: {
-            $sum: {
-              $cond: [{ $eq: ['$booking_channel', 'direct'] }, 1, 0]
-            }
-          },
-          ota_bookings: {
-            $sum: {
-              $cond: [{ $eq: ['$booking_channel', 'ota'] }, 1, 0]
-            }
-          },
-          corporate_bookings: {
-            $sum: {
-              $cond: [{ $eq: ['$booking_channel', 'corporate'] }, 1, 0]
+            // Channel breakdown
+            direct_bookings: {
+              $sum: {
+                $cond: [{ $eq: ['$booking_channel', 'direct'] }, 1, 0]
+              }
+            },
+            ota_bookings: {
+              $sum: {
+                $cond: [{ $eq: ['$booking_channel', 'ota'] }, 1, 0]
+              }
+            },
+            corporate_bookings: {
+              $sum: {
+                $cond: [{ $eq: ['$booking_channel', 'corporate'] }, 1, 0]
+              }
             }
           }
         }
-      }
-    ]);
+      ]);
     
-    if (revenueData.length > 0 && bookingData.length > 0) {
-      const aggregateData = {
-        hotel_id: hotelId,
-        year,
-        month,
+      if (revenueData.length > 0 && bookingData.length > 0) {
+        const aggregateData = {
+          hotel_id: hotelId,
+          year,
+          month,
         
-        ...revenueData[0],
-        ...bookingData[0],
-        unique_guests: bookingData[0].unique_guests.length,
+          ...revenueData[0],
+          ...bookingData[0],
+          unique_guests: bookingData[0].unique_guests.length,
         
-        updated_at: new Date()
-      };
+          updated_at: new Date()
+        };
       
-      // Upsert monthly aggregate
-      await MonthlyRevenueAggregate.findOneAndUpdate(
-        { hotel_id: hotelId, year, month },
-        aggregateData,
-        { upsert: true, new: true }
-      );
+        // Upsert monthly aggregate
+        await MonthlyRevenueAggregate.findOneAndUpdate(
+          { hotel_id: hotelId, year, month },
+          aggregateData,
+          { upsert: true, new: true }
+        );
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
   
@@ -585,50 +642,64 @@ class ETLService {
    * Perform data quality checks
    */
   async performDataQualityChecks() {
-    this.logger.info('Performing data quality checks');
+    try {
+      this.logger.info('Performing data quality checks');
     
-    const checks = [
-      // Check for null revenue amounts
-      {
-        name: 'Null Revenue Check',
-        query: async () => await FactBookings.countDocuments({ revenue_amount: { $lte: 0 } }),
-        threshold: 0
-      },
-      
-      // Check for future dates
-      {
-        name: 'Future Dates Check',
-        query: async () => await FactBookings.countDocuments({ 
-          check_in_date: { $gt: new Date() } 
-        }),
-        threshold: 100 // Allow some future bookings
-      },
-      
-      // Check for duplicate bookings
-      {
-        name: 'Duplicate Bookings Check',
-        query: async () => {
-          const duplicates = await FactBookings.aggregate([
-            { $group: { _id: '$booking_key', count: { $sum: 1 } } },
-            { $match: { count: { $gt: 1 } } }
-          ]);
-          return duplicates.length;
+      const checks = [
+        // Check for null revenue amounts
+        {
+          name: 'Null Revenue Check',
+          query: async () => await FactBookings.countDocuments({ revenue_amount: { $lte: 0 } }),
+          threshold: 0
         },
-        threshold: 0
-      }
-    ];
-    
-    for (const check of checks) {
-      try {
-        const result = await check.query();
-        if (result > check.threshold) {
-          this.logger.warn(`Data quality issue: ${check.name} found ${result} problems`);
-        } else {
-          this.logger.info(`Data quality check passed: ${check.name}`);
+      
+        // Check for future dates
+        {
+          name: 'Future Dates Check',
+          query: async () => await FactBookings.countDocuments({ 
+            check_in_date: { $gt: new Date() } 
+          }),
+          threshold: 100 // Allow some future bookings
+        },
+      
+        // Check for duplicate bookings
+        {
+          name: 'Duplicate Bookings Check',
+          query: async () => {
+            try {
+              // Consider caching this aggregation result for 5 minutes
+
+              // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+              const duplicates = await FactBookings.aggregate([
+                { $group: { _id: '$booking_key', count: { $sum: 1 } } },
+                { $match: { count: { $gt: 1 } } }
+              ]);
+              return duplicates.length;
+          
+            } catch (error) {
+              console.error('Operation failed:', error.message);
+              throw error;
+            }
+          },
+          threshold: 0
         }
-      } catch (error) {
-        this.logger.error(`Data quality check failed: ${check.name}`, error);
+      ];
+    
+      for (const check of checks) {
+        try {
+          const result = await check.query();
+          if (result > check.threshold) {
+            this.logger.warn(`Data quality issue: ${check.name} found ${result} problems`);
+          } else {
+            this.logger.info(`Data quality check passed: ${check.name}`);
+          }
+        } catch (error) {
+          this.logger.error(`Data quality check failed: ${check.name}`, error);
+        }
       }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
   
@@ -636,52 +707,56 @@ class ETLService {
    * Populate date dimension for the current year
    */
   async populateDateDimension(year = new Date().getFullYear()) {
-    this.logger.info(`Populating date dimension for year ${year}`);
+    try {
+      this.logger.info(`Populating date dimension for year ${year}`);
     
-    const dates = [];
-    const startDate = new Date(year, 0, 1);
-    const endDate = new Date(year, 11, 31);
+      const dates = [];
+      const startDate = new Date(year, 0, 1);
+      const endDate = new Date(year, 11, 31);
     
-    for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
-      const dateKey = DataWarehouseHelpers.generateDateKey(date);
+      for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+        const dateKey = DataWarehouseHelpers.generateDateKey(date);
       
-      // Check if date already exists
-      const existingDate = await DimDate.findOne({ date_key: dateKey });
-      if (existingDate) continue;
+        // Check if date already exists
+        const existingDate = await DimDate.findOne({ date_key: dateKey }).lean();
+        if (existingDate) continue;
       
-      const dayOfWeek = date.getDay();
-      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-      const isBusinessDay = !isWeekend && !await this.isHoliday(date);
+        const dayOfWeek = date.getDay();
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        const isBusinessDay = !isWeekend && !await this.isHoliday(date);
       
-      const dateRecord = {
-        date_key: dateKey,
-        full_date: new Date(date),
-        year: date.getFullYear(),
-        quarter: Math.floor((date.getMonth() + 3) / 3),
-        month: date.getMonth() + 1,
-        week: this.getWeekOfYear(date),
-        day_of_year: this.getDayOfYear(date),
-        day_of_month: date.getDate(),
-        day_of_week: dayOfWeek,
+        const dateRecord = {
+          date_key: dateKey,
+          full_date: new Date(date),
+          year: date.getFullYear(),
+          quarter: Math.floor((date.getMonth() + 3) / 3),
+          month: date.getMonth() + 1,
+          week: this.getWeekOfYear(date),
+          day_of_year: this.getDayOfYear(date),
+          day_of_month: date.getDate(),
+          day_of_week: dayOfWeek,
         
-        month_name: date.toLocaleString('default', { month: 'long' }),
-        day_name: date.toLocaleString('default', { weekday: 'long' }),
-        quarter_name: `Q${Math.floor((date.getMonth() + 3) / 3)}`,
+          month_name: date.toLocaleString('default', { month: 'long' }),
+          day_name: date.toLocaleString('default', { weekday: 'long' }),
+          quarter_name: `Q${Math.floor((date.getMonth() + 3) / 3)}`,
         
-        is_weekend: isWeekend,
-        is_holiday: await this.isHoliday(date),
-        is_business_day: isBusinessDay,
+          is_weekend: isWeekend,
+          is_holiday: await this.isHoliday(date),
+          is_business_day: isBusinessDay,
         
-        season: DataWarehouseHelpers.calculateSeason(date),
-        booking_period: this.determineBookingPeriod(date)
-      };
+          season: DataWarehouseHelpers.calculateSeason(date),
+          booking_period: this.determineBookingPeriod(date)
+        };
       
-      dates.push(dateRecord);
-    }
+        dates.push(dateRecord);
+      }
     
-    if (dates.length > 0) {
-      await DimDate.insertMany(dates, { ordered: false });
-      this.logger.info(`Inserted ${dates.length} date records`);
+      if (dates.length > 0) {
+        await DimDate.insertMany(dates, { ordered: false });
+        this.logger.info(`Inserted ${dates.length} date records`);
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
   
@@ -754,9 +829,13 @@ class ETLService {
   }
   
   async isHoliday(date) {
-    // This would integrate with a holiday API or database
-    // For now, return false
-    return false;
+    try {
+      // This would integrate with a holiday API or database
+      // For now, return false
+      return false;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   checkGuestAttributesChanged(existing, newData) {
@@ -790,12 +869,16 @@ class ETLService {
    * Manual ETL trigger for testing/maintenance
    */
   async triggerManualETL(options = {}) {
-    const { fullLoad = false, dateRange = null } = options;
+    try {
+      const { fullLoad = false, dateRange = null } = options;
     
-    if (fullLoad) {
-      return await this.executeFullETL();
-    } else {
-      return await this.executeIncrementalETL();
+      if (fullLoad) {
+        return await this.executeFullETL();
+      } else {
+        return await this.executeIncrementalETL();
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
   

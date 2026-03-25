@@ -38,7 +38,7 @@ class DynamicRateConversionService {
    */
   async convertRatePlan(ratePlanId, targetCurrency, date = new Date()) {
     try {
-      const ratePlan = await RatePlan.findOne({ planId: ratePlanId, isActive: true });
+      const ratePlan = await RatePlan.findOne({ planId: ratePlanId, isActive: true }).lean();
       if (!ratePlan) {
         throw new Error('Rate plan not found');
       }
@@ -205,7 +205,7 @@ class DynamicRateConversionService {
         query.$and = typeFilters;
       }
 
-      const ratePlans = await RatePlan.find(query).sort({ priority: -1, name: 1 });
+      const ratePlans = await RatePlan.find(query).sort({ priority: -1, name: 1 }).lean().limit(1000);
 
       // Convert each rate plan to target currency
       const convertedPlans = await Promise.all(
@@ -259,7 +259,7 @@ class DynamicRateConversionService {
           { expiresAt: { $gte: new Date() } },
           { expiresAt: { $exists: false } }
         ]
-      });
+      }).lean().limit(1000);
 
       if (overrides.length === 0) {
         return ratePlans;
@@ -336,7 +336,7 @@ class DynamicRateConversionService {
    */
   async updateRatePlanCurrency(ratePlanId, targetCurrency, forceUpdate = false) {
     try {
-      const ratePlan = await RatePlan.findOne({ planId: ratePlanId, isActive: true });
+      const ratePlan = await RatePlan.findOne({ planId: ratePlanId, isActive: true }).lean();
       if (!ratePlan) {
         throw new Error('Rate plan not found');
       }

@@ -9,7 +9,7 @@ export function scheduleNightAudit() {
     logger.info('Starting scheduled night audit run');
 
     try {
-      const hotels = await Hotel.find({ isActive: true }).select('_id name').lean();
+      const hotels = await Hotel.find({ isActive: true }).select('_id name').lean().limit(1000);
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
 

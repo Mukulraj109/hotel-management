@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Edit, Settings, Users, Clock } from 'lucide-react';
+import { Plus, Edit, Settings, Users, Clock, Loader2 } from 'lucide-react';
 import { api } from '../../services/api';
 
 interface Outlet {
@@ -28,6 +28,7 @@ const OutletManagement: React.FC = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [availableStaff, setAvailableStaff] = useState<unknown[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -84,8 +85,9 @@ const OutletManagement: React.FC = () => {
 
   const fetchOutlets = async () => {
     try {
+      setIsLoading(true);
       const response = await api.get('/pos/outlets');
-      
+
       if (response.data.success) {
         setOutlets(response.data.data || []);
       } else {
@@ -94,6 +96,8 @@ const OutletManagement: React.FC = () => {
     } catch (error) {
       const errorMessage = error.response?.data?.message || error.message || 'Failed to fetch outlets';
       setOutlets([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -222,6 +226,15 @@ const OutletManagement: React.FC = () => {
   };
 
   const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        <span className="ml-2 text-gray-600">Loading outlets...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">

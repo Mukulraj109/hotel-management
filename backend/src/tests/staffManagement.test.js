@@ -270,7 +270,7 @@ describe('Staff Management API Tests', () => {
       expect(response.body.data.user.isActive).toBe(false);
 
       // Restore active status
-      await User.findByIdAndUpdate(staffUser._id, { isActive: true });
+      await User.findByIdAndUpdate(staffUser._id, { isActive: true }, { new: true });
     });
 
     test('should return 404 for non-existent user', async () => {

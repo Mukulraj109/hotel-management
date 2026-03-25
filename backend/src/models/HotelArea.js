@@ -395,207 +395,239 @@ hotelAreaSchema.virtual('rooms', {
 
 // Pre-save middleware
 hotelAreaSchema.pre('save', async function(next) {
-  if (this.isModified('parentAreaId') || this.isModified('areaName')) {
-    await this.updateHierarchy();
-  }
-  
-  if (this.isModified('areaCode')) {
-    // Check for duplicate area codes within the hotel
-    const existing = await this.constructor.findOne({
-      hotelId: this.hotelId,
-      areaCode: this.areaCode,
-      _id: { $ne: this._id }
-    });
-    
-    if (existing) {
-      throw new Error('Area code already exists in this hotel');
+  try {
+    if (this.isModified('parentAreaId') || this.isModified('areaName')) {
+      await this.updateHierarchy();
     }
-  }
   
-  next();
+    if (this.isModified('areaCode')) {
+      // Check for duplicate area codes within the hotel
+      const existing = await this.constructor.findOne({
+        hotelId: this.hotelId,
+        areaCode: this.areaCode,
+        _id: { $ne: this._id }
+      });
+    
+      if (existing) {
+        throw new Error('Area code already exists in this hotel');
+      }
+    }
+  
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 });
 
 // Instance methods
 hotelAreaSchema.methods.updateHierarchy = async function() {
-  let level = 0;
-  let path = this.areaName;
-  let currentParentId = this.parentAreaId;
+  try {
+    let level = 0;
+    let path = this.areaName;
+    let currentParentId = this.parentAreaId;
   
-  // Calculate hierarchy level and full path
-  while (currentParentId && level < 10) {
-    const parent = await this.constructor.findById(currentParentId);
-    if (!parent) break;
+    // Calculate hierarchy level and full path
+    while (currentParentId && level < 10) {
+      const parent = await this.constructor.findById(currentParentId);
+      if (!parent) break;
     
-    level++;
-    path = `${parent.areaName} > ${path}`;
-    currentParentId = parent.parentAreaId;
-  }
+      level++;
+      path = `${parent.areaName} > ${path}`;
+      currentParentId = parent.parentAreaId;
+    }
   
-  this.hierarchyLevel = level;
-  this.fullPath = path;
+    this.hierarchyLevel = level;
+    this.fullPath = path;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 hotelAreaSchema.methods.updateRoomCounts = async function() {
-  const Room = mongoose.model('Room');
+  try {
+    const Room = mongoose.model('Room');
   
-  const counts = await Room.aggregate([
-    { $match: { hotelAreaId: this._id } },
-    {
-      $group: {
-        _id: null,
-        totalRooms: { $sum: 1 },
-        availableRooms: {
-          $sum: {
-            $cond: [{ $eq: ['$status', 'available'] }, 1, 0]
+    const counts = await Room.aggregate([
+      { $match: { hotelAreaId: this._id } },
+      {
+        $group: {
+          _id: null,
+          totalRooms: { $sum: 1 },
+          availableRooms: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'available'] }, 1, 0]
+            }
           }
         }
       }
+    ]);
+  
+    if (counts.length > 0) {
+      this.totalRooms = counts[0].totalRooms;
+      this.availableRooms = counts[0].availableRooms;
+    } else {
+      this.totalRooms = 0;
+      this.availableRooms = 0;
     }
-  ]);
   
-  if (counts.length > 0) {
-    this.totalRooms = counts[0].totalRooms;
-    this.availableRooms = counts[0].availableRooms;
-  } else {
-    this.totalRooms = 0;
-    this.availableRooms = 0;
+    await this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  await this.save();
 };
 
 hotelAreaSchema.methods.getHierarchyTree = async function() {
-  const children = await this.constructor.find({
-    parentAreaId: this._id,
-    status: { $in: ['active', 'under_renovation'] }
-  }).sort({ 'displaySettings.displayOrder': 1, areaName: 1 });
+  try {
+    const children = await this.constructor.find({
+      parentAreaId: this._id,
+      status: { $in: ['active', 'under_renovation'] }
+    }).sort({ 'displaySettings.displayOrder': 1, areaName: 1 });
   
-  const tree = {
-    ...this.toObject(),
-    children: []
-  };
+    const tree = {
+      ...this.toObject(),
+      children: []
+    };
   
-  for (const child of children) {
-    tree.children.push(await child.getHierarchyTree());
+    for (const child of children) {
+      tree.children.push(await child.getHierarchyTree());
+    }
+  
+    return tree;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  return tree;
 };
 
 hotelAreaSchema.methods.updateStatistics = async function() {
-  const Room = mongoose.model('Room');
-  const Booking = mongoose.model('Booking');
+  try {
+    const Room = mongoose.model('Room');
+    const Booking = mongoose.model('Booking');
   
-  // Get room IDs in this area
-  const rooms = await Room.find({ hotelAreaId: this._id }).select('_id');
-  const roomIds = rooms.map(r => r._id);
+    // Get room IDs in this area
+    const rooms = await Room.find({ hotelAreaId: this._id }).select('_id').lean().limit(1000);
+    const roomIds = rooms.map(r => r._id);
   
-  if (roomIds.length === 0) {
-    this.statistics = {
-      ...this.statistics,
-      averageOccupancy: 0,
-      averageRate: 0,
-      totalRevenue: 0,
-      lastUpdatedStats: new Date()
-    };
-    return;
-  }
-  
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  
-  // Calculate statistics from bookings
-  const stats = await Booking.aggregate([
-    {
-      $match: {
-        roomId: { $in: roomIds },
-        checkInDate: { $gte: thirtyDaysAgo },
-        status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
-      }
-    },
-    {
-      $group: {
-        _id: null,
-        totalBookings: { $sum: 1 },
-        totalRevenue: { $sum: '$totalAmount' },
-        averageRate: { $avg: '$roomRate' },
-        totalNights: { $sum: { $divide: [{ $subtract: ['$checkOutDate', '$checkInDate'] }, 86400000] } }
-      }
+    if (roomIds.length === 0) {
+      this.statistics = {
+        ...this.statistics,
+        averageOccupancy: 0,
+        averageRate: 0,
+        totalRevenue: 0,
+        lastUpdatedStats: new Date()
+      };
+      return;
     }
-  ]);
   
-  if (stats.length > 0) {
-    const stat = stats[0];
-    const occupancyRate = (stat.totalNights / (roomIds.length * 30)) * 100;
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  
+    // Calculate statistics from bookings
+    const stats = await Booking.aggregate([
+      {
+        $match: {
+          roomId: { $in: roomIds },
+          checkInDate: { $gte: thirtyDaysAgo },
+          status: { $in: ['confirmed', 'checked_in', 'checked_out'] }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalBookings: { $sum: 1 },
+          totalRevenue: { $sum: '$totalAmount' },
+          averageRate: { $avg: '$roomRate' },
+          totalNights: { $sum: { $divide: [{ $subtract: ['$checkOutDate', '$checkInDate'] }, 86400000] } }
+        }
+      }
+    ]);
+  
+    if (stats.length > 0) {
+      const stat = stats[0];
+      const occupancyRate = (stat.totalNights / (roomIds.length * 30)) * 100;
     
-    this.statistics = {
-      ...this.statistics,
-      averageOccupancy: Math.min(occupancyRate, 100),
-      averageRate: stat.averageRate || 0,
-      totalRevenue: stat.totalRevenue || 0,
-      lastUpdatedStats: new Date()
-    };
+      this.statistics = {
+        ...this.statistics,
+        averageOccupancy: Math.min(occupancyRate, 100),
+        averageRate: stat.averageRate || 0,
+        totalRevenue: stat.totalRevenue || 0,
+        lastUpdatedStats: new Date()
+      };
+    }
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
 };
 
 // Static methods
 hotelAreaSchema.statics.getAreaHierarchy = async function(hotelId, rootAreaId = null) {
-  const areas = await this.find({
-    hotelId,
-    parentAreaId: rootAreaId,
-    status: { $in: ['active', 'under_renovation'] }
-  }).sort({ 'displaySettings.displayOrder': 1, areaName: 1 });
+  try {
+    const areas = await this.find({
+      hotelId,
+      parentAreaId: rootAreaId,
+      status: { $in: ['active', 'under_renovation'] }
+    }).sort({ 'displaySettings.displayOrder': 1, areaName: 1 }).lean().limit(1000);
   
-  const hierarchy = [];
-  for (const area of areas) {
-    const children = await this.getAreaHierarchy(hotelId, area._id);
-    hierarchy.push({
-      ...area.toObject(),
-      children
-    });
+    const hierarchy = [];
+    for (const area of areas) {
+      const children = await this.getAreaHierarchy(hotelId, area._id);
+      hierarchy.push({
+        ...area.toObject(),
+        children
+      });
+    }
+  
+    return hierarchy;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  return hierarchy;
 };
 
 hotelAreaSchema.statics.bulkUpdateStatus = async function(areaIds, status, updatedBy) {
-  return await this.updateMany(
-    { _id: { $in: areaIds } },
-    { 
-      status,
-      'auditInfo.updatedBy': updatedBy,
-      updatedAt: new Date()
-    }
-  );
+  try {
+    return await this.updateMany(
+      { _id: { $in: areaIds } },
+      { 
+        status,
+        'auditInfo.updatedBy': updatedBy,
+        updatedAt: new Date()
+      }
+    );
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 hotelAreaSchema.statics.generateAreaStats = async function(hotelId, options = {}) {
-  const { startDate, endDate } = options;
-  const matchStage = { hotelId: mongoose.Types.ObjectId(hotelId) };
+  try {
+    const { startDate, endDate } = options;
+    const matchStage = { hotelId: mongoose.Types.ObjectId(hotelId) };
   
-  if (startDate && endDate) {
-    matchStage['statistics.lastUpdatedStats'] = {
-      $gte: new Date(startDate),
-      $lte: new Date(endDate)
-    };
+    if (startDate && endDate) {
+      matchStage['statistics.lastUpdatedStats'] = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    }
+  
+    return await this.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: '$areaType',
+          totalAreas: { $sum: 1 },
+          activeAreas: {
+            $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] }
+          },
+          totalRooms: { $sum: '$totalRooms' },
+          totalRevenue: { $sum: '$statistics.totalRevenue' },
+          averageOccupancy: { $avg: '$statistics.averageOccupancy' }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  return await this.aggregate([
-    { $match: matchStage },
-    {
-      $group: {
-        _id: '$areaType',
-        totalAreas: { $sum: 1 },
-        activeAreas: {
-          $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] }
-        },
-        totalRooms: { $sum: '$totalRooms' },
-        totalRevenue: { $sum: '$statistics.totalRevenue' },
-        averageOccupancy: { $avg: '$statistics.averageOccupancy' }
-      }
-    },
-    { $sort: { _id: 1 } }
-  ]);
 };
 
 // Note: Pagination plugin removed - implement as needed

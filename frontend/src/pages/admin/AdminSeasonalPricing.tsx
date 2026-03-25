@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import {
   Calendar,
   Clock,
@@ -99,6 +99,15 @@ const AdminSeasonalPricing: React.FC = () => {
     inheritanceStatus?.groupPropertyCount || 0
   );
 
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     loadData();
   }, [selectedYear]);
@@ -140,7 +149,8 @@ const AdminSeasonalPricing: React.FC = () => {
         if (!result) return; // Confirmation dialog shown
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         showToast(`Season created successfully for ${result.propertiesUpdated} properties`, 'success');
         setApplyToScope('single');
       } else {
@@ -168,7 +178,8 @@ const AdminSeasonalPricing: React.FC = () => {
         if (!result) return; // Confirmation dialog shown
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         showToast(`Special period created successfully for ${result.propertiesUpdated} properties`, 'success');
         setApplyToScope('single');
       } else {
@@ -196,7 +207,8 @@ const AdminSeasonalPricing: React.FC = () => {
         if (!result) return; // Confirmation dialog shown
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         showToast(`${type === 'season' ? 'Season' : 'Special period'} updated successfully for ${result.propertiesUpdated} properties`, 'success');
         setApplyToScope('single');
       } else {
@@ -220,7 +232,8 @@ const AdminSeasonalPricing: React.FC = () => {
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         showToast(`Settings updated for ${result.propertiesUpdated} properties`, 'success');
         setApplyToScope('single');
         loadData();
@@ -414,7 +427,7 @@ const AdminSeasonalPricing: React.FC = () => {
               { key: 'special-periods', label: 'Special Periods', icon: Clock },
               { key: 'analytics', label: 'Analytics', icon: Settings }
             ].map(({ key, label, icon: Icon }) => (
-              <button
+              <button aria-label="Close"
                 key={key}
                 onClick={() => setActiveTab(key as unknown)}
                 className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm ${
@@ -518,13 +531,13 @@ const AdminSeasonalPricing: React.FC = () => {
                       </div>
                       
                       <div className="flex items-center space-x-2">
-                        <button
+                        <button aria-label="Edit"
                           onClick={() => setEditingItem(season)}
                           className="p-2 text-gray-400 hover:text-gray-600"
                         >
                           <Edit className="h-4 w-4" />
                         </button>
-                        <button
+                        <button aria-label="Delete"
                           onClick={() => handleDeleteItem(season._id, 'season')}
                           className="p-2 text-gray-400 hover:text-red-600"
                         >

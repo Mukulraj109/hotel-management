@@ -163,8 +163,12 @@ class BypassSecurityService {
    * Get security metrics for dashboard
    */
   async getSecurityMetrics(timeRange: '24h' | '7d' | '30d' = '24h') {
-    const response = await api.get(`/admin-bypass-management/security/metrics?timeRange=${timeRange}`);
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/security/metrics?timeRange=${timeRange}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -177,99 +181,143 @@ class BypassSecurityService {
     limit?: number;
     offset?: number;
   } = {}) {
-    const searchParams = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined) {
-        searchParams.append(key, value.toString());
-      }
-    });
+    try {
+      const searchParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          searchParams.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/admin-bypass-management/security/events?${searchParams}`);
-    return response.data;
+      const response = await api.get(`/admin-bypass-management/security/events?${searchParams}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get active security alerts
    */
   async getActiveAlerts() {
-    const response = await api.get('/admin-bypass-management/security/alerts');
-    return response.data;
+    try {
+      const response = await api.get('/admin-bypass-management/security/alerts');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get security analytics
    */
   async getSecurityAnalytics(timeRange: '24h' | '7d' | '30d' = '7d') {
-    const response = await api.get(`/admin-bypass-management/security/analytics?timeRange=${timeRange}`);
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/security/analytics?timeRange=${timeRange}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Validate bypass operation before execution
    */
   async validateBypassOperation(request: EnhancedBypassRequest): Promise<SecurityValidationResult> {
-    const response = await api.post('/admin-bypass-management/security/validate', request);
-    return response.data;
+    try {
+      const response = await api.post('/admin-bypass-management/security/validate', request);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Execute enhanced bypass checkout with full security tracking
    */
   async executeEnhancedBypass(request: EnhancedBypassRequest) {
-    const response = await api.post('/admin-bypass-management/enhanced-checkout', request);
-    return response.data;
+    try {
+      const response = await api.post('/admin-bypass-management/enhanced-checkout', request);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get high-risk bypass operations
    */
   async getHighRiskBypasses(threshold: number = 70) {
-    const response = await api.get(`/admin-bypass-management/security/high-risk?threshold=${threshold}`);
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/security/high-risk?threshold=${threshold}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get pending approval requests
    */
   async getPendingApprovals() {
-    const response = await api.get('/admin-bypass-management/security/pending-approvals');
-    return response.data;
+    try {
+      const response = await api.get('/admin-bypass-management/security/pending-approvals');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Acknowledge security alert
    */
   async acknowledgeAlert(alertId: string, notes?: string) {
-    const response = await api.post(`/admin-bypass-management/security/alerts/${alertId}/acknowledge`, {
-      notes
-    });
-    return response.data;
+    try {
+      const response = await api.post(`/admin-bypass-management/security/alerts/${alertId}/acknowledge`, {
+        notes
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Export security report
    */
   async exportSecurityReport(timeRange: '24h' | '7d' | '30d' = '7d', format: 'pdf' | 'excel' = 'pdf') {
-    const response = await api.get(`/admin-bypass-management/security/export?timeRange=${timeRange}&format=${format}`, {
-      responseType: 'blob'
-    });
-    return response;
+    try {
+      const response = await api.get(`/admin-bypass-management/security/export?timeRange=${timeRange}&format=${format}`, {
+        responseType: 'blob'
+      });
+      return response;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get admin bypass statistics
    */
   async getAdminStatistics(adminId: string, timeRange: '7d' | '30d' | '90d' = '30d') {
-    const response = await api.get(`/admin-bypass-management/security/admin/${adminId}/stats?timeRange=${timeRange}`);
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/security/admin/${adminId}/stats?timeRange=${timeRange}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get bypass operation details
    */
   async getBypassDetails(bypassId: string) {
-    const response = await api.get(`/admin-bypass-management/security/bypass/${bypassId}`);
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/security/bypass/${bypassId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -281,16 +329,24 @@ class BypassSecurityService {
     resolutionStatus?: string;
     preventiveMeasures?: string[];
   }) {
-    const response = await api.patch(`/admin-bypass-management/security/bypass/${bypassId}`, updates);
-    return response.data;
+    try {
+      const response = await api.patch(`/admin-bypass-management/security/bypass/${bypassId}`, updates);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get compliance report
    */
   async getComplianceReport(timeRange: '30d' | '90d' | '365d' = '90d') {
-    const response = await api.get(`/admin-bypass-management/security/compliance?timeRange=${timeRange}`);
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/security/compliance?timeRange=${timeRange}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -307,16 +363,24 @@ class BypassSecurityService {
     limit?: number;
     offset?: number;
   }) {
-    const response = await api.post('/admin-bypass-management/security/search', query);
-    return response.data;
+    try {
+      const response = await api.post('/admin-bypass-management/security/search', query);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get security patterns analysis
    */
   async getSecurityPatterns(timeRange: '7d' | '30d' | '90d' = '30d') {
-    const response = await api.get(`/admin-bypass-management/security/patterns?timeRange=${timeRange}`);
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/security/patterns?timeRange=${timeRange}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -463,16 +527,24 @@ class BypassSecurityService {
    * Get security recommendations based on patterns
    */
   async getSecurityRecommendations() {
-    const response = await api.get('/admin-bypass-management/security/recommendations');
-    return response.data;
+    try {
+      const response = await api.get('/admin-bypass-management/security/recommendations');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Test security controls (for development/testing)
    */
   async testSecurityControls() {
-    const response = await api.post('/admin-bypass-management/security/test');
-    return response.data;
+    try {
+      const response = await api.post('/admin-bypass-management/security/test');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

@@ -576,65 +576,69 @@ sharedResourceSchema.statics.findAccessibleByProperty = function(propertyId, opt
 };
 
 sharedResourceSchema.statics.getUsageReport = async function(propertyGroupId, startDate, endDate) {
-  return this.aggregate([
-    {
-      $match: {
-        propertyGroupId: new mongoose.Types.ObjectId(propertyGroupId),
-        'usageHistory.startTime': {
-          $gte: startDate,
-          $lte: endDate
+  try {
+    return this.aggregate([
+      {
+        $match: {
+          propertyGroupId: new mongoose.Types.ObjectId(propertyGroupId),
+          'usageHistory.startTime': {
+            $gte: startDate,
+            $lte: endDate
+          }
         }
-      }
-    },
-    {
-      $unwind: '$usageHistory'
-    },
-    {
-      $match: {
-        'usageHistory.startTime': {
-          $gte: startDate,
-          $lte: endDate
+      },
+      {
+        $unwind: '$usageHistory'
+      },
+      {
+        $match: {
+          'usageHistory.startTime': {
+            $gte: startDate,
+            $lte: endDate
+          }
         }
+      },
+      {
+        $group: {
+          _id: {
+            resourceId: '$_id',
+            resourceName: '$name',
+            resourceType: '$type',
+            usingProperty: '$usageHistory.propertyId'
+          },
+          totalUsages: { $sum: 1 },
+          totalDuration: { $sum: '$usageHistory.duration' },
+          totalCost: { $sum: '$usageHistory.cost' },
+          averageRating: { $avg: '$usageHistory.rating' }
+        }
+      },
+      {
+        $lookup: {
+          from: 'hotels',
+          localField: '_id.usingProperty',
+          foreignField: '_id',
+          as: 'propertyInfo'
+        }
+      },
+      {
+        $project: {
+          resourceId: '$_id.resourceId',
+          resourceName: '$_id.resourceName',
+          resourceType: '$_id.resourceType',
+          usingPropertyName: { $arrayElemAt: ['$propertyInfo.name', 0] },
+          totalUsages: 1,
+          totalDuration: 1,
+          totalCost: 1,
+          averageRating: { $round: ['$averageRating', 1] }
+        }
+      },
+      {
+        $sort: { totalUsages: -1 }
       }
-    },
-    {
-      $group: {
-        _id: {
-          resourceId: '$_id',
-          resourceName: '$name',
-          resourceType: '$type',
-          usingProperty: '$usageHistory.propertyId'
-        },
-        totalUsages: { $sum: 1 },
-        totalDuration: { $sum: '$usageHistory.duration' },
-        totalCost: { $sum: '$usageHistory.cost' },
-        averageRating: { $avg: '$usageHistory.rating' }
-      }
-    },
-    {
-      $lookup: {
-        from: 'hotels',
-        localField: '_id.usingProperty',
-        foreignField: '_id',
-        as: 'propertyInfo'
-      }
-    },
-    {
-      $project: {
-        resourceId: '$_id.resourceId',
-        resourceName: '$_id.resourceName',
-        resourceType: '$_id.resourceType',
-        usingPropertyName: { $arrayElemAt: ['$propertyInfo.name', 0] },
-        totalUsages: 1,
-        totalDuration: 1,
-        totalCost: 1,
-        averageRating: { $round: ['$averageRating', 1] }
-      }
-    },
-    {
-      $sort: { totalUsages: -1 }
-    }
-  ]);
+    ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 export default mongoose.model('SharedResource', sharedResourceSchema);

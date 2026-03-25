@@ -221,118 +221,140 @@ journalEntrySchema.pre('save', function(next) {
 
 // Method to post journal entry
 journalEntrySchema.methods.post = async function(userId) {
-  if (this.status !== 'Draft' && this.status !== 'Approved') {
-    throw new Error('Only draft or approved entries can be posted');
-  }
+  try {
+    if (this.status !== 'Draft' && this.status !== 'Approved') {
+      throw new Error('Only draft or approved entries can be posted');
+    }
   
-  // Validate that debits equal credits
-  if (Math.abs(this.totalDebit - this.totalCredit) >= 0.01) {
-    throw new Error('Journal entry is not balanced');
-  }
+    // Validate that debits equal credits
+    if (Math.abs(this.totalDebit - this.totalCredit) >= 0.01) {
+      throw new Error('Journal entry is not balanced');
+    }
   
-  // Create general ledger entries
-  const GeneralLedger = mongoose.model('GeneralLedger');
-  const ledgerEntries = [];
+    // Create general ledger entries
+    const GeneralLedger = mongoose.model('GeneralLedger');
+    const ledgerEntries = [];
   
-  for (const line of this.lines) {
-    const ledgerEntry = new GeneralLedger({
-      transactionId: `${this.entryNumber}-${line._id}`,
-      journalEntryId: this._id,
-      accountId: line.accountId,
-      transactionDate: this.entryDate,
-      description: line.description,
-      debitAmount: line.debitAmount,
-      creditAmount: line.creditAmount,
-      currency: line.currency || 'INR',
-      exchangeRate: line.exchangeRate || 1,
-      baseCurrencyAmount: 0, // Will be calculated in pre-save
-      referenceType: this.referenceType,
-      referenceId: this.referenceId || this.entryNumber,
-      fiscalYear: this.fiscalYear,
-      fiscalPeriod: this.fiscalPeriod,
-      status: 'Posted',
-      hotelId: this.hotelId,
-      createdBy: userId || this.createdBy
-    });
+    for (const line of this.lines) {
+      const ledgerEntry = new GeneralLedger({
+        transactionId: `${this.entryNumber}-${line._id}`,
+        journalEntryId: this._id,
+        accountId: line.accountId,
+        transactionDate: this.entryDate,
+        description: line.description,
+        debitAmount: line.debitAmount,
+        creditAmount: line.creditAmount,
+        currency: line.currency || 'INR',
+        exchangeRate: line.exchangeRate || 1,
+        baseCurrencyAmount: 0, // Will be calculated in pre-save
+        referenceType: this.referenceType,
+        referenceId: this.referenceId || this.entryNumber,
+        fiscalYear: this.fiscalYear,
+        fiscalPeriod: this.fiscalPeriod,
+        status: 'Posted',
+        hotelId: this.hotelId,
+        createdBy: userId || this.createdBy
+      });
     
-    await ledgerEntry.calculateRunningBalance();
-    ledgerEntries.push(ledgerEntry);
+      await ledgerEntry.calculateRunningBalance();
+      ledgerEntries.push(ledgerEntry);
+    }
+  
+    // Save all ledger entries
+    await GeneralLedger.insertMany(ledgerEntries);
+  
+    // Update journal entry status
+    this.status = 'Posted';
+    this.postedDate = new Date();
+    await this.save();
+  
+    // Batch: update all account balances with bulkWrite
+    const ChartOfAccounts = mongoose.model('ChartOfAccounts');
+    const accountIds = this.lines.map(l => l.accountId);
+    const balancePromises = accountIds.map(id => GeneralLedger.getAccountBalance(id));
+    const balances = await Promise.all(balancePromises);
+
+    const acctBulkOps = accountIds.map((id, i) => ({
+      updateOne: {
+        filter: { _id: id },
+        update: { $set: { currentBalance: balances[i] } }
+      }
+    }));
+
+    if (acctBulkOps.length > 0) {
+      await ChartOfAccounts.bulkWrite(acctBulkOps);
+    }
+  
+    return this;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  // Save all ledger entries
-  await GeneralLedger.insertMany(ledgerEntries);
-  
-  // Update journal entry status
-  this.status = 'Posted';
-  this.postedDate = new Date();
-  await this.save();
-  
-  // Update account balances
-  const ChartOfAccounts = mongoose.model('ChartOfAccounts');
-  for (const line of this.lines) {
-    const balance = await GeneralLedger.getAccountBalance(line.accountId);
-    await ChartOfAccounts.findByIdAndUpdate(line.accountId, { currentBalance: balance });
-  }
-  
-  return this;
 };
 
 // Method to reverse journal entry
 journalEntrySchema.methods.reverse = async function(userId, reason) {
-  if (this.status !== 'Posted') {
-    throw new Error('Only posted entries can be reversed');
+  try {
+    if (this.status !== 'Posted') {
+      throw new Error('Only posted entries can be reversed');
+    }
+  
+    // Create reversal entry
+    const reversalEntry = new this.constructor({
+      entryNumber: `${this.entryNumber}-REV`,
+      entryDate: new Date(),
+      entryType: 'Reversing',
+      description: `Reversal of ${this.entryNumber}: ${reason}`,
+      lines: this.lines.map(line => ({
+        accountId: line.accountId,
+        description: `Reversal: ${line.description}`,
+        debitAmount: line.creditAmount, // Swap debits and credits
+        creditAmount: line.debitAmount,
+        currency: line.currency,
+        exchangeRate: line.exchangeRate
+      })),
+      referenceType: this.referenceType,
+      referenceId: this.referenceId,
+      referenceNumber: `REV-${this.entryNumber}`,
+      originalEntry: this._id,
+      hotelId: this.hotelId,
+      createdBy: userId
+    });
+  
+    await reversalEntry.save();
+    await reversalEntry.post(userId);
+  
+    // Update original entry
+    this.reversalEntry = reversalEntry._id;
+    this.status = 'Reversed';
+    await this.save();
+  
+    return reversalEntry;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  // Create reversal entry
-  const reversalEntry = new this.constructor({
-    entryNumber: `${this.entryNumber}-REV`,
-    entryDate: new Date(),
-    entryType: 'Reversing',
-    description: `Reversal of ${this.entryNumber}: ${reason}`,
-    lines: this.lines.map(line => ({
-      accountId: line.accountId,
-      description: `Reversal: ${line.description}`,
-      debitAmount: line.creditAmount, // Swap debits and credits
-      creditAmount: line.debitAmount,
-      currency: line.currency,
-      exchangeRate: line.exchangeRate
-    })),
-    referenceType: this.referenceType,
-    referenceId: this.referenceId,
-    referenceNumber: `REV-${this.entryNumber}`,
-    originalEntry: this._id,
-    hotelId: this.hotelId,
-    createdBy: userId
-  });
-  
-  await reversalEntry.save();
-  await reversalEntry.post(userId);
-  
-  // Update original entry
-  this.reversalEntry = reversalEntry._id;
-  this.status = 'Reversed';
-  await this.save();
-  
-  return reversalEntry;
 };
 
 // Static method to generate next entry number
 journalEntrySchema.statics.generateEntryNumber = async function(hotelId) {
-  const lastEntry = await this.findOne({ hotelId })
-    .sort({ createdAt: -1 })
-    .select('entryNumber');
+  try {
+    const lastEntry = await this.findOne({ hotelId })
+      .sort({ createdAt: -1 })
+      .select('entryNumber').lean();
   
-  const prefix = 'JE';
-  const year = new Date().getFullYear();
+    const prefix = 'JE';
+    const year = new Date().getFullYear();
   
-  if (!lastEntry) {
-    return `${prefix}-${year}-0001`;
+    if (!lastEntry) {
+      return `${prefix}-${year}-0001`;
+    }
+  
+    const lastNumber = parseInt(lastEntry.entryNumber.split('-').pop()) || 0;
+    const nextNumber = (lastNumber + 1).toString().padStart(4, '0');
+  
+    return `${prefix}-${year}-${nextNumber}`;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  const lastNumber = parseInt(lastEntry.entryNumber.split('-').pop()) || 0;
-  const nextNumber = (lastNumber + 1).toString().padStart(4, '0');
-  
-  return `${prefix}-${year}-${nextNumber}`;
 };
 
 const JournalEntry = mongoose.model('JournalEntry', journalEntrySchema);

@@ -19,7 +19,7 @@ class ReorderService {
     try {
       logger.info('Starting reorder points check', { hotelId });
 
-      const hotels = hotelId ? [{ _id: hotelId }] : await Hotel.find({ isActive: true }).select('_id name');
+      const hotels = hotelId ? [{ _id: hotelId }] : await Hotel.find({ isActive: true }).select('_id name').lean().limit(1000);
       let totalItemsChecked = 0;
       let totalAlertsCreated = 0;
       let totalNotificationsSent = 0;
@@ -62,13 +62,17 @@ class ReorderService {
       let alertsCreated = 0;
       let notificationsSent = 0;
 
+      // Batch: check existing alerts for all items in a single query
+      const itemIdsForReorder = itemsNeedingReorder.map(i => i._id);
+      const existingAlerts = await ReorderAlert.find({
+        hotelId,
+        inventoryItemId: { $in: itemIdsForReorder },
+        status: { $in: ['active', 'acknowledged'] }
+      });
+      const alertByItemId = new Map(existingAlerts.map(a => [a.inventoryItemId.toString(), a]));
+
       for (const item of itemsNeedingReorder) {
-        // Check if alert already exists for this item
-        const existingAlert = await ReorderAlert.findOne({
-          hotelId,
-          inventoryItemId: item._id,
-          status: { $in: ['active', 'acknowledged'] }
-        });
+        const existingAlert = alertByItemId.get(item._id.toString());
 
         if (!existingAlert) {
           // Create new reorder alert
@@ -115,28 +119,32 @@ class ReorderService {
    * @returns {Object} Alert data object
    */
   async generateReorderAlert(item) {
-    const alertType = this.determineAlertType(item);
-    const priority = this.determinePriority(item);
-    const urgencyScore = this.calculateUrgencyScore(item);
+    try {
+      const alertType = this.determineAlertType(item);
+      const priority = this.determinePriority(item);
+      const urgencyScore = this.calculateUrgencyScore(item);
 
-    // Calculate expected delivery date
-    const leadTime = item.reorderSettings?.preferredSupplier?.leadTime || 7; // Default 7 days
-    const expectedDeliveryDate = new Date();
-    expectedDeliveryDate.setDate(expectedDeliveryDate.getDate() + leadTime);
+      // Calculate expected delivery date
+      const leadTime = item.reorderSettings?.preferredSupplier?.leadTime || 7; // Default 7 days
+      const expectedDeliveryDate = new Date();
+      expectedDeliveryDate.setDate(expectedDeliveryDate.getDate() + leadTime);
 
-    return {
-      hotelId: item.hotelId,
-      inventoryItemId: item._id,
-      alertType,
-      priority,
-      currentStock: item.currentStock,
-      reorderPoint: item.reorderSettings.reorderPoint,
-      suggestedQuantity: item.reorderSettings.reorderQuantity,
-      estimatedCost: item.estimatedReorderCost,
-      supplierInfo: item.reorderSettings.preferredSupplier,
-      urgencyScore,
-      expectedDeliveryDate
-    };
+      return {
+        hotelId: item.hotelId,
+        inventoryItemId: item._id,
+        alertType,
+        priority,
+        currentStock: item.currentStock,
+        reorderPoint: item.reorderSettings.reorderPoint,
+        suggestedQuantity: item.reorderSettings.reorderQuantity,
+        estimatedCost: item.estimatedReorderCost,
+        supplierInfo: item.reorderSettings.preferredSupplier,
+        urgencyScore,
+        expectedDeliveryDate
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -204,7 +212,7 @@ class ReorderService {
         role: { $in: ['admin', 'manager'] },
         isActive: true,
         email: { $exists: true, $ne: '' }
-      }).select('name email role');
+      }).select('name email role').lean().limit(1000);
 
       if (recipients.length === 0) {
         logger.warn('No recipients found for reorder notification', {
@@ -220,18 +228,24 @@ class ReorderService {
 
       // Send emails to all recipients
       const emailPromises = recipients.map(async (recipient) => {
-        const result = await emailService.sendEmail({
-          to: recipient.email,
-          subject: emailSubject,
-          html: emailContent.html,
-          text: emailContent.text
-        });
+        try {
+          const result = await emailService.sendEmail({
+            to: recipient.email,
+            subject: emailSubject,
+            html: emailContent.html,
+            text: emailContent.text
+          });
 
-        if (result.success) {
-          await alert.logEmailSent(recipient.email, 'alert');
+          if (result.success) {
+            await alert.logEmailSent(recipient.email, 'alert');
+          }
+
+          return { recipient: recipient.email, success: result.success, error: result.error };
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
         }
-
-        return { recipient: recipient.email, success: result.success, error: result.error };
       });
 
       const emailResults = await Promise.all(emailPromises);
@@ -351,7 +365,7 @@ This is an automated reorder request from The Pentouz Hotel Management System.
         role: 'admin',
         isActive: true,
         email: { $exists: true, $ne: '' }
-      }).select('name email');
+      }).select('name email').lean().limit(1000);
 
       if (admins.length === 0) return;
 
@@ -449,86 +463,90 @@ Please review the alert in the admin panel: ${process.env.FRONTEND_URL || 'http:
    * @returns {Object} Email content with HTML and text versions
    */
   async generateEmailContent(alert, item) {
-    const priorityColors = {
-      critical: '#e74c3c',
-      high: '#e67e22',
-      medium: '#f39c12',
-      low: '#3498db'
-    };
+    try {
+      const priorityColors = {
+        critical: '#e74c3c',
+        high: '#e67e22',
+        medium: '#f39c12',
+        low: '#3498db'
+      };
 
-    const priorityColor = priorityColors[alert.priority] || '#3498db';
+      const priorityColor = priorityColors[alert.priority] || '#3498db';
 
-    const html = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: ${priorityColor}; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
-          <h2 style="margin: 0;">Inventory Reorder Alert</h2>
-          <p style="margin: 5px 0 0 0; opacity: 0.9;">Priority: ${alert.priority.toUpperCase()}</p>
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: ${priorityColor}; color: white; padding: 20px; border-radius: 8px 8px 0 0;">
+            <h2 style="margin: 0;">Inventory Reorder Alert</h2>
+            <p style="margin: 5px 0 0 0; opacity: 0.9;">Priority: ${alert.priority.toUpperCase()}</p>
+          </div>
+
+          <div style="background: white; border: 1px solid #e0e0e0; padding: 20px; border-radius: 0 0 8px 8px;">
+            <h3 style="color: #333; margin-top: 0;">${item.name}</h3>
+
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;">
+              <h4 style="margin-top: 0; color: #333;">Stock Information</h4>
+              <p style="margin: 5px 0;"><strong>Category:</strong> ${item.category}</p>
+              <p style="margin: 5px 0;"><strong>Current Stock:</strong> ${alert.currentStock}</p>
+              <p style="margin: 5px 0;"><strong>Reorder Point:</strong> ${alert.reorderPoint}</p>
+              <p style="margin: 5px 0;"><strong>Suggested Reorder Quantity:</strong> ${alert.suggestedQuantity}</p>
+              <p style="margin: 5px 0;"><strong>Estimated Cost:</strong> $${alert.estimatedCost?.toFixed(2) || 'TBD'}</p>
+            </div>
+
+            ${alert.supplierInfo?.name ? `
+            <div style="background: #e8f5e8; padding: 15px; border-radius: 5px; margin: 15px 0;">
+              <h4 style="margin-top: 0; color: #333;">Preferred Supplier</h4>
+              <p style="margin: 5px 0;"><strong>Name:</strong> ${alert.supplierInfo.name}</p>
+              ${alert.supplierInfo.contact ? `<p style="margin: 5px 0;"><strong>Contact:</strong> ${alert.supplierInfo.contact}</p>` : ''}
+              ${alert.supplierInfo.email ? `<p style="margin: 5px 0;"><strong>Email:</strong> ${alert.supplierInfo.email}</p>` : ''}
+              ${alert.supplierInfo.leadTime ? `<p style="margin: 5px 0;"><strong>Lead Time:</strong> ${alert.supplierInfo.leadTime} days</p>` : ''}
+            </div>
+            ` : ''}
+
+            <div style="text-align: center; margin: 20px 0;">
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/admin/inventory"
+                 style="background: ${priorityColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                Manage Inventory
+              </a>
+            </div>
+
+            <p style="color: #666; font-size: 14px; margin-top: 20px;">
+              This alert was generated automatically by the inventory management system.
+              Please review and take appropriate action to maintain adequate stock levels.
+            </p>
+          </div>
         </div>
+      `;
 
-        <div style="background: white; border: 1px solid #e0e0e0; padding: 20px; border-radius: 0 0 8px 8px;">
-          <h3 style="color: #333; margin-top: 0;">${item.name}</h3>
+      const text = `
+  INVENTORY REORDER ALERT
+  Priority: ${alert.priority.toUpperCase()}
 
-          <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0;">
-            <h4 style="margin-top: 0; color: #333;">Stock Information</h4>
-            <p style="margin: 5px 0;"><strong>Category:</strong> ${item.category}</p>
-            <p style="margin: 5px 0;"><strong>Current Stock:</strong> ${alert.currentStock}</p>
-            <p style="margin: 5px 0;"><strong>Reorder Point:</strong> ${alert.reorderPoint}</p>
-            <p style="margin: 5px 0;"><strong>Suggested Reorder Quantity:</strong> ${alert.suggestedQuantity}</p>
-            <p style="margin: 5px 0;"><strong>Estimated Cost:</strong> $${alert.estimatedCost?.toFixed(2) || 'TBD'}</p>
-          </div>
+  Item: ${item.name}
+  Category: ${item.category}
+  Current Stock: ${alert.currentStock}
+  Reorder Point: ${alert.reorderPoint}
+  Suggested Reorder Quantity: ${alert.suggestedQuantity}
+  Estimated Cost: $${alert.estimatedCost?.toFixed(2) || 'TBD'}
 
-          ${alert.supplierInfo?.name ? `
-          <div style="background: #e8f5e8; padding: 15px; border-radius: 5px; margin: 15px 0;">
-            <h4 style="margin-top: 0; color: #333;">Preferred Supplier</h4>
-            <p style="margin: 5px 0;"><strong>Name:</strong> ${alert.supplierInfo.name}</p>
-            ${alert.supplierInfo.contact ? `<p style="margin: 5px 0;"><strong>Contact:</strong> ${alert.supplierInfo.contact}</p>` : ''}
-            ${alert.supplierInfo.email ? `<p style="margin: 5px 0;"><strong>Email:</strong> ${alert.supplierInfo.email}</p>` : ''}
-            ${alert.supplierInfo.leadTime ? `<p style="margin: 5px 0;"><strong>Lead Time:</strong> ${alert.supplierInfo.leadTime} days</p>` : ''}
-          </div>
-          ` : ''}
+  ${alert.supplierInfo?.name ? `
+  Preferred Supplier: ${alert.supplierInfo.name}
+  ${alert.supplierInfo.contact ? `Contact: ${alert.supplierInfo.contact}` : ''}
+  ${alert.supplierInfo.email ? `Email: ${alert.supplierInfo.email}` : ''}
+  ${alert.supplierInfo.leadTime ? `Lead Time: ${alert.supplierInfo.leadTime} days` : ''}
+  ` : ''}
 
-          <div style="text-align: center; margin: 20px 0;">
-            <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/admin/inventory"
-               style="background: ${priorityColor}; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-              Manage Inventory
-            </a>
-          </div>
+  Please review and take appropriate action to maintain adequate stock levels.
 
-          <p style="color: #666; font-size: 14px; margin-top: 20px;">
-            This alert was generated automatically by the inventory management system.
-            Please review and take appropriate action to maintain adequate stock levels.
-          </p>
-        </div>
-      </div>
-    `;
+  Manage Inventory: ${process.env.FRONTEND_URL || 'http://localhost:3000'}/admin/inventory
 
-    const text = `
-INVENTORY REORDER ALERT
-Priority: ${alert.priority.toUpperCase()}
+  ---
+  This alert was generated automatically by The Pentouz inventory management system.
+      `;
 
-Item: ${item.name}
-Category: ${item.category}
-Current Stock: ${alert.currentStock}
-Reorder Point: ${alert.reorderPoint}
-Suggested Reorder Quantity: ${alert.suggestedQuantity}
-Estimated Cost: $${alert.estimatedCost?.toFixed(2) || 'TBD'}
-
-${alert.supplierInfo?.name ? `
-Preferred Supplier: ${alert.supplierInfo.name}
-${alert.supplierInfo.contact ? `Contact: ${alert.supplierInfo.contact}` : ''}
-${alert.supplierInfo.email ? `Email: ${alert.supplierInfo.email}` : ''}
-${alert.supplierInfo.leadTime ? `Lead Time: ${alert.supplierInfo.leadTime} days` : ''}
-` : ''}
-
-Please review and take appropriate action to maintain adequate stock levels.
-
-Manage Inventory: ${process.env.FRONTEND_URL || 'http://localhost:3000'}/admin/inventory
-
----
-This alert was generated automatically by The Pentouz inventory management system.
-    `;
-
-    return { html, text };
+      return { html, text };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -541,7 +559,7 @@ This alert was generated automatically by The Pentouz inventory management syste
   async createReorderRequest(alertId, userId, requestData = {}) {
     try {
       const alert = await ReorderAlert.findById(alertId)
-        .populate('inventoryItemId');
+        .populate('inventoryItemId').lean();
 
       if (!alert) {
         throw new Error('Alert not found');
@@ -602,7 +620,7 @@ This alert was generated automatically by The Pentouz inventory management syste
   async processReorderRequest(alertId, userId, action, data = {}) {
     try {
       const alert = await ReorderAlert.findById(alertId)
-        .populate('inventoryItemId');
+        .populate('inventoryItemId').lean();
 
       if (!alert) {
         throw new Error('Alert not found');
@@ -679,7 +697,7 @@ This alert was generated automatically by The Pentouz inventory management syste
 
       const items = await InventoryItem.find(query)
         .select('name category reorderSettings.reorderHistory')
-        .lean();
+        .lean().limit(1000);
 
       let allHistory = [];
 

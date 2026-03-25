@@ -28,6 +28,7 @@ import { bookingService } from '../../services/bookingService';
 import { adminService } from '../../services/adminService';
 import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 // Room types data
 const ROOM_TYPES = {
@@ -705,4 +706,4 @@ const BookingPage: React.FC = () => {
   );
 };
 
-export default BookingPage;
+export default withErrorBoundary(BookingPage, { level: 'page' });

@@ -695,17 +695,21 @@ paymentMethodSchema.pre('save', function(next) {
 
 // Pre-remove middleware
 paymentMethodSchema.pre('remove', async function(next) {
-  // Check if payment method is being used in any recent transactions
-  // This would depend on your transaction models
+  try {
+    // Check if payment method is being used in any recent transactions
+    // This would depend on your transaction models
   
-  // For now, just prevent deletion of gateway-integrated methods with transactions
-  if (this.analytics.totalTransactions > 0 && this.gateway.provider !== 'manual') {
-    const error = new Error('Cannot delete payment method with transaction history');
-    error.code = 'PAYMENT_METHOD_HAS_TRANSACTIONS';
-    return next(error);
+    // For now, just prevent deletion of gateway-integrated methods with transactions
+    if (this.analytics.totalTransactions > 0 && this.gateway.provider !== 'manual') {
+      const error = new Error('Cannot delete payment method with transaction history');
+      error.code = 'PAYMENT_METHOD_HAS_TRANSACTIONS';
+      return next(error);
+    }
+  
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  next();
 });
 
 export default mongoose.model('PaymentMethod', paymentMethodSchema);

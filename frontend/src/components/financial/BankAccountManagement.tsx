@@ -42,6 +42,7 @@ import financialService from '@/services/financialService';
 import { formatCurrency } from '@/utils/currencyUtils';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface BankAccount {
   _id: string;
@@ -1118,4 +1119,4 @@ const BankAccountManagement: React.FC = () => {
   );
 };
 
-export default BankAccountManagement;
+export default withErrorBoundary(BankAccountManagement, { level: 'component' });

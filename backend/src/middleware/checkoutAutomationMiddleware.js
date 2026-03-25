@@ -72,14 +72,18 @@ export const triggerCheckoutAutomation = async (booking, newStatus, oldStatus, c
  * This should be called from the Booking model's post-save middleware
  */
 export const bookingStatusChangeMiddleware = async function() {
-  // Check if this is a status change
-  if (this.isModified('status') && this._previousStatus) {
-    await triggerCheckoutAutomation(
-      this,
-      this.status,
-      this._previousStatus,
-      this._statusChangeContext || {}
-    );
+  try {
+    // Check if this is a status change
+    if (this.isModified('status') && this._previousStatus) {
+      await triggerCheckoutAutomation(
+        this,
+        this.status,
+        this._previousStatus,
+        this._statusChangeContext || {}
+      );
+    }
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
 };
 
@@ -98,9 +102,13 @@ export const bookingPreSaveMiddleware = function(next) {
  * Post-save middleware to trigger automation
  */
 export const bookingPostSaveMiddleware = async function() {
-  // Only process for existing documents (not new ones)
-  if (!this.isNew) {
-    await bookingStatusChangeMiddleware.call(this);
+  try {
+    // Only process for existing documents (not new ones)
+    if (!this.isNew) {
+      await bookingStatusChangeMiddleware.call(this);
+    }
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
 };
 

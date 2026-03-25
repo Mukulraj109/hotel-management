@@ -228,7 +228,7 @@ class VendorService {
     try {
       const vendor = await Vendor.findOne({ _id: vendorId, hotelId })
         .populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email');
+        .populate('updatedBy', 'name email').lean();
 
       if (!vendor) {
         throw new Error('Vendor not found');
@@ -239,7 +239,7 @@ class VendorService {
         vendorId,
         hotelId,
         'period.type': 'monthly'
-      }).sort({ 'period.year': -1, 'period.month': -1 });
+      }).sort({ 'period.year': -1, 'period.month': -1 }).lean();
 
       // Get recent orders
       const recentOrders = await PurchaseOrder.find({
@@ -248,7 +248,7 @@ class VendorService {
       })
       .sort({ orderDate: -1 })
       .limit(10)
-      .select('poNumber status orderDate grandTotal expectedDeliveryDate');
+      .select('poNumber status orderDate grandTotal expectedDeliveryDate').lean();
 
       // Calculate additional metrics
       const orderStats = await this.getVendorOrderStatistics(vendorId, hotelId);
@@ -269,7 +269,7 @@ class VendorService {
    */
   async calculateVendorPerformance(vendorId, hotelId, period = 'monthly') {
     try {
-      const vendor = await Vendor.findOne({ _id: vendorId, hotelId });
+      const vendor = await Vendor.findOne({ _id: vendorId, hotelId }).lean();
       if (!vendor) {
         throw new Error('Vendor not found');
       }
@@ -306,7 +306,7 @@ class VendorService {
         vendorId,
         hotelId,
         orderDate: { $gte: startDate, $lte: endDate }
-      });
+      }).lean().limit(1000);
 
       // Calculate metrics
       const metrics = this.calculateMetricsFromOrders(orders);
@@ -443,7 +443,7 @@ class VendorService {
 
       const vendors = await Vendor.find(query)
         .sort({ 'performance.overallRating': -1 })
-        .populate('createdBy', 'name');
+        .populate('createdBy', 'name').lean().limit(1000);
 
       return vendors;
     } catch (error) {
@@ -463,7 +463,7 @@ class VendorService {
       const vendors = await Vendor.find({
         _id: { $in: vendorIds },
         hotelId
-      });
+      }).lean().limit(1000);
 
       if (vendors.length !== vendorIds.length) {
         throw new Error('Some vendors not found');
@@ -476,7 +476,7 @@ class VendorService {
         'period.type': 'monthly'
       })
       .sort({ 'period.year': -1, 'period.month': -1 })
-      .limit(vendorIds.length);
+      .limit(vendorIds.length).lean();
 
       // Get order statistics
       const orderStats = await Promise.all(
@@ -510,11 +510,11 @@ class VendorService {
 
       let vendors;
       if (vendorId) {
-        vendors = await Vendor.find({ _id: vendorId, hotelId });
+        vendors = await Vendor.find({ _id: vendorId, hotelId }).lean().limit(1000);
       } else {
         const query = { hotelId };
         if (category) query.categories = category;
-        vendors = await Vendor.find(query);
+        vendors = await Vendor.find(query).lean().limit(1000);
       }
 
       const report = {
@@ -524,6 +524,18 @@ class VendorService {
         vendors: []
       };
 
+      // Batch: pre-fetch performance data for all vendors if needed
+      let perfMap = new Map();
+      if (includePerformance) {
+        const vendorIds = vendors.map(v => v._id);
+        const perfRecords = await VendorPerformance.aggregate([
+          { $match: { vendorId: { $in: vendorIds }, hotelId, 'period.type': period } },
+          { $sort: { 'period.year': -1, 'period.month': -1 } },
+          { $group: { _id: '$vendorId', doc: { $first: '$$ROOT' } } }
+        ]);
+        perfMap = new Map(perfRecords.map(p => [p._id.toString(), p.doc]));
+      }
+
       for (const vendor of vendors) {
         const vendorReport = {
           vendor: vendor.toObject(),
@@ -531,11 +543,7 @@ class VendorService {
         };
 
         if (includePerformance) {
-          vendorReport.performance = await VendorPerformance.findOne({
-            vendorId: vendor._id,
-            hotelId,
-            'period.type': period
-          }).sort({ 'period.year': -1, 'period.month': -1 });
+          vendorReport.performance = perfMap.get(vendor._id.toString()) || null;
         }
 
         if (includeOrders) {
@@ -740,7 +748,7 @@ class VendorService {
    */
   async getVendorFinancials(vendorId, hotelId) {
     try {
-      const vendor = await Vendor.findOne({ _id: vendorId, hotelId });
+      const vendor = await Vendor.findOne({ _id: vendorId, hotelId }).lean();
       if (!vendor) return null;
 
       // Get payment statistics from purchase orders

@@ -968,102 +968,110 @@ advancedReservationSchema.methods.addUpgrade = function(upgradeData) {
 
 // Static method to get reservation statistics
 advancedReservationSchema.statics.getReservationStats = async function(hotelId, dateRange = {}) {
-  const matchStage = { hotelId: new mongoose.Types.ObjectId(hotelId) };
+  try {
+    const matchStage = { hotelId: new mongoose.Types.ObjectId(hotelId) };
 
-  if (dateRange.start && dateRange.end) {
-    matchStage.createdAt = {
-      $gte: new Date(dateRange.start),
-      $lte: new Date(dateRange.end)
-    };
-  }
+    if (dateRange.start && dateRange.end) {
+      matchStage.createdAt = {
+        $gte: new Date(dateRange.start),
+        $lte: new Date(dateRange.end)
+      };
+    }
 
-  const stats = await this.aggregate([
-    { $match: matchStage },
-    {
-      $group: {
-        _id: null,
-        totalReservations: { $sum: 1 },
-        vipReservations: {
-          $sum: { $cond: [{ $eq: ['$reservationFlags.isVIP', true] }, 1, 0] }
-        },
-        upgradeRequests: {
-          $sum: { $cond: [{ $eq: ['$reservationFlags.hasUpgrade', true] }, 1, 0] }
-        },
-        specialRequests: {
-          $sum: { $cond: [{ $eq: ['$reservationFlags.hasSpecialRequests', true] }, 1, 0] }
-        },
-        pendingApprovals: {
-          $sum: { $cond: [{ $eq: ['$reservationFlags.requiresApproval', true] }, 1, 0] }
-        },
-        avgPriorityScore: { $avg: '$analytics.priorityScore' },
-        avgComplexityScore: { $avg: '$analytics.complexityScore' },
-        byType: {
-          $push: '$reservationType'
-        },
-        byPriority: {
-          $push: '$priority'
+    const stats = await this.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: null,
+          totalReservations: { $sum: 1 },
+          vipReservations: {
+            $sum: { $cond: [{ $eq: ['$reservationFlags.isVIP', true] }, 1, 0] }
+          },
+          upgradeRequests: {
+            $sum: { $cond: [{ $eq: ['$reservationFlags.hasUpgrade', true] }, 1, 0] }
+          },
+          specialRequests: {
+            $sum: { $cond: [{ $eq: ['$reservationFlags.hasSpecialRequests', true] }, 1, 0] }
+          },
+          pendingApprovals: {
+            $sum: { $cond: [{ $eq: ['$reservationFlags.requiresApproval', true] }, 1, 0] }
+          },
+          avgPriorityScore: { $avg: '$analytics.priorityScore' },
+          avgComplexityScore: { $avg: '$analytics.complexityScore' },
+          byType: {
+            $push: '$reservationType'
+          },
+          byPriority: {
+            $push: '$priority'
+          }
         }
       }
+    ]);
+
+    if (stats.length === 0) {
+      return {
+        totalReservations: 0,
+        vipReservations: 0,
+        upgradeRequests: 0,
+        specialRequests: 0,
+        pendingApprovals: 0,
+        avgPriorityScore: 0,
+        avgComplexityScore: 0,
+        byType: {},
+        byPriority: {}
+      };
     }
-  ]);
 
-  if (stats.length === 0) {
+    const result = stats[0];
+
+    // Calculate type distribution
+    const typeDistribution = {};
+    result.byType.forEach(type => {
+      typeDistribution[type] = (typeDistribution[type] || 0) + 1;
+    });
+
+    // Calculate priority distribution
+    const priorityDistribution = {};
+    result.byPriority.forEach(priority => {
+      priorityDistribution[priority] = (priorityDistribution[priority] || 0) + 1;
+    });
+
     return {
-      totalReservations: 0,
-      vipReservations: 0,
-      upgradeRequests: 0,
-      specialRequests: 0,
-      pendingApprovals: 0,
-      avgPriorityScore: 0,
-      avgComplexityScore: 0,
-      byType: {},
-      byPriority: {}
+      totalReservations: result.totalReservations,
+      vipReservations: result.vipReservations,
+      upgradeRequests: result.upgradeRequests,
+      specialRequests: result.specialRequests,
+      pendingApprovals: result.pendingApprovals,
+      avgPriorityScore: Math.round(result.avgPriorityScore || 0),
+      avgComplexityScore: Math.round(result.avgComplexityScore || 0),
+      byType: typeDistribution,
+      byPriority: priorityDistribution
     };
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  const result = stats[0];
-
-  // Calculate type distribution
-  const typeDistribution = {};
-  result.byType.forEach(type => {
-    typeDistribution[type] = (typeDistribution[type] || 0) + 1;
-  });
-
-  // Calculate priority distribution
-  const priorityDistribution = {};
-  result.byPriority.forEach(priority => {
-    priorityDistribution[priority] = (priorityDistribution[priority] || 0) + 1;
-  });
-
-  return {
-    totalReservations: result.totalReservations,
-    vipReservations: result.vipReservations,
-    upgradeRequests: result.upgradeRequests,
-    specialRequests: result.specialRequests,
-    pendingApprovals: result.pendingApprovals,
-    avgPriorityScore: Math.round(result.avgPriorityScore || 0),
-    avgComplexityScore: Math.round(result.avgComplexityScore || 0),
-    byType: typeDistribution,
-    byPriority: priorityDistribution
-  };
 };
 
 // Static method to get pending approvals
 advancedReservationSchema.statics.getPendingApprovals = async function(hotelId, stage = null) {
-  const query = {
-    hotelId: new mongoose.Types.ObjectId(hotelId),
-    'reservationFlags.requiresApproval': true,
-    'approvalWorkflow.approvalStage': { $nin: ['approved', 'rejected'] }
-  };
+  try {
+    const query = {
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      'reservationFlags.requiresApproval': true,
+      'approvalWorkflow.approvalStage': { $nin: ['approved', 'rejected'] }
+    };
 
-  if (stage) {
-    query['approvalWorkflow.approvalStage'] = stage;
+    if (stage) {
+      query['approvalWorkflow.approvalStage'] = stage;
+    }
+
+    return await this.find(query)
+      .populate('bookingId', 'bookingNumber checkIn checkOut guestDetails')
+      .populate('createdBy', 'name email')
+      .sort({ 'analytics.priorityScore': -1, createdAt: 1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  return await this.find(query)
-    .populate('bookingId', 'bookingNumber checkIn checkOut guestDetails')
-    .populate('createdBy', 'name email')
-    .sort({ 'analytics.priorityScore': -1, createdAt: 1 });
 };
 
 export default mongoose.model('AdvancedReservation', advancedReservationSchema);

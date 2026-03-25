@@ -86,16 +86,22 @@ class CostOptimizationService {
 
       // Calculate performance metrics
       const supplierAnalysis = await Promise.all(suppliers.map(async (supplier) => {
-        const metrics = await this.calculateSupplierMetrics(hotelId, supplier, startDate);
-        const benchmarking = await this.benchmarkSupplier(hotelId, supplier, metrics);
+        try {
+          const metrics = await this.calculateSupplierMetrics(hotelId, supplier, startDate);
+          const benchmarking = await this.benchmarkSupplier(hotelId, supplier, metrics);
 
-        return {
-          supplier: supplier.name,
-          performance: metrics,
-          benchmarking,
-          recommendations: this.generateSupplierRecommendations(metrics, benchmarking),
-          riskAssessment: this.assessSupplierRisk(metrics)
-        };
+          return {
+            supplier: supplier.name,
+            performance: metrics,
+            benchmarking,
+            recommendations: this.generateSupplierRecommendations(metrics, benchmarking),
+            riskAssessment: this.assessSupplierRisk(metrics)
+          };
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
+        }
       }));
 
       return {
@@ -256,102 +262,114 @@ class CostOptimizationService {
   // Helper methods for supplier performance analysis
 
   static async getSupplierPerformanceData(hotelId, startDate) {
-    const items = await InventoryItem.find({ hotelId, isActive: true })
-      .select('supplier reorderSettings');
+    try {
+      const items = await InventoryItem.find({ hotelId, isActive: true })
+        .select('supplier reorderSettings').lean().limit(1000);
 
-    const supplierMap = new Map();
+      const supplierMap = new Map();
 
-    items.forEach(item => {
-      const supplierName = item.supplier?.name || 'Unknown Supplier';
-      if (!supplierMap.has(supplierName)) {
-        supplierMap.set(supplierName, {
-          name: supplierName,
-          contact: item.supplier?.contact,
-          email: item.supplier?.email,
-          items: []
-        });
-      }
-      supplierMap.get(supplierName).items.push(item);
-    });
+      items.forEach(item => {
+        const supplierName = item.supplier?.name || 'Unknown Supplier';
+        if (!supplierMap.has(supplierName)) {
+          supplierMap.set(supplierName, {
+            name: supplierName,
+            contact: item.supplier?.contact,
+            email: item.supplier?.email,
+            items: []
+          });
+        }
+        supplierMap.get(supplierName).items.push(item);
+      });
 
-    return Array.from(supplierMap.values());
+      return Array.from(supplierMap.values());
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async calculateSupplierMetrics(hotelId, supplier, startDate) {
-    const itemIds = supplier.items.map(item => item._id);
+    try {
+      const itemIds = supplier.items.map(item => item._id);
 
-    // Get transactions for supplier's items
-    const transactions = await InventoryTransaction.find({
-      hotelId,
-      'items.itemId': { $in: itemIds },
-      processedAt: { $gte: startDate },
-      status: 'completed'
-    });
+      // Get transactions for supplier's items
+      const transactions = await InventoryTransaction.find({
+        hotelId,
+        'items.itemId': { $in: itemIds },
+        processedAt: { $gte: startDate },
+        status: 'completed'
+      }).lean().limit(1000);
 
-    // Calculate metrics
-    const totalSpend = transactions.reduce((sum, transaction) => sum + transaction.totalAmount, 0);
-    const totalOrders = transactions.length;
-    const averageOrderValue = totalOrders > 0 ? totalSpend / totalOrders : 0;
+      // Calculate metrics
+      const totalSpend = transactions.reduce((sum, transaction) => sum + transaction.totalAmount, 0);
+      const totalOrders = transactions.length;
+      const averageOrderValue = totalOrders > 0 ? totalSpend / totalOrders : 0;
 
-    // Quality metrics (simulated)
-    const qualityScore = 85 + Math.random() * 10; // 85-95%
-    const onTimeDeliveryRate = 90 + Math.random() * 8; // 90-98%
-    const defectRate = Math.random() * 2; // 0-2%
+      // Quality metrics (simulated)
+      const qualityScore = 85 + Math.random() * 10; // 85-95%
+      const onTimeDeliveryRate = 90 + Math.random() * 8; // 90-98%
+      const defectRate = Math.random() * 2; // 0-2%
 
-    // Price stability
-    const priceChanges = Math.floor(Math.random() * 3); // 0-2 price changes
-    const priceStability = Math.max(0, 100 - (priceChanges * 10));
+      // Price stability
+      const priceChanges = Math.floor(Math.random() * 3); // 0-2 price changes
+      const priceStability = Math.max(0, 100 - (priceChanges * 10));
 
-    return {
-      totalSpend: parseFloat(totalSpend.toFixed(2)),
-      totalOrders,
-      averageOrderValue: parseFloat(averageOrderValue.toFixed(2)),
-      itemCount: supplier.items.length,
-      qualityScore: parseFloat(qualityScore.toFixed(1)),
-      onTimeDeliveryRate: parseFloat(onTimeDeliveryRate.toFixed(1)),
-      defectRate: parseFloat(defectRate.toFixed(2)),
-      priceStability: parseFloat(priceStability.toFixed(1)),
-      responseTime: Math.floor(1 + Math.random() * 3), // 1-4 days
-      communicationScore: 80 + Math.random() * 15 // 80-95%
-    };
+      return {
+        totalSpend: parseFloat(totalSpend.toFixed(2)),
+        totalOrders,
+        averageOrderValue: parseFloat(averageOrderValue.toFixed(2)),
+        itemCount: supplier.items.length,
+        qualityScore: parseFloat(qualityScore.toFixed(1)),
+        onTimeDeliveryRate: parseFloat(onTimeDeliveryRate.toFixed(1)),
+        defectRate: parseFloat(defectRate.toFixed(2)),
+        priceStability: parseFloat(priceStability.toFixed(1)),
+        responseTime: Math.floor(1 + Math.random() * 3), // 1-4 days
+        communicationScore: 80 + Math.random() * 15 // 80-95%
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async benchmarkSupplier(hotelId, supplier, metrics) {
-    // Industry benchmarks (simulated)
-    const industryBenchmarks = {
-      qualityScore: 88,
-      onTimeDeliveryRate: 94,
-      defectRate: 1.5,
-      priceStability: 85,
-      responseTime: 2,
-      communicationScore: 87
-    };
-
-    const comparison = {};
-    Object.keys(industryBenchmarks).forEach(metric => {
-      const supplierValue = metrics[metric];
-      const benchmarkValue = industryBenchmarks[metric];
-
-      let performance;
-      if (metric === 'defectRate' || metric === 'responseTime') {
-        // Lower is better
-        performance = supplierValue <= benchmarkValue ? 'above_average' :
-                     supplierValue <= benchmarkValue * 1.2 ? 'average' : 'below_average';
-      } else {
-        // Higher is better
-        performance = supplierValue >= benchmarkValue ? 'above_average' :
-                     supplierValue >= benchmarkValue * 0.9 ? 'average' : 'below_average';
-      }
-
-      comparison[metric] = {
-        supplierValue,
-        benchmarkValue,
-        performance,
-        variance: parseFloat(((supplierValue - benchmarkValue) / benchmarkValue * 100).toFixed(1))
+    try {
+      // Industry benchmarks (simulated)
+      const industryBenchmarks = {
+        qualityScore: 88,
+        onTimeDeliveryRate: 94,
+        defectRate: 1.5,
+        priceStability: 85,
+        responseTime: 2,
+        communicationScore: 87
       };
-    });
 
-    return comparison;
+      const comparison = {};
+      Object.keys(industryBenchmarks).forEach(metric => {
+        const supplierValue = metrics[metric];
+        const benchmarkValue = industryBenchmarks[metric];
+
+        let performance;
+        if (metric === 'defectRate' || metric === 'responseTime') {
+          // Lower is better
+          performance = supplierValue <= benchmarkValue ? 'above_average' :
+                       supplierValue <= benchmarkValue * 1.2 ? 'average' : 'below_average';
+        } else {
+          // Higher is better
+          performance = supplierValue >= benchmarkValue ? 'above_average' :
+                       supplierValue >= benchmarkValue * 0.9 ? 'average' : 'below_average';
+        }
+
+        comparison[metric] = {
+          supplierValue,
+          benchmarkValue,
+          performance,
+          variance: parseFloat(((supplierValue - benchmarkValue) / benchmarkValue * 100).toFixed(1))
+        };
+      });
+
+      return comparison;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static generateSupplierRecommendations(metrics, benchmarking) {
@@ -436,277 +454,333 @@ class CostOptimizationService {
   // Helper methods for cost optimization
 
   static async getCostSummaryMetrics(hotelId, period) {
-    const startDate = new Date(Date.now() - period * 24 * 60 * 60 * 1000);
+    try {
+      const startDate = new Date(Date.now() - period * 24 * 60 * 60 * 1000);
 
-    const transactions = await InventoryTransaction.find({
-      hotelId,
-      processedAt: { $gte: startDate },
-      status: 'completed'
-    });
+      const transactions = await InventoryTransaction.find({
+        hotelId,
+        processedAt: { $gte: startDate },
+        status: 'completed'
+      }).lean().limit(1000);
 
-    const totalSpent = transactions.reduce((sum, transaction) => sum + transaction.totalAmount, 0);
-    const averageTransactionValue = transactions.length > 0 ? totalSpent / transactions.length : 0;
+      const totalSpent = transactions.reduce((sum, transaction) => sum + transaction.totalAmount, 0);
+      const averageTransactionValue = transactions.length > 0 ? totalSpent / transactions.length : 0;
 
-    // Get current inventory value
-    const items = await InventoryItem.find({ hotelId, isActive: true });
-    const currentInventoryValue = items.reduce((sum, item) => sum + (item.currentStock * item.unitPrice), 0);
+      // Get current inventory value
+      const items = await InventoryItem.find({ hotelId, isActive: true }).lean().limit(1000);
+      const currentInventoryValue = items.reduce((sum, item) => sum + (item.currentStock * item.unitPrice), 0);
 
-    return {
-      totalSpent: parseFloat(totalSpent.toFixed(2)),
-      averageTransactionValue: parseFloat(averageTransactionValue.toFixed(2)),
-      transactionCount: transactions.length,
-      currentInventoryValue: parseFloat(currentInventoryValue.toFixed(2)),
-      averageCostPerItem: items.length > 0 ? parseFloat((currentInventoryValue / items.length).toFixed(2)) : 0,
-      period
-    };
+      return {
+        totalSpent: parseFloat(totalSpent.toFixed(2)),
+        averageTransactionValue: parseFloat(averageTransactionValue.toFixed(2)),
+        transactionCount: transactions.length,
+        currentInventoryValue: parseFloat(currentInventoryValue.toFixed(2)),
+        averageCostPerItem: items.length > 0 ? parseFloat((currentInventoryValue / items.length).toFixed(2)) : 0,
+        period
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async getCategoryCostBreakdown(hotelId, period) {
-    const startDate = new Date(Date.now() - period * 24 * 60 * 60 * 1000);
+    try {
+      const startDate = new Date(Date.now() - period * 24 * 60 * 60 * 1000);
 
-    const pipeline = [
-      {
-        $match: {
-          hotelId: new mongoose.Types.ObjectId(hotelId),
-          processedAt: { $gte: startDate },
-          status: 'completed'
-        }
-      },
-      { $unwind: '$items' },
-      {
-        $group: {
-          _id: '$items.category',
-          totalCost: { $sum: '$items.totalCost' },
-          totalQuantity: { $sum: { $abs: '$items.quantityChanged' } },
-          transactionCount: { $sum: 1 },
-          averageUnitCost: { $avg: '$items.unitPrice' }
-        }
-      },
-      { $sort: { totalCost: -1 } }
-    ];
+      const pipeline = [
+        {
+          $match: {
+            hotelId: new mongoose.Types.ObjectId(hotelId),
+            processedAt: { $gte: startDate },
+            status: 'completed'
+          }
+        },
+        { $unwind: '$items' },
+        {
+          $group: {
+            _id: '$items.category',
+            totalCost: { $sum: '$items.totalCost' },
+            totalQuantity: { $sum: { $abs: '$items.quantityChanged' } },
+            transactionCount: { $sum: 1 },
+            averageUnitCost: { $avg: '$items.unitPrice' }
+          }
+        },
+        { $sort: { totalCost: -1 } }
+      ];
 
-    const results = await InventoryTransaction.aggregate(pipeline);
+      const results = await InventoryTransaction.aggregate(pipeline);
 
-    return results.map(result => ({
-      category: result._id,
-      totalCost: parseFloat(result.totalCost.toFixed(2)),
-      totalQuantity: result.totalQuantity,
-      transactionCount: result.transactionCount,
-      averageUnitCost: parseFloat(result.averageUnitCost.toFixed(2))
-    }));
+      return results.map(result => ({
+        category: result._id,
+        totalCost: parseFloat(result.totalCost.toFixed(2)),
+        totalQuantity: result.totalQuantity,
+        transactionCount: result.transactionCount,
+        averageUnitCost: parseFloat(result.averageUnitCost.toFixed(2))
+      }));
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async identifyCostOptimizationOpportunities(hotelId) {
-    const opportunities = [];
+    try {
+      const opportunities = [];
 
-    // High-cost, low-turnover items
-    const items = await InventoryItem.find({ hotelId, isActive: true }).sort({ unitPrice: -1 });
+      // High-cost, low-turnover items
+      const items = await InventoryItem.find({ hotelId, isActive: true }).sort({ unitPrice: -1 }).lean().limit(1000);
 
-    for (const item of items.slice(0, 20)) { // Top 20 most expensive items
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const recentTransactions = await InventoryTransaction.find({
-        hotelId,
-        'items.itemId': item._id,
-        processedAt: { $gte: thirtyDaysAgo },
-        status: 'completed'
-      });
+      for (const item of items.slice(0, 20)) { // Top 20 most expensive items
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const recentTransactions = await InventoryTransaction.find({
+          hotelId,
+          'items.itemId': item._id,
+          processedAt: { $gte: thirtyDaysAgo },
+          status: 'completed'
+        }).lean().limit(1000);
 
-      const totalUsed = recentTransactions.reduce((sum, transaction) => {
-        const itemTransaction = transaction.items.find(i => i.itemId.toString() === item._id.toString());
-        return sum + Math.abs(itemTransaction?.quantityChanged || 0);
-      }, 0);
+        const totalUsed = recentTransactions.reduce((sum, transaction) => {
+          const itemTransaction = transaction.items.find(i => i.itemId.toString() === item._id.toString());
+          return sum + Math.abs(itemTransaction?.quantityChanged || 0);
+        }, 0);
 
-      const turnoverRate = item.currentStock > 0 ? totalUsed / item.currentStock : 0;
+        const turnoverRate = item.currentStock > 0 ? totalUsed / item.currentStock : 0;
 
-      if (turnoverRate < 0.1 && item.unitPrice > 50) { // Low turnover, high cost
-        opportunities.push({
-          type: 'inventory_optimization',
-          itemId: item._id,
-          itemName: item.name,
-          category: item.category,
-          issue: 'Low turnover, high cost item',
-          potentialSavings: item.currentStock * item.unitPrice * 0.2, // 20% reduction
-          recommendation: 'Consider reducing stock levels or finding lower-cost alternatives',
-          priority: 'medium'
-        });
-      }
-    }
-
-    // Bulk purchase opportunities
-    const bulkOpportunities = await this.identifyBulkPurchaseOpportunities(hotelId);
-    opportunities.push(...bulkOpportunities);
-
-    return opportunities.sort((a, b) => b.potentialSavings - a.potentialSavings);
-  }
-
-  static async identifyBulkPurchaseOpportunities(hotelId) {
-    const opportunities = [];
-    const items = await InventoryItem.find({ hotelId, isActive: true });
-
-    for (const item of items) {
-      if (item.reorderSettings?.reorderQuantity && item.reorderSettings.reorderQuantity < 100) {
-        // Simulate bulk discount availability
-        const bulkQuantity = item.reorderSettings.reorderQuantity * 3;
-        const currentCost = item.reorderSettings.reorderQuantity * item.unitPrice;
-        const bulkCost = bulkQuantity * item.unitPrice * 0.9; // 10% bulk discount
-        const annualSavings = (currentCost - bulkCost) * 4; // Quarterly orders
-
-        if (annualSavings > 100) {
+        if (turnoverRate < 0.1 && item.unitPrice > 50) { // Low turnover, high cost
           opportunities.push({
-            type: 'bulk_purchase',
+            type: 'inventory_optimization',
             itemId: item._id,
             itemName: item.name,
             category: item.category,
-            issue: 'Small order quantities missing bulk discounts',
-            potentialSavings: annualSavings,
-            recommendation: `Increase order quantity to ${bulkQuantity} for 10% bulk discount`,
-            priority: annualSavings > 500 ? 'high' : 'medium'
+            issue: 'Low turnover, high cost item',
+            potentialSavings: item.currentStock * item.unitPrice * 0.2, // 20% reduction
+            recommendation: 'Consider reducing stock levels or finding lower-cost alternatives',
+            priority: 'medium'
           });
         }
       }
-    }
 
-    return opportunities;
+      // Bulk purchase opportunities
+      const bulkOpportunities = await this.identifyBulkPurchaseOpportunities(hotelId);
+      opportunities.push(...bulkOpportunities);
+
+      return opportunities.sort((a, b) => b.potentialSavings - a.potentialSavings);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
+  }
+
+  static async identifyBulkPurchaseOpportunities(hotelId) {
+    try {
+      const opportunities = [];
+      const items = await InventoryItem.find({ hotelId, isActive: true }).lean().limit(1000);
+
+      for (const item of items) {
+        if (item.reorderSettings?.reorderQuantity && item.reorderSettings.reorderQuantity < 100) {
+          // Simulate bulk discount availability
+          const bulkQuantity = item.reorderSettings.reorderQuantity * 3;
+          const currentCost = item.reorderSettings.reorderQuantity * item.unitPrice;
+          const bulkCost = bulkQuantity * item.unitPrice * 0.9; // 10% bulk discount
+          const annualSavings = (currentCost - bulkCost) * 4; // Quarterly orders
+
+          if (annualSavings > 100) {
+            opportunities.push({
+              type: 'bulk_purchase',
+              itemId: item._id,
+              itemName: item.name,
+              category: item.category,
+              issue: 'Small order quantities missing bulk discounts',
+              potentialSavings: annualSavings,
+              recommendation: `Increase order quantity to ${bulkQuantity} for 10% bulk discount`,
+              priority: annualSavings > 500 ? 'high' : 'medium'
+            });
+          }
+        }
+      }
+
+      return opportunities;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async getCostTrends(hotelId, period) {
-    const endDate = new Date();
-    const startDate = new Date(Date.now() - period * 24 * 60 * 60 * 1000);
-    const midDate = new Date(Date.now() - (period / 2) * 24 * 60 * 60 * 1000);
+    try {
+      const endDate = new Date();
+      const startDate = new Date(Date.now() - period * 24 * 60 * 60 * 1000);
+      const midDate = new Date(Date.now() - (period / 2) * 24 * 60 * 60 * 1000);
 
-    const firstHalf = await InventoryTransaction.find({
-      hotelId,
-      processedAt: { $gte: startDate, $lt: midDate },
-      status: 'completed'
-    });
+      const firstHalf = await InventoryTransaction.find({
+        hotelId,
+        processedAt: { $gte: startDate, $lt: midDate },
+        status: 'completed'
+      }).lean().limit(1000);
 
-    const secondHalf = await InventoryTransaction.find({
-      hotelId,
-      processedAt: { $gte: midDate, $lte: endDate },
-      status: 'completed'
-    });
+      const secondHalf = await InventoryTransaction.find({
+        hotelId,
+        processedAt: { $gte: midDate, $lte: endDate },
+        status: 'completed'
+      }).lean().limit(1000);
 
-    const firstHalfTotal = firstHalf.reduce((sum, t) => sum + t.totalAmount, 0);
-    const secondHalfTotal = secondHalf.reduce((sum, t) => sum + t.totalAmount, 0);
+      const firstHalfTotal = firstHalf.reduce((sum, t) => sum + t.totalAmount, 0);
+      const secondHalfTotal = secondHalf.reduce((sum, t) => sum + t.totalAmount, 0);
 
-    const trend = secondHalfTotal > firstHalfTotal ? 'increasing' : 'decreasing';
-    const changePercent = firstHalfTotal > 0 ? ((secondHalfTotal - firstHalfTotal) / firstHalfTotal) * 100 : 0;
+      const trend = secondHalfTotal > firstHalfTotal ? 'increasing' : 'decreasing';
+      const changePercent = firstHalfTotal > 0 ? ((secondHalfTotal - firstHalfTotal) / firstHalfTotal) * 100 : 0;
 
-    return {
-      trend,
-      changePercent: parseFloat(changePercent.toFixed(2)),
-      firstHalfTotal: parseFloat(firstHalfTotal.toFixed(2)),
-      secondHalfTotal: parseFloat(secondHalfTotal.toFixed(2)),
-      period
-    };
+      return {
+        trend,
+        changePercent: parseFloat(changePercent.toFixed(2)),
+        firstHalfTotal: parseFloat(firstHalfTotal.toFixed(2)),
+        secondHalfTotal: parseFloat(secondHalfTotal.toFixed(2)),
+        period
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async generateCostOptimizationRecommendations(dashboard) {
-    const recommendations = [];
+    try {
+      const recommendations = [];
 
-    // Based on opportunities
-    if (dashboard.opportunities.length > 0) {
-      const highPriorityOpportunities = dashboard.opportunities.filter(o => o.priority === 'high');
-      if (highPriorityOpportunities.length > 0) {
-        const totalSavings = highPriorityOpportunities.reduce((sum, o) => sum + o.potentialSavings, 0);
+      // Based on opportunities
+      if (dashboard.opportunities.length > 0) {
+        const highPriorityOpportunities = dashboard.opportunities.filter(o => o.priority === 'high');
+        if (highPriorityOpportunities.length > 0) {
+          const totalSavings = highPriorityOpportunities.reduce((sum, o) => sum + o.potentialSavings, 0);
+          recommendations.push({
+            type: 'high_priority_opportunities',
+            priority: 'high',
+            description: `${highPriorityOpportunities.length} high-priority cost optimization opportunities`,
+            estimatedSavings: totalSavings,
+            action: 'Review and implement high-priority cost optimization opportunities'
+          });
+        }
+      }
+
+      // Based on trends
+      if (dashboard.trends.trend === 'increasing' && dashboard.trends.changePercent > 10) {
         recommendations.push({
-          type: 'high_priority_opportunities',
-          priority: 'high',
-          description: `${highPriorityOpportunities.length} high-priority cost optimization opportunities`,
-          estimatedSavings: totalSavings,
-          action: 'Review and implement high-priority cost optimization opportunities'
+          type: 'cost_trend',
+          priority: 'medium',
+          description: `Inventory costs increased by ${dashboard.trends.changePercent}% in recent period`,
+          action: 'Investigate cost drivers and implement cost control measures'
         });
       }
-    }
 
-    // Based on trends
-    if (dashboard.trends.trend === 'increasing' && dashboard.trends.changePercent > 10) {
-      recommendations.push({
-        type: 'cost_trend',
-        priority: 'medium',
-        description: `Inventory costs increased by ${dashboard.trends.changePercent}% in recent period`,
-        action: 'Investigate cost drivers and implement cost control measures'
-      });
+      return recommendations;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return recommendations;
   }
 
   // Additional helper methods for contract analysis
 
   static async getSupplierContracts(hotelId) {
-    // This would typically come from a contracts database
-    // For demonstration, we'll generate mock contract data
-    const suppliers = await this.getSupplierPerformanceData(hotelId, new Date(Date.now() - 365 * 24 * 60 * 60 * 1000));
+    try {
+      // This would typically come from a contracts database
+      // For demonstration, we'll generate mock contract data
+      const suppliers = await this.getSupplierPerformanceData(hotelId, new Date(Date.now() - 365 * 24 * 60 * 60 * 1000));
 
-    return suppliers.map(supplier => ({
-      id: `contract_${supplier.name.replace(/\s+/g, '_').toLowerCase()}`,
-      supplier: supplier.name,
-      contractValue: 10000 + Math.random() * 50000,
-      startDate: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000),
-      expiryDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000),
-      paymentTerms: ['Net 30', 'Net 45', '2/10 Net 30'][Math.floor(Math.random() * 3)],
-      deliveryTerms: 'FOB Destination',
-      priceAdjustmentClause: Math.random() > 0.5,
-      volumeDiscounts: Math.random() > 0.3,
-      exclusivityClause: Math.random() > 0.7
-    }));
+      return suppliers.map(supplier => ({
+        id: `contract_${supplier.name.replace(/\s+/g, '_').toLowerCase()}`,
+        supplier: supplier.name,
+        contractValue: 10000 + Math.random() * 50000,
+        startDate: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000),
+        expiryDate: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000),
+        paymentTerms: ['Net 30', 'Net 45', '2/10 Net 30'][Math.floor(Math.random() * 3)],
+        deliveryTerms: 'FOB Destination',
+        priceAdjustmentClause: Math.random() > 0.5,
+        volumeDiscounts: Math.random() > 0.3,
+        exclusivityClause: Math.random() > 0.7
+      }));
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async analyzeContractPerformance(hotelId, contract) {
-    // Analyze actual performance against contract terms
-    return {
-      complianceScore: 85 + Math.random() * 10,
-      deliveryPerformance: 90 + Math.random() * 8,
-      qualityCompliance: 88 + Math.random() * 10,
-      priceCompliance: 95 + Math.random() * 5,
-      contractUtilization: 70 + Math.random() * 25
-    };
+    try {
+      // Analyze actual performance against contract terms
+      return {
+        complianceScore: 85 + Math.random() * 10,
+        deliveryPerformance: 90 + Math.random() * 8,
+        qualityCompliance: 88 + Math.random() * 10,
+        priceCompliance: 95 + Math.random() * 5,
+        contractUtilization: 70 + Math.random() * 25
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async analyzeContractCompliance(contract) {
-    return {
-      overallCompliance: 'good',
-      violations: [],
-      opportunities: [
-        'Negotiate better payment terms',
-        'Add volume discount tiers',
-        'Include price stability clause'
-      ]
-    };
+    try {
+      return {
+        overallCompliance: 'good',
+        violations: [],
+        opportunities: [
+          'Negotiate better payment terms',
+          'Add volume discount tiers',
+          'Include price stability clause'
+        ]
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async enhanceWithMarketData(analysis) {
-    // This would integrate with external market data sources
-    // For now, add simulated market intelligence
-    analysis.marketData = {
-      averageMarketPrice: analysis.items[0]?.currentSupplier?.unitPrice * 0.95,
-      priceVolatility: 'medium',
-      supplyAvailability: 'good',
-      marketTrend: 'stable'
-    };
+    try {
+      // This would integrate with external market data sources
+      // For now, add simulated market intelligence
+      analysis.marketData = {
+        averageMarketPrice: analysis.items[0]?.currentSupplier?.unitPrice * 0.95,
+        priceVolatility: 'medium',
+        supplyAvailability: 'good',
+        marketTrend: 'stable'
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async calculateDetailedRiskMetrics(analysis) {
-    analysis.riskMetrics = {
-      supplierConcentration: 'medium',
-      priceVolatilityRisk: 'low',
-      supplyDisruptionRisk: 'low',
-      qualityRisk: 'medium'
-    };
+    try {
+      analysis.riskMetrics = {
+        supplierConcentration: 'medium',
+        priceVolatilityRisk: 'low',
+        supplyDisruptionRisk: 'low',
+        qualityRisk: 'medium'
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Placeholder methods for other features
   static async applyStorageConstraints(analysis, constraints) {
-    // Apply storage space limitations to bulk purchase recommendations
+    try {
+      // Apply storage space limitations to bulk purchase recommendations
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async applyCashFlowConstraints(analysis, constraints) {
-    // Apply cash flow limitations to purchase timing
+    try {
+      // Apply cash flow limitations to purchase timing
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async applySeasonalAdjustments(analysis, hotelId) {
-    // Adjust recommendations based on seasonal demand patterns
+    try {
+      // Adjust recommendations based on seasonal demand patterns
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static generateSupplierSummary(supplierAnalysis) {
@@ -735,43 +809,59 @@ class CostOptimizationService {
   }
 
   static async analyzeCurrentInventoryEfficiency(hotelId) {
-    // Analyze current inventory investment efficiency
-    return {
-      turnoverRate: 4.2,
-      carryingCosts: 15000,
-      stockoutCosts: 2500,
-      efficiencyScore: 78
-    };
+    try {
+      // Analyze current inventory investment efficiency
+      return {
+        turnoverRate: 4.2,
+        carryingCosts: 15000,
+        stockoutCosts: 2500,
+        efficiencyScore: 78
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async analyzeInvestmentScenario(hotelId, scenario, timeHorizon, discountRate) {
-    // Analyze a specific investment scenario
-    return {
-      scenario: scenario.name,
-      initialInvestment: scenario.investment,
-      projectedSavings: scenario.investment * 0.2,
-      paybackPeriod: 18,
-      roi: 20,
-      npv: scenario.investment * 0.1
-    };
+    try {
+      // Analyze a specific investment scenario
+      return {
+        scenario: scenario.name,
+        initialInvestment: scenario.investment,
+        projectedSavings: scenario.investment * 0.2,
+        paybackPeriod: 18,
+        roi: 20,
+        npv: scenario.investment * 0.1
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async calculateRiskAdjustedROI(scenarioAnalysis) {
-    // Apply risk adjustment to ROI calculation
-    return scenarioAnalysis.roi * 0.85; // 15% risk discount
+    try {
+      // Apply risk adjustment to ROI calculation
+      return scenarioAnalysis.roi * 0.85; // 15% risk discount
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   static async generateAutomaticImprovementScenarios(hotelId) {
-    // Generate automatic improvement scenarios
-    return [
-      {
-        name: 'Automated Reordering System',
-        description: 'Implement automated reordering for high-volume items',
-        investment: 5000,
-        annualSavings: 2000,
-        roi: 40
-      }
-    ];
+    try {
+      // Generate automatic improvement scenarios
+      return [
+        {
+          name: 'Automated Reordering System',
+          description: 'Implement automated reordering for high-volume items',
+          investment: 5000,
+          annualSavings: 2000,
+          roi: 40
+        }
+      ];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 

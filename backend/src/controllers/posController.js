@@ -51,7 +51,7 @@ export const getOutlets = async (req, res) => {
     const { hotelId } = req.user;
     const outlets = await POSOutlet.find({ isActive: true, hotelId })
       .populate('manager', 'name email')
-      .populate('staff', 'name email role');
+      .populate('staff', 'name email role').lean().limit(1000);
     
     console.log(`Found ${outlets.length} outlets`);
     
@@ -126,7 +126,7 @@ export const getMenusByOutlet = async (req, res) => {
       outlet: req.params.outletId,
       isActive: true,
       hotelId
-    }).populate('outlet', 'name type');
+    }).populate('outlet', 'name type').lean().limit(1000);
     
     res.json({
       success: true,
@@ -231,7 +231,7 @@ export const createOrder = async (req, res) => {
     } catch (taxError) {
       // Fallback to legacy tax calculation if new service fails
       console.warn('Tax calculation service failed, using legacy calculation:', taxError.message);
-      const outlet = await POSOutlet.findOne({ _id: orderData.outlet, hotelId: req.user.hotelId });
+      const outlet = await POSOutlet.findOne({ _id: orderData.outlet, hotelId: req.user.hotelId }).lean();
       const serviceTax = subtotal * (outlet.taxSettings.serviceTaxRate / 100);
       const gst = subtotal * (outlet.taxSettings.gstRate / 100);
       const totalTax = serviceTax + gst;
@@ -316,7 +316,7 @@ export const getOrders = async (req, res) => {
       .populate('customer.guest', 'firstName lastName email')
       .populate('staff.server', 'firstName lastName')
       .populate('staff.cashier', 'firstName lastName')
-      .sort({ orderTime: -1 });
+      .sort({ orderTime: -1 }).lean().limit(1000);
     
     res.json({
       success: true,
@@ -385,7 +385,7 @@ export const processPayment = async (req, res) => {
     // precondition on totalAmount to prevent a concurrent modification
     // from causing an incorrect change calculation.
     const { hotelId } = req.user;
-    const existingOrder = await POSOrder.findOne({ _id: req.params.id, hotelId }).select('totalAmount status');
+    const existingOrder = await POSOrder.findOne({ _id: req.params.id, hotelId }).select('totalAmount status').lean();
 
     if (!existingOrder) {
       return res.status(404).json({
@@ -452,7 +452,7 @@ export const getDashboardStats = async (req, res) => {
       status: 'completed',
       completedTime: { $gte: startOfDay, $lt: endOfDay },
       hotelId
-    });
+    }).lean().limit(1000);
 
     // Active orders
     const activeOrders = await POSOrder.countDocuments({
@@ -500,7 +500,7 @@ export const calculateOrderTotals = async (req, res) => {
     const { hotelId } = req.user;
     let outlet;
     if (outletId) {
-      outlet = await POSOutlet.findOne({ _id: outletId, hotelId });
+      outlet = await POSOutlet.findOne({ _id: outletId, hotelId }).lean();
     }
 
     // Default tax rates if outlet not found

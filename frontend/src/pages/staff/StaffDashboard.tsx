@@ -27,6 +27,7 @@ import {
 import { checkoutInventoryService, CheckoutInventory } from '../../services/checkoutInventoryService';
 import { dailyRoutineCheckService, DailyCheckData } from '../../services/dailyRoutineCheckService';
 import TodayArrivalsWidget from '../../components/staff/TodayArrivalsWidget';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface StaffDashboardData {
   today: StaffTodayData;
@@ -36,7 +37,7 @@ interface StaffDashboardData {
   assignedRooms: DailyCheckData[];
 }
 
-export default function StaffDashboard() {
+function StaffDashboard() {
   const { user } = useAuth();
   const [data, setData] = useState<StaffDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -151,7 +152,7 @@ export default function StaffDashboard() {
             { id: 'inventory', label: 'Inventory', icon: Package },
             { id: 'checkout', label: 'Checkout Queue', icon: Receipt }
           ].map(({ id, label, icon: Icon }) => (
-            <button
+            <button aria-label="Close"
               key={id}
               onClick={() => setActiveTab(id as unknown)}
               className={`py-2 px-1 border-b-2 font-medium text-xs sm:text-sm flex items-center space-x-1 sm:space-x-2 whitespace-nowrap ${
@@ -658,3 +659,5 @@ export default function StaffDashboard() {
     </div>
   );
 }
+
+export default withErrorBoundary(StaffDashboard, { level: 'page' });

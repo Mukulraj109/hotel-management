@@ -457,32 +457,44 @@ documentSchema.methods.addAuditEntry = function(action, performedBy, details = {
 };
 
 documentSchema.methods.verify = async function(verifiedBy, comments = '', confidenceLevel = 5) {
-  this.status = 'verified';
-  this.verificationDetails.verifiedBy = verifiedBy;
-  this.verificationDetails.verifiedAt = new Date();
-  this.verificationDetails.comments = comments;
-  this.verificationDetails.confidenceLevel = confidenceLevel;
+  try {
+    this.status = 'verified';
+    this.verificationDetails.verifiedBy = verifiedBy;
+    this.verificationDetails.verifiedAt = new Date();
+    this.verificationDetails.comments = comments;
+    this.verificationDetails.confidenceLevel = confidenceLevel;
 
-  await this.addAuditEntry('verify', verifiedBy, { comments, confidenceLevel });
-  return this.save();
+    await this.addAuditEntry('verify', verifiedBy, { comments, confidenceLevel });
+    return this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 documentSchema.methods.reject = async function(rejectedBy, rejectionReason) {
-  this.status = 'rejected';
-  this.verificationDetails.verifiedBy = rejectedBy;
-  this.verificationDetails.verifiedAt = new Date();
-  this.verificationDetails.rejectionReason = rejectionReason;
+  try {
+    this.status = 'rejected';
+    this.verificationDetails.verifiedBy = rejectedBy;
+    this.verificationDetails.verifiedAt = new Date();
+    this.verificationDetails.rejectionReason = rejectionReason;
 
-  await this.addAuditEntry('reject', rejectedBy, { rejectionReason });
-  return this.save();
+    await this.addAuditEntry('reject', rejectedBy, { rejectionReason });
+    return this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 documentSchema.methods.markForRenewal = async function(updatedBy, reason = '') {
-  this.status = 'renewal_required';
-  this.renewalRequired = true;
+  try {
+    this.status = 'renewal_required';
+    this.renewalRequired = true;
 
-  await this.addAuditEntry('renewal_required', updatedBy, { reason });
-  return this.save();
+    await this.addAuditEntry('renewal_required', updatedBy, { reason });
+    return this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 documentSchema.methods.canBeViewedBy = function(user, userDepartment = null) {
@@ -592,65 +604,69 @@ documentSchema.statics.getExpiringDocuments = function(hotelId, days = 30) {
 };
 
 documentSchema.statics.getComplianceStats = async function(hotelId, options = {}) {
-  const { userType, departmentId, startDate, endDate } = options;
+  try {
+    const { userType, departmentId, startDate, endDate } = options;
 
-  let matchStage = {
-    hotelId: mongoose.Types.ObjectId(hotelId),
-    isActive: true,
-    isDeleted: false
-  };
-
-  if (userType) matchStage.userType = userType;
-  if (departmentId) matchStage.departmentId = mongoose.Types.ObjectId(departmentId);
-  if (startDate && endDate) {
-    matchStage.createdAt = {
-      $gte: new Date(startDate),
-      $lte: new Date(endDate)
+    let matchStage = {
+      hotelId: mongoose.Types.ObjectId(hotelId),
+      isActive: true,
+      isDeleted: false
     };
-  }
 
-  return this.aggregate([
-    { $match: matchStage },
-    {
-      $group: {
-        _id: null,
-        totalDocuments: { $sum: 1 },
-        verifiedDocuments: {
-          $sum: { $cond: [{ $eq: ['$status', 'verified'] }, 1, 0] }
-        },
-        pendingDocuments: {
-          $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
-        },
-        rejectedDocuments: {
-          $sum: { $cond: [{ $eq: ['$status', 'rejected'] }, 1, 0] }
-        },
-        expiredDocuments: {
-          $sum: { $cond: [{ $eq: ['$status', 'expired'] }, 1, 0] }
-        },
-        documentsByCategory: {
-          $push: {
-            category: '$category',
-            status: '$status',
-            userType: '$userType'
-          }
-        },
-        avgVerificationTime: {
-          $avg: {
-            $cond: [
-              { $ne: ['$verificationDetails.verifiedAt', null] },
-              {
-                $subtract: [
-                  '$verificationDetails.verifiedAt',
-                  '$createdAt'
-                ]
-              },
-              null
-            ]
+    if (userType) matchStage.userType = userType;
+    if (departmentId) matchStage.departmentId = mongoose.Types.ObjectId(departmentId);
+    if (startDate && endDate) {
+      matchStage.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    }
+
+    return this.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: null,
+          totalDocuments: { $sum: 1 },
+          verifiedDocuments: {
+            $sum: { $cond: [{ $eq: ['$status', 'verified'] }, 1, 0] }
+          },
+          pendingDocuments: {
+            $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] }
+          },
+          rejectedDocuments: {
+            $sum: { $cond: [{ $eq: ['$status', 'rejected'] }, 1, 0] }
+          },
+          expiredDocuments: {
+            $sum: { $cond: [{ $eq: ['$status', 'expired'] }, 1, 0] }
+          },
+          documentsByCategory: {
+            $push: {
+              category: '$category',
+              status: '$status',
+              userType: '$userType'
+            }
+          },
+          avgVerificationTime: {
+            $avg: {
+              $cond: [
+                { $ne: ['$verificationDetails.verifiedAt', null] },
+                {
+                  $subtract: [
+                    '$verificationDetails.verifiedAt',
+                    '$createdAt'
+                  ]
+                },
+                null
+              ]
+            }
           }
         }
       }
-    }
-  ]);
+    ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Pre-save middleware
@@ -682,13 +698,17 @@ documentSchema.pre('save', function(next) {
 
 // Pre-remove middleware
 documentSchema.pre('remove', async function(next) {
-  // Soft delete instead of hard delete for audit purposes
-  this.isDeleted = true;
-  this.deletedAt = new Date();
-  this.isActive = false;
+  try {
+    // Soft delete instead of hard delete for audit purposes
+    this.isDeleted = true;
+    this.deletedAt = new Date();
+    this.isActive = false;
 
-  await this.save();
-  next();
+    await this.save();
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 });
 
 export default mongoose.model('Document', documentSchema);

@@ -27,7 +27,7 @@ export async function createRoomAvailabilityData(options = {}) {
     try {
       // 1. Get all room types (after room type migration)
       const query = hotelId ? { hotelId, isActive: true } : { isActive: true };
-      const roomTypes = await RoomType.find(query).session(session);
+      const roomTypes = await RoomType.find(query).session(session).limit(1000);
       
       if (roomTypes.length === 0) {
         throw new Error('No room types found. Please run room types migration first.');
@@ -81,7 +81,7 @@ export async function createRoomAvailabilityData(options = {}) {
             checkOut: { $gt: currentDate },
             status: { $in: ['confirmed', 'checked_in'] },
             roomType: roomType.legacyType
-          }).session(session);
+          }).session(session).limit(1000);
           
           const soldRooms = bookingsForDate.reduce((total, booking) => {
             return total + booking.rooms.length;

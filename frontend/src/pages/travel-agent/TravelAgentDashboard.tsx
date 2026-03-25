@@ -36,6 +36,7 @@ import SavedFiltersManager, { SavedFilter } from '../../components/filters/Saved
 import ExportOptionsModal, { ExportOptions } from '../../components/filters/ExportOptionsModal';
 import RealTimeUpdater from '../../components/realtime/RealTimeUpdater';
 import NotificationCenter, { Notification } from '../../components/realtime/NotificationCenter';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const TravelAgentDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -349,7 +350,7 @@ const TravelAgentDashboard: React.FC = () => {
           <div className="border-b border-gray-200">
             <nav className="flex -mb-px">
               {['overview', 'bookings', 'commission', 'profile'].map((tab) => (
-                <button
+                <button aria-label="View"
                   key={tab}
                   onClick={() => {
                     setSelectedTab(tab as unknown);
@@ -602,7 +603,7 @@ const TravelAgentDashboard: React.FC = () => {
                         Commission: ₹{(booking.commission.amount + (booking.commission.bonusAmount || 0)).toLocaleString()}
                       </p>
                     </div>
-                    <button
+                    <button aria-label="View"
                       onClick={() => navigate(`/travel-agent/booking/${booking._id}`)}
                       className="ml-4 p-2 text-gray-600 hover:text-indigo-600"
                     >
@@ -734,7 +735,7 @@ const TravelAgentDashboard: React.FC = () => {
                         >
                           View
                         </button>
-                        <button className="text-gray-600 hover:text-gray-900">
+                        <button aria-label="Download" className="text-gray-600 hover:text-gray-900">
                           <Download className="h-4 w-4 inline" />
                         </button>
                       </td>
@@ -932,7 +933,7 @@ const TravelAgentDashboard: React.FC = () => {
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <button
+                  <button aria-label="Close"
                     onClick={() => setRealTimeEnabled(!realTimeEnabled)}
                     className={`px-3 py-2 text-sm rounded-lg transition-colors ${
                       realTimeEnabled
@@ -1003,4 +1004,4 @@ const TravelAgentDashboard: React.FC = () => {
   );
 };
 
-export default TravelAgentDashboard;
+export default withErrorBoundary(TravelAgentDashboard, { level: 'page' });

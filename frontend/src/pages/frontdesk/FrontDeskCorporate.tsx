@@ -39,8 +39,12 @@ interface CorporateOverviewData {
 
 // API functions
 const fetchCorporateOverview = async (): Promise<{ overview: CorporateOverviewData; topCompanies: unknown[] }> => {
-  const response = await api.get('/corporate/admin/dashboard-overview');
-  return response.data.data;
+  try {
+    const response = await api.get('/corporate/admin/dashboard-overview');
+    return response.data.data;
+  } catch (error: unknown) {
+    throw error instanceof Error ? error : new Error('Failed to fetch corporate overview');
+  }
 };
 
 export default function FrontDeskCorporate() {

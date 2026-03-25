@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import {
   Box,
   Container,
@@ -51,6 +51,7 @@ import { departmentsApi } from '../../services/api';
 import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../components/settings/ApplyToSelector';
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -182,6 +183,15 @@ const AdminDepartments: React.FC = () => {
     { value: 'other', label: 'Other' }
   ];
 
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -271,7 +281,8 @@ const AdminDepartments: React.FC = () => {
         if (!result) return; // Confirmation dialog shown
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
       } else {
         // Single property update
         if (editingDepartment) {
@@ -295,7 +306,8 @@ const AdminDepartments: React.FC = () => {
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         setApplyToScope('single');
         await loadData();
       }
@@ -714,4 +726,4 @@ const AdminDepartments: React.FC = () => {
   );
 };
 
-export default AdminDepartments;
+export default withErrorBoundary(AdminDepartments, { level: 'page' });

@@ -17,6 +17,7 @@ import allotmentService, { RoomTypeAllotment } from '../../services/allotmentSer
 import GlobalSettingsForm from '../../components/allotments/settings/GlobalSettingsForm';
 import IntegrationSettingsForm from '../../components/allotments/settings/IntegrationSettingsForm';
 import allotmentSettingsService, { HotelAllotmentSettings } from '../../services/allotmentSettingsService';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 const AdminRoomTypeAllotments: React.FC = () => {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
@@ -1041,4 +1042,4 @@ const AdminRoomTypeAllotments: React.FC = () => {
   );
 };
 
-export default AdminRoomTypeAllotments;
+export default withErrorBoundary(AdminRoomTypeAllotments, { level: 'page' });

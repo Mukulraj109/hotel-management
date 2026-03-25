@@ -7,10 +7,13 @@ import billMessageRoutes from './billMessages.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ensureTenantContext } from '../middleware/tenantIsolation.js';
-// TODO: Add request body validation (e.g., express-validator or Joi) to POST/PUT routes
 import { validate, schemas } from '../middleware/validation.js';
+import financialRateLimiter from '../middleware/financialRateLimiter.js';
 
 const router = express.Router();
+
+// Rate limiting for POS financial operations
+router.use(financialRateLimiter);
 
 // Outlet routes
 router.post('/outlets', authenticate, ensureTenantContext, authorize(['admin', 'manager']), ensurePropertyAccess, posController.createOutlet);

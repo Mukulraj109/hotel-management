@@ -192,26 +192,42 @@ class DigitalKeyService {
     status?: string;
     type?: string;
   }): Promise<DigitalKeysResponse> {
-    const response = await api.get('/digital-keys', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/digital-keys', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getSharedKeys(params?: {
     page?: number;
     limit?: number;
   }): Promise<DigitalKeysResponse> {
-    const response = await api.get('/digital-keys/shared', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/digital-keys/shared', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async generateKey(request: GenerateKeyRequest): Promise<{ message: string; data: DigitalKey }> {
-    const response = await api.post('/digital-keys/generate', request);
-    return response.data;
+    try {
+      const response = await api.post('/digital-keys/generate', request);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getKey(keyId: string): Promise<DigitalKey> {
-    const response = await api.get(`/digital-keys/${keyId}`);
-    return response.data.data;
+    try {
+      const response = await api.get(`/digital-keys/${keyId}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async validateKey(keyCode: string, request: ValidateKeyRequest): Promise<{
@@ -224,8 +240,12 @@ class DigitalKeyService {
       validUntil: string;
     };
   }> {
-    const response = await api.post(`/digital-keys/validate/${keyCode}`, request);
-    return response.data;
+    try {
+      const response = await api.post(`/digital-keys/validate/${keyCode}`, request);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async shareKey(keyId: string, request: ShareKeyRequest): Promise<{
@@ -235,13 +255,21 @@ class DigitalKeyService {
       sharedWith: ShareKeyRequest;
     };
   }> {
-    const response = await api.post(`/digital-keys/${keyId}/share`, request);
-    return response.data;
+    try {
+      const response = await api.post(`/digital-keys/${keyId}/share`, request);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async revokeShare(keyId: string, userIdOrEmail: string): Promise<{ message: string }> {
-    const response = await api.delete(`/digital-keys/${keyId}/share/${userIdOrEmail}`);
-    return response.data;
+    try {
+      const response = await api.delete(`/digital-keys/${keyId}/share/${userIdOrEmail}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getKeyLogs(keyId: string, params?: {
@@ -257,18 +285,30 @@ class DigitalKeyService {
       hasPrev: boolean;
     };
   }> {
-    const response = await api.get(`/digital-keys/${keyId}/logs`, { params });
-    return response.data.data;
+    try {
+      const response = await api.get(`/digital-keys/${keyId}/logs`, { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async revokeKey(keyId: string): Promise<{ message: string }> {
-    const response = await api.delete(`/digital-keys/${keyId}`);
-    return response.data;
+    try {
+      const response = await api.delete(`/digital-keys/${keyId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getStats(): Promise<KeyStats> {
-    const response = await api.get('/digital-keys/stats/overview');
-    return response.data.data;
+    try {
+      const response = await api.get('/digital-keys/stats/overview');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Admin-specific methods
@@ -280,15 +320,23 @@ class DigitalKeyService {
     hotel?: string;
     search?: string;
   }): Promise<DigitalKeysResponse> {
-    const response = await api.get('/digital-keys/admin', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/digital-keys/admin', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getAdminAnalytics(timeRange: string = '30d'): Promise<AdminAnalytics> {
-    const response = await api.get(`/digital-keys/admin/analytics`, {
-      params: { timeRange }
-    });
-    return response.data.data;
+    try {
+      const response = await api.get(`/digital-keys/admin/analytics`, {
+        params: { timeRange }
+      });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getAdminActivityLogs(params?: {
@@ -307,8 +355,12 @@ class DigitalKeyService {
       hasPrev: boolean;
     };
   }> {
-    const response = await api.get('/digital-keys/admin/activity-logs', { params });
-    return response.data.data;
+    try {
+      const response = await api.get('/digital-keys/admin/activity-logs', { params });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async exportAdminKeys(params?: {
@@ -317,11 +369,15 @@ class DigitalKeyService {
     hotel?: string;
     format?: 'csv' | 'excel';
   }): Promise<Blob> {
-    const response = await api.get('/digital-keys/admin/export', {
-      params,
-      responseType: 'blob'
-    });
-    return response.data;
+    try {
+      const response = await api.get('/digital-keys/admin/export', {
+        params,
+        responseType: 'blob'
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Utility functions

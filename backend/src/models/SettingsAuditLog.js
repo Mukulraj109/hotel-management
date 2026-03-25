@@ -202,154 +202,177 @@ SettingsAuditLogSchema.statics.getLogsByDateRange = function(startDate, endDate,
 
 // Static method to get statistics
 SettingsAuditLogSchema.statics.getStatistics = async function(dateRange = {}) {
-  const matchStage = {};
+  try {
+    const matchStage = {};
 
-  if (dateRange.startDate && dateRange.endDate) {
-    matchStage.timestamp = {
-      $gte: new Date(dateRange.startDate),
-      $lte: new Date(dateRange.endDate)
-    };
-  }
-
-  const stats = await this.aggregate([
-    { $match: matchStage },
-    {
-      $facet: {
-        totalChanges: [{ $count: 'count' }],
-        byAction: [
-          { $group: { _id: '$action', count: { $sum: 1 } } },
-          { $sort: { count: -1 } }
-        ],
-        byScope: [
-          { $group: { _id: '$scope', count: { $sum: 1 } } },
-          { $sort: { count: -1 } }
-        ],
-        bySettingType: [
-          { $group: { _id: '$settingType', count: { $sum: 1 } } },
-          { $sort: { count: -1 } },
-          { $limit: 10 }
-        ],
-        byStatus: [
-          { $group: { _id: '$status', count: { $sum: 1 } } },
-          { $sort: { count: -1 } }
-        ],
-        totalPropertiesAffected: [
-          { $group: { _id: null, total: { $sum: '$propertiesAffected' } } }
-        ],
-        averageDuration: [
-          { $group: { _id: null, avg: { $avg: '$duration' } } }
-        ]
-      }
+    if (dateRange.startDate && dateRange.endDate) {
+      matchStage.timestamp = {
+        $gte: new Date(dateRange.startDate),
+        $lte: new Date(dateRange.endDate)
+      };
     }
-  ]);
 
-  return stats[0];
+    const stats = await this.aggregate([
+      { $match: matchStage },
+      {
+        $facet: {
+          totalChanges: [{ $count: 'count' }],
+          byAction: [
+            { $group: { _id: '$action', count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
+          ],
+          byScope: [
+            { $group: { _id: '$scope', count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
+          ],
+          bySettingType: [
+            { $group: { _id: '$settingType', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+            { $limit: 10 }
+          ],
+          byStatus: [
+            { $group: { _id: '$status', count: { $sum: 1 } } },
+            { $sort: { count: -1 } }
+          ],
+          totalPropertiesAffected: [
+            { $group: { _id: null, total: { $sum: '$propertiesAffected' } } }
+          ],
+          averageDuration: [
+            { $group: { _id: null, avg: { $avg: '$duration' } } }
+          ]
+        }
+      }
+    ]);
+
+    return stats[0];
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get most active users
 SettingsAuditLogSchema.statics.getMostActiveUsers = async function(limit = 10, dateRange = {}) {
-  const matchStage = {};
+  try {
+    const matchStage = {};
 
-  if (dateRange.startDate && dateRange.endDate) {
-    matchStage.timestamp = {
-      $gte: new Date(dateRange.startDate),
-      $lte: new Date(dateRange.endDate)
-    };
+    if (dateRange.startDate && dateRange.endDate) {
+      matchStage.timestamp = {
+        $gte: new Date(dateRange.startDate),
+        $lte: new Date(dateRange.endDate)
+      };
+    }
+
+    return this.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: '$userId',
+          userName: { $first: '$userName' },
+          userEmail: { $first: '$userEmail' },
+          totalChanges: { $sum: 1 },
+          propertiesAffected: { $sum: '$propertiesAffected' },
+          lastActivity: { $max: '$timestamp' }
+        }
+      },
+      { $sort: { totalChanges: -1 } },
+      { $limit: limit }
+    ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  return this.aggregate([
-    { $match: matchStage },
-    {
-      $group: {
-        _id: '$userId',
-        userName: { $first: '$userName' },
-        userEmail: { $first: '$userEmail' },
-        totalChanges: { $sum: 1 },
-        propertiesAffected: { $sum: '$propertiesAffected' },
-        lastActivity: { $max: '$timestamp' }
-      }
-    },
-    { $sort: { totalChanges: -1 } },
-    { $limit: limit }
-  ]);
 };
 
 // Static method to get most changed settings
 SettingsAuditLogSchema.statics.getMostChangedSettings = async function(limit = 10, dateRange = {}) {
-  const matchStage = {};
+  try {
+    const matchStage = {};
 
-  if (dateRange.startDate && dateRange.endDate) {
-    matchStage.timestamp = {
-      $gte: new Date(dateRange.startDate),
-      $lte: new Date(dateRange.endDate)
-    };
+    if (dateRange.startDate && dateRange.endDate) {
+      matchStage.timestamp = {
+        $gte: new Date(dateRange.startDate),
+        $lte: new Date(dateRange.endDate)
+      };
+    }
+
+    return this.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: '$settingType',
+          settingName: { $first: '$settingName' },
+          totalChanges: { $sum: 1 },
+          propertiesAffected: { $sum: '$propertiesAffected' },
+          lastChange: { $max: '$timestamp' }
+        }
+      },
+      { $sort: { totalChanges: -1 } },
+      { $limit: limit }
+    ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  return this.aggregate([
-    { $match: matchStage },
-    {
-      $group: {
-        _id: '$settingType',
-        settingName: { $first: '$settingName' },
-        totalChanges: { $sum: 1 },
-        propertiesAffected: { $sum: '$propertiesAffected' },
-        lastChange: { $max: '$timestamp' }
-      }
-    },
-    { $sort: { totalChanges: -1 } },
-    { $limit: limit }
-  ]);
 };
 
 // Static method to get activity heatmap
 SettingsAuditLogSchema.statics.getActivityHeatmap = async function(dateRange = {}) {
-  const matchStage = {};
+  try {
+    const matchStage = {};
 
-  if (dateRange.startDate && dateRange.endDate) {
-    matchStage.timestamp = {
-      $gte: new Date(dateRange.startDate),
-      $lte: new Date(dateRange.endDate)
-    };
+    if (dateRange.startDate && dateRange.endDate) {
+      matchStage.timestamp = {
+        $gte: new Date(dateRange.startDate),
+        $lte: new Date(dateRange.endDate)
+      };
+    }
+
+    return this.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: {
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
+            hour: { $hour: '$timestamp' }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { '_id.date': 1, '_id.hour': 1 } }
+    ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  return this.aggregate([
-    { $match: matchStage },
-    {
-      $group: {
-        _id: {
-          date: { $dateToString: { format: '%Y-%m-%d', date: '$timestamp' } },
-          hour: { $hour: '$timestamp' }
-        },
-        count: { $sum: 1 }
-      }
-    },
-    { $sort: { '_id.date': 1, '_id.hour': 1 } }
-  ]);
 };
 
 // Pre-save middleware to set human-readable names
 SettingsAuditLogSchema.pre('save', async function(next) {
-  // Set setting name from type if not provided
-  if (!this.settingName && this.settingType) {
-    const typeToName = {
-      'check-in-out': 'Check-in/Check-out Times',
-      'currency': 'Currency Settings',
-      'timezone': 'Timezone Settings',
-      'payment-gateway': 'Payment Gateway',
-      'analytics': 'Analytics Integration',
-      'security': 'Security Settings',
-      'backup': 'Backup Configuration',
-      'room-types': 'Room Types',
-      'taxes': 'Tax Configuration',
-      'cancellation-policy': 'Cancellation Policy',
-      'language': 'Language Settings'
-    };
+  try {
+    // Set setting name from type if not provided
+    if (!this.settingName && this.settingType) {
+      const typeToName = {
+        'check-in-out': 'Check-in/Check-out Times',
+        'currency': 'Currency Settings',
+        'timezone': 'Timezone Settings',
+        'payment-gateway': 'Payment Gateway',
+        'analytics': 'Analytics Integration',
+        'security': 'Security Settings',
+        'backup': 'Backup Configuration',
+        'room-types': 'Room Types',
+        'taxes': 'Tax Configuration',
+        'cancellation-policy': 'Cancellation Policy',
+        'language': 'Language Settings'
+      };
 
-    this.settingName = typeToName[this.settingType] || this.settingType;
+      this.settingName = typeToName[this.settingType] || this.settingType;
+    }
+
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  next();
 });
+
+// Data retention TTL: auto-delete settings audit logs after 2 years (regulatory compliance)
+SettingsAuditLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 730 * 24 * 60 * 60 });
 
 const SettingsAuditLog = mongoose.model('SettingsAuditLog', SettingsAuditLogSchema);
 

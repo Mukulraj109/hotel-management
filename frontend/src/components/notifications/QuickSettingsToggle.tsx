@@ -101,7 +101,7 @@ export const QuickSettingsToggle: React.FC<QuickSettingsToggleProps> = ({
   if (variant === 'icon') {
     return (
       <>
-        <button
+        <button aria-label="Settings"
           onClick={() => setShowSettings(true)}
           className={`p-2 rounded-lg transition-colors hover:bg-gray-100 ${className}`}
           title="Notification Settings"
@@ -121,7 +121,7 @@ export const QuickSettingsToggle: React.FC<QuickSettingsToggleProps> = ({
   if (variant === 'button') {
     return (
       <>
-        <button
+        <button aria-label="Settings"
           onClick={() => setShowSettings(true)}
           className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors hover:bg-gray-100 ${className}`}
         >
@@ -142,7 +142,7 @@ export const QuickSettingsToggle: React.FC<QuickSettingsToggleProps> = ({
   // Dropdown variant - shows quick toggles inline
   return (
     <div className={`relative ${className}`}>
-      <button
+      <button aria-label="Settings"
         onClick={() => setShowDropdown(!showDropdown)}
         className="flex items-center gap-2 px-3 py-2 rounded-lg transition-colors hover:bg-gray-100"
       >
@@ -155,7 +155,7 @@ export const QuickSettingsToggle: React.FC<QuickSettingsToggleProps> = ({
       {showDropdown && (
         <>
           {/* Backdrop */}
-          <div
+          <div aria-hidden="true"
             className="fixed inset-0 z-10"
             onClick={() => setShowDropdown(false)}
           />
@@ -187,7 +187,7 @@ export const QuickSettingsToggle: React.FC<QuickSettingsToggleProps> = ({
                     )}
                     <span className="text-sm font-medium">Notifications</span>
                   </div>
-                  <button
+                  <button aria-label="Toggle"
                     onClick={handleQuickToggle}
                     disabled={toggleAllMutation.isPending}
                     className={`relative w-10 h-5 rounded-full transition-colors ${
@@ -212,7 +212,7 @@ export const QuickSettingsToggle: React.FC<QuickSettingsToggleProps> = ({
                     )}
                     <span className="text-sm font-medium">Sound</span>
                   </div>
-                  <button
+                  <button aria-label="Toggle"
                     onClick={() => toggleSoundMutation.mutate(!quickStatus?.soundEnabled)}
                     disabled={toggleSoundMutation.isPending}
                     className={`relative w-10 h-5 rounded-full transition-colors ${
@@ -233,7 +233,7 @@ export const QuickSettingsToggle: React.FC<QuickSettingsToggleProps> = ({
                     <Moon className={`w-4 h-4 ${quickStatus?.quietHoursEnabled ? 'text-blue-600' : 'text-gray-400'}`} />
                     <span className="text-sm font-medium">Quiet Hours</span>
                   </div>
-                  <button
+                  <button aria-label="Toggle"
                     onClick={() => toggleQuietHoursMutation.mutate(!quickStatus?.quietHoursEnabled)}
                     disabled={toggleQuietHoursMutation.isPending}
                     className={`relative w-10 h-5 rounded-full transition-colors ${

@@ -20,10 +20,7 @@ dotenv.config();
 
 async function connectDB() {
   try {
-    await mongoose.connect(process.env.MONGO_URI || 'mongodb+srv://mukulraj756:Zk8q2W4uDCaUWRh3@cluster0.thahvbk.mongodb.net/hotel-management', {
-      useNewUrlParser: true,
-      useUnifiedTopology: true
-    });
+    await mongoose.connect(process.env.MONGO_URI || 'mongodb+srv://mukulraj756:Zk8q2W4uDCaUWRh3@cluster0.thahvbk.mongodb.net/hotel-management');
     console.log('✅ Connected to MongoDB');
   } catch (error) {
     console.error('❌ MongoDB connection error:', error);
@@ -36,7 +33,7 @@ async function migrateUsers() {
 
   try {
     // Get all users
-    const users = await User.find({});
+    const users = await User.find({}).lean().limit(1000);
     console.log(`📊 Found ${users.length} users to migrate\n`);
 
     let migratedCount = 0;
@@ -63,7 +60,7 @@ async function migrateUsers() {
               { ownerId: user._id },
               { createdBy: user._id }
             ]
-          }).select('_id name');
+          }).select('_id name').lean().limit(1000);
 
           if (ownedHotels.length > 0) {
             // Set properties to all owned hotels
@@ -161,7 +158,7 @@ async function verifyMigration() {
       'multiPropertyAccess.enabled': true
     })
       .populate('properties', 'name')
-      .populate('primaryProperty', 'name');
+      .populate('primaryProperty', 'name').lean();
 
     if (sampleAdmin) {
       console.log('📋 Sample Migrated Admin User:');

@@ -41,6 +41,7 @@ import { Separator } from '../ui/separator';
 import FormPreview from './FormPreview';
 import { BookingFormTemplate, FormField, FormStyling, FormSettings } from '../../services/bookingFormService';
 import { bookingFormService } from '../../services/bookingFormService';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface FormBuilderProps {
   template?: BookingFormTemplate | null;
@@ -94,13 +95,13 @@ const DraggableField: React.FC<{ fieldType: Record<string, unknown>; onAddField:
   const IconComponent = fieldType.icon;
 
   return (
-    <div
+    <div role="button" tabIndex={0}
       ref={drag}
       className={`p-3 border rounded-lg cursor-grab hover:shadow-md transition-all ${
         isDragging ? 'opacity-50' : ''
       } ${getColorClass(fieldType.color)}`}
       onClick={() => onAddField(fieldType.type)}
-    >
+     onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => onAddField(fieldType.type); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
       <div className="flex items-center gap-2">
         <IconComponent className="w-4 h-4" />
         <span className="text-sm font-medium">{fieldType.label}</span>
@@ -357,12 +358,12 @@ const FieldPreview: React.FC<{
 
   return (
     <div ref={(node) => drag(drop(node))}>
-      <div
+      <div role="button" tabIndex={0}
         className={`p-4 border rounded-lg cursor-pointer transition-all ${
           isSelected ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
         } ${isDragging ? 'opacity-50' : ''}`}
         onClick={onSelect}
-      >
+       onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(e as any); } }}>
         <div className="flex items-center gap-3">
           <Move className="w-4 h-4 text-gray-400 cursor-grab" />
           <IconComponent className="w-4 h-4 text-gray-600" />
@@ -784,4 +785,4 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ template, onSave, onCancel })
   );
 };
 
-export default FormBuilder;
+export default withErrorBoundary(FormBuilder, { level: 'component' });

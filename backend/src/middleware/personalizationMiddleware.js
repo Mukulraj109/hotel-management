@@ -57,7 +57,7 @@ export const personalizeContent = async (req, res, next) => {
     }
 
     // Add personalization context to request
-    const profile = await GuestCRMProfile.findOne({ userId, hotelId });
+    const profile = await GuestCRMProfile.findOne({ userId, hotelId }).lean();
 
     if (profile) {
       req.personalizationContext = {

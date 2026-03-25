@@ -152,7 +152,7 @@ export default function AdminSettings() {
                 const Icon = tab.icon;
 
                 return (
-                  <button
+                  <button aria-label="Close"
                     key={tab.id}
                     onClick={() => handleTabChange(tab.id)}
                     className={`

@@ -67,7 +67,7 @@ export const getJournalEntry = catchAsync(async (req, res) => {
   const entry = await JournalEntry.findOne({ _id: id, hotelId })
     .populate('createdBy approvedBy voidedBy', 'name email')
     .populate('lines.accountId', 'accountCode accountName accountType normalBalance')
-    .populate('reversalEntry originalEntry', 'entryNumber description status');
+    .populate('reversalEntry originalEntry', 'entryNumber description status').lean();
 
   if (!entry) {
     return res.status(404).json({
@@ -81,7 +81,7 @@ export const getJournalEntry = catchAsync(async (req, res) => {
   if (entry.status === 'Posted') {
     ledgerEntries = await GeneralLedger.find({
       journalEntryId: entry._id
-    }).populate('accountId', 'accountCode accountName');
+    }).populate('accountId', 'accountCode accountName').lean().limit(1000);
   }
 
   res.status(200).json({
@@ -103,7 +103,7 @@ export const createJournalEntry = catchAsync(async (req, res) => {
     _id: { $in: accountIds },
     hotelId,
     isActive: true
-  });
+  }).lean().limit(1000);
 
   if (accounts.length !== accountIds.length) {
     return res.status(400).json({
@@ -149,7 +149,7 @@ export const updateJournalEntry = catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { id } = req.params;
 
-  const entry = await JournalEntry.findOne({ _id: id, hotelId });
+  const entry = await JournalEntry.findOne({ _id: id, hotelId }).lean();
   
   if (!entry) {
     return res.status(404).json({
@@ -172,7 +172,7 @@ export const updateJournalEntry = catchAsync(async (req, res) => {
       _id: { $in: accountIds },
       hotelId,
       isActive: true
-    });
+    }).lean().limit(1000);
 
     if (accounts.length !== accountIds.length) {
       return res.status(400).json({
@@ -205,7 +205,7 @@ export const postJournalEntry = catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { id } = req.params;
 
-  const entry = await JournalEntry.findOne({ _id: id, hotelId });
+  const entry = await JournalEntry.findOne({ _id: id, hotelId }).lean();
   
   if (!entry) {
     return res.status(404).json({
@@ -248,7 +248,7 @@ export const reverseJournalEntry = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { reason = 'Manual reversal' } = req.body;
 
-  const entry = await JournalEntry.findOne({ _id: id, hotelId });
+  const entry = await JournalEntry.findOne({ _id: id, hotelId }).lean();
   
   if (!entry) {
     return res.status(404).json({
@@ -294,7 +294,7 @@ export const deleteJournalEntry = catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { id } = req.params;
 
-  const entry = await JournalEntry.findOne({ _id: id, hotelId });
+  const entry = await JournalEntry.findOne({ _id: id, hotelId }).lean();
   
   if (!entry) {
     return res.status(404).json({
@@ -330,29 +330,45 @@ export const approveJournalEntry = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { comments } = req.body;
 
-  const entry = await JournalEntry.findOne({ _id: id, hotelId });
-  
-  if (!entry) {
-    return res.status(404).json({
-      status: 'error',
-      message: 'Journal entry not found'
-    });
+  // Atomically transition from Draft to Approved
+  const entry = await JournalEntry.findOneAndUpdate(
+    { _id: id, hotelId, status: 'Draft' },
+    {
+      $set: {
+        status: 'Approved',
+        approvedBy: userId,
+        approvedAt: new Date()
+      }
+    },
+    { new: true, runValidators: true }
+  );
+
+  // Append approval comments to notes if provided (separate atomic op)
+  if (entry && comments) {
+    await JournalEntry.findOneAndUpdate(
+      { _id: id },
+      { $set: { notes: (entry.notes || '') + `\nApproval: ${comments}` } },
+      { new: true }
+    );
   }
 
-  if (entry.status !== 'Draft') {
+  if (!entry) {
+    // Distinguish between not found and wrong status
+    const existing = await JournalEntry.findOne({ _id: id, hotelId }).lean();
+    if (!existing) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Journal entry not found'
+      });
+    }
     return res.status(400).json({
       status: 'error',
       message: 'Only draft entries can be approved'
     });
   }
 
-  entry.status = 'Approved';
-  entry.approvedBy = userId;
-  entry.approvedAt = new Date();
-  if (comments) entry.notes = (entry.notes || '') + `\nApproval: ${comments}`;
-
-  await entry.save();
-  await entry.populate('approvedBy', 'name email');
+  const populatedEntry = await JournalEntry.findById(id)
+    .populate('approvedBy', 'name email');
 
   logger.info(`Journal entry approved: ${entry.entryNumber}`, {
     entryId: entry._id,
@@ -363,7 +379,7 @@ export const approveJournalEntry = catchAsync(async (req, res) => {
   res.status(200).json({
     status: 'success',
     message: 'Journal entry approved successfully',
-    data: { entry }
+    data: { entry: populatedEntry }
   });
 });
 
@@ -380,29 +396,36 @@ export const rejectJournalEntry = catchAsync(async (req, res) => {
     });
   }
 
-  const entry = await JournalEntry.findOne({ _id: id, hotelId });
-  
-  if (!entry) {
-    return res.status(404).json({
-      status: 'error',
-      message: 'Journal entry not found'
-    });
-  }
+  // Atomically transition from Draft to Rejected
+  const entry = await JournalEntry.findOneAndUpdate(
+    { _id: id, hotelId, status: 'Draft' },
+    {
+      $set: {
+        status: 'Rejected',
+        rejectedBy: userId,
+        rejectedAt: new Date(),
+        rejectionReason: reason
+      }
+    },
+    { new: true, runValidators: true }
+  );
 
-  if (entry.status !== 'Draft') {
+  if (!entry) {
+    const existing = await JournalEntry.findOne({ _id: id, hotelId }).lean();
+    if (!existing) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Journal entry not found'
+      });
+    }
     return res.status(400).json({
       status: 'error',
       message: 'Only draft entries can be rejected'
     });
   }
 
-  entry.status = 'Rejected';
-  entry.rejectedBy = userId;
-  entry.rejectedAt = new Date();
-  entry.rejectionReason = reason;
-
-  await entry.save();
-  await entry.populate('rejectedBy', 'name email');
+  const populatedEntry = await JournalEntry.findById(id)
+    .populate('rejectedBy', 'name email');
 
   logger.info(`Journal entry rejected: ${entry.entryNumber}`, {
     entryId: entry._id,
@@ -414,7 +437,7 @@ export const rejectJournalEntry = catchAsync(async (req, res) => {
   res.status(200).json({
     status: 'success',
     message: 'Journal entry rejected',
-    data: { entry }
+    data: { entry: populatedEntry }
   });
 });
 

@@ -57,7 +57,7 @@ export function DropdownMenuTrigger({ children, asChild }: DropdownMenuTriggerPr
   }
   
   return (
-    <button onClick={() => setOpen(true)}>
+    <button aria-label="Close" onClick={() => setOpen(true)}>
       {children}
     </button>
   );
@@ -115,7 +115,7 @@ export function DropdownMenuItem({ children, className, onClick, disabled }: Dro
   };
   
   return (
-    <button
+    <button aria-label="Close"
       onClick={handleClick}
       disabled={disabled}
       className={cn(

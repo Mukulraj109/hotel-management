@@ -250,59 +250,67 @@ billingSessionSchema.methods.getPOSItemsForSettlement = function() {
 
 // Static method to find sessions ready for settlement integration
 billingSessionSchema.statics.findReadyForSettlement = async function(hotelId, bookingId = null) {
-  const query = {
-    hotelId,
-    status: { $in: ['room_charged', 'paid'] },
-    settlementStatus: 'pending'
-  };
+  try {
+    const query = {
+      hotelId,
+      status: { $in: ['room_charged', 'paid'] },
+      settlementStatus: 'pending'
+    };
 
-  if (bookingId) {
-    query.bookingId = bookingId;
+    if (bookingId) {
+      query.bookingId = bookingId;
+    }
+
+    return await this.find(query)
+      .populate('bookingId', 'bookingNumber')
+      .sort({ createdAt: -1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  return await this.find(query)
-    .populate('bookingId', 'bookingNumber')
-    .sort({ createdAt: -1 });
 };
 
 // Static method to get settlement integration statistics
 billingSessionSchema.statics.getSettlementIntegrationStats = async function(hotelId, dateRange = {}) {
-  const matchStage = { hotelId };
+  try {
+    const matchStage = { hotelId };
 
-  if (dateRange.start || dateRange.end) {
-    matchStage.createdAt = {};
-    if (dateRange.start) matchStage.createdAt.$gte = new Date(dateRange.start);
-    if (dateRange.end) matchStage.createdAt.$lte = new Date(dateRange.end);
-  }
-
-  const pipeline = [
-    { $match: matchStage },
-    {
-      $group: {
-        _id: '$settlementStatus',
-        count: { $sum: 1 },
-        totalAmount: { $sum: '$grandTotal' },
-        avgAmount: { $avg: '$grandTotal' }
-      }
-    },
-    {
-      $group: {
-        _id: null,
-        byStatus: {
-          $push: {
-            status: '$_id',
-            count: '$count',
-            totalAmount: '$totalAmount',
-            avgAmount: '$avgAmount'
-          }
-        },
-        totalSessions: { $sum: '$count' },
-        totalValue: { $sum: '$totalAmount' }
-      }
+    if (dateRange.start || dateRange.end) {
+      matchStage.createdAt = {};
+      if (dateRange.start) matchStage.createdAt.$gte = new Date(dateRange.start);
+      if (dateRange.end) matchStage.createdAt.$lte = new Date(dateRange.end);
     }
-  ];
 
-  return await this.aggregate(pipeline);
+    const pipeline = [
+      { $match: matchStage },
+      {
+        $group: {
+          _id: '$settlementStatus',
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$grandTotal' },
+          avgAmount: { $avg: '$grandTotal' }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          byStatus: {
+            $push: {
+              status: '$_id',
+              count: '$count',
+              totalAmount: '$totalAmount',
+              avgAmount: '$avgAmount'
+            }
+          },
+          totalSessions: { $sum: '$count' },
+          totalValue: { $sum: '$totalAmount' }
+        }
+      }
+    ];
+
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 export default mongoose.model('BillingSession', billingSessionSchema);

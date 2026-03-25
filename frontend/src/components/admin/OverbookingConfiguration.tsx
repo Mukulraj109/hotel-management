@@ -174,10 +174,6 @@ export default function OverbookingConfiguration() {
       setOverbookingLimit(0);
       setRequiresApproval(false);
     }
-    
-    // Log state after a brief delay to see if it was set
-    setTimeout(() => {
-    }, 100);
   };
 
   const handleSaveConfiguration = async () => {
@@ -500,7 +496,7 @@ export default function OverbookingConfiguration() {
               <CardContent>
                 <div className="space-y-3">
                   {overbookingRules.map(rule => (
-                    <div 
+                    <div role="button" tabIndex={0} 
                       key={rule.id} 
                       className={`p-3 border rounded-lg cursor-pointer transition-colors ${
                         selectedRoomType === rule.roomTypeId 
@@ -508,7 +504,7 @@ export default function OverbookingConfiguration() {
                           : 'border-gray-200 hover:border-gray-300'
                       }`}
                       onClick={() => handleRoomTypeSelect(rule.roomTypeId)}
-                    >
+                     onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => handleRoomTypeSelect(rule.roomTypeId); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="min-w-0 flex-1">
                           <h4 className="font-medium text-sm sm:text-base text-gray-900 truncate">{rule.roomTypeName}</h4>

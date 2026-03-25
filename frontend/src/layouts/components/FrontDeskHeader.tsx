@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bell, User, Settings, Menu, PanelLeftClose, PanelLeftOpen, CheckCircle } from 'lucide-react';
+import { Bell, User, Settings, Menu, PanelLeftClose, PanelLeftOpen, CheckCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { useNotifications, useNotificationStream } from '../../hooks/useNotifications';
@@ -25,7 +25,7 @@ export default function FrontDeskHeader({ onMenuClick, onSidebarToggle, isSideba
   useNotificationStream();
 
   // Fetch pending approval count
-  const { data: pendingApprovalsData } = useQuery({
+  const { data: pendingApprovalsData, isLoading: isLoadingApprovals } = useQuery({
     queryKey: ['pending-approvals-count'],
     queryFn: async () => {
       try {
@@ -46,7 +46,7 @@ export default function FrontDeskHeader({ onMenuClick, onSidebarToggle, isSideba
       <div className="flex justify-between items-center">
         <div className="flex items-center space-x-3">
           {/* Mobile menu button */}
-          <button
+          <button aria-label="More options"
             onClick={onMenuClick}
             className="lg:hidden p-2 rounded-md text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
@@ -54,7 +54,7 @@ export default function FrontDeskHeader({ onMenuClick, onSidebarToggle, isSideba
           </button>
 
           {/* Desktop sidebar toggle button */}
-          <button
+          <button aria-label="Close"
             onClick={onSidebarToggle}
             className="hidden lg:block p-2 rounded-md text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
             title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -76,7 +76,11 @@ export default function FrontDeskHeader({ onMenuClick, onSidebarToggle, isSideba
 
         <div className="flex items-center space-x-2 sm:space-x-4">
           {/* Approval Requests Badge */}
-          {pendingApprovalCount > 0 && (
+          {isLoadingApprovals ? (
+            <div className="p-2">
+              <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+            </div>
+          ) : pendingApprovalCount > 0 ? (
             <a
               href="/frontdesk/my-approvals"
               className="relative p-2 rounded-md text-gray-500 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
@@ -89,7 +93,7 @@ export default function FrontDeskHeader({ onMenuClick, onSidebarToggle, isSideba
                 </span>
               )}
             </a>
-          )}
+          ) : null}
 
           {/* Notification Dropdown */}
           <div className="relative">

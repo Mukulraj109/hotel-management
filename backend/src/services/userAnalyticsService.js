@@ -417,7 +417,7 @@ class UserAnalyticsService {
       })
       .select('name email role createdAt lastLogin isActive')
       .sort({ createdAt: -1 })
-      .limit(limit);
+      .limit(limit).lean();
 
       return users;
     } catch (error) {

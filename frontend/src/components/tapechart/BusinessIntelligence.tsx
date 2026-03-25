@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import { toast } from '@/utils/toast';
+import { withErrorBoundary } from '../ErrorBoundary';
 import {
   BarChart3, LineChart, PieChart, TrendingUp, TrendingDown,
   Calendar, Download, Mail, Clock, Users, DollarSign,
@@ -940,3 +941,5 @@ export const BusinessIntelligence: React.FC = () => {
     </Dialog>
   );
 };
+
+export default withErrorBoundary(BusinessIntelligence, { level: 'component' });

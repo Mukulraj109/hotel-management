@@ -143,10 +143,7 @@ const sampleWaitlistEntries = [
 
 async function connectDB() {
   try {
-    await mongoose.connect(process.env.MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    await mongoose.connect(process.env.MONGO_URI);
     console.log('✅ MongoDB connected for waiting list seeding');
   } catch (error) {
     console.error('❌ MongoDB connection error:', error);
@@ -159,12 +156,12 @@ async function seedWaitingList() {
     console.log('🌱 Starting waiting list seeding...');
 
     // Get hotel and admin user for references
-    const hotel = await Hotel.findOne({ name: /pentouz/i });
+    const hotel = await Hotel.findOne({ name: /pentouz/i }).lean();
     if (!hotel) {
       throw new Error('Hotel not found. Please run basic seed first.');
     }
 
-    const adminUser = await User.findOne({ email: 'admin@hotel.com' });
+    const adminUser = await User.findOne({ email: 'admin@hotel.com' }).lean();
     if (!adminUser) {
       throw new Error('Admin user not found. Please run basic seed first.');
     }

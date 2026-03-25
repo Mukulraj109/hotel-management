@@ -15,7 +15,7 @@ class PaymentMethodService {
       const existingPaymentMethod = await PaymentMethod.findOne({ 
         code: paymentMethodData.code,
         hotelId: paymentMethodData.hotelId 
-      });
+      }).lean();
 
       if (existingPaymentMethod) {
         throw new Error('Payment method code already exists for this hotel');
@@ -205,7 +205,7 @@ class PaymentMethodService {
   // Delete payment method
   async deletePaymentMethod(paymentMethodId, userId) {
     try {
-      const paymentMethod = await PaymentMethod.findById(paymentMethodId);
+      const paymentMethod = await PaymentMethod.findById(paymentMethodId).lean();
 
       if (!paymentMethod) {
         throw new Error('Payment method not found');
@@ -256,7 +256,7 @@ class PaymentMethodService {
   // Test gateway connection
   async testGatewayConnection(paymentMethodId) {
     try {
-      const paymentMethod = await PaymentMethod.findById(paymentMethodId);
+      const paymentMethod = await PaymentMethod.findById(paymentMethodId).lean();
       
       if (!paymentMethod) {
         throw new Error('Payment method not found');
@@ -279,7 +279,7 @@ class PaymentMethodService {
   // Update analytics for payment method
   async updatePaymentMethodAnalytics(paymentMethodId, transactionData) {
     try {
-      const paymentMethod = await PaymentMethod.findById(paymentMethodId);
+      const paymentMethod = await PaymentMethod.findById(paymentMethodId).lean();
       
       if (!paymentMethod) {
         throw new Error('Payment method not found');
@@ -295,7 +295,7 @@ class PaymentMethodService {
   // Get payment method analytics
   async getPaymentMethodAnalytics(paymentMethodId, period = '30d') {
     try {
-      const paymentMethod = await PaymentMethod.findById(paymentMethodId);
+      const paymentMethod = await PaymentMethod.findById(paymentMethodId).lean();
       
       if (!paymentMethod) {
         throw new Error('Payment method not found');
@@ -366,7 +366,7 @@ class PaymentMethodService {
       const paymentMethods = await PaymentMethod.find(filter)
         .populate('applicableDepartments', 'name code')
         .limit(limit)
-        .sort({ 'analytics.popularityScore': -1, name: 1 });
+        .sort({ 'analytics.popularityScore': -1, name: 1 }).lean();
 
       return paymentMethods;
     } catch (error) {
@@ -404,7 +404,7 @@ class PaymentMethodService {
       const paymentMethods = await PaymentMethod.find({ hotelId })
         .populate('applicableDepartments', 'name code')
         .populate('createdBy', 'name email')
-        .sort({ type: 1, name: 1 });
+        .sort({ type: 1, name: 1 }).lean().limit(1000);
 
       if (format === 'csv') {
         return this.convertToCSV(paymentMethods);
@@ -437,7 +437,7 @@ class PaymentMethodService {
   // Calculate fees for amount
   async calculateFees(paymentMethodId, amount, currency = 'USD') {
     try {
-      const paymentMethod = await PaymentMethod.findById(paymentMethodId);
+      const paymentMethod = await PaymentMethod.findById(paymentMethodId).lean();
       
       if (!paymentMethod) {
         throw new Error('Payment method not found');
@@ -535,22 +535,26 @@ class PaymentMethodService {
   }
 
   async getOverallStats(hotelId) {
-    const paymentMethods = await PaymentMethod.find({ hotelId });
+    try {
+      const paymentMethods = await PaymentMethod.find({ hotelId }).lean().limit(1000);
     
-    return {
-      total: paymentMethods.length,
-      active: paymentMethods.filter(pm => pm.isActive).length,
-      inactive: paymentMethods.filter(pm => !pm.isActive).length,
-      online: paymentMethods.filter(pm => pm.isOnline).length,
-      manual: paymentMethods.filter(pm => pm.isManual).length,
-      totalTransactions: paymentMethods.reduce((sum, pm) => sum + pm.analytics.totalTransactions, 0),
-      totalAmount: paymentMethods.reduce((sum, pm) => sum + pm.analytics.totalAmount, 0),
-      avgSuccessRate: paymentMethods.length > 0 
-        ? (paymentMethods.reduce((sum, pm) => sum + parseFloat(pm.successRate), 0) / paymentMethods.length).toFixed(2)
-        : 0,
-      typesUsed: [...new Set(paymentMethods.map(pm => pm.type))].length,
-      lastActivity: Math.max(...paymentMethods.map(pm => pm.analytics.lastTransaction || pm.createdAt).map(d => new Date(d)))
-    };
+      return {
+        total: paymentMethods.length,
+        active: paymentMethods.filter(pm => pm.isActive).length,
+        inactive: paymentMethods.filter(pm => !pm.isActive).length,
+        online: paymentMethods.filter(pm => pm.isOnline).length,
+        manual: paymentMethods.filter(pm => pm.isManual).length,
+        totalTransactions: paymentMethods.reduce((sum, pm) => sum + pm.analytics.totalTransactions, 0),
+        totalAmount: paymentMethods.reduce((sum, pm) => sum + pm.analytics.totalAmount, 0),
+        avgSuccessRate: paymentMethods.length > 0 
+          ? (paymentMethods.reduce((sum, pm) => sum + parseFloat(pm.successRate), 0) / paymentMethods.length).toFixed(2)
+          : 0,
+        typesUsed: [...new Set(paymentMethods.map(pm => pm.type))].length,
+        lastActivity: Math.max(...paymentMethods.map(pm => pm.analytics.lastTransaction || pm.createdAt).map(d => new Date(d)))
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   convertToCSV(paymentMethods) {

@@ -135,64 +135,92 @@ class BypassApprovalService {
    * Get pending approvals for the current user
    */
   async getPendingApprovals() {
-    const response = await api.get('/admin-bypass-management/approvals/pending');
-    return response.data;
+    try {
+      const response = await api.get('/admin-bypass-management/approvals/pending');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Process an approval (approve/reject)
    */
   async processApproval(workflowId: string, action: 'approved' | 'rejected', notes: string) {
-    const response = await api.post(`/admin-bypass-management/approvals/${workflowId}/process`, {
-      action,
-      notes
-    });
-    return response.data;
+    try {
+      const response = await api.post(`/admin-bypass-management/approvals/${workflowId}/process`, {
+        action,
+        notes
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Delegate an approval to another user
    */
   async delegateApproval(workflowId: string, toUserId: string, delegationReason: string) {
-    const response = await api.post(`/admin-bypass-management/approvals/${workflowId}/delegate`, {
-      toUserId,
-      delegationReason
-    });
-    return response.data;
+    try {
+      const response = await api.post(`/admin-bypass-management/approvals/${workflowId}/delegate`, {
+        toUserId,
+        delegationReason
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Escalate an approval workflow
    */
   async escalateApproval(workflowId: string, reason?: string) {
-    const response = await api.post(`/admin-bypass-management/approvals/${workflowId}/escalate`, {
-      reason
-    });
-    return response.data;
+    try {
+      const response = await api.post(`/admin-bypass-management/approvals/${workflowId}/escalate`, {
+        reason
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get approval workflow details
    */
   async getApprovalWorkflow(workflowId: string): Promise<{ data: ApprovalWorkflow }> {
-    const response = await api.get(`/admin-bypass-management/approvals/${workflowId}`);
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/approvals/${workflowId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get approval statistics
    */
   async getApprovalStatistics(timeRange: number = 30): Promise<{ data: ApprovalStatistics }> {
-    const response = await api.get(`/admin-bypass-management/approvals/statistics?timeRange=${timeRange}`);
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/approvals/statistics?timeRange=${timeRange}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get workflows by status
    */
   async getWorkflowsByStatus(status: string, limit: number = 50) {
-    const response = await api.get(`/admin-bypass-management/approvals/status/${status}?limit=${limit}`);
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/approvals/status/${status}?limit=${limit}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -253,8 +281,12 @@ class BypassApprovalService {
       country?: string;
     };
   }) {
-    const response = await api.post('/admin-bypass-management/enhanced-checkout', data);
-    return response.data;
+    try {
+      const response = await api.post('/admin-bypass-management/enhanced-checkout', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -272,16 +304,24 @@ class BypassApprovalService {
       currency?: string;
     };
   }) {
-    const response = await api.post('/admin-bypass-management/security/validate', data);
-    return response.data;
+    try {
+      const response = await api.post('/admin-bypass-management/security/validate', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get approval workflow history for a bypass audit
    */
   async getWorkflowHistory(bypassAuditId: string) {
-    const response = await api.get(`/admin-bypass-management/approvals/history/${bypassAuditId}`);
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/approvals/history/${bypassAuditId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -300,17 +340,25 @@ class BypassApprovalService {
    * Get users who can be assigned as approvers
    */
   async getAvailableApprovers(role?: string) {
-    const params = role ? `?role=${role}` : '';
-    const response = await api.get(`/admin-bypass-management/approvals/approvers${params}`);
-    return response.data;
+    try {
+      const params = role ? `?role=${role}` : '';
+      const response = await api.get(`/admin-bypass-management/approvals/approvers${params}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get approval workflow templates
    */
   async getApprovalTemplates() {
-    const response = await api.get('/admin-bypass-management/approvals/templates');
-    return response.data;
+    try {
+      const response = await api.get('/admin-bypass-management/approvals/templates');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -326,8 +374,12 @@ class BypassApprovalService {
     escalationEnabled?: boolean;
     timeoutMinutes?: number;
   }) {
-    const response = await api.post('/admin-bypass-management/approvals/custom', data);
-    return response.data;
+    try {
+      const response = await api.post('/admin-bypass-management/approvals/custom', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**

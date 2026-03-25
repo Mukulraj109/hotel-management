@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -44,6 +44,12 @@ export const GuestIntelligence: React.FC<GuestIntelligenceProps> = () => {
   const [activeTab, setActiveTab] = useState('vip');
   const [guestProfiles, setGuestProfiles] = useState<GuestProfile[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     generateMockGuestProfiles();
@@ -107,6 +113,7 @@ export const GuestIntelligence: React.FC<GuestIntelligenceProps> = () => {
     setLoading(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 1000));
+    if (!isMountedRef.current) return;
       toast.success('Personalized offer sent successfully');
     } catch (error) {
       toast.error('Failed to send offer');

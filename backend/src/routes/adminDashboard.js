@@ -18,6 +18,7 @@ import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import logger from '../utils/logger.js';
+import { validateTransition } from '../utils/bookingStateMachine.js';
 
 const router = express.Router();
 
@@ -40,7 +41,7 @@ router.use(ensurePropertyAccess);
  */
 router.get('/hotel', authorize('admin', 'staff', 'manager'), catchAsync(async (req, res) => {
   // For single hotel application, get the first (and only) hotel
-  const hotel = await Hotel.findOne().select('_id name');
+  const hotel = await Hotel.findOne().select('_id name').lean();
 
   if (!hotel) {
     throw new ApplicationError('Hotel not found', 404);
@@ -833,7 +834,7 @@ router.get('/occupancy', authorize('admin', 'staff'), catchAsync(async (req, res
   }
 
   // Check if hotel exists
-  const hotelExists = await Hotel.findById(hotelId);
+  const hotelExists = await Hotel.findById(hotelId).lean();
   logger.debug('Hotel lookup result', { exists: !!hotelExists, name: hotelExists?.name, id: hotelExists?._id });
 
   // Use UTC dates to match booking dates (which are stored in UTC)
@@ -847,7 +848,7 @@ router.get('/occupancy', authorize('admin', 'staff'), catchAsync(async (req, res
     checkIn: { $lte: tomorrow },
     checkOut: { $gte: today },
     status: { $in: ['confirmed', 'checked_in'] }
-  }).limit(parseInt(req.query.limit) || 50);
+  }).limit(parseInt(req.query.limit) || 50).lean();
   
   logger.debug('Current bookings query result', { count: currentBookings.length, dateRange: { today, tomorrow } });
   
@@ -5821,6 +5822,12 @@ router.post('/bypass-checkout', authenticate, authorize('admin', 'frontdesk'), c
     isAdminBypass: true // Flag to identify bypass checkouts
   });
 
+  // Validate status transition before checkout
+  const checkoutTransition = validateTransition(booking.status, 'checked_out');
+  if (!checkoutTransition.valid) {
+    throw new ApplicationError(checkoutTransition.error, 400);
+  }
+
   // Update booking status to checked out
   booking.status = 'checked_out';
   booking.actualCheckOut = new Date();
@@ -5877,13 +5884,13 @@ router.get('/checked-in-bookings', authenticate, authorize('admin', 'frontdesk')
   .populate('userId', 'name email phone')
   .populate('rooms.roomId', 'roomNumber type')
   .sort({ checkIn: -1 })
-  .limit(20);
+  .limit(20).lean();
 
   // Check which ones already have checkout inventory
   const bookingIds = checkedInBookings.map(b => b._id);
   const existingCheckouts = await CheckoutInventory.find({
     bookingId: { $in: bookingIds }
-  }).select('bookingId status paymentStatus');
+  }).select('bookingId status paymentStatus').lean().limit(1000);
 
   const checkoutMap = {};
   existingCheckouts.forEach(checkout => {

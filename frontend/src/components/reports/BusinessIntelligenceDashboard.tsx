@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { TrendingUp, TrendingDown, IndianRupee, Users, Home, Star, AlertTriangle, Activity, BarChart3, Calculator, Clock } from 'lucide-react';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface BusinessIntelligenceProps {
   hotelId: string;
@@ -89,7 +90,7 @@ interface KPIData {
 
 const CHART_COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#00ff00'];
 
-export default function BusinessIntelligenceDashboard({ hotelId, month, year }: BusinessIntelligenceProps) {
+function BusinessIntelligenceDashboard({ hotelId, month, year }: BusinessIntelligenceProps) {
   const [data, setData] = useState<KPIData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -767,3 +768,5 @@ export default function BusinessIntelligenceDashboard({ hotelId, month, year }: 
     </div>
   );
 }
+
+export default withErrorBoundary(BusinessIntelligenceDashboard, { level: 'component' });

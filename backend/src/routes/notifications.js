@@ -51,7 +51,7 @@ router.get('/', catchAsync(async (req, res, next) => {
     .populate('metadata.bookingId', 'bookingNumber checkIn checkOut roomNumber')
     .populate('metadata.serviceBookingId', 'bookingDate numberOfPeople serviceId')
     .populate('metadata.paymentId', 'amount currency status')
-    .populate('metadata.loyaltyTransactionId', 'points type description');
+    .populate('metadata.loyaltyTransactionId', 'points type description').lean();
   
   // Get total count for pagination
   const total = await Notification.countDocuments(query);
@@ -398,7 +398,7 @@ router.get('/summary-legacy', catchAsync(async (req, res, next) => {
   const recentNotifications = await Notification.find({ userId })
     .sort({ createdAt: -1 })
     .limit(5)
-    .select('type title message createdAt readAt priority');
+    .select('type title message createdAt readAt priority').lean();
 
   res.status(200).json({
     status: 'success',
@@ -420,7 +420,7 @@ router.get('/preferences', catchAsync(async (req, res, next) => {
   const userId = req.user._id;
   
   // Get user to access hotelId
-  const user = await User.findById(userId);
+  const user = await User.findById(userId).lean();
   if (!user) {
     return next(new ApplicationError('User not found', 404));
   }
@@ -697,7 +697,7 @@ router.get('/:id', catchAsync(async (req, res, next) => {
     .populate('metadata.bookingId', 'bookingNumber checkIn checkOut roomNumber')
     .populate('metadata.serviceBookingId', 'bookingDate numberOfPeople serviceId')
     .populate('metadata.paymentId', 'amount currency status')
-    .populate('metadata.loyaltyTransactionId', 'points type description');
+    .populate('metadata.loyaltyTransactionId', 'points type description').lean();
   
   if (!notification) {
     return next(new ApplicationError('Notification not found', 404));
@@ -714,7 +714,7 @@ router.patch('/:id/read', catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user._id;
   
-  const notification = await Notification.findOne({ _id: id, userId });
+  const notification = await Notification.findOne({ _id: id, userId }).lean();
   
   if (!notification) {
     return next(new ApplicationError('Notification not found', 404));
@@ -807,7 +807,7 @@ router.post('/test', validate(schemas.sendTestNotification), catchAsync(async (r
   const { channel, type } = req.body;
 
   // Get user preferences
-  const preferences = await NotificationPreference.findOne({ userId });
+  const preferences = await NotificationPreference.findOne({ userId }).lean();
   if (!preferences) {
     return next(new ApplicationError('Notification preferences not found', 404));
   }
@@ -1097,7 +1097,7 @@ router.get('/templates', catchAsync(async (req, res, next) => {
       .skip(skip)
       .limit(parseInt(limit))
       .populate('metadata.createdBy', 'firstName lastName email')
-      .populate('metadata.updatedBy', 'firstName lastName email');
+      .populate('metadata.updatedBy', 'firstName lastName email').lean();
   }
 
   const total = await NotificationTemplate.countDocuments(query);
@@ -1263,7 +1263,7 @@ router.post('/templates/:id/preview', catchAsync(async (req, res, next) => {
     _id: id,
     hotelId,
     'metadata.isActive': true
-  });
+  }).lean();
 
   if (!template) {
     throw new ApplicationError('Template not found', 404);

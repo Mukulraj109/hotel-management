@@ -150,7 +150,7 @@ export const getApprovalRequests = catchAsync(async (req, res) => {
     .populate('reviewedBy', 'name email role')
     .sort(sortOptions)
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   // Get total count for pagination
   const total = await ApprovalRequest.countDocuments(query);
@@ -177,7 +177,7 @@ export const getApprovalRequestById = catchAsync(async (req, res) => {
 
   const approvalRequest = await ApprovalRequest.findById(id)
     .populate('requestedBy', 'name email role')
-    .populate('reviewedBy', 'name email role');
+    .populate('reviewedBy', 'name email role').lean();
 
   if (!approvalRequest) {
     throw new ApplicationError(
@@ -233,7 +233,7 @@ export const approveRequest = catchAsync(async (req, res) => {
     );
   }
 
-  const approvalRequest = await ApprovalRequest.findById(id);
+  const approvalRequest = await ApprovalRequest.findById(id).lean();
 
   if (!approvalRequest) {
     throw new ApplicationError(
@@ -273,7 +273,7 @@ export const approveRequest = catchAsync(async (req, res) => {
         await Booking.findByIdAndUpdate(
           targetResourceId,
           requestData.proposed,
-          { session, runValidators: true }
+          { new: true, session, runValidators: true }
         );
         break;
 
@@ -281,7 +281,7 @@ export const approveRequest = catchAsync(async (req, res) => {
         await Room.findByIdAndUpdate(
           targetResourceId,
           requestData.proposed,
-          { session, runValidators: true }
+          { new: true, session, runValidators: true }
         );
         break;
 
@@ -292,7 +292,7 @@ export const approveRequest = catchAsync(async (req, res) => {
           await RoomType.findByIdAndUpdate(
             targetResourceId,
             requestData.proposed,
-            { session, runValidators: true }
+            { new: true, session, runValidators: true }
           );
         }
         break;
@@ -303,6 +303,15 @@ export const approveRequest = catchAsync(async (req, res) => {
           400,
           'INVALID_RESOURCE'
         );
+    }
+
+    // Validate status transition: only 'pending' -> 'approved' is allowed
+    if (approvalRequest.status !== 'pending') {
+      throw new ApplicationError(
+        `Cannot approve request: invalid transition from '${approvalRequest.status}' to 'approved'`,
+        400,
+        'INVALID_STATUS_TRANSITION'
+      );
     }
 
     // Update approval request status
@@ -397,6 +406,15 @@ export const rejectRequest = catchAsync(async (req, res) => {
       'Review notes are required when rejecting a request',
       400,
       'NOTES_REQUIRED'
+    );
+  }
+
+  // Validate status transition: only 'pending' -> 'rejected' is allowed
+  if (approvalRequest.status !== 'pending') {
+    throw new ApplicationError(
+      `Cannot reject request: invalid transition from '${approvalRequest.status}' to 'rejected'`,
+      400,
+      'INVALID_STATUS_TRANSITION'
     );
   }
 

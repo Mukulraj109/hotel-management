@@ -170,25 +170,33 @@ userPreferenceSchema.index({ hotelId: 1 });
 
 // Static methods
 userPreferenceSchema.statics.getOrCreateForUser = async function(userId, hotelId = null) {
-  let preference = await this.findOne({ userId });
+  try {
+    let preference = await this.findOne({ userId }).lean();
 
-  if (!preference) {
-    preference = await this.create({
-      userId,
-      hotelId,
-      // Use default values from schema
-    });
+    if (!preference) {
+      preference = await this.create({
+        userId,
+        hotelId,
+        // Use default values from schema
+      });
+    }
+
+    return preference;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  return preference;
 };
 
 userPreferenceSchema.statics.updatePreferences = async function(userId, updates) {
-  return await this.findOneAndUpdate(
-    { userId },
-    { $set: updates },
-    { new: true, upsert: true }
-  );
+  try {
+    return await this.findOneAndUpdate(
+      { userId },
+      { $set: updates },
+      { new: true, upsert: true }
+    );
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance methods

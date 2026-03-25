@@ -254,24 +254,28 @@ roomBlockSchema.methods.overlapsWithDateRange = function(startDate, endDate) {
 
 // Instance method to release the block
 roomBlockSchema.methods.release = async function(userId, reason = null) {
-  this.status = 'released';
-  this.releasedBy = userId;
-  this.releasedAt = new Date();
-  if (reason) this.releaseReason = reason;
+  try {
+    this.status = 'released';
+    this.releasedBy = userId;
+    this.releasedAt = new Date();
+    if (reason) this.releaseReason = reason;
 
-  // Update associated rooms
-  const Room = mongoose.model('Room');
-  await Room.updateMany(
-    { _id: { $in: this.roomIds } },
-    {
-      $unset: { blockId: 1 },
-      status: 'vacant',
-      statusUpdatedAt: new Date(),
-      statusUpdatedBy: userId
-    }
-  );
+    // Update associated rooms
+    const Room = mongoose.model('Room');
+    await Room.updateMany(
+      { _id: { $in: this.roomIds } },
+      {
+        $unset: { blockId: 1 },
+        status: 'vacant',
+        statusUpdatedAt: new Date(),
+        statusUpdatedBy: userId
+      }
+    );
 
-  return await this.save();
+    return await this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to find active blocks for date range
@@ -311,19 +315,23 @@ roomBlockSchema.statics.findOverlapping = function(hotelId, roomIds, startDate, 
 
 // Static method to automatically expire old blocks
 roomBlockSchema.statics.expireOldBlocks = async function() {
-  const now = new Date();
+  try {
+    const now = new Date();
 
-  const expiredBlocks = await this.updateMany(
-    {
-      status: 'active',
-      endDate: { $lt: now }
-    },
-    {
-      status: 'expired'
-    }
-  );
+    const expiredBlocks = await this.updateMany(
+      {
+        status: 'active',
+        endDate: { $lt: now }
+      },
+      {
+        status: 'expired'
+      }
+    );
 
-  return expiredBlocks;
+    return expiredBlocks;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Pre-save hook to automatically expire if end date has passed

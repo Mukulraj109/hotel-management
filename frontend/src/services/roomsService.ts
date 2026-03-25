@@ -58,18 +58,22 @@ class RoomsService {
     status?: string;
     floor?: number;
   }): Promise<RoomsResponse> {
-    const searchParams = new URLSearchParams();
+    try {
+      const searchParams = new URLSearchParams();
     
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          searchParams.append(key, value.toString());
-        }
-      });
-    }
+      if (params) {
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            searchParams.append(key, value.toString());
+          }
+        });
+      }
 
-    const response = await api.get(`${this.baseUrl}?${searchParams.toString()}`);
-    return response.data.data; // The API returns { status: 'success', data: {...} }
+      const response = await api.get(`${this.baseUrl}?${searchParams.toString()}`);
+      return response.data.data; // The API returns { status: 'success', data: {...} }
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getAdminRooms(params?: {
@@ -80,38 +84,54 @@ class RoomsService {
     status?: string;
     floor?: number;
   }): Promise<RoomsResponse> {
-    const searchParams = new URLSearchParams();
+    try {
+      const searchParams = new URLSearchParams();
 
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          searchParams.append(key, value.toString());
+      if (params) {
+        Object.entries(params).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            searchParams.append(key, value.toString());
+          }
+        });
+      }
+
+      const response = await api.get(`${this.baseUrl}?${searchParams.toString()}`, {
+        headers: {
+          'X-Admin-Request': 'true'
         }
       });
+
+      return response.data.data; // The API returns { status: 'success', data: {...} }
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-
-    const response = await api.get(`${this.baseUrl}?${searchParams.toString()}`, {
-      headers: {
-        'X-Admin-Request': 'true'
-      }
-    });
-
-    return response.data.data; // The API returns { status: 'success', data: {...} }
   }
 
   async getRoomById(id: string): Promise<Room> {
-    const response = await api.get(`${this.baseUrl}/${id}`);
-    return response.data.data;
+    try {
+      const response = await api.get(`${this.baseUrl}/${id}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateRoom(id: string, updates: Partial<Room>): Promise<Room> {
-    const response = await api.patch(`${this.baseUrl}/${id}`, updates);
-    return response.data.data;
+    try {
+      const response = await api.patch(`${this.baseUrl}/${id}`, updates);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateRoomStatus(id: string, status: Room['status']): Promise<Room> {
-    const response = await api.patch(`${this.baseUrl}/${id}`, { status });
-    return response.data.data;
+    try {
+      const response = await api.patch(`${this.baseUrl}/${id}`, { status });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async bulkUpdateStatus(roomIds: string[], status: Room['status']): Promise<Room[]> {
@@ -121,8 +141,12 @@ class RoomsService {
   }
 
   async getRoomMetrics(hotelId: string): Promise<RoomMetrics> {
-    const response = await api.get(`${this.baseUrl}/metrics?hotelId=${hotelId}`);
-    return response.data.data; // The API returns { status: 'success', data: {...} }
+    try {
+      const response = await api.get(`${this.baseUrl}/metrics?hotelId=${hotelId}`);
+      return response.data.data; // The API returns { status: 'success', data: {...} }
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

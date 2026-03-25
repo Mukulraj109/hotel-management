@@ -54,7 +54,7 @@ router.get('/', authorize('admin', 'manager', 'staff'), catchAsync(async (req, r
     .populate('items.itemId', 'name category unitPrice')
     .populate('createdBy', 'name email')
     .populate('lastUpdatedBy', 'name email')
-    .sort({ roomType: 1, isDefault: -1, createdAt: -1 });
+    .sort({ roomType: 1, isDefault: -1, createdAt: -1 }).lean().limit(1000);
 
   res.status(200).json({
     status: 'success',
@@ -89,7 +89,7 @@ router.get('/:id', authorize('admin', 'manager', 'staff'), catchAsync(async (req
   const template = await LaundryTemplate.findOne({ _id: id, hotelId })
     .populate('items.itemId', 'name category unitPrice')
     .populate('createdBy', 'name email')
-    .populate('lastUpdatedBy', 'name email');
+    .populate('lastUpdatedBy', 'name email').lean();
 
   if (!template) {
     throw new ApplicationError('Laundry template not found', 404);
@@ -171,7 +171,7 @@ router.post('/', authorize('admin', 'manager'), catchAsync(async (req, res) => {
       _id: { $in: itemIds },
       hotelId,
       isActive: true
-    });
+    }).lean().limit(1000);
     
     if (existingItems.length !== itemIds.length) {
       throw new ApplicationError('One or more inventory items not found or inactive', 400);
@@ -239,11 +239,6 @@ router.put('/:id', authorize('admin', 'manager'), catchAsync(async (req, res) =>
   const { id } = req.params;
   const updateData = req.body;
 
-  const template = await LaundryTemplate.findOne({ _id: id, hotelId });
-  if (!template) {
-    throw new ApplicationError('Laundry template not found', 404);
-  }
-
   // Validate item IDs if provided
   if (updateData.items) {
     const itemIds = updateData.items.map(item => item.itemId).filter(Boolean);
@@ -252,28 +247,35 @@ router.put('/:id', authorize('admin', 'manager'), catchAsync(async (req, res) =>
         _id: { $in: itemIds },
         hotelId,
         isActive: true
-      });
-      
+      }).lean().limit(1000);
+
       if (existingItems.length !== itemIds.length) {
         throw new ApplicationError('One or more inventory items not found or inactive', 400);
       }
     }
   }
 
-  // Update template
+  // Build update fields
+  const setFields = {};
   Object.keys(updateData).forEach(key => {
     if (updateData[key] !== undefined) {
-      template[key] = updateData[key];
+      setFields[key] = updateData[key];
     }
   });
+  setFields.lastUpdatedBy = userId;
 
-  template.lastUpdatedBy = userId;
-  await template.save();
-
-  await template.populate([
+  const template = await LaundryTemplate.findOneAndUpdate(
+    { _id: id, hotelId },
+    { $set: setFields },
+    { new: true, runValidators: true }
+  ).populate([
     { path: 'items.itemId', select: 'name category unitPrice' },
     { path: 'lastUpdatedBy', select: 'name email' }
   ]);
+
+  if (!template) {
+    throw new ApplicationError('Laundry template not found', 404);
+  }
 
   res.status(200).json({
     status: 'success',
@@ -308,16 +310,22 @@ router.delete('/:id', authorize('admin', 'manager'), catchAsync(async (req, res)
   const { hotelId } = req.user;
   const { id } = req.params;
 
-  const template = await LaundryTemplate.findOne({ _id: id, hotelId });
+  // Atomically delete only non-default templates
+  const template = await LaundryTemplate.findOneAndDelete({
+    _id: id,
+    hotelId,
+    isDefault: { $ne: true }
+  });
+
   if (!template) {
-    throw new ApplicationError('Laundry template not found', 404);
+    const exists = await LaundryTemplate.findOne({ _id: id, hotelId }).lean();
+    if (!exists) {
+      throw new ApplicationError('Laundry template not found', 404);
+    }
+    if (exists.isDefault) {
+      throw new ApplicationError('Cannot delete default template. Set another template as default first.', 400);
+    }
   }
-
-  if (template.isDefault) {
-    throw new ApplicationError('Cannot delete default template. Set another template as default first.', 400);
-  }
-
-  await LaundryTemplate.findByIdAndDelete(id);
 
   res.status(200).json({
     status: 'success',
@@ -349,15 +357,24 @@ router.post('/:id/set-default', authorize('admin', 'manager'), catchAsync(async 
   const { hotelId, _id: userId } = req.user;
   const { id } = req.params;
 
-  const template = await LaundryTemplate.findOne({ _id: id, hotelId });
-  if (!template) {
+  // First verify the template exists and get its roomType
+  const targetTemplate = await LaundryTemplate.findOne({ _id: id, hotelId }).lean();
+  if (!targetTemplate) {
     throw new ApplicationError('Laundry template not found', 404);
   }
 
-  // Set this template as default and unset others for the same room type
-  await template.toggleAutomationType('default', true);
-  template.lastUpdatedBy = userId;
-  await template.save();
+  // Unset other defaults for the same room type atomically
+  await LaundryTemplate.updateMany(
+    { hotelId, roomType: targetTemplate.roomType, _id: { $ne: id }, isDefault: true },
+    { $set: { isDefault: false } }
+  );
+
+  // Set this template as default atomically
+  const template = await LaundryTemplate.findOneAndUpdate(
+    { _id: id, hotelId },
+    { $set: { isDefault: true, lastUpdatedBy: userId } },
+    { new: true, runValidators: true }
+  );
 
   res.status(200).json({
     status: 'success',
@@ -417,7 +434,7 @@ router.post('/create-defaults', authorize('admin', 'manager'), catchAsync(async 
   const { hotelId, _id: userId } = req.user;
 
   // Check if default templates already exist
-  const existingTemplates = await LaundryTemplate.find({ hotelId, isDefault: true });
+  const existingTemplates = await LaundryTemplate.find({ hotelId, isDefault: true }).lean().limit(1000);
   if (existingTemplates.length > 0) {
     throw new ApplicationError('Default templates already exist. Delete existing ones first.', 400);
   }
@@ -471,7 +488,7 @@ router.post('/:id/test', authorize('admin', 'manager', 'staff'), catchAsync(asyn
   const { id } = req.params;
   const { guestCount = 2, season = 'normal', roomCondition = 'normal' } = req.body;
 
-  const template = await LaundryTemplate.findOne({ _id: id, hotelId });
+  const template = await LaundryTemplate.findOne({ _id: id, hotelId }).lean();
   if (!template) {
     throw new ApplicationError('Laundry template not found', 404);
   }
@@ -509,7 +526,7 @@ router.post('/:id/test', authorize('admin', 'manager', 'staff'), catchAsync(asyn
 router.get('/statistics', authorize('admin', 'manager'), catchAsync(async (req, res) => {
   const { hotelId } = req.user;
 
-  const templates = await LaundryTemplate.find({ hotelId, isActive: true });
+  const templates = await LaundryTemplate.find({ hotelId, isActive: true }).lean().limit(1000);
   
   const statistics = {
     totalTemplates: templates.length,

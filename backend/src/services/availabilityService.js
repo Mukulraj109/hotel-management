@@ -25,7 +25,7 @@ class AvailabilityService {
         hotelId,
         roomTypeId,
         date: { $gte: checkInDate, $lt: checkOutDate }
-      }).populate('roomTypeId', 'name code basePrice').sort({ date: 1 });
+      }).populate('roomTypeId', 'name code basePrice').sort({ date: 1 }).lean().limit(1000);
       
       if (availabilityRecords.length === 0) {
         return {
@@ -109,7 +109,7 @@ class AvailabilityService {
         roomQuery.type = roomType;
       }
 
-      const allRooms = await Room.find(roomQuery);
+      const allRooms = await Room.find(roomQuery).lean().limit(1000);
 
       // Get all bookings that overlap with the requested dates
       const overlappingBookings = await Booking.find({
@@ -120,7 +120,7 @@ class AvailabilityService {
             checkOut: { $gt: checkIn }
           }
         ]
-      }).select('rooms checkIn checkOut');
+      }).select('rooms checkIn checkOut').lean().limit(1000);
 
       // Get blocked rooms from tape chart
       const blockedRooms = await TapeChart.find({
@@ -129,7 +129,7 @@ class AvailabilityService {
           $lt: checkOut
         },
         status: { $in: ['blocked', 'maintenance'] }
-      }).select('roomId date');
+      }).select('roomId date').lean().limit(1000);
 
       // Calculate available rooms
       const availableRooms = [];
@@ -234,34 +234,42 @@ class AvailabilityService {
     session.startTransaction();
 
     try {
-      const blocks = [];
       const start = new Date(startDate);
       const end = new Date(endDate);
       
+      // Batch: build all block operations and execute with bulkWrite
+      const blockBulkOps = [];
       for (let date = new Date(start); date < end; date.setDate(date.getDate() + 1)) {
         for (const roomId of roomIds) {
-          const block = await TapeChart.findOneAndUpdate(
-            {
-              roomId,
-              date: new Date(date)
-            },
-            {
-              roomId,
-              date: new Date(date),
-              status: 'blocked',
-              blockReason: reason,
-              blockedBy: userId,
-              blockedAt: new Date()
-            },
-            {
-              upsert: true,
-              new: true,
-              session
+          blockBulkOps.push({
+            updateOne: {
+              filter: { roomId, date: new Date(date) },
+              update: {
+                $set: {
+                  roomId,
+                  date: new Date(date),
+                  status: 'blocked',
+                  blockReason: reason,
+                  blockedBy: userId,
+                  blockedAt: new Date()
+                }
+              },
+              upsert: true
             }
-          );
-          blocks.push(block);
+          });
         }
       }
+
+      if (blockBulkOps.length > 0) {
+        await TapeChart.bulkWrite(blockBulkOps);
+      }
+
+      // Fetch created blocks for response
+      const blocks = await TapeChart.find({
+        roomId: { $in: roomIds },
+        date: { $gte: start, $lt: end },
+        status: 'blocked'
+      }).lean();
 
       await session.commitTransaction();
       return blocks;
@@ -308,7 +316,7 @@ class AvailabilityService {
             checkOut: { $gt: startDate }
           }
         ]
-      }).select('checkIn checkOut status guestDetails');
+      }).select('checkIn checkOut status guestDetails').lean().limit(1000);
 
       const blocks = await TapeChart.find({
         roomId,
@@ -317,7 +325,7 @@ class AvailabilityService {
           $lt: endDate
         },
         status: 'blocked'
-      }).select('date blockReason');
+      }).select('date blockReason').lean().limit(1000);
 
       return {
         roomId,
@@ -353,7 +361,7 @@ class AvailabilityService {
         status: { $in: ['confirmed', 'checked_in', 'checked_out'] },
         checkIn: { $lt: end },
         checkOut: { $gt: start }
-      });
+      }).lean().limit(1000);
 
       let occupiedRoomNights = 0;
 
@@ -470,48 +478,54 @@ class AvailabilityService {
       const checkOutDate = new Date(checkOut);
 
       return await withTransaction(async (session) => {
-        // Get all availability records for the date range
-        const availabilityRecords = await RoomAvailability.find({
-          hotelId,
-          roomTypeId,
-          date: { $gte: checkInDate, $lt: checkOutDate }
-        }).sort({ date: 1 }).session(session);
+        try {
+          // Get all availability records for the date range
+          const availabilityRecords = await RoomAvailability.find({
+            hotelId,
+            roomTypeId,
+            date: { $gte: checkInDate, $lt: checkOutDate }
+          }).sort({ date: 1 }).session(session).limit(1000);
 
-        // Check if reservation is possible
-        const canReserve = availabilityRecords.every(record =>
-          record.availableRooms >= roomsCount
-        );
+          // Check if reservation is possible
+          const canReserve = availabilityRecords.every(record =>
+            record.availableRooms >= roomsCount
+          );
 
-        if (!canReserve) {
-          throw new Error('Insufficient availability for requested dates');
+          if (!canReserve) {
+            throw new Error('Insufficient availability for requested dates');
+          }
+
+          // Update each day's availability
+          const updatedRecords = [];
+          for (const record of availabilityRecords) {
+            // Book the rooms
+            await record.bookRooms(roomsCount, bookingId, source, { session });
+            updatedRecords.push(record);
+
+            // Log the inventory change
+            await AuditLog.logInventoryChange(record, 'booking', userId, {
+              source: 'booking_service',
+              bookingDetails: {
+                bookingId,
+                roomsBooked: roomsCount,
+                source
+              },
+              session
+            });
+          }
+
+          return {
+            success: true,
+            message: 'Rooms reserved successfully',
+            reservedRooms: roomsCount,
+            nights: availabilityRecords.length,
+            updatedRecords: updatedRecords.length
+          };
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
         }
-
-        // Update each day's availability
-        const updatedRecords = [];
-        for (const record of availabilityRecords) {
-          // Book the rooms
-          await record.bookRooms(roomsCount, bookingId, source, { session });
-          updatedRecords.push(record);
-
-          // Log the inventory change
-          await AuditLog.logInventoryChange(record, 'booking', userId, {
-            source: 'booking_service',
-            bookingDetails: {
-              bookingId,
-              roomsBooked: roomsCount,
-              source
-            },
-            session
-          });
-        }
-
-        return {
-          success: true,
-          message: 'Rooms reserved successfully',
-          reservedRooms: roomsCount,
-          nights: availabilityRecords.length,
-          updatedRecords: updatedRecords.length
-        };
       });
 
     } catch (error) {
@@ -539,7 +553,7 @@ class AvailabilityService {
         roomTypeId,
         date: { $gte: checkInDate, $lt: checkOutDate },
         'reservations.bookingId': bookingId
-      }).sort({ date: 1 });
+      }).sort({ date: 1 }).lean().limit(1000);
       
       // Release rooms from each day
       const releasedRecords = [];
@@ -584,7 +598,7 @@ class AvailabilityService {
     try {
       const roomTypes = await RoomType.find({ hotelId, isActive: true })
         .select('_id name code basePrice maxOccupancy legacyType')
-        .sort({ name: 1 });
+        .sort({ name: 1 }).lean().limit(1000);
       
       return roomTypes.map(rt => ({
         id: rt._id,

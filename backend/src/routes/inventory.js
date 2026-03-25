@@ -34,7 +34,7 @@ router.get('/', authenticate, ensureTenantContext, authorize('admin', 'staff', '
   const items = await Inventory.find(query)
     .sort({ name: 1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   const total = await Inventory.countDocuments(query);
 
@@ -88,26 +88,30 @@ router.patch('/:id', authenticate, ensureTenantContext, authorize('admin', 'staf
 router.post('/request', authenticate, ensureTenantContext, authorize('staff', 'frontdesk'), ensurePropertyAccess, catchAsync(async (req, res) => {
   const { itemId, quantity, reason } = req.body;
 
-  const item = await Inventory.findById(itemId);
-  
+  const item = await Inventory.findByIdAndUpdate(
+    itemId,
+    {
+      $push: {
+        requests: {
+          userId: req.user._id,
+          quantity,
+          reason,
+          status: 'pending'
+        }
+      }
+    },
+    { new: true, runValidators: true }
+  );
+
   if (!item) {
     throw new ApplicationError('Inventory item not found', 404);
   }
 
-  item.requests.push({
-    userId: req.user._id,
-    quantity,
-    reason,
-    status: 'pending'
-  });
-
-  await item.save();
-
   res.status(201).json({
     status: 'success',
-    data: { 
+    data: {
       item,
-      message: 'Supply request submitted successfully' 
+      message: 'Supply request submitted successfully'
     }
   });
 }));
@@ -122,28 +126,44 @@ router.patch('/request/:itemId/:requestId',
     const { itemId, requestId } = req.params;
     const { status } = req.body; // 'approved', 'rejected', 'fulfilled'
 
-    const item = await Inventory.findById(itemId);
-    
-    if (!item) {
+    // First, read to get request quantity if we need to fulfill
+    const existingItem = await Inventory.findById(itemId).lean();
+
+    if (!existingItem) {
       throw new ApplicationError('Inventory item not found', 404);
     }
 
-    const request = item.requests.id(requestId);
-    
+    const request = existingItem.requests && existingItem.requests.find(
+      r => r._id.toString() === requestId
+    );
+
     if (!request) {
       throw new ApplicationError('Request not found', 404);
     }
 
-    request.status = status;
-    request.approvedBy = req.user._id;
-    request.processedAt = new Date();
+    // Build atomic update
+    const updateOps = {
+      $set: {
+        'requests.$[req].status': status,
+        'requests.$[req].approvedBy': req.user._id,
+        'requests.$[req].processedAt': new Date()
+      }
+    };
 
-    // If fulfilled, update inventory quantity
+    // If fulfilled, atomically increment inventory quantity
     if (status === 'fulfilled') {
-      item.quantity += request.quantity;
+      updateOps.$inc = { quantity: request.quantity };
     }
 
-    await item.save();
+    const item = await Inventory.findByIdAndUpdate(
+      itemId,
+      updateOps,
+      {
+        new: true,
+        runValidators: true,
+        arrayFilters: [{ 'req._id': requestId }]
+      }
+    );
 
     res.json({
       status: 'success',

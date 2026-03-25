@@ -213,331 +213,377 @@ class AdvancedReportingService {
    * Execute specific report query
    */
   async executeReport(reportType, parameters) {
-    const template = this.reportTemplates[reportType];
-    if (!template) {
-      throw new Error(`Unknown report type: ${reportType}`);
-    }
-    
-    // Validate and normalize parameters
-    const normalizedParams = this.normalizeParameters(parameters);
-    
-    // Execute report query
-    const result = await template.query(normalizedParams);
-    
-    return {
-      reportType,
-      parameters: normalizedParams,
-      data: result,
-      generatedAt: new Date(),
-      metadata: {
-        template: template.name,
-        description: template.description
+    try {
+      const template = this.reportTemplates[reportType];
+      if (!template) {
+        throw new Error(`Unknown report type: ${reportType}`);
       }
-    };
+    
+      // Validate and normalize parameters
+      const normalizedParams = this.normalizeParameters(parameters);
+    
+      // Execute report query
+      const result = await template.query(normalizedParams);
+    
+      return {
+        reportType,
+        parameters: normalizedParams,
+        data: result,
+        generatedAt: new Date(),
+        metadata: {
+          template: template.name,
+          description: template.description
+        }
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   /**
    * Generate Executive Summary Report
    */
   async generateExecutiveSummary(params) {
-    const { dateRange, hotelIds } = params;
+    try {
+      const { dateRange, hotelIds } = params;
     
-    // Key Performance Indicators
-    const kpis = await this.calculateExecutiveKPIs(dateRange, hotelIds);
+      // Key Performance Indicators
+      const kpis = await this.calculateExecutiveKPIs(dateRange, hotelIds);
     
-    // Revenue trends (last 12 months)
-    const revenueTrends = await this.getRevenueTrends(dateRange, hotelIds);
+      // Revenue trends (last 12 months)
+      const revenueTrends = await this.getRevenueTrends(dateRange, hotelIds);
     
-    // Occupancy trends
-    const occupancyTrends = await this.getOccupancyTrends(dateRange, hotelIds);
+      // Occupancy trends
+      const occupancyTrends = await this.getOccupancyTrends(dateRange, hotelIds);
     
-    // Guest satisfaction metrics
-    const guestMetrics = await this.getGuestSatisfactionMetrics(dateRange, hotelIds);
+      // Guest satisfaction metrics
+      const guestMetrics = await this.getGuestSatisfactionMetrics(dateRange, hotelIds);
     
-    // Market position
-    const marketPosition = await this.getMarketPosition(dateRange, hotelIds);
+      // Market position
+      const marketPosition = await this.getMarketPosition(dateRange, hotelIds);
     
-    // Alerts and recommendations
-    const insights = await this.generateExecutiveInsights(kpis, revenueTrends, occupancyTrends);
+      // Alerts and recommendations
+      const insights = await this.generateExecutiveInsights(kpis, revenueTrends, occupancyTrends);
     
-    return {
-      kpis,
-      trends: {
-        revenue: revenueTrends,
-        occupancy: occupancyTrends
-      },
-      guestMetrics,
-      marketPosition,
-      insights,
-      summary: this.generateExecutiveSummaryText(kpis, insights)
-    };
+      return {
+        kpis,
+        trends: {
+          revenue: revenueTrends,
+          occupancy: occupancyTrends
+        },
+        guestMetrics,
+        marketPosition,
+        insights,
+        summary: this.generateExecutiveSummaryText(kpis, insights)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   /**
    * Calculate Executive KPIs
    */
   async calculateExecutiveKPIs(dateRange, hotelIds) {
-    const { startDate, endDate } = dateRange;
-    const startDateKey = parseInt(startDate.toISOString().slice(0, 10).replace(/-/g, ''));
-    const endDateKey = parseInt(endDate.toISOString().slice(0, 10).replace(/-/g, ''));
+    try {
+      const { startDate, endDate } = dateRange;
+      const startDateKey = parseInt(startDate.toISOString().slice(0, 10).replace(/-/g, ''));
+      const endDateKey = parseInt(endDate.toISOString().slice(0, 10).replace(/-/g, ''));
     
-    // Current period metrics
-    const currentMetrics = await FactRevenue.aggregate([
-      {
-        $match: {
-          hotel_key: { $in: hotelIds },
-          date_key: { $gte: startDateKey, $lte: endDateKey }
+      // Current period metrics
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const currentMetrics = await FactRevenue.aggregate([
+        {
+          $match: {
+            hotel_key: { $in: hotelIds },
+            date_key: { $gte: startDateKey, $lte: endDateKey }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: '$gross_revenue' },
+            totalRoomsSold: { $sum: '$rooms_sold' },
+            totalRoomsAvailable: { $sum: '$rooms_available' },
+            avgADR: { $avg: '$adr' },
+            avgRevPAR: { $avg: '$revpar' },
+            avgOccupancy: { $avg: '$occupancy_rate' },
+            avgProfitMargin: { $avg: '$profit_margin' }
+          }
         }
-      },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: '$gross_revenue' },
-          totalRoomsSold: { $sum: '$rooms_sold' },
-          totalRoomsAvailable: { $sum: '$rooms_available' },
-          avgADR: { $avg: '$adr' },
-          avgRevPAR: { $avg: '$revpar' },
-          avgOccupancy: { $avg: '$occupancy_rate' },
-          avgProfitMargin: { $avg: '$profit_margin' }
+      ]);
+    
+      // Previous period for comparison (same duration, previous period)
+      const periodLength = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+      const prevStartDate = new Date(startDate.getTime() - (periodLength * 24 * 60 * 60 * 1000));
+      const prevEndDate = new Date(endDate.getTime() - (periodLength * 24 * 60 * 60 * 1000));
+      const prevStartDateKey = parseInt(prevStartDate.toISOString().slice(0, 10).replace(/-/g, ''));
+      const prevEndDateKey = parseInt(prevEndDate.toISOString().slice(0, 10).replace(/-/g, ''));
+    
+      // Consider caching this aggregation result for 5 minutes
+
+    
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+    
+      const previousMetrics = await FactRevenue.aggregate([
+        {
+          $match: {
+            hotel_key: { $in: hotelIds },
+            date_key: { $gte: prevStartDateKey, $lte: prevEndDateKey }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: '$gross_revenue' },
+            avgADR: { $avg: '$adr' },
+            avgRevPAR: { $avg: '$revpar' },
+            avgOccupancy: { $avg: '$occupancy_rate' }
+          }
         }
-      }
-    ]);
+      ]);
     
-    // Previous period for comparison (same duration, previous period)
-    const periodLength = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
-    const prevStartDate = new Date(startDate.getTime() - (periodLength * 24 * 60 * 60 * 1000));
-    const prevEndDate = new Date(endDate.getTime() - (periodLength * 24 * 60 * 60 * 1000));
-    const prevStartDateKey = parseInt(prevStartDate.toISOString().slice(0, 10).replace(/-/g, ''));
-    const prevEndDateKey = parseInt(prevEndDate.toISOString().slice(0, 10).replace(/-/g, ''));
+      const current = currentMetrics[0] || {};
+      const previous = previousMetrics[0] || {};
     
-    const previousMetrics = await FactRevenue.aggregate([
-      {
-        $match: {
-          hotel_key: { $in: hotelIds },
-          date_key: { $gte: prevStartDateKey, $lte: prevEndDateKey }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: '$gross_revenue' },
-          avgADR: { $avg: '$adr' },
-          avgRevPAR: { $avg: '$revpar' },
-          avgOccupancy: { $avg: '$occupancy_rate' }
-        }
-      }
-    ]);
+      // Calculate percentage changes
+      const calculateChange = (current, previous) => {
+        if (!previous || previous === 0) return null;
+        return ((current - previous) / previous) * 100;
+      };
     
-    const current = currentMetrics[0] || {};
-    const previous = previousMetrics[0] || {};
-    
-    // Calculate percentage changes
-    const calculateChange = (current, previous) => {
-      if (!previous || previous === 0) return null;
-      return ((current - previous) / previous) * 100;
-    };
-    
-    return {
-      revenue: {
-        current: current.totalRevenue || 0,
-        change: calculateChange(current.totalRevenue, previous.totalRevenue)
-      },
-      occupancy: {
-        current: current.avgOccupancy || 0,
-        change: calculateChange(current.avgOccupancy, previous.avgOccupancy)
-      },
-      adr: {
-        current: current.avgADR || 0,
-        change: calculateChange(current.avgADR, previous.avgADR)
-      },
-      revpar: {
-        current: current.avgRevPAR || 0,
-        change: calculateChange(current.avgRevPAR, previous.avgRevPAR)
-      },
-      profitMargin: {
-        current: current.avgProfitMargin || 0,
-        change: calculateChange(current.avgProfitMargin, previous.avgProfitMargin)
-      },
-      totalBookings: current.totalRoomsSold || 0
-    };
+      return {
+        revenue: {
+          current: current.totalRevenue || 0,
+          change: calculateChange(current.totalRevenue, previous.totalRevenue)
+        },
+        occupancy: {
+          current: current.avgOccupancy || 0,
+          change: calculateChange(current.avgOccupancy, previous.avgOccupancy)
+        },
+        adr: {
+          current: current.avgADR || 0,
+          change: calculateChange(current.avgADR, previous.avgADR)
+        },
+        revpar: {
+          current: current.avgRevPAR || 0,
+          change: calculateChange(current.avgRevPAR, previous.avgRevPAR)
+        },
+        profitMargin: {
+          current: current.avgProfitMargin || 0,
+          change: calculateChange(current.avgProfitMargin, previous.avgProfitMargin)
+        },
+        totalBookings: current.totalRoomsSold || 0
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   /**
    * Generate Revenue Analysis Report
    */
   async generateRevenueAnalysis(params) {
-    const { dateRange, hotelIds, breakdown = 'daily' } = params;
+    try {
+      const { dateRange, hotelIds, breakdown = 'daily' } = params;
     
-    // Revenue by time period
-    const revenueByPeriod = await this.getRevenueByPeriod(dateRange, hotelIds, breakdown);
+      // Revenue by time period
+      const revenueByPeriod = await this.getRevenueByPeriod(dateRange, hotelIds, breakdown);
     
-    // Revenue by segment
-    const revenueBySegment = await this.getRevenueBySegment(dateRange, hotelIds);
+      // Revenue by segment
+      const revenueBySegment = await this.getRevenueBySegment(dateRange, hotelIds);
     
-    // Revenue by channel
-    const revenueByChannel = await this.getRevenueByChannel(dateRange, hotelIds);
+      // Revenue by channel
+      const revenueByChannel = await this.getRevenueByChannel(dateRange, hotelIds);
     
-    // Revenue by room type
-    const revenueByRoomType = await this.getRevenueByRoomType(dateRange, hotelIds);
+      // Revenue by room type
+      const revenueByRoomType = await this.getRevenueByRoomType(dateRange, hotelIds);
     
-    // Revenue forecast
-    const revenueForecast = await this.generateRevenueForecast(dateRange, hotelIds);
+      // Revenue forecast
+      const revenueForecast = await this.generateRevenueForecast(dateRange, hotelIds);
     
-    return {
-      summary: {
-        totalRevenue: revenueByPeriod.reduce((sum, item) => sum + item.revenue, 0),
-        avgDailyRevenue: revenueByPeriod.reduce((sum, item) => sum + item.revenue, 0) / revenueByPeriod.length,
-        growthRate: this.calculateGrowthRate(revenueByPeriod)
-      },
-      breakdown: {
-        byPeriod: revenueByPeriod,
-        bySegment: revenueBySegment,
-        byChannel: revenueByChannel,
-        byRoomType: revenueByRoomType
-      },
-      forecast: revenueForecast,
-      insights: this.generateRevenueInsights(revenueByPeriod, revenueBySegment, revenueByChannel)
-    };
+      return {
+        summary: {
+          totalRevenue: revenueByPeriod.reduce((sum, item) => sum + item.revenue, 0),
+          avgDailyRevenue: revenueByPeriod.reduce((sum, item) => sum + item.revenue, 0) / revenueByPeriod.length,
+          growthRate: this.calculateGrowthRate(revenueByPeriod)
+        },
+        breakdown: {
+          byPeriod: revenueByPeriod,
+          bySegment: revenueBySegment,
+          byChannel: revenueByChannel,
+          byRoomType: revenueByRoomType
+        },
+        forecast: revenueForecast,
+        insights: this.generateRevenueInsights(revenueByPeriod, revenueBySegment, revenueByChannel)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   /**
    * Generate Occupancy Analysis Report
    */
   async generateOccupancyAnalysis(params) {
-    const { dateRange, hotelIds } = params;
+    try {
+      const { dateRange, hotelIds } = params;
     
-    const startDateKey = parseInt(dateRange.startDate.toISOString().slice(0, 10).replace(/-/g, ''));
-    const endDateKey = parseInt(dateRange.endDate.toISOString().slice(0, 10).replace(/-/g, ''));
+      const startDateKey = parseInt(dateRange.startDate.toISOString().slice(0, 10).replace(/-/g, ''));
+      const endDateKey = parseInt(dateRange.endDate.toISOString().slice(0, 10).replace(/-/g, ''));
     
-    // Daily occupancy trends
-    const dailyOccupancy = await FactRevenue.aggregate([
-      {
-        $match: {
-          hotel_key: { $in: hotelIds },
-          date_key: { $gte: startDateKey, $lte: endDateKey }
+      // Daily occupancy trends
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const dailyOccupancy = await FactRevenue.aggregate([
+        {
+          $match: {
+            hotel_key: { $in: hotelIds },
+            date_key: { $gte: startDateKey, $lte: endDateKey }
+          }
+        },
+        {
+          $lookup: {
+            from: 'dimdates',
+            localField: 'date_key',
+            foreignField: 'date_key',
+            as: 'dateInfo'
+          }
+        },
+        {
+          $unwind: '$dateInfo'
+        },
+        {
+          $group: {
+            _id: '$date_key',
+            occupancyRate: { $avg: '$occupancy_rate' },
+            roomsSold: { $sum: '$rooms_sold' },
+            roomsAvailable: { $sum: '$rooms_available' },
+            date: { $first: '$dateInfo.full_date' },
+            isWeekend: { $first: '$dateInfo.is_weekend' },
+            season: { $first: '$dateInfo.season' }
+          }
+        },
+        {
+          $sort: { _id: 1 }
         }
-      },
-      {
-        $lookup: {
-          from: 'dimdates',
-          localField: 'date_key',
-          foreignField: 'date_key',
-          as: 'dateInfo'
-        }
-      },
-      {
-        $unwind: '$dateInfo'
-      },
-      {
-        $group: {
-          _id: '$date_key',
-          occupancyRate: { $avg: '$occupancy_rate' },
-          roomsSold: { $sum: '$rooms_sold' },
-          roomsAvailable: { $sum: '$rooms_available' },
-          date: { $first: '$dateInfo.full_date' },
-          isWeekend: { $first: '$dateInfo.is_weekend' },
-          season: { $first: '$dateInfo.season' }
-        }
-      },
-      {
-        $sort: { _id: 1 }
-      }
-    ]);
+      ]);
     
-    // Occupancy by day of week
-    const occupancyByDayOfWeek = await FactRevenue.aggregate([
-      {
-        $match: {
-          hotel_key: { $in: hotelIds },
-          date_key: { $gte: startDateKey, $lte: endDateKey }
+      // Occupancy by day of week
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const occupancyByDayOfWeek = await FactRevenue.aggregate([
+        {
+          $match: {
+            hotel_key: { $in: hotelIds },
+            date_key: { $gte: startDateKey, $lte: endDateKey }
+          }
+        },
+        {
+          $lookup: {
+            from: 'dimdates',
+            localField: 'date_key',
+            foreignField: 'date_key',
+            as: 'dateInfo'
+          }
+        },
+        {
+          $unwind: '$dateInfo'
+        },
+        {
+          $group: {
+            _id: '$dateInfo.day_of_week',
+            dayName: { $first: '$dateInfo.day_name' },
+            avgOccupancy: { $avg: '$occupancy_rate' },
+            avgRevPAR: { $avg: '$revpar' }
+          }
+        },
+        {
+          $sort: { _id: 1 }
         }
-      },
-      {
-        $lookup: {
-          from: 'dimdates',
-          localField: 'date_key',
-          foreignField: 'date_key',
-          as: 'dateInfo'
-        }
-      },
-      {
-        $unwind: '$dateInfo'
-      },
-      {
-        $group: {
-          _id: '$dateInfo.day_of_week',
-          dayName: { $first: '$dateInfo.day_name' },
-          avgOccupancy: { $avg: '$occupancy_rate' },
-          avgRevPAR: { $avg: '$revpar' }
-        }
-      },
-      {
-        $sort: { _id: 1 }
-      }
-    ]);
+      ]);
     
-    // Occupancy forecast
-    const occupancyForecast = await this.generateOccupancyForecast(dateRange, hotelIds);
+      // Occupancy forecast
+      const occupancyForecast = await this.generateOccupancyForecast(dateRange, hotelIds);
     
-    return {
-      summary: {
-        avgOccupancy: dailyOccupancy.reduce((sum, day) => sum + day.occupancyRate, 0) / dailyOccupancy.length,
-        peakOccupancy: Math.max(...dailyOccupancy.map(day => day.occupancyRate)),
-        lowOccupancy: Math.min(...dailyOccupancy.map(day => day.occupancyRate)),
-        totalRoomsSold: dailyOccupancy.reduce((sum, day) => sum + day.roomsSold, 0)
-      },
-      trends: {
-        daily: dailyOccupancy,
-        byDayOfWeek: occupancyByDayOfWeek
-      },
-      forecast: occupancyForecast,
-      insights: this.generateOccupancyInsights(dailyOccupancy, occupancyByDayOfWeek)
-    };
+      return {
+        summary: {
+          avgOccupancy: dailyOccupancy.reduce((sum, day) => sum + day.occupancyRate, 0) / dailyOccupancy.length,
+          peakOccupancy: Math.max(...dailyOccupancy.map(day => day.occupancyRate)),
+          lowOccupancy: Math.min(...dailyOccupancy.map(day => day.occupancyRate)),
+          totalRoomsSold: dailyOccupancy.reduce((sum, day) => sum + day.roomsSold, 0)
+        },
+        trends: {
+          daily: dailyOccupancy,
+          byDayOfWeek: occupancyByDayOfWeek
+        },
+        forecast: occupancyForecast,
+        insights: this.generateOccupancyInsights(dailyOccupancy, occupancyByDayOfWeek)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   /**
    * Generate Guest Segmentation Report
    */
   async generateGuestSegmentation(params) {
-    const { dateRange, hotelIds } = params;
+    try {
+      const { dateRange, hotelIds } = params;
     
-    // Guest segments distribution
-    const segmentDistribution = await FactBookings.aggregate([
-      {
-        $match: {
-          hotel_key: { $in: hotelIds },
-          check_in_date: {
-            $gte: dateRange.startDate,
-            $lte: dateRange.endDate
+      // Guest segments distribution
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const segmentDistribution = await FactBookings.aggregate([
+        {
+          $match: {
+            hotel_key: { $in: hotelIds },
+            check_in_date: {
+              $gte: dateRange.startDate,
+              $lte: dateRange.endDate
+            }
           }
+        },
+        {
+          $group: {
+            _id: '$guest_segment',
+            count: { $sum: 1 },
+            totalRevenue: { $sum: '$revenue_amount' },
+            avgBookingValue: { $avg: '$revenue_amount' },
+            avgLengthOfStay: { $avg: '$nights_stayed' }
+          }
+        },
+        {
+          $sort: { totalRevenue: -1 }
         }
-      },
-      {
-        $group: {
-          _id: '$guest_segment',
-          count: { $sum: 1 },
-          totalRevenue: { $sum: '$revenue_amount' },
-          avgBookingValue: { $avg: '$revenue_amount' },
-          avgLengthOfStay: { $avg: '$nights_stayed' }
-        }
-      },
-      {
-        $sort: { totalRevenue: -1 }
-      }
-    ]);
+      ]);
     
-    // RFM Analysis (Recency, Frequency, Monetary)
-    const rfmAnalysis = await this.performRFMAnalysis(dateRange, hotelIds);
+      // RFM Analysis (Recency, Frequency, Monetary)
+      const rfmAnalysis = await this.performRFMAnalysis(dateRange, hotelIds);
     
-    // Guest behavior patterns
-    const behaviorPatterns = await this.analyzeBehaviorPatterns(dateRange, hotelIds);
+      // Guest behavior patterns
+      const behaviorPatterns = await this.analyzeBehaviorPatterns(dateRange, hotelIds);
     
-    return {
-      segmentDistribution,
-      rfmAnalysis,
-      behaviorPatterns,
-      insights: this.generateGuestSegmentationInsights(segmentDistribution, rfmAnalysis)
-    };
+      return {
+        segmentDistribution,
+        rfmAnalysis,
+        behaviorPatterns,
+        insights: this.generateGuestSegmentationInsights(segmentDistribution, rfmAnalysis)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   /**
@@ -545,89 +591,101 @@ class AdvancedReportingService {
    */
   
   async getRevenueTrends(dateRange, hotelIds) {
-    const { startDate, endDate } = dateRange;
-    const startDateKey = parseInt(startDate.toISOString().slice(0, 10).replace(/-/g, ''));
-    const endDateKey = parseInt(endDate.toISOString().slice(0, 10).replace(/-/g, ''));
+    try {
+      const { startDate, endDate } = dateRange;
+      const startDateKey = parseInt(startDate.toISOString().slice(0, 10).replace(/-/g, ''));
+      const endDateKey = parseInt(endDate.toISOString().slice(0, 10).replace(/-/g, ''));
     
-    return await FactRevenue.aggregate([
-      {
-        $match: {
-          hotel_key: { $in: hotelIds },
-          date_key: { $gte: startDateKey, $lte: endDateKey }
+      // Consider caching this aggregation result for 5 minutes
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+      return await FactRevenue.aggregate([
+        {
+          $match: {
+            hotel_key: { $in: hotelIds },
+            date_key: { $gte: startDateKey, $lte: endDateKey }
+          }
+        },
+        {
+          $lookup: {
+            from: 'dimdates',
+            localField: 'date_key',
+            foreignField: 'date_key',
+            as: 'dateInfo'
+          }
+        },
+        {
+          $unwind: '$dateInfo'
+        },
+        {
+          $group: {
+            _id: {
+              year: '$dateInfo.year',
+              month: '$dateInfo.month'
+            },
+            revenue: { $sum: '$gross_revenue' },
+            occupancy: { $avg: '$occupancy_rate' },
+            adr: { $avg: '$adr' }
+          }
+        },
+        {
+          $sort: { '_id.year': 1, '_id.month': 1 }
         }
-      },
-      {
-        $lookup: {
-          from: 'dimdates',
-          localField: 'date_key',
-          foreignField: 'date_key',
-          as: 'dateInfo'
-        }
-      },
-      {
-        $unwind: '$dateInfo'
-      },
-      {
-        $group: {
-          _id: {
-            year: '$dateInfo.year',
-            month: '$dateInfo.month'
-          },
-          revenue: { $sum: '$gross_revenue' },
-          occupancy: { $avg: '$occupancy_rate' },
-          adr: { $avg: '$adr' }
-        }
-      },
-      {
-        $sort: { '_id.year': 1, '_id.month': 1 }
-      }
-    ]);
+      ]);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   async performRFMAnalysis(dateRange, hotelIds) {
-    // This would implement RFM (Recency, Frequency, Monetary) analysis
-    // Simplified version for now
-    return await FactBookings.aggregate([
-      {
-        $match: {
-          hotel_key: { $in: hotelIds },
-          check_in_date: {
-            $gte: new Date(dateRange.startDate.getTime() - 365 * 24 * 60 * 60 * 1000), // Last year
-            $lte: dateRange.endDate
+    try {
+      // This would implement RFM (Recency, Frequency, Monetary) analysis
+      // Simplified version for now
+      // Consider caching this aggregation result for 5 minutes
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+      return await FactBookings.aggregate([
+        {
+          $match: {
+            hotel_key: { $in: hotelIds },
+            check_in_date: {
+              $gte: new Date(dateRange.startDate.getTime() - 365 * 24 * 60 * 60 * 1000), // Last year
+              $lte: dateRange.endDate
+            }
+          }
+        },
+        {
+          $group: {
+            _id: '$guest_key',
+            frequency: { $sum: 1 },
+            monetary: { $sum: '$revenue_amount' },
+            lastBooking: { $max: '$check_in_date' }
+          }
+        },
+        {
+          $addFields: {
+            recency: {
+              $divide: [
+                { $subtract: [new Date(), '$lastBooking'] },
+                1000 * 60 * 60 * 24 // Convert to days
+              ]
+            }
+          }
+        },
+        {
+          $bucket: {
+            groupBy: '$monetary',
+            boundaries: [0, 1000, 5000, 10000, 50000, 100000],
+            default: 'high_value',
+            output: {
+              count: { $sum: 1 },
+              avgFrequency: { $avg: '$frequency' },
+              avgRecency: { $avg: '$recency' }
+            }
           }
         }
-      },
-      {
-        $group: {
-          _id: '$guest_key',
-          frequency: { $sum: 1 },
-          monetary: { $sum: '$revenue_amount' },
-          lastBooking: { $max: '$check_in_date' }
-        }
-      },
-      {
-        $addFields: {
-          recency: {
-            $divide: [
-              { $subtract: [new Date(), '$lastBooking'] },
-              1000 * 60 * 60 * 24 // Convert to days
-            ]
-          }
-        }
-      },
-      {
-        $bucket: {
-          groupBy: '$monetary',
-          boundaries: [0, 1000, 5000, 10000, 50000, 100000],
-          default: 'high_value',
-          output: {
-            count: { $sum: 1 },
-            avgFrequency: { $avg: '$frequency' },
-            avgRecency: { $avg: '$recency' }
-          }
-        }
-      }
-    ]);
+      ]);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   // Utility methods
@@ -719,282 +777,336 @@ class AdvancedReportingService {
    * Get report generation status
    */
   async getReportStatus(jobId) {
-    const job = await this.reportQueue.getJob(jobId);
-    if (!job) return null;
+    try {
+      const job = await this.reportQueue.getJob(jobId);
+      if (!job) return null;
     
-    const state = await job.getState();
+      const state = await job.getState();
     
-    if (state === 'completed') {
-      const result = await this.cache.get(`report:result:${jobId}`);
-      return result ? JSON.parse(result) : null;
+      if (state === 'completed') {
+        const result = await this.cache.get(`report:result:${jobId}`);
+        return result ? JSON.parse(result) : null;
+      }
+    
+      return {
+        status: state,
+        progress: job.progress(),
+        createdAt: job.timestamp,
+        processedOn: job.processedOn,
+        finishedOn: job.finishedOn
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    return {
-      status: state,
-      progress: job.progress(),
-      createdAt: job.timestamp,
-      processedOn: job.processedOn,
-      finishedOn: job.finishedOn
-    };
   }
   
   /**
    * Clear report cache
    */
   async clearCache(pattern = 'report:*') {
-    const keys = await this.cache.keys(pattern);
-    if (keys.length > 0) {
-      await this.cache.del(...keys);
+    try {
+      const keys = await this.cache.keys(pattern);
+      if (keys.length > 0) {
+        await this.cache.del(...keys);
+      }
+      return keys.length;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    return keys.length;
   }
 
   /**
    * Generate Guest Lifetime Value Report
    */
   async generateGuestLifetimeValue(params) {
-    const { dateRange, hotelIds } = params;
+    try {
+      const { dateRange, hotelIds } = params;
     
-    // Calculate CLV metrics
-    const clvMetrics = await FactBookings.aggregate([
-      {
-        $match: {
-          hotel_key: { $in: hotelIds },
-          check_in_date: {
-            $gte: dateRange.startDate,
-            $lte: dateRange.endDate
-          }
-        }
-      },
-      {
-        $group: {
-          _id: '$guest_key',
-          totalRevenue: { $sum: '$revenue_amount' },
-          bookingCount: { $sum: 1 },
-          avgBookingValue: { $avg: '$revenue_amount' },
-          firstBooking: { $min: '$check_in_date' },
-          lastBooking: { $max: '$check_in_date' }
-        }
-      },
-      {
-        $addFields: {
-          customerLifetime: {
-            $divide: [
-              { $subtract: ['$lastBooking', '$firstBooking'] },
-              1000 * 60 * 60 * 24 // Convert to days
-            ]
-          }
-        }
-      }
-    ]);
+      // Calculate CLV metrics
+      // Consider caching this aggregation result for 5 minutes
 
-    return {
-      summary: {
-        totalGuests: clvMetrics.length,
-        avgCLV: clvMetrics.reduce((sum, guest) => sum + guest.totalRevenue, 0) / clvMetrics.length,
-        avgBookingFrequency: clvMetrics.reduce((sum, guest) => sum + guest.bookingCount, 0) / clvMetrics.length
-      },
-      distribution: clvMetrics,
-      insights: this.generateCLVInsights(clvMetrics)
-    };
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const clvMetrics = await FactBookings.aggregate([
+        {
+          $match: {
+            hotel_key: { $in: hotelIds },
+            check_in_date: {
+              $gte: dateRange.startDate,
+              $lte: dateRange.endDate
+            }
+          }
+        },
+        {
+          $group: {
+            _id: '$guest_key',
+            totalRevenue: { $sum: '$revenue_amount' },
+            bookingCount: { $sum: 1 },
+            avgBookingValue: { $avg: '$revenue_amount' },
+            firstBooking: { $min: '$check_in_date' },
+            lastBooking: { $max: '$check_in_date' }
+          }
+        },
+        {
+          $addFields: {
+            customerLifetime: {
+              $divide: [
+                { $subtract: ['$lastBooking', '$firstBooking'] },
+                1000 * 60 * 60 * 24 // Convert to days
+              ]
+            }
+          }
+        }
+      ]);
+
+      return {
+        summary: {
+          totalGuests: clvMetrics.length,
+          avgCLV: clvMetrics.reduce((sum, guest) => sum + guest.totalRevenue, 0) / clvMetrics.length,
+          avgBookingFrequency: clvMetrics.reduce((sum, guest) => sum + guest.bookingCount, 0) / clvMetrics.length
+        },
+        distribution: clvMetrics,
+        insights: this.generateCLVInsights(clvMetrics)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Generate Channel Performance Report
    */
   async generateChannelPerformance(params) {
-    const { dateRange, hotelIds } = params;
+    try {
+      const { dateRange, hotelIds } = params;
     
-    const channelMetrics = await FactBookings.aggregate([
-      {
-        $match: {
-          hotel_key: { $in: hotelIds },
-          check_in_date: {
-            $gte: dateRange.startDate,
-            $lte: dateRange.endDate
-          }
-        }
-      },
-      {
-        $group: {
-          _id: '$booking_channel',
-          totalBookings: { $sum: 1 },
-          totalRevenue: { $sum: '$revenue_amount' },
-          avgBookingValue: { $avg: '$revenue_amount' },
-          conversionRate: { $avg: '$conversion_rate' }
-        }
-      },
-      {
-        $sort: { totalRevenue: -1 }
-      }
-    ]);
+      // Consider caching this aggregation result for 5 minutes
 
-    return {
-      summary: {
-        totalChannels: channelMetrics.length,
-        topChannel: channelMetrics[0]?.booking_channel || 'N/A',
-        totalRevenue: channelMetrics.reduce((sum, channel) => sum + channel.totalRevenue, 0)
-      },
-      channels: channelMetrics,
-      insights: this.generateChannelInsights(channelMetrics)
-    };
+    
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+    
+      const channelMetrics = await FactBookings.aggregate([
+        {
+          $match: {
+            hotel_key: { $in: hotelIds },
+            check_in_date: {
+              $gte: dateRange.startDate,
+              $lte: dateRange.endDate
+            }
+          }
+        },
+        {
+          $group: {
+            _id: '$booking_channel',
+            totalBookings: { $sum: 1 },
+            totalRevenue: { $sum: '$revenue_amount' },
+            avgBookingValue: { $avg: '$revenue_amount' },
+            conversionRate: { $avg: '$conversion_rate' }
+          }
+        },
+        {
+          $sort: { totalRevenue: -1 }
+        }
+      ]);
+
+      return {
+        summary: {
+          totalChannels: channelMetrics.length,
+          topChannel: channelMetrics[0]?.booking_channel || 'N/A',
+          totalRevenue: channelMetrics.reduce((sum, channel) => sum + channel.totalRevenue, 0)
+        },
+        channels: channelMetrics,
+        insights: this.generateChannelInsights(channelMetrics)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Generate Seasonal Trends Report
    */
   async generateSeasonalTrends(params) {
-    const { dateRange, hotelIds } = params;
+    try {
+      const { dateRange, hotelIds } = params;
     
-    const seasonalData = await FactRevenue.aggregate([
-      {
-        $match: {
-          hotel_key: { $in: hotelIds },
-          date_key: {
-            $gte: parseInt(dateRange.startDate.toISOString().slice(0, 10).replace(/-/g, '')),
-            $lte: parseInt(dateRange.endDate.toISOString().slice(0, 10).replace(/-/g, ''))
-          }
-        }
-      },
-      {
-        $lookup: {
-          from: 'dimdates',
-          localField: 'date_key',
-          foreignField: 'date_key',
-          as: 'dateInfo'
-        }
-      },
-      {
-        $unwind: '$dateInfo'
-      },
-      {
-        $group: {
-          _id: {
-            year: '$dateInfo.year',
-            month: '$dateInfo.month',
-            season: '$dateInfo.season'
-          },
-          revenue: { $sum: '$gross_revenue' },
-          occupancy: { $avg: '$occupancy_rate' },
-          adr: { $avg: '$adr' }
-        }
-      },
-      {
-        $sort: { '_id.year': 1, '_id.month': 1 }
-      }
-    ]);
+      // Consider caching this aggregation result for 5 minutes
 
-    return {
-      summary: {
-        totalPeriods: seasonalData.length,
-        peakSeason: this.findPeakSeason(seasonalData),
-        lowSeason: this.findLowSeason(seasonalData)
-      },
-      trends: seasonalData,
-      insights: this.generateSeasonalInsights(seasonalData)
-    };
+    
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+    
+      const seasonalData = await FactRevenue.aggregate([
+        {
+          $match: {
+            hotel_key: { $in: hotelIds },
+            date_key: {
+              $gte: parseInt(dateRange.startDate.toISOString().slice(0, 10).replace(/-/g, '')),
+              $lte: parseInt(dateRange.endDate.toISOString().slice(0, 10).replace(/-/g, ''))
+            }
+          }
+        },
+        {
+          $lookup: {
+            from: 'dimdates',
+            localField: 'date_key',
+            foreignField: 'date_key',
+            as: 'dateInfo'
+          }
+        },
+        {
+          $unwind: '$dateInfo'
+        },
+        {
+          $group: {
+            _id: {
+              year: '$dateInfo.year',
+              month: '$dateInfo.month',
+              season: '$dateInfo.season'
+            },
+            revenue: { $sum: '$gross_revenue' },
+            occupancy: { $avg: '$occupancy_rate' },
+            adr: { $avg: '$adr' }
+          }
+        },
+        {
+          $sort: { '_id.year': 1, '_id.month': 1 }
+        }
+      ]);
+
+      return {
+        summary: {
+          totalPeriods: seasonalData.length,
+          peakSeason: this.findPeakSeason(seasonalData),
+          lowSeason: this.findLowSeason(seasonalData)
+        },
+        trends: seasonalData,
+        insights: this.generateSeasonalInsights(seasonalData)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Generate Profitability Analysis Report
    */
   async generateProfitabilityAnalysis(params) {
-    const { dateRange, hotelIds } = params;
+    try {
+      const { dateRange, hotelIds } = params;
     
-    const profitabilityMetrics = await FactRevenue.aggregate([
-      {
-        $match: {
-          hotel_key: { $in: hotelIds },
-          date_key: {
-            $gte: parseInt(dateRange.startDate.toISOString().slice(0, 10).replace(/-/g, '')),
-            $lte: parseInt(dateRange.endDate.toISOString().slice(0, 10).replace(/-/g, ''))
+      // Consider caching this aggregation result for 5 minutes
+
+    
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+    
+      const profitabilityMetrics = await FactRevenue.aggregate([
+        {
+          $match: {
+            hotel_key: { $in: hotelIds },
+            date_key: {
+              $gte: parseInt(dateRange.startDate.toISOString().slice(0, 10).replace(/-/g, '')),
+              $lte: parseInt(dateRange.endDate.toISOString().slice(0, 10).replace(/-/g, ''))
+            }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: '$gross_revenue' },
+            totalCosts: { $sum: '$operational_costs' },
+            avgProfitMargin: { $avg: '$profit_margin' },
+            avgROI: { $avg: '$roi' }
           }
         }
-      },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: '$gross_revenue' },
-          totalCosts: { $sum: '$operational_costs' },
-          avgProfitMargin: { $avg: '$profit_margin' },
-          avgROI: { $avg: '$roi' }
-        }
-      }
-    ]);
+      ]);
 
-    const metrics = profitabilityMetrics[0] || {};
-    const netProfit = (metrics.totalRevenue || 0) - (metrics.totalCosts || 0);
-    const profitMargin = metrics.totalRevenue ? (netProfit / metrics.totalRevenue) * 100 : 0;
+      const metrics = profitabilityMetrics[0] || {};
+      const netProfit = (metrics.totalRevenue || 0) - (metrics.totalCosts || 0);
+      const profitMargin = metrics.totalRevenue ? (netProfit / metrics.totalRevenue) * 100 : 0;
 
-    return {
-      summary: {
-        totalRevenue: metrics.totalRevenue || 0,
-        totalCosts: metrics.totalCosts || 0,
-        netProfit,
-        profitMargin,
-        avgROI: metrics.avgROI || 0
-      },
-      insights: this.generateProfitabilityInsights(metrics, netProfit, profitMargin)
-    };
+      return {
+        summary: {
+          totalRevenue: metrics.totalRevenue || 0,
+          totalCosts: metrics.totalCosts || 0,
+          netProfit,
+          profitMargin,
+          avgROI: metrics.avgROI || 0
+        },
+        insights: this.generateProfitabilityInsights(metrics, netProfit, profitMargin)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Generate Demand Forecast Report
    */
   async generateDemandForecast(params) {
-    const { dateRange, hotelIds, forecastDays = 30 } = params;
+    try {
+      const { dateRange, hotelIds, forecastDays = 30 } = params;
     
-    // Simple linear trend forecasting
-    const historicalData = await FactRevenue.aggregate([
-      {
-        $match: {
-          hotel_key: { $in: hotelIds },
-          date_key: {
-            $gte: parseInt(dateRange.startDate.toISOString().slice(0, 10).replace(/-/g, '')),
-            $lte: parseInt(dateRange.endDate.toISOString().slice(0, 10).replace(/-/g, ''))
+      // Simple linear trend forecasting
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const historicalData = await FactRevenue.aggregate([
+        {
+          $match: {
+            hotel_key: { $in: hotelIds },
+            date_key: {
+              $gte: parseInt(dateRange.startDate.toISOString().slice(0, 10).replace(/-/g, '')),
+              $lte: parseInt(dateRange.endDate.toISOString().slice(0, 10).replace(/-/g, ''))
+            }
           }
+        },
+        {
+          $group: {
+            _id: '$date_key',
+            demand: { $sum: '$rooms_sold' },
+            revenue: { $sum: '$gross_revenue' }
+          }
+        },
+        {
+          $sort: { _id: 1 }
         }
-      },
-      {
-        $group: {
-          _id: '$date_key',
-          demand: { $sum: '$rooms_sold' },
-          revenue: { $sum: '$gross_revenue' }
-        }
-      },
-      {
-        $sort: { _id: 1 }
-      }
-    ]);
+      ]);
 
-    // Calculate trend
-    const trend = this.calculateTrend(historicalData.map(d => d.demand));
+      // Calculate trend
+      const trend = this.calculateTrend(historicalData.map(d => d.demand));
     
-    // Generate forecast
-    const forecast = [];
-    const lastDate = new Date(dateRange.endDate);
+      // Generate forecast
+      const forecast = [];
+      const lastDate = new Date(dateRange.endDate);
     
-    for (let i = 1; i <= forecastDays; i++) {
-      const forecastDate = new Date(lastDate.getTime() + (i * 24 * 60 * 60 * 1000));
-      const predictedDemand = Math.max(0, trend.slope * i + trend.intercept);
+      for (let i = 1; i <= forecastDays; i++) {
+        const forecastDate = new Date(lastDate.getTime() + (i * 24 * 60 * 60 * 1000));
+        const predictedDemand = Math.max(0, trend.slope * i + trend.intercept);
       
-      forecast.push({
-        date: forecastDate,
-        predictedDemand: Math.round(predictedDemand),
-        confidence: this.calculateConfidence(trend.r2)
-      });
-    }
+        forecast.push({
+          date: forecastDate,
+          predictedDemand: Math.round(predictedDemand),
+          confidence: this.calculateConfidence(trend.r2)
+        });
+      }
 
-    return {
-      summary: {
-        forecastDays,
-        avgPredictedDemand: forecast.reduce((sum, f) => sum + f.predictedDemand, 0) / forecast.length,
-        trendDirection: trend.slope > 0 ? 'increasing' : 'decreasing'
-      },
-      forecast,
-      historicalData,
-      insights: this.generateForecastInsights(forecast, trend)
-    };
+      return {
+        summary: {
+          forecastDays,
+          avgPredictedDemand: forecast.reduce((sum, f) => sum + f.predictedDemand, 0) / forecast.length,
+          trendDirection: trend.slope > 0 ? 'increasing' : 'decreasing'
+        },
+        forecast,
+        historicalData,
+        insights: this.generateForecastInsights(forecast, trend)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Helper methods for the new report types
@@ -1135,43 +1247,75 @@ class AdvancedReportingService {
 
   // Additional helper methods that are referenced but not implemented
   async getRevenueByPeriod(dateRange, hotelIds, breakdown) {
-    // Simplified implementation
-    return [];
+    try {
+      // Simplified implementation
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getRevenueBySegment(dateRange, hotelIds) {
-    // Simplified implementation
-    return [];
+    try {
+      // Simplified implementation
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getRevenueByChannel(dateRange, hotelIds) {
-    // Simplified implementation
-    return [];
+    try {
+      // Simplified implementation
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getRevenueByRoomType(dateRange, hotelIds) {
-    // Simplified implementation
-    return [];
+    try {
+      // Simplified implementation
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async generateRevenueForecast(dateRange, hotelIds) {
-    // Simplified implementation
-    return [];
+    try {
+      // Simplified implementation
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getOccupancyTrends(dateRange, hotelIds) {
-    // Simplified implementation
-    return [];
+    try {
+      // Simplified implementation
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getGuestSatisfactionMetrics(dateRange, hotelIds) {
-    // Simplified implementation
-    return [];
+    try {
+      // Simplified implementation
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getMarketPosition(dateRange, hotelIds) {
-    // Simplified implementation
-    return [];
+    try {
+      // Simplified implementation
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   generateExecutiveSummaryText(kpis, insights) {
@@ -1179,8 +1323,12 @@ class AdvancedReportingService {
   }
 
   async generateOccupancyForecast(dateRange, hotelIds) {
-    // Simplified implementation
-    return [];
+    try {
+      // Simplified implementation
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   generateOccupancyInsights(dailyOccupancy, occupancyByDayOfWeek) {
@@ -1199,8 +1347,12 @@ class AdvancedReportingService {
   }
 
   async analyzeBehaviorPatterns(dateRange, hotelIds) {
-    // Simplified implementation
-    return [];
+    try {
+      // Simplified implementation
+      return [];
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 

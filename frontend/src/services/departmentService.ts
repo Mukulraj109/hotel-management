@@ -258,126 +258,202 @@ export interface BulkUpdateItem {
 
 class DepartmentService {
   async getDepartments(filters: DepartmentFilters = {}) {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/departments?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/departments?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getDepartmentById(id: string, options: { populate?: boolean; includeStats?: boolean } = {}) {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    if (options.populate) params.append('populate', 'true');
-    if (options.includeStats) params.append('includeStats', 'true');
+      if (options.populate) params.append('populate', 'true');
+      if (options.includeStats) params.append('includeStats', 'true');
 
-    const response = await api.get(`/departments/${id}?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/departments/${id}?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async createDepartment(departmentData: CreateDepartmentData) {
-    const response = await api.post('/departments', departmentData);
-    return response.data;
+    try {
+      const response = await api.post('/departments', departmentData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateDepartment(id: string, departmentData: UpdateDepartmentData) {
-    const response = await api.put(`/departments/${id}`, departmentData);
-    return response.data;
+    try {
+      const response = await api.put(`/departments/${id}`, departmentData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async deleteDepartment(id: string) {
-    const response = await api.delete(`/departments/${id}`);
-    return response.data;
+    try {
+      const response = await api.delete(`/departments/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getDepartmentHierarchy() {
-    const response = await api.get('/departments/hierarchy');
-    return response.data;
+    try {
+      const response = await api.get('/departments/hierarchy');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async searchDepartments(query: string, options: { status?: string; limit?: number } = {}) {
-    const params = new URLSearchParams({ q: query });
+    try {
+      const params = new URLSearchParams({ q: query });
     
-    if (options.status) params.append('status', options.status);
-    if (options.limit) params.append('limit', options.limit.toString());
+      if (options.status) params.append('status', options.status);
+      if (options.limit) params.append('limit', options.limit.toString());
 
-    const response = await api.get(`/departments/search?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/departments/search?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async exportDepartments(format: 'json' | 'csv' = 'json') {
-    const response = await api.get(`/departments/export?format=${format}`);
-    return response.data;
+    try {
+      const response = await api.get(`/departments/export?format=${format}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getDepartmentSummary() {
-    const response = await api.get('/departments/summary');
-    return response.data;
+    try {
+      const response = await api.get('/departments/summary');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async bulkUpdateDepartments(updates: BulkUpdateItem[]) {
-    const response = await api.put('/departments/bulk-update', { updates });
-    return response.data;
+    try {
+      const response = await api.put('/departments/bulk-update', { updates });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async assignStaff(departmentId: string, staffIds: string[]) {
-    const response = await api.post(`/departments/${departmentId}/assign-staff`, { staffIds });
-    return response.data;
+    try {
+      const response = await api.post(`/departments/${departmentId}/assign-staff`, { staffIds });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateAnalytics(departmentId: string, analyticsData: Partial<Department['analytics']>) {
-    const response = await api.put(`/departments/${departmentId}/analytics`, analyticsData);
-    return response.data;
+    try {
+      const response = await api.put(`/departments/${departmentId}/analytics`, analyticsData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getDepartmentMetrics(departmentId: string, period: '7d' | '30d' | '90d' | '1y' = '30d') {
-    const response = await api.get(`/departments/${departmentId}/metrics?period=${period}`);
-    return response.data;
+    try {
+      const response = await api.get(`/departments/${departmentId}/metrics?period=${period}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getDepartmentAuditLog(departmentId: string, options: { page?: number; limit?: number } = {}) {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    if (options.page) params.append('page', options.page.toString());
-    if (options.limit) params.append('limit', options.limit.toString());
+      if (options.page) params.append('page', options.page.toString());
+      if (options.limit) params.append('limit', options.limit.toString());
 
-    const response = await api.get(`/departments/${departmentId}/audit-log?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/departments/${departmentId}/audit-log?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateDepartmentKPIs(departmentId: string, kpis: Department['kpis']) {
-    const response = await api.put(`/departments/${departmentId}/kpis`, { kpis });
-    return response.data;
+    try {
+      const response = await api.put(`/departments/${departmentId}/kpis`, { kpis });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateDepartmentBudget(departmentId: string, budget: Department['budget']) {
-    const response = await api.put(`/departments/${departmentId}/budget`, { budget });
-    return response.data;
+    try {
+      const response = await api.put(`/departments/${departmentId}/budget`, { budget });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getDepartmentStaff(departmentId: string, options: { page?: number; limit?: number } = {}) {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    if (options.page) params.append('page', options.page.toString());
-    if (options.limit) params.append('limit', options.limit.toString());
+      if (options.page) params.append('page', options.page.toString());
+      if (options.limit) params.append('limit', options.limit.toString());
 
-    const response = await api.get(`/departments/${departmentId}/staff?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/departments/${departmentId}/staff?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateDepartmentStatus(departmentId: string, status: Department['status'], reason?: string) {
-    const response = await api.patch(`/departments/${departmentId}/status`, { status, reason });
-    return response.data;
+    try {
+      const response = await api.patch(`/departments/${departmentId}/status`, { status, reason });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async cloneDepartment(departmentId: string, newName: string, newCode: string) {
-    const response = await api.post(`/departments/${departmentId}/clone`, { newName, newCode });
-    return response.data;
+    try {
+      const response = await api.post(`/departments/${departmentId}/clone`, { newName, newCode });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

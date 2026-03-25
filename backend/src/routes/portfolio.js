@@ -35,7 +35,7 @@ router.get('/metrics', catchAsync(async (req, res) => {
       { createdBy: req.user._id }
     ],
     isActive: { $ne: false }
-  }).select('name address').populate('totalRooms');
+  }).select('name address').populate('totalRooms').lean().limit(1000);
 
   if (!properties || properties.length === 0) {
     return res.json({
@@ -181,7 +181,7 @@ router.get('/dashboard', catchAsync(async (req, res) => {
       { createdBy: req.user._id }
     ],
     isActive: { $ne: false }
-  }).populate('totalRooms');
+  }).populate('totalRooms').lean().limit(1000);
 
   if (!properties || properties.length === 0) {
     return res.json({
@@ -343,7 +343,7 @@ router.get('/revenue', catchAsync(async (req, res) => {
       { ownerId: req.user._id },
       { createdBy: req.user._id }
     ]
-  }).select('name address');
+  }).select('name address').lean().limit(1000);
 
   const propertyIds = properties.map(p => p._id);
 
@@ -440,7 +440,7 @@ router.get('/bookings', catchAsync(async (req, res) => {
       { ownerId: req.user._id },
       { createdBy: req.user._id }
     ]
-  });
+  }).lean().limit(1000);
 
   const propertyIds = properties.map(p => p._id);
 
@@ -509,7 +509,7 @@ router.get('/occupancy', catchAsync(async (req, res) => {
       { ownerId: req.user._id },
       { createdBy: req.user._id }
     ]
-  });
+  }).lean().limit(1000);
 
   const propertyIds = properties.map(p => p._id);
 

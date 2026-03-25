@@ -196,31 +196,39 @@ scheduledUpdateSchema.virtual('creator', {
  * Get due updates (scheduled time has passed and status is pending)
  */
 scheduledUpdateSchema.statics.getDueUpdates = async function() {
-  return this.find({
-    status: 'pending',
-    scheduledFor: { $lte: new Date() }
-  })
-  .populate('createdBy', 'name email')
-  .populate('propertyId', 'name code')
-  .populate('groupId', 'name')
-  .sort({ scheduledFor: 1 });
+  try {
+    return this.find({
+      status: 'pending',
+      scheduledFor: { $lte: new Date() }
+    })
+    .populate('createdBy', 'name email')
+    .populate('propertyId', 'name code')
+    .populate('groupId', 'name')
+    .sort({ scheduledFor: 1 });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 /**
  * Get upcoming updates (next 24 hours)
  */
 scheduledUpdateSchema.statics.getUpcomingUpdates = async function(hours = 24) {
-  const now = new Date();
-  const future = new Date(now.getTime() + hours * 60 * 60 * 1000);
+  try {
+    const now = new Date();
+    const future = new Date(now.getTime() + hours * 60 * 60 * 1000);
 
-  return this.find({
-    status: 'pending',
-    scheduledFor: { $gte: now, $lte: future }
-  })
-  .populate('createdBy', 'name email')
-  .populate('propertyId', 'name code')
-  .populate('groupId', 'name')
-  .sort({ scheduledFor: 1 });
+    return this.find({
+      status: 'pending',
+      scheduledFor: { $gte: now, $lte: future }
+    })
+    .populate('createdBy', 'name email')
+    .populate('propertyId', 'name code')
+    .populate('groupId', 'name')
+    .sort({ scheduledFor: 1 });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 /**
@@ -296,35 +304,43 @@ scheduledUpdateSchema.methods.execute = async function(settingsService) {
  * Cancel scheduled update
  */
 scheduledUpdateSchema.methods.cancel = async function(userId, reason) {
-  if (this.status !== 'pending') {
-    throw new Error(`Cannot cancel update with status: ${this.status}`);
+  try {
+    if (this.status !== 'pending') {
+      throw new Error(`Cannot cancel update with status: ${this.status}`);
+    }
+
+    this.status = 'cancelled';
+    this.cancelledAt = new Date();
+    this.cancelledBy = userId;
+    this.cancelReason = reason || 'No reason provided';
+    await this.save();
+
+    return this;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  this.status = 'cancelled';
-  this.cancelledAt = new Date();
-  this.cancelledBy = userId;
-  this.cancelReason = reason || 'No reason provided';
-  await this.save();
-
-  return this;
 };
 
 /**
  * Reschedule update
  */
 scheduledUpdateSchema.methods.reschedule = async function(newScheduledFor) {
-  if (this.status !== 'pending') {
-    throw new Error(`Cannot reschedule update with status: ${this.status}`);
+  try {
+    if (this.status !== 'pending') {
+      throw new Error(`Cannot reschedule update with status: ${this.status}`);
+    }
+
+    if (new Date(newScheduledFor) <= new Date()) {
+      throw new Error('New scheduled time must be in the future');
+    }
+
+    this.scheduledFor = newScheduledFor;
+    await this.save();
+
+    return this;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  if (new Date(newScheduledFor) <= new Date()) {
-    throw new Error('New scheduled time must be in the future');
-  }
-
-  this.scheduledFor = newScheduledFor;
-  await this.save();
-
-  return this;
 };
 
 // Pre-save middleware

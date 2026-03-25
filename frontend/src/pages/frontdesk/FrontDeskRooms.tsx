@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef} from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
@@ -11,8 +11,9 @@ import { PerformanceBenchmarking } from '../../components/analytics/PerformanceB
 import { formatPercentage } from '../../utils/dashboardUtils';
 import { Room } from '../../services/roomsService';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function FrontDeskRooms() {
+function FrontDeskRooms() {
   const { user } = useAuth();
   const { selectedPropertyId } = useProperty();
   const [refreshKey, setRefreshKey] = useState(0);
@@ -193,6 +194,14 @@ export default function FrontDeskRooms() {
   }, [roomsQuery.dataUpdatedAt]);
 
   // Detect room changes for visual feedback
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (previousRooms.length > 0 && roomsQuery.data?.rooms) {
       const currentRooms = roomsQuery.data.rooms;
@@ -214,7 +223,8 @@ export default function FrontDeskRooms() {
         setLastUpdateTime(new Date());
         
         // Clear change indicators after 5 seconds
-        setTimeout(() => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
           setChangedRooms(new Set());
         }, 5000);
       }
@@ -530,7 +540,7 @@ export default function FrontDeskRooms() {
         </div>
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
           {/* Analytics Toggle */}
-          <button
+          <button aria-label="Close"
             onClick={() => setShowAnalytics(!showAnalytics)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               showAnalytics 
@@ -724,7 +734,7 @@ export default function FrontDeskRooms() {
             <div className="space-y-4">
               {/* Selection Controls */}
               <div className="flex space-x-2">
-                <button
+                <button aria-label="Filter"
                   onClick={handleSelectAll}
                   className="flex-1 px-4 py-2 text-sm bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition-colors"
                 >
@@ -919,13 +929,14 @@ export default function FrontDeskRooms() {
                       </div>
                       
                       {/* Bar */}
-                      <div 
+                      <div role="button" tabIndex={0} 
                         className="w-8 bg-blue-500 hover:bg-blue-600 transition-colors cursor-pointer rounded-t"
                         style={{ height: `${barHeight}px` }}
                         onClick={() => setSelectedFloor(floor.floor)}
                         title={`Floor ${floor.floor}: ${floor.totalRooms} rooms`}
+                        onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => setSelectedFloor(floor.floor); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}
                       />
-                      
+
                       {/* Floor Label */}
                       <span className="text-xs text-gray-600 mt-2 transform -rotate-45 origin-center">
                         F{floor.floor}
@@ -1311,7 +1322,7 @@ export default function FrontDeskRooms() {
                 </select>
               </div>
               
-              <button
+              <button aria-label="Refresh"
                 onClick={handleRefresh}
                 disabled={isLoading}
                 className="flex items-center space-x-2 px-4 py-2 bg-white/20 backdrop-blur-sm text-white text-sm rounded-lg hover:bg-white/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 border border-white/30"
@@ -1474,7 +1485,7 @@ export default function FrontDeskRooms() {
                 <div className="p-4 sm:p-6">
                   <div className="grid gap-2 sm:gap-3 grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12">
                     {floorRooms.map(room => (
-                      <div
+                      <div role="button" tabIndex={0}
                         key={room._id}
                         className={[
                           'relative aspect-square rounded-xl border-2 cursor-pointer transition-all duration-300',
@@ -1498,7 +1509,14 @@ export default function FrontDeskRooms() {
                           }
                         }}
                         title={`Click to change status • Ctrl+Click for bulk selection • Room ${room.roomNumber} - ${getRoomStatus(room)} - ${room.type}`}
-                      >
+                       onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = (e) => {
+                          // Support bulk selection with Ctrl/Cmd key
+                          if (e.ctrlKey || e.metaKey) {
+                            handleRoomMultiSelect(room._id);
+                          } else {
+                            handleRoomSelect(room._id);
+                          }
+                        }; if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-white font-medium">
                           <div className="text-lg mb-1 drop-shadow-lg">
                             {room.type === 'suite' ? '👑' : room.type === 'deluxe' ? '⭐' : room.type === 'double' ? '👥' : '👤'}
@@ -1673,11 +1691,13 @@ export default function FrontDeskRooms() {
 
       {/* Room Status Change Modal */}
       {showStatusModal && selectedRoomForStatus && (
-        <div 
+        <div aria-hidden="true" 
           className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
           onClick={handleCloseStatusModal}
         >
-          <div 
+          <div
+            role="dialog"
+            aria-modal="true"
             className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1687,7 +1707,7 @@ export default function FrontDeskRooms() {
                 <h3 className="text-lg font-medium text-gray-900">
                   Change Room Status
                 </h3>
-                <button
+                <button aria-label="Close"
                   onClick={handleCloseStatusModal}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
@@ -1868,3 +1888,5 @@ export default function FrontDeskRooms() {
     </div>
   );
 }
+
+export default withErrorBoundary(FrontDeskRooms, { level: 'page' });

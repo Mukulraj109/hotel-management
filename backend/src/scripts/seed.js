@@ -8679,7 +8679,7 @@ VIP Services Team
 
     // First create Corporate Companies for bookings if not already created
     console.log('🏢 Creating corporate companies for bookings...');
-    let corporateCompaniesForBookings = await CorporateCompany.find().limit(2);
+    let corporateCompaniesForBookings = await CorporateCompany.find().limit(2).lean();
     if (corporateCompaniesForBookings.length < 2) {
       corporateCompaniesForBookings = await CorporateCompany.create([
         {
@@ -8739,7 +8739,7 @@ VIP Services Team
 
     // Create Group Bookings if not already created
     console.log('👥 Creating group bookings...');
-    let groupBookingsForBookings = await GroupBooking.find().limit(2);
+    let groupBookingsForBookings = await GroupBooking.find().limit(2).lean();
     if (groupBookingsForBookings.length < 2) {
       groupBookingsForBookings = await GroupBooking.create([
         {
@@ -8824,7 +8824,7 @@ VIP Services Team
     }
 
     // Channels are created later in the comprehensive channel creation section
-    let channelsForBookings = await Channel.find().limit(3);
+    let channelsForBookings = await Channel.find().limit(3).lean();
 
     // Enhanced Booking data with all relationships
     const enhancedBookingsData = [
@@ -9995,7 +9995,7 @@ VIP Services Team
     console.log('💰 Creating centralized rates...');
     
     // Get available room types for rate configuration
-    const availableRoomTypes = await RoomType.find({ hotelId: hotel._id });
+    const availableRoomTypes = await RoomType.find({ hotelId: hotel._id }).lean().limit(1000);
     
     const centralizedRatesData = [
       // Best Available Rate (BAR)
@@ -11483,7 +11483,7 @@ VIP Services Team
     const reservationMappingData = [];
     
     // Get some existing bookings to create mappings for
-    const existingBookings = await Booking.find().limit(20);
+    const existingBookings = await Booking.find().limit(20).lean();
     
     existingBookings.forEach((booking, index) => {
       const channelIndex = index % createdChannels.length;
@@ -11507,8 +11507,8 @@ VIP Services Team
     console.log('🔍 Creating Checkout Inspections & Competitor Monitoring Data...');
 
     // Checkout Inspections Data
-    const bookingsForInspection = await Booking.find().limit(15);
-    const roomsForInspection = await Room.find().limit(15);
+    const bookingsForInspection = await Booking.find().limit(15).lean();
+    const roomsForInspection = await Room.find().limit(15).lean();
     const checkoutInspectionsData = [];
 
     bookingsForInspection.forEach((booking, index) => {
@@ -19654,7 +19654,9 @@ Email: {{hotelEmail}}`,
     await HotelArea.findByIdAndUpdate(createdHotelAreas[1]._id, {
       parentAreaId: createdHotelAreas[0]._id,
       fullPath: 'Main Building > West Wing'
-    });
+    },
+      { new: true }
+    );
 
     // === IDENTIFICATION TYPE SEED DATA ===
     console.log('🆔 Seeding Identification Type data...');
@@ -23085,7 +23087,7 @@ Email: {{hotelEmail}}`,
     const groupRoomTypes = ['single', 'double', 'suite', 'deluxe'];
     
     // Corporate companies to use (should already exist from previous seeding)
-    const corporateCompanies = await CorporateCompany.find().limit(5);
+    const corporateCompanies = await CorporateCompany.find().limit(5).lean();
     if (corporateCompanies.length === 0) {
       console.log('⚠️  No corporate companies found, skipping group bookings');
     } else {
@@ -23994,8 +23996,8 @@ Email: {{hotelEmail}}`,
       await CorporateRate.deleteMany({});
 
       // Get existing data for references
-      const existingCorporateCompanies = await CorporateCompany.find().limit(3);
-      const existingRoomTypes = await RoomType.find().limit(4);
+      const existingCorporateCompanies = await CorporateCompany.find().limit(3).lean();
+      const existingRoomTypes = await RoomType.find().limit(4).lean();
 
       const corporateRateData = [
         {
@@ -26671,7 +26673,7 @@ Email: {{hotelEmail}}`,
       logger.info(`📅 Special Periods: ${createdSpecialPeriods.length}`);
 
       // 4. Shared Resources (multi-property resource management)
-      const propertyGroups = await PropertyGroup.find({});
+      const propertyGroups = await PropertyGroup.find({}).lean().limit(1000);
       const sharedResourceData = [
         // Staff Resource
         {
@@ -27326,14 +27328,14 @@ Email: {{hotelEmail}}`,
       let checkedInBookings = await Booking.find({
         hotelId: hotel._id,
         status: 'checked_in'
-      }).limit(8);
+      }).limit(8).lean();
 
       // If no checked-in bookings, use any bookings as fallback
       if (checkedInBookings.length === 0) {
         logger.warn('No checked-in bookings found, using any bookings as fallback');
         checkedInBookings = await Booking.find({
           hotelId: hotel._id
-        }).limit(8);
+        }).limit(8).lean();
       }
 
       if (checkedInBookings.length === 0) {
@@ -27386,8 +27388,8 @@ Email: {{hotelEmail}}`,
           continue;
         }
         
-        const room = await Room.findById(actualRoomId);
-        const guest = await User.findById(booking.userId || booking.guestId);
+        const room = await Room.findById(actualRoomId).lean();
+        const guest = await User.findById(booking.userId || booking.guestId).lean();
         const assignedStaff = staffUsers[i % staffUsers.length];
         
         // Skip if room not found
@@ -27622,7 +27624,7 @@ Email: {{hotelEmail}}`,
           for (const inspectionData of checkoutInspectionData) {
             try {
               // Check if inspection already exists for this booking
-              const existingInspection = await CheckoutInspection.findOne({ bookingId: inspectionData.bookingId });
+              const existingInspection = await CheckoutInspection.findOne({ bookingId: inspectionData.bookingId }).lean();
               if (existingInspection) {
                 logger.info(`Skipping inspection for booking ${inspectionData.bookingId} - already exists`);
                 continue;

@@ -71,7 +71,7 @@ class ApprovalTimeoutJob {
                 })
                 .populate('initiatedBy', 'name email')
                 .populate('approvalChain.assignedTo', 'name email')
-                .populate('bypassAuditId', 'bypassId reason');
+                .populate('bypassAuditId', 'bypassId reason').lean().limit(1000);
 
             console.log(`Found ${pendingWorkflows.length} pending approval workflows`);
 
@@ -226,7 +226,7 @@ class ApprovalTimeoutJob {
      */
     async sendReminderNotification(workflow, currentApproval) {
         try {
-            const approver = await User.findById(currentApproval.assignedTo);
+            const approver = await User.findById(currentApproval.assignedTo).lean();
             if (!approver || !approver.email) {
                 return;
             }
@@ -268,7 +268,7 @@ class ApprovalTimeoutJob {
      */
     async sendTimeoutWarning(workflow, currentApproval) {
         try {
-            const approver = await User.findById(currentApproval.assignedTo);
+            const approver = await User.findById(currentApproval.assignedTo).lean();
             if (!approver || !approver.email) {
                 return;
             }

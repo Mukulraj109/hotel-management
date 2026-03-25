@@ -169,7 +169,7 @@ const BlacklistForm: React.FC<BlacklistFormProps> = ({
               {entry ? 'Edit Blacklist Entry' : 'Add Guest to Blacklist'}
             </h3>
           </div>
-          <button
+          <button aria-label="Close"
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
           >
@@ -195,11 +195,11 @@ const BlacklistForm: React.FC<BlacklistFormProps> = ({
               {guestSuggestions.length > 0 && (
                 <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
                   {guestSuggestions.map((guest) => (
-                    <div
+                    <div role="button" tabIndex={0}
                       key={guest._id}
                       onClick={() => handleGuestSelect(guest)}
                       className="px-4 py-2 hover:bg-gray-100 cursor-pointer border-b border-gray-200 last:border-b-0"
-                    >
+                     onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => handleGuestSelect(guest); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                       <div className="font-medium text-gray-900">{guest.name}</div>
                       <div className="text-sm text-gray-500">{guest.email}</div>
                     </div>
@@ -339,7 +339,7 @@ const BlacklistForm: React.FC<BlacklistFormProps> = ({
             >
               Cancel
             </button>
-            <button
+            <button aria-label="Add"
               type="submit"
               disabled={loading}
               className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 disabled:opacity-50"

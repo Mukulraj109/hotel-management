@@ -60,35 +60,51 @@ class MaintenanceService {
     priority?: string;
     overdue?: boolean;
   } = {}) {
-    const queryParams = new URLSearchParams();
-    if (params.page) queryParams.append('page', params.page.toString());
-    if (params.limit) queryParams.append('limit', params.limit.toString());
-    if (params.status) queryParams.append('status', params.status);
-    if (params.type) queryParams.append('type', params.type);
-    if (params.priority) queryParams.append('priority', params.priority);
-    if (params.overdue) queryParams.append('overdue', 'true');
+    try {
+      const queryParams = new URLSearchParams();
+      if (params.page) queryParams.append('page', params.page.toString());
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.status) queryParams.append('status', params.status);
+      if (params.type) queryParams.append('type', params.type);
+      if (params.priority) queryParams.append('priority', params.priority);
+      if (params.overdue) queryParams.append('overdue', 'true');
 
-    const endpoint = queryParams.toString() ? `?${queryParams.toString()}` : '';
-    const response = await api.get(`${this.baseURL}${endpoint}`);
-    return response.data;
+      const endpoint = queryParams.toString() ? `?${queryParams.toString()}` : '';
+      const response = await api.get(`${this.baseURL}${endpoint}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get maintenance statistics
   async getStats() {
-    const response = await api.get(`${this.baseURL}/stats`);
-    return response.data;
+    try {
+      const response = await api.get(`${this.baseURL}/stats`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get overdue tasks
   async getOverdueTasks() {
-    const response = await api.get(`${this.baseURL}/overdue`);
-    return response.data;
+    try {
+      const response = await api.get(`${this.baseURL}/overdue`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get task by ID
   async getTask(id: string) {
-    const response = await api.get(`${this.baseURL}/${id}`);
-    return response.data;
+    try {
+      const response = await api.get(`${this.baseURL}/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Create new maintenance task
@@ -104,8 +120,12 @@ class MaintenanceService {
     category?: string;
     roomOutOfOrder?: boolean;
   }) {
-    const response = await api.post(`${this.baseURL}`, taskData);
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseURL}`, taskData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Update task
@@ -132,8 +152,12 @@ class MaintenanceService {
     scheduledDate?: string;
     notes?: string;
   }) {
-    const response = await api.post(`${this.baseURL}/${id}/assign`, data);
-    return response.data;
+    try {
+      const response = await api.post(`${this.baseURL}/${id}/assign`, data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get tasks for staff dashboard (grouped by status)

@@ -268,10 +268,7 @@ const tapeChartViews = [
 
 async function connectDB() {
   try {
-    await mongoose.connect(process.env.MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    await mongoose.connect(process.env.MONGO_URI);
     console.log('✅ MongoDB connected for tape chart seeding');
   } catch (error) {
     console.error('❌ MongoDB connection error:', error);
@@ -284,17 +281,17 @@ async function seedTapeChartData() {
     console.log('🌱 Starting tape chart data seeding...');
 
     // Get hotel and users for references
-    const hotel = await Hotel.findOne({ name: /pentouz/i });
+    const hotel = await Hotel.findOne({ name: /pentouz/i }).lean();
     if (!hotel) {
       throw new Error('Hotel not found. Please run basic seed first.');
     }
 
-    const adminUser = await User.findOne({ email: 'admin@hotel.com' });
+    const adminUser = await User.findOne({ email: 'admin@hotel.com' }).lean();
     if (!adminUser) {
       throw new Error('Admin user not found. Please run basic seed first.');
     }
 
-    const rooms = await Room.find({ hotelId: hotel._id });
+    const rooms = await Room.find({ hotelId: hotel._id }).lean().limit(1000);
     if (rooms.length === 0) {
       throw new Error('No rooms found. Please run basic seed first.');
     }
@@ -405,7 +402,7 @@ async function seedTapeChartData() {
     await AdvancedReservation.deleteMany({});
 
     // Get some existing bookings to create advanced reservations
-    const bookings = await Booking.find({ hotelId: hotel._id }).limit(5);
+    const bookings = await Booking.find({ hotelId: hotel._id }).limit(5).lean();
 
     const advancedReservations = [];
     for (let i = 0; i < Math.min(bookings.length, sampleGuestProfiles.length); i++) {

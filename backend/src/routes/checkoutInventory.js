@@ -68,7 +68,7 @@ router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   logger.debug('Creating checkout inventory', { bookingId, roomId, itemsCount: items?.length });
 
   // Verify booking exists and is checked in
-  const booking = await Booking.findById(bookingId);
+  const booking = await Booking.findById(bookingId).lean();
   if (!booking) {
     logger.debug('Booking not found for checkout inventory', { bookingId });
     throw new ApplicationError('Booking not found', 404);
@@ -82,7 +82,7 @@ router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   }
 
   // Verify room exists and belongs to the booking
-  const room = await Room.findById(roomId);
+  const room = await Room.findById(roomId).lean();
   if (!room) {
     throw new ApplicationError('Room not found', 404);
   }
@@ -224,7 +224,7 @@ router.get('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
       { path: 'bookingId', select: 'bookingNumber checkIn checkOut totalAmount userId' },
       { path: 'roomId', select: 'roomNumber type' },
       { path: 'checkedBy', select: 'name email' }
-    ]);
+    ]).lean();
 
   if (!checkoutInventory) {
     throw new ApplicationError('Checkout inventory check not found', 404);
@@ -270,24 +270,28 @@ router.get('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
 router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   const { items, status, notes } = req.body;
 
-  const checkoutInventory = await CheckoutInventory.findById(req.params.id);
-  if (!checkoutInventory) {
-    throw new ApplicationError('Checkout inventory check not found', 404);
-  }
+  const updateFields = {};
 
   if (items) {
     // Recalculate total price for each item
-    const processedItems = items.map(item => ({
+    updateFields.items = items.map(item => ({
       ...item,
       totalPrice: item.quantity * item.unitPrice
     }));
-    checkoutInventory.items = processedItems;
   }
 
-  if (status) checkoutInventory.status = status;
-  if (notes) checkoutInventory.notes = notes;
+  if (status) updateFields.status = status;
+  if (notes) updateFields.notes = notes;
 
-  await checkoutInventory.save();
+  const checkoutInventory = await CheckoutInventory.findByIdAndUpdate(
+    req.params.id,
+    { $set: updateFields },
+    { new: true, runValidators: true }
+  );
+
+  if (!checkoutInventory) {
+    throw new ApplicationError('Checkout inventory check not found', 404);
+  }
 
   await checkoutInventory.populate([
     { path: 'bookingId', select: 'bookingNumber checkIn checkOut totalAmount' },
@@ -321,25 +325,27 @@ router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =>
  *         description: Inventory check marked as completed
  */
 router.post('/:id/complete', authorize('staff', 'admin'), catchAsync(async (req, res) => {
-  const checkoutInventory = await CheckoutInventory.findById(req.params.id);
-  if (!checkoutInventory) {
-    throw new ApplicationError('Checkout inventory check not found', 404);
-  }
+  // Atomic update: only update if status is 'pending'
+  const checkoutInventory = await CheckoutInventory.findOneAndUpdate(
+    { _id: req.params.id, status: 'pending' },
+    { $set: { status: 'completed' } },
+    { new: true, runValidators: true }
+  );
 
-  if (checkoutInventory.status !== 'pending') {
+  if (!checkoutInventory) {
+    // Determine the reason for failure
+    const existing = await CheckoutInventory.findById(req.params.id).lean();
+    if (!existing) {
+      throw new ApplicationError('Checkout inventory check not found', 404);
+    }
     throw new ApplicationError('Only pending inventory checks can be marked as completed', 400);
   }
-
-  // Update status to completed
-  checkoutInventory.status = 'completed';
-  await checkoutInventory.save();
 
   // Mark the room as 'dirty' for housekeeping after checkout
   if (checkoutInventory.roomId) {
     try {
-      const Room = (await import('../models/Room.js')).default;
       const roomId = checkoutInventory.roomId._id || checkoutInventory.roomId;
-      await Room.findByIdAndUpdate(roomId, { status: 'dirty' });
+      await Room.findByIdAndUpdate(roomId, { status: 'dirty' }, { new: true });
     } catch (err) {
       logger.warn('Failed to update room status to dirty after checkout', { error: err.message });
     }
@@ -393,23 +399,28 @@ router.post('/:id/complete', authorize('staff', 'admin'), catchAsync(async (req,
 router.post('/:id/payment', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   const { paymentMethod, notes } = req.body;
 
-  const checkoutInventory = await CheckoutInventory.findById(req.params.id);
-  if (!checkoutInventory) {
-    throw new ApplicationError('Checkout inventory check not found', 404);
-  }
+  // Atomic update: only update if not already paid
+  const updateFields = {
+    paymentMethod,
+    paymentStatus: 'paid',
+    status: 'completed',
+    paidAt: new Date()
+  };
+  if (notes) updateFields.notes = notes;
 
-  if (checkoutInventory.paymentStatus === 'paid') {
+  const checkoutInventory = await CheckoutInventory.findOneAndUpdate(
+    { _id: req.params.id, paymentStatus: { $ne: 'paid' } },
+    { $set: updateFields },
+    { new: true, runValidators: true }
+  );
+
+  if (!checkoutInventory) {
+    const existing = await CheckoutInventory.findById(req.params.id).lean();
+    if (!existing) {
+      throw new ApplicationError('Checkout inventory check not found', 404);
+    }
     throw new ApplicationError('Payment already processed', 400);
   }
-
-  // Update payment details
-  checkoutInventory.paymentMethod = paymentMethod;
-  checkoutInventory.paymentStatus = 'paid';
-  checkoutInventory.status = 'completed'; // Set to completed when paid
-  checkoutInventory.paidAt = new Date();
-  if (notes) checkoutInventory.notes = notes;
-
-  await checkoutInventory.save();
 
   // Update booking status to checked out
   const booking = await Booking.findByIdAndUpdate(checkoutInventory.bookingId, {
@@ -445,7 +456,9 @@ router.post('/:id/payment', authorize('staff', 'admin'), catchAsync(async (req, 
           createdAt: new Date()
         }
       }
-    });
+    },
+      { new: true }
+    );
   }
 
   await checkoutInventory.populate([

@@ -258,6 +258,7 @@ export function addFocusVisiblePolyfill() {
 // Live region manager for dynamic content updates
 export class LiveRegionManager {
   private regions: Map<string, HTMLElement> = new Map();
+  private clearTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   createRegion(
     id: string,
@@ -293,19 +294,39 @@ export class LiveRegionManager {
 
     region.textContent = message;
 
+    // Clear previous timer for this region if any
+    const existingTimer = this.clearTimers.get(regionId);
+    if (existingTimer) clearTimeout(existingTimer);
+
     if (clearAfter > 0) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        this.clearTimers.delete(regionId);
         region.textContent = '';
       }, clearAfter);
+      this.clearTimers.set(regionId, timer);
     }
   }
 
   removeRegion(id: string) {
+    const timer = this.clearTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      this.clearTimers.delete(id);
+    }
     const region = this.regions.get(id);
     if (region) {
       document.body.removeChild(region);
       this.regions.delete(id);
     }
+  }
+
+  destroy() {
+    this.clearTimers.forEach(timer => clearTimeout(timer));
+    this.clearTimers.clear();
+    this.regions.forEach(region => {
+      if (region.parentNode) region.parentNode.removeChild(region);
+    });
+    this.regions.clear();
   }
 
   clear(id: string) {

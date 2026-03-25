@@ -107,7 +107,7 @@ export const getRevenueAccount = catchAsync(async (req, res, next) => {
     .populate('applicableRoomTypes', 'name code category pricing')
     .populate('autoCalculation.basedOnAccount', 'accountCode accountName')
     .populate('createdBy', 'name email')
-    .populate('updatedBy', 'name email');
+    .populate('updatedBy', 'name email').lean();
 
   if (!account) {
     return next(new ApplicationError('Revenue account not found', 404));
@@ -140,7 +140,7 @@ export const createRevenueAccount = catchAsync(async (req, res, next) => {
   const existingAccount = await RevenueAccount.findOne({
     hotelId,
     accountCode: req.body.accountCode.toUpperCase()
-  });
+  }).lean();
 
   if (existingAccount) {
     return next(new ApplicationError('An account with this code already exists', 400));
@@ -151,7 +151,7 @@ export const createRevenueAccount = catchAsync(async (req, res, next) => {
     const parentAccount = await RevenueAccount.findOne({
       _id: req.body.parentAccount,
       hotelId
-    });
+    }).lean();
 
     if (!parentAccount) {
       return next(new ApplicationError('Parent account not found', 400));
@@ -168,7 +168,7 @@ export const createRevenueAccount = catchAsync(async (req, res, next) => {
     const roomTypes = await RoomType.find({
       _id: { $in: req.body.applicableRoomTypes },
       hotelId
-    });
+    }).lean().limit(1000);
 
     if (roomTypes.length !== req.body.applicableRoomTypes.length) {
       return next(new ApplicationError('One or more room types are invalid', 400));
@@ -180,7 +180,7 @@ export const createRevenueAccount = catchAsync(async (req, res, next) => {
     const basedOnAccount = await RevenueAccount.findOne({
       _id: req.body.autoCalculation.basedOnAccount,
       hotelId
-    });
+    }).lean();
 
     if (!basedOnAccount) {
       return next(new ApplicationError('Based on account not found', 400));
@@ -225,7 +225,7 @@ export const updateRevenueAccount = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user._id;
 
-  const account = await RevenueAccount.findById(id);
+  const account = await RevenueAccount.findById(id).lean();
 
   if (!account) {
     return next(new ApplicationError('Revenue account not found', 404));
@@ -242,7 +242,7 @@ export const updateRevenueAccount = catchAsync(async (req, res, next) => {
       hotelId: account.hotelId,
       accountCode: req.body.accountCode.toUpperCase(),
       _id: { $ne: id }
-    });
+    }).lean();
 
     if (existingAccount) {
       return next(new ApplicationError('An account with this code already exists', 400));
@@ -254,7 +254,7 @@ export const updateRevenueAccount = catchAsync(async (req, res, next) => {
     const parentAccount = await RevenueAccount.findOne({
       _id: req.body.parentAccount,
       hotelId: account.hotelId
-    });
+    }).lean();
 
     if (!parentAccount) {
       return next(new ApplicationError('Parent account not found', 400));
@@ -276,7 +276,7 @@ export const updateRevenueAccount = catchAsync(async (req, res, next) => {
     const roomTypes = await RoomType.find({
       _id: { $in: req.body.applicableRoomTypes },
       hotelId: account.hotelId
-    });
+    }).lean().limit(1000);
 
     if (roomTypes.length !== req.body.applicableRoomTypes.length) {
       return next(new ApplicationError('One or more room types are invalid', 400));
@@ -323,7 +323,7 @@ export const deleteRevenueAccount = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user._id;
 
-  const account = await RevenueAccount.findById(id);
+  const account = await RevenueAccount.findById(id).lean();
 
   if (!account) {
     return next(new ApplicationError('Revenue account not found', 404));
@@ -338,7 +338,7 @@ export const deleteRevenueAccount = catchAsync(async (req, res, next) => {
   const childAccounts = await RevenueAccount.find({
     parentAccount: id,
     isActive: true
-  });
+  }).lean().limit(1000);
 
   if (childAccounts.length > 0) {
     return next(new ApplicationError('Cannot delete account with active child accounts', 400));

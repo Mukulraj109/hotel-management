@@ -726,6 +726,9 @@ WaitingListSchema.statics.findMatchingAvailability = function(hotelId, roomType,
   }).sort({ priority_score: -1, addedDate: 1 });
 };
 
+// Data retention TTL: auto-delete waiting list entries after 180 days
+WaitingListSchema.index({ createdAt: 1 }, { expireAfterSeconds: 180 * 24 * 60 * 60 });
+
 const WaitingList = mongoose.model('WaitingList', WaitingListSchema);
 
 export default WaitingList;

@@ -69,6 +69,7 @@ export class ReservationWorkflowEngine {
   private workflows: Map<string, ReservationWorkflow> = new Map();
   private templates: Map<string, WorkflowTemplate> = new Map();
   private activeSubscriptions: Map<string, (workflow: ReservationWorkflow) => void> = new Map();
+  private stepTimeoutTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
 
   private constructor() {
     this.initializeDefaultTemplates();
@@ -346,11 +347,16 @@ export class ReservationWorkflowEngine {
 
     // Set timeout if specified
     if (nextStep.timeout) {
-      setTimeout(() => {
+      const timerKey = `${workflowId}-${nextStep.id}`;
+      const existingTimer = this.stepTimeoutTimers.get(timerKey);
+      if (existingTimer) clearTimeout(existingTimer);
+      const timer = setTimeout(() => {
+        this.stepTimeoutTimers.delete(timerKey);
         if (nextStep.status === 'in_progress') {
           this.timeoutStep(workflowId, nextStep.id);
         }
       }, nextStep.timeout * 60 * 1000);
+      this.stepTimeoutTimers.set(timerKey, timer);
     }
 
     // Auto-execute if applicable
@@ -691,6 +697,12 @@ export class ReservationWorkflowEngine {
     }, 0);
 
     return totalTime / completedWorkflows.length / (1000 * 60); // Return in minutes
+  }
+
+  cleanup(): void {
+    this.stepTimeoutTimers.forEach(timer => clearTimeout(timer));
+    this.stepTimeoutTimers.clear();
+    this.activeSubscriptions.clear();
   }
 }
 

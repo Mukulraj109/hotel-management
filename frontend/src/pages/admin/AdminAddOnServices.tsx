@@ -309,7 +309,7 @@ const AdminAddOnServices: React.FC = () => {
               { key: 'upsell', label: 'Upsell Manager', icon: TrendingUp },
               { key: 'analytics', label: 'Analytics', icon: BarChart3 }
             ].map(({ key, label, icon: Icon }) => (
-              <button
+              <button aria-label="Close"
                 key={key}
                 onClick={() => setActiveTab(key as unknown)}
                 className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm ${
@@ -400,7 +400,7 @@ const AdminAddOnServices: React.FC = () => {
                           <Star className="h-4 w-4 text-yellow-500 fill-current" />
                         )}
                         <div className="flex space-x-1">
-                          <button
+                          <button aria-label="Edit"
                             onClick={() => {
                               setSelectedService(service);
                               setShowEditModal(true);
@@ -409,7 +409,7 @@ const AdminAddOnServices: React.FC = () => {
                           >
                             <Edit className="h-4 w-4" />
                           </button>
-                          <button
+                          <button aria-label="Delete"
                             onClick={() => handleDeleteService(service._id)}
                             className="p-1 text-gray-400 hover:text-red-600"
                           >

@@ -12,7 +12,7 @@ async function checkRoomCounts() {
     console.log('✅ Connected to MongoDB\n');
 
     // Get all hotels
-    const hotels = await Hotel.find({});
+    const hotels = await Hotel.find({}).lean().limit(1000);
     console.log(`Found ${hotels.length} hotels:\n`);
 
     let totalRoomsAcrossAll = 0;
@@ -36,7 +36,7 @@ async function checkRoomCounts() {
     // Show room status breakdown for first hotel (for verification)
     if (hotels.length > 0) {
       const firstHotel = hotels[0];
-      const rooms = await Room.find({ hotelId: firstHotel._id }).limit(5);
+      const rooms = await Room.find({ hotelId: firstHotel._id }).limit(5).lean();
 
       console.log(`\nSample rooms from "${firstHotel.name}":`);
       rooms.forEach(room => {

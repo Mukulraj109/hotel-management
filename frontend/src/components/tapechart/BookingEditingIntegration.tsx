@@ -189,10 +189,10 @@ export function EnhancedBookingCard({
   const canEdit = ['confirmed', 'checked_in', 'checked_out'].includes(booking.status);
 
   return (
-    <div
+    <div role="button" tabIndex={0}
       className="relative bg-white rounded-lg border border-gray-200 p-3 hover:shadow-lg transition-shadow cursor-pointer"
       onClick={onClick}
-    >
+     onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e as any); } }}>
       {/* Main booking info */}
       <div className="flex justify-between items-start mb-2">
         <div>
@@ -226,7 +226,7 @@ export function EnhancedBookingCard({
 
       {/* Edit button overlay */}
       {canEdit && onEditClick && (
-        <button
+        <button aria-label="Edit"
           onClick={(e) => {
             e.stopPropagation();
             onEditClick();

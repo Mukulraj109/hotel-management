@@ -224,49 +224,73 @@ currencySchema.pre('save', function(next) {
 
 // Static methods
 currencySchema.statics.getBaseCurrency = async function() {
-  return await this.findOne({ isBaseCurrency: true, isActive: true });
+  try {
+    return await this.findOne({ isBaseCurrency: true, isActive: true }).lean();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 currencySchema.statics.getActiveCurrencies = async function() {
-  return await this.find({ isActive: true }).sort({ code: 1 });
+  try {
+    return await this.find({ isActive: true }).sort({ code: 1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 currencySchema.statics.getCurrenciesByChannel = async function(channel) {
-  return await this.find({ 
-    isActive: true,
-    'supportedChannels.channel': channel 
-  }).sort({ code: 1 });
+  try {
+    return await this.find({ 
+      isActive: true,
+      'supportedChannels.channel': channel 
+    }).sort({ code: 1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 currencySchema.statics.ensureSingleBaseCurrency = async function(excludeId = null) {
-  const filter = { isBaseCurrency: true };
-  if (excludeId) {
-    filter._id = { $ne: excludeId };
-  }
+  try {
+    const filter = { isBaseCurrency: true };
+    if (excludeId) {
+      filter._id = { $ne: excludeId };
+    }
   
-  await this.updateMany(filter, { 
-    $set: { isBaseCurrency: false } 
-  });
+    await this.updateMany(filter, { 
+      $set: { isBaseCurrency: false } 
+    });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 currencySchema.statics.getCurrencyByCode = async function(code) {
-  return await this.findOne({ 
-    code: code.toUpperCase(), 
-    isActive: true 
-  });
+  try {
+    return await this.findOne({ 
+      code: code.toUpperCase(), 
+      isActive: true 
+    }).lean();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 currencySchema.statics.getStaleCurrencies = async function() {
-  const now = new Date();
+  try {
+    const now = new Date();
   
-  return await this.find({
-    isActive: true,
-    'autoUpdate.enabled': true,
-    $or: [
-      { 'autoUpdate.nextUpdate': { $lte: now } },
-      { 'autoUpdate.nextUpdate': { $exists: false } }
-    ]
-  });
+    return await this.find({
+      isActive: true,
+      'autoUpdate.enabled': true,
+      $or: [
+        { 'autoUpdate.nextUpdate': { $lte: now } },
+        { 'autoUpdate.nextUpdate': { $exists: false } }
+      ]
+    }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance methods

@@ -107,7 +107,7 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
     // If no hotelId provided, get the first available hotel
     let targetHotelId = hotelId;
     if (!targetHotelId) {
-      const firstRoom = await Room.findOne({ isActive: true }).select('hotelId');
+      const firstRoom = await Room.findOne({ isActive: true }).select('hotelId').lean();
       if (firstRoom) {
         targetHotelId = firstRoom.hotelId;
       } else {
@@ -124,7 +124,7 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
         hotelId: targetHotelId,
         isActive: true,
         ...(type && { type })
-      }).sort({ roomNumber: 1 });
+      }).sort({ roomNumber: 1 }).lean().limit(1000);
 
       logger.debug('Total rooms found for hotel', { count: allRooms.length, hotelId: targetHotelId });
 
@@ -136,7 +136,7 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
           { checkIn: { $lt: checkOutDate } },
           { checkOut: { $gt: checkInDate } }
         ]
-      }).populate('rooms.roomId');
+      }).populate('rooms.roomId').lean().limit(1000);
 
       logger.debug('Conflicting bookings found', { count: conflictingBookings.length });
 
@@ -219,7 +219,7 @@ router.get('/', authenticate, ensureTenantContext, ensurePropertyAccess, catchAs
         .skip(skip)
         .limit(parseInt(limit))
         .populate('hotelId', 'name address')
-        .sort({ roomNumber: 1 });
+        .sort({ roomNumber: 1 }).lean();
         
       total = await Room.countDocuments(query);
     }
@@ -262,7 +262,7 @@ router.get('/debug', async (req, res) => {
     const allBookings = await Booking.find({
       ...hotelQuery,
       status: { $in: ['confirmed', 'checked_in'] }
-    }).select('status checkIn checkOut rooms.roomId hotelId');
+    }).select('status checkIn checkOut rooms.roomId hotelId').lean().limit(1000);
 
     // Get current date info
     const now = new Date();
@@ -275,7 +275,7 @@ router.get('/debug', async (req, res) => {
       status: { $in: ['confirmed', 'checked_in'] },
       checkOut: { $gte: today },
       checkIn: { $lte: tomorrow }
-    }).select('status checkIn checkOut rooms.roomId hotelId');
+    }).select('status checkIn checkOut rooms.roomId hotelId').lean().limit(1000);
     
     res.json({
       totalRooms,
@@ -358,7 +358,7 @@ router.get('/metrics', authenticate, ensureTenantContext, ensurePropertyAccess, 
  */
 router.get('/:id', authenticate, ensureTenantContext, ensurePropertyAccess, catchAsync(async (req, res) => {
   const room = await Room.findById(req.params.id)
-    .populate('hotelId', 'name address contact policies');
+    .populate('hotelId', 'name address contact policies').lean();
 
   if (!room || !room.isActive) {
     throw new ApplicationError('Room not found', 404);
@@ -544,24 +544,25 @@ router.put('/:id/pricing',
     const { baseRate, currentRate, reason } = req.body;
     const roomId = req.params.id;
 
-    const room = await Room.findById(roomId);
+    // Build atomic update
+    const updateFields = {};
+    if (baseRate !== undefined) updateFields.baseRate = baseRate;
+    if (currentRate !== undefined) updateFields.currentRate = currentRate;
+
+    const room = await Room.findByIdAndUpdate(
+      roomId,
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    );
+
     if (!room) {
       throw new ApplicationError('Room not found', 404);
     }
 
     // Property access already validated by ensurePropertyAccess middleware
 
-    const oldBaseRate = room.baseRate;
-    const oldCurrentRate = room.currentRate;
-
-    // Update room rates
-    if (baseRate !== undefined) room.baseRate = baseRate;
-    if (currentRate !== undefined) room.currentRate = currentRate;
-
-    await room.save();
-
     // Log the change (you could create a PriceHistory model if needed)
-    logger.info('Room pricing updated', { roomNumber: room.roomNumber, oldBaseRate, newBaseRate: room.baseRate, oldCurrentRate, newCurrentRate: room.currentRate, reason });
+    logger.info('Room pricing updated', { roomNumber: room.roomNumber, baseRate: room.baseRate, currentRate: room.currentRate, reason });
 
     res.json({
       status: 'success',
@@ -605,7 +606,7 @@ router.get('/:id/price-history',
   catchAsync(async (req, res) => {
     const roomId = req.params.id;
 
-    const room = await Room.findById(roomId);
+    const room = await Room.findById(roomId).lean();
     if (!room) {
       throw new ApplicationError('Room not found', 404);
     }
@@ -681,27 +682,30 @@ router.post('/bulk-price-update',
       errors: []
     };
 
+    // Batch: build bulkWrite operations for all rate updates
+    const bulkRateOps = [];
     for (const update of updates) {
       try {
         const { roomId, baseRate, currentRate } = update;
 
-        const room = await Room.findById(roomId);
-        if (!room) {
-          results.errors.push({ roomId, error: 'Room not found' });
-          continue;
-        }
+        const updateFields = {};
+        if (baseRate !== undefined) updateFields.baseRate = baseRate;
+        if (currentRate !== undefined) updateFields.currentRate = currentRate;
 
-        // Property access already validated by ensurePropertyAccess middleware
-
-        if (baseRate !== undefined) room.baseRate = baseRate;
-        if (currentRate !== undefined) room.currentRate = currentRate;
-
-        await room.save();
-        results.updated++;
-
+        bulkRateOps.push({
+          updateOne: {
+            filter: { _id: roomId },
+            update: { $set: updateFields }
+          }
+        });
       } catch (error) {
         results.errors.push({ roomId: update.roomId, error: error.message });
       }
+    }
+
+    if (bulkRateOps.length > 0) {
+      const writeResult = await Room.bulkWrite(bulkRateOps);
+      results.updated = writeResult.modifiedCount;
     }
 
     res.json({

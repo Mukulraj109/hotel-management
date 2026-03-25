@@ -32,7 +32,7 @@ async function checkPaymentConsistency() {
         { 'paymentDetails.totalPaid': 0 },
         { 'paymentDetails.paymentMethods': { $size: 0 } }
       ]
-    }).toArray();
+    }).toArray().lean().limit(1000);
 
     console.log(`❌ Bookings marked 'paid' with no payment data: ${paidWithNoPayment.length}`);
     if (paidWithNoPayment.length > 0) {
@@ -45,7 +45,7 @@ async function checkPaymentConsistency() {
     const paidButStatusWrong = await Booking.find({
       'paymentDetails.totalPaid': { $gte: 1 },
       paymentStatus: { $nin: ['paid', 'partially_paid'] }
-    }).toArray();
+    }).toArray().lean().limit(1000);
 
     console.log(`\n⚠️  Bookings with payment but wrong status: ${paidButStatusWrong.length}`);
     if (paidButStatusWrong.length > 0) {
@@ -57,7 +57,7 @@ async function checkPaymentConsistency() {
     // Find all checked-in bookings
     const checkedInBookings = await Booking.find({
       status: 'checked_in'
-    }).toArray();
+    }).toArray().lean().limit(1000);
 
     console.log(`\n📊 Checked-in bookings: ${checkedInBookings.length}`);
     if (checkedInBookings.length > 0) {

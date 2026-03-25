@@ -312,7 +312,7 @@ class WorkflowAutomationService {
             const auditRecord = await AdminBypassAudit.findById(bypassAuditId)
                 .populate('hotelId')
                 .populate('bookingId')
-                .populate('adminId');
+                .populate('adminId').lean();
 
             if (!auditRecord) {
                 throw new Error('Bypass audit record not found');
@@ -412,43 +412,47 @@ class WorkflowAutomationService {
      * Evaluate automation rules against bypass record
      */
     async evaluateAutomationRules(auditRecord) {
-        const results = {
-            autoApproval: [],
-            autoEscalation: [],
-            autoRemediation: []
-        };
+      try {
+          const results = {
+              autoApproval: [],
+              autoEscalation: [],
+              autoRemediation: []
+          };
 
-        // Evaluate auto-approval rules
-        for (const [ruleName, rule] of Object.entries(this.automationRules.autoApproval)) {
-            if (this.evaluateConditions(auditRecord, rule.conditions)) {
-                results.autoApproval.push({
-                    rule: ruleName,
-                    actions: rule.actions
-                });
-            }
-        }
+          // Evaluate auto-approval rules
+          for (const [ruleName, rule] of Object.entries(this.automationRules.autoApproval)) {
+              if (this.evaluateConditions(auditRecord, rule.conditions)) {
+                  results.autoApproval.push({
+                      rule: ruleName,
+                      actions: rule.actions
+                  });
+              }
+          }
 
-        // Evaluate auto-escalation rules
-        for (const [ruleName, rule] of Object.entries(this.automationRules.autoEscalation)) {
-            if (this.evaluateConditions(auditRecord, rule.conditions)) {
-                results.autoEscalation.push({
-                    rule: ruleName,
-                    actions: rule.actions
-                });
-            }
-        }
+          // Evaluate auto-escalation rules
+          for (const [ruleName, rule] of Object.entries(this.automationRules.autoEscalation)) {
+              if (this.evaluateConditions(auditRecord, rule.conditions)) {
+                  results.autoEscalation.push({
+                      rule: ruleName,
+                      actions: rule.actions
+                  });
+              }
+          }
 
-        // Evaluate auto-remediation rules
-        for (const [ruleName, rule] of Object.entries(this.automationRules.autoRemediation)) {
-            if (this.evaluateConditions(auditRecord, rule.conditions)) {
-                results.autoRemediation.push({
-                    rule: ruleName,
-                    actions: rule.actions
-                });
-            }
-        }
+          // Evaluate auto-remediation rules
+          for (const [ruleName, rule] of Object.entries(this.automationRules.autoRemediation)) {
+              if (this.evaluateConditions(auditRecord, rule.conditions)) {
+                  results.autoRemediation.push({
+                      rule: ruleName,
+                      actions: rule.actions
+                  });
+              }
+          }
 
-        return results;
+          return results;
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
@@ -549,7 +553,7 @@ class WorkflowAutomationService {
             // Create or update approval workflow with escalation
             let workflow = await BypassApprovalWorkflow.findOne({
                 bypassAuditId: auditRecord._id
-            });
+            }).lean();
 
             if (!workflow) {
                 // Create new workflow with escalation
@@ -787,35 +791,39 @@ class WorkflowAutomationService {
      * Send completion notifications
      */
     async sendCompletionNotifications(auditRecord, context) {
-        const notifications = [];
+      try {
+          const notifications = [];
 
-        // Notify the admin who initiated the bypass
-        notifications.push({
-            type: 'email',
-            recipient: auditRecord.adminId.email,
-            subject: `Bypass Completed: ${auditRecord.bypassId}`,
-            message: `Your bypass request has been processed successfully through automated workflow: ${context.template}`,
-            metadata: {
-                bypassId: auditRecord.bypassId,
-                template: context.template,
-                automated: true
-            }
-        });
+          // Notify the admin who initiated the bypass
+          notifications.push({
+              type: 'email',
+              recipient: auditRecord.adminId.email,
+              subject: `Bypass Completed: ${auditRecord.bypassId}`,
+              message: `Your bypass request has been processed successfully through automated workflow: ${context.template}`,
+              metadata: {
+                  bypassId: auditRecord.bypassId,
+                  template: context.template,
+                  automated: true
+              }
+          });
 
-        // Notify relevant departments based on bypass category
-        const departmentNotifications = this.getDepartmentNotifications(auditRecord);
-        notifications.push(...departmentNotifications);
+          // Notify relevant departments based on bypass category
+          const departmentNotifications = this.getDepartmentNotifications(auditRecord);
+          notifications.push(...departmentNotifications);
 
-        // Send all notifications
-        for (const notification of notifications) {
-            try {
-                await sendNotification(notification);
-            } catch (error) {
-                logger.error('Failed to send completion notification:', error);
-            }
-        }
+          // Send all notifications
+          for (const notification of notifications) {
+              try {
+                  await sendNotification(notification);
+              } catch (error) {
+                  logger.error('Failed to send completion notification:', error);
+              }
+          }
 
-        return notifications;
+          return notifications;
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
@@ -868,127 +876,143 @@ class WorkflowAutomationService {
      * Log automation execution
      */
     async logAutomationExecution(auditRecord, results) {
-        await AuditLog.logChange({
-            hotelId: auditRecord.hotelId,
-            tableName: 'WorkflowAutomation',
-            recordId: `${auditRecord.bypassId}_automation`,
-            changeType: 'workflow_automation_executed',
-            userId: 'system',
-            source: 'workflow_automation_service',
-            newValues: {
-                bypassId: auditRecord.bypassId,
-                template: results.template,
-                automationRules: results.automationRules,
-                actionsExecuted: results.actions.length,
-                errors: results.errors.length,
-                success: results.errors.length === 0
-            },
-            metadata: {
-                executionResults: results,
-                automationTimestamp: new Date(),
-                tags: ['workflow_automation', 'bypass_processing', 'automation']
-            }
-        });
+      try {
+          await AuditLog.logChange({
+              hotelId: auditRecord.hotelId,
+              tableName: 'WorkflowAutomation',
+              recordId: `${auditRecord.bypassId}_automation`,
+              changeType: 'workflow_automation_executed',
+              userId: 'system',
+              source: 'workflow_automation_service',
+              newValues: {
+                  bypassId: auditRecord.bypassId,
+                  template: results.template,
+                  automationRules: results.automationRules,
+                  actionsExecuted: results.actions.length,
+                  errors: results.errors.length,
+                  success: results.errors.length === 0
+              },
+              metadata: {
+                  executionResults: results,
+                  automationTimestamp: new Date(),
+                  tags: ['workflow_automation', 'bypass_processing', 'automation']
+              }
+          });
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Send automation summary notifications
      */
     async sendAutomationNotifications(auditRecord, results) {
-        // Notify system administrators about automation execution
-        if (results.errors.length > 0) {
-            await sendNotification({
-                type: 'system_integration_error',
-                recipient: 'admin@hotel.com',
-                channels: ['email'],
-                priority: 'high',
-                data: {
-                    service: 'Workflow Automation',
-                    error: `${results.errors.length} errors during automation execution`,
-                    timestamp: new Date().toISOString(),
-                    impact: `Bypass ${auditRecord.bypassId} partially processed`
-                }
-            });
-        }
+      try {
+          // Notify system administrators about automation execution
+          if (results.errors.length > 0) {
+              await sendNotification({
+                  type: 'system_integration_error',
+                  recipient: 'admin@hotel.com',
+                  channels: ['email'],
+                  priority: 'high',
+                  data: {
+                      service: 'Workflow Automation',
+                      error: `${results.errors.length} errors during automation execution`,
+                      timestamp: new Date().toISOString(),
+                      impact: `Bypass ${auditRecord.bypassId} partially processed`
+                  }
+              });
+          }
 
-        // Success notification for high-value or critical bypasses
-        const estimatedLoss = auditRecord.financialImpact?.estimatedLoss || 0;
-        const urgencyLevel = auditRecord.reason?.urgencyLevel;
+          // Success notification for high-value or critical bypasses
+          const estimatedLoss = auditRecord.financialImpact?.estimatedLoss || 0;
+          const urgencyLevel = auditRecord.reason?.urgencyLevel;
 
-        if (estimatedLoss > 1000 || urgencyLevel === 'critical') {
-            await sendNotification({
-                type: 'email',
-                recipient: 'management@hotel.com',
-                subject: `Automated Bypass Processed: ${auditRecord.bypassId}`,
-                message: `A high-value/critical bypass has been processed through automation. Template: ${results.template}. Financial Impact: $${estimatedLoss}`,
-                metadata: {
-                    bypassId: auditRecord.bypassId,
-                    template: results.template,
-                    financialImpact: estimatedLoss,
-                    urgency: urgencyLevel
-                }
-            });
-        }
+          if (estimatedLoss > 1000 || urgencyLevel === 'critical') {
+              await sendNotification({
+                  type: 'email',
+                  recipient: 'management@hotel.com',
+                  subject: `Automated Bypass Processed: ${auditRecord.bypassId}`,
+                  message: `A high-value/critical bypass has been processed through automation. Template: ${results.template}. Financial Impact: $${estimatedLoss}`,
+                  metadata: {
+                      bypassId: auditRecord.bypassId,
+                      template: results.template,
+                      financialImpact: estimatedLoss,
+                      urgency: urgencyLevel
+                  }
+              });
+          }
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Get automation health status
      */
     async getAutomationHealth() {
-        const health = {
-            enabled: this.isEnabled,
-            status: 'healthy',
-            metrics: {
-                totalRules: Object.keys(this.automationRules.autoApproval).length +
-                    Object.keys(this.automationRules.autoEscalation).length +
-                    Object.keys(this.automationRules.autoRemediation).length,
-                templatesAvailable: Object.keys(this.workflowTemplates).length,
-                lastExecution: new Date(), // Would track actual last execution
-                successRate: 0.95 // Would calculate from actual metrics
-            },
-            rules: {
-                autoApproval: Object.keys(this.automationRules.autoApproval),
-                autoEscalation: Object.keys(this.automationRules.autoEscalation),
-                autoRemediation: Object.keys(this.automationRules.autoRemediation)
-            },
-            templates: Object.keys(this.workflowTemplates)
-        };
+      try {
+          const health = {
+              enabled: this.isEnabled,
+              status: 'healthy',
+              metrics: {
+                  totalRules: Object.keys(this.automationRules.autoApproval).length +
+                      Object.keys(this.automationRules.autoEscalation).length +
+                      Object.keys(this.automationRules.autoRemediation).length,
+                  templatesAvailable: Object.keys(this.workflowTemplates).length,
+                  lastExecution: new Date(), // Would track actual last execution
+                  successRate: 0.95 // Would calculate from actual metrics
+              },
+              rules: {
+                  autoApproval: Object.keys(this.automationRules.autoApproval),
+                  autoEscalation: Object.keys(this.automationRules.autoEscalation),
+                  autoRemediation: Object.keys(this.automationRules.autoRemediation)
+              },
+              templates: Object.keys(this.workflowTemplates)
+          };
 
-        return health;
+          return health;
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Update automation rules (for dynamic configuration)
      */
     async updateAutomationRules(ruleType, ruleName, ruleConfig) {
-        if (!this.automationRules[ruleType]) {
-            throw new Error(`Invalid rule type: ${ruleType}`);
-        }
+      try {
+          if (!this.automationRules[ruleType]) {
+              throw new Error(`Invalid rule type: ${ruleType}`);
+          }
 
-        this.automationRules[ruleType][ruleName] = ruleConfig;
+          this.automationRules[ruleType][ruleName] = ruleConfig;
 
-        // Log rule update
-        await AuditLog.logChange({
-            tableName: 'AutomationRules',
-            recordId: `${ruleType}_${ruleName}`,
-            changeType: 'automation_rule_updated',
-            userId: 'system',
-            source: 'workflow_automation_service',
-            newValues: ruleConfig,
-            metadata: {
-                ruleType,
-                ruleName,
-                updatedAt: new Date(),
-                tags: ['automation_config', 'rule_update']
-            }
-        });
+          // Log rule update
+          await AuditLog.logChange({
+              tableName: 'AutomationRules',
+              recordId: `${ruleType}_${ruleName}`,
+              changeType: 'automation_rule_updated',
+              userId: 'system',
+              source: 'workflow_automation_service',
+              newValues: ruleConfig,
+              metadata: {
+                  ruleType,
+                  ruleName,
+                  updatedAt: new Date(),
+                  tags: ['automation_config', 'rule_update']
+              }
+          });
 
-        return {
-            success: true,
-            ruleType,
-            ruleName,
-            updatedAt: new Date()
-        };
+          return {
+              success: true,
+              ruleType,
+              ruleName,
+              updatedAt: new Date()
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 }
 

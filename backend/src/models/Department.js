@@ -329,17 +329,21 @@ departmentSchema.virtual('completionRate').get(function() {
 
 // Methods
 departmentSchema.methods.updateHierarchyPath = async function() {
-  if (!this.parentDepartment) {
-    this.hierarchyPath = `/${this.name}`;
-    this.level = 0;
-  } else {
-    const parent = await this.constructor.findById(this.parentDepartment);
-    if (parent) {
-      this.hierarchyPath = `${parent.hierarchyPath}/${this.name}`;
-      this.level = parent.level + 1;
+  try {
+    if (!this.parentDepartment) {
+      this.hierarchyPath = `/${this.name}`;
+      this.level = 0;
+    } else {
+      const parent = await this.constructor.findById(this.parentDepartment);
+      if (parent) {
+        this.hierarchyPath = `${parent.hierarchyPath}/${this.name}`;
+        this.level = parent.level + 1;
+      }
     }
+    return this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  return this.save();
 };
 
 departmentSchema.methods.addAuditEntry = function(action, performedBy, changes, ipAddress, userAgent) {
@@ -360,10 +364,14 @@ departmentSchema.methods.addAuditEntry = function(action, performedBy, changes, 
 };
 
 departmentSchema.methods.updateAnalytics = async function() {
-  // Update analytics based on related data
-  // This would integrate with task, booking, and performance systems
-  this.analytics.lastCalculated = new Date();
-  return this.save();
+  try {
+    // Update analytics based on related data
+    // This would integrate with task, booking, and performance systems
+    this.analytics.lastCalculated = new Date();
+    return this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 departmentSchema.methods.calculateEfficiency = function() {
@@ -393,123 +401,143 @@ departmentSchema.statics.findByHotel = function(hotelId, options = {}) {
 };
 
 departmentSchema.statics.buildHierarchy = async function(hotelId) {
-  const departments = await this.find({ hotelId, status: 'active' })
-    .sort({ level: 1, name: 1 });
+  try {
+    const departments = await this.find({ hotelId, status: 'active' })
+      .sort({ level: 1, name: 1 }).lean().limit(1000);
     
-  const hierarchy = [];
-  const departmentMap = new Map();
+    const hierarchy = [];
+    const departmentMap = new Map();
   
-  departments.forEach(dept => {
-    departmentMap.set(dept._id.toString(), {
-      ...dept.toObject(),
-      children: []
+    departments.forEach(dept => {
+      departmentMap.set(dept._id.toString(), {
+        ...dept.toObject(),
+        children: []
+      });
     });
-  });
   
-  departments.forEach(dept => {
-    const deptObj = departmentMap.get(dept._id.toString());
-    if (dept.parentDepartment) {
-      const parent = departmentMap.get(dept.parentDepartment.toString());
-      if (parent) {
-        parent.children.push(deptObj);
+    departments.forEach(dept => {
+      const deptObj = departmentMap.get(dept._id.toString());
+      if (dept.parentDepartment) {
+        const parent = departmentMap.get(dept.parentDepartment.toString());
+        if (parent) {
+          parent.children.push(deptObj);
+        }
+      } else {
+        hierarchy.push(deptObj);
       }
-    } else {
-      hierarchy.push(deptObj);
-    }
-  });
+    });
   
-  return hierarchy;
+    return hierarchy;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 departmentSchema.statics.getDepartmentStats = async function(departmentId) {
-  const department = await this.findById(departmentId)
-    .populate('subdepartments')
-    .populate('staffCount');
+  try {
+    const department = await this.findById(departmentId)
+      .populate('subdepartments')
+      .populate('staffCount').lean();
     
-  if (!department) {
-    throw new Error('Department not found');
-  }
-  
-  // Calculate comprehensive stats
-  const stats = {
-    basic: {
-      name: department.name,
-      code: department.code,
-      type: department.departmentType,
-      level: department.level
-    },
-    staffing: {
-      totalPositions: department.staffing.totalPositions,
-      currentStaff: department.staffCount || 0,
-      occupancyRate: department.staffing.totalPositions > 0 
-        ? (department.staffCount / department.staffing.totalPositions * 100).toFixed(2)
-        : 0
-    },
-    performance: {
-      completionRate: department.completionRate,
-      efficiency: department.analytics.efficiency,
-      totalTasks: department.analytics.totalTasks,
-      avgCompletionTime: department.analytics.avgTaskCompletionTime
-    },
-    financial: {
-      totalRevenue: department.analytics.totalRevenue,
-      totalExpenses: department.analytics.totalExpenses,
-      budgetUtilization: department.budget.annual.expenses > 0
-        ? (department.analytics.totalExpenses / department.budget.annual.expenses * 100).toFixed(2)
-        : 0
-    },
-    hierarchy: {
-      subdepartments: department.subdepartments?.length || 0,
-      hasParent: !!department.parentDepartment,
-      fullPath: department.fullPath
+    if (!department) {
+      throw new Error('Department not found');
     }
-  };
   
-  return stats;
+    // Calculate comprehensive stats
+    const stats = {
+      basic: {
+        name: department.name,
+        code: department.code,
+        type: department.departmentType,
+        level: department.level
+      },
+      staffing: {
+        totalPositions: department.staffing.totalPositions,
+        currentStaff: department.staffCount || 0,
+        occupancyRate: department.staffing.totalPositions > 0 
+          ? (department.staffCount / department.staffing.totalPositions * 100).toFixed(2)
+          : 0
+      },
+      performance: {
+        completionRate: department.completionRate,
+        efficiency: department.analytics.efficiency,
+        totalTasks: department.analytics.totalTasks,
+        avgCompletionTime: department.analytics.avgTaskCompletionTime
+      },
+      financial: {
+        totalRevenue: department.analytics.totalRevenue,
+        totalExpenses: department.analytics.totalExpenses,
+        budgetUtilization: department.budget.annual.expenses > 0
+          ? (department.analytics.totalExpenses / department.budget.annual.expenses * 100).toFixed(2)
+          : 0
+      },
+      hierarchy: {
+        subdepartments: department.subdepartments?.length || 0,
+        hasParent: !!department.parentDepartment,
+        fullPath: department.fullPath
+      }
+    };
+  
+    return stats;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Pre-save middleware
 departmentSchema.pre('save', async function(next) {
-  if (this.isModified('parentDepartment') || this.isModified('name')) {
-    await this.updateHierarchyPath();
-  }
+  try {
+    if (this.isModified('parentDepartment') || this.isModified('name')) {
+      await this.updateHierarchyPath();
+    }
   
-  if (this.isModified('analytics')) {
-    this.calculateEfficiency();
-  }
+    if (this.isModified('analytics')) {
+      this.calculateEfficiency();
+    }
   
-  next();
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 });
 
 // Post-save middleware
 departmentSchema.post('save', async function(doc) {
-  // Update all subdepartments' hierarchy paths
-  if (this.isModified('name') || this.isModified('parentDepartment')) {
-    const subdepartments = await this.constructor.find({ parentDepartment: doc._id });
-    await Promise.all(subdepartments.map(sub => sub.updateHierarchyPath()));
+  try {
+    // Update all subdepartments' hierarchy paths
+    if (this.isModified('name') || this.isModified('parentDepartment')) {
+      const subdepartments = await this.constructor.find({ parentDepartment: doc._id });
+      await Promise.all(subdepartments.map(sub => sub.updateHierarchyPath()));
+    }
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
 });
 
 // Pre-remove middleware
 departmentSchema.pre('remove', async function(next) {
-  // Check for subdepartments
-  const subdepartments = await this.constructor.find({ parentDepartment: this._id });
-  if (subdepartments.length > 0) {
-    const error = new Error('Cannot delete department with subdepartments');
-    error.code = 'DEPARTMENT_HAS_SUBDEPARTMENTS';
-    return next(error);
-  }
+  try {
+    // Check for subdepartments
+    const subdepartments = await this.constructor.find({ parentDepartment: this._id });
+    if (subdepartments.length > 0) {
+      const error = new Error('Cannot delete department with subdepartments');
+      error.code = 'DEPARTMENT_HAS_SUBDEPARTMENTS';
+      return next(error);
+    }
   
-  // Check for staff assignments
-  const User = mongoose.model('User');
-  const staffCount = await User.countDocuments({ departmentId: this._id });
-  if (staffCount > 0) {
-    const error = new Error('Cannot delete department with assigned staff');
-    error.code = 'DEPARTMENT_HAS_STAFF';
-    return next(error);
-  }
+    // Check for staff assignments
+    const User = mongoose.model('User');
+    const staffCount = await User.countDocuments({ departmentId: this._id });
+    if (staffCount > 0) {
+      const error = new Error('Cannot delete department with assigned staff');
+      error.code = 'DEPARTMENT_HAS_STAFF';
+      return next(error);
+    }
   
-  next();
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 });
 
 export default mongoose.model('Department', departmentSchema);

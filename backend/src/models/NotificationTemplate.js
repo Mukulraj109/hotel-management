@@ -357,72 +357,76 @@ notificationTemplateSchema.statics.getPerformanceStats = function(hotelId) {
 
 // Create default templates for a hotel
 notificationTemplateSchema.statics.createDefaultTemplates = async function(hotelId, createdBy) {
-  const defaultTemplates = [
-    {
-      name: 'Booking Confirmation',
-      description: 'Standard booking confirmation message',
-      category: 'booking',
-      type: 'booking_confirmation',
-      subject: 'Booking Confirmed - {{bookingNumber}}',
-      title: 'Booking Confirmed',
-      message: 'Dear {{guestName}}, your booking {{bookingNumber}} for {{checkInDate}} to {{checkOutDate}} has been confirmed. Thank you for choosing THE PENTOUZ!',
-      channels: ['in_app', 'email'],
-      routing: { targetRoles: ['guest'] },
-      variables: [
-        { name: 'guestName', description: 'Guest full name', type: 'string', required: true },
-        { name: 'bookingNumber', description: 'Booking reference number', type: 'string', required: true },
-        { name: 'checkInDate', description: 'Check-in date', type: 'date', required: true },
-        { name: 'checkOutDate', description: 'Check-out date', type: 'date', required: true }
-      ],
-      metadata: { isSystem: true }
-    },
-    {
-      name: 'Payment Success',
-      description: 'Payment confirmation message',
-      category: 'payment',
-      type: 'payment_success',
-      subject: 'Payment Received - {{amount}}',
-      title: 'Payment Confirmed',
-      message: 'Thank you {{guestName}}! Your payment of {{amount}} has been successfully processed for booking {{bookingNumber}}.',
-      channels: ['in_app', 'email'],
-      routing: { targetRoles: ['guest'] },
-      variables: [
-        { name: 'guestName', description: 'Guest full name', type: 'string', required: true },
-        { name: 'amount', description: 'Payment amount', type: 'currency', required: true },
-        { name: 'bookingNumber', description: 'Booking reference number', type: 'string', required: true }
-      ],
-      metadata: { isSystem: true }
-    },
-    {
-      name: 'Maintenance Request',
-      description: 'Maintenance task assignment',
-      category: 'maintenance',
-      type: 'maintenance_request',
-      subject: 'Maintenance Required - Room {{roomNumber}}',
-      title: 'New Maintenance Task',
-      message: 'Maintenance required in room {{roomNumber}}: {{description}}. Priority: {{priority}}',
-      channels: ['in_app', 'push'],
-      priority: 'high',
-      routing: { targetRoles: ['staff'], departments: ['Maintenance'] },
-      variables: [
-        { name: 'roomNumber', description: 'Room number', type: 'string', required: true },
-        { name: 'description', description: 'Issue description', type: 'string', required: true },
-        { name: 'priority', description: 'Task priority', type: 'string', required: true }
-      ],
-      metadata: { isSystem: true }
-    }
-  ];
+  try {
+    const defaultTemplates = [
+      {
+        name: 'Booking Confirmation',
+        description: 'Standard booking confirmation message',
+        category: 'booking',
+        type: 'booking_confirmation',
+        subject: 'Booking Confirmed - {{bookingNumber}}',
+        title: 'Booking Confirmed',
+        message: 'Dear {{guestName}}, your booking {{bookingNumber}} for {{checkInDate}} to {{checkOutDate}} has been confirmed. Thank you for choosing THE PENTOUZ!',
+        channels: ['in_app', 'email'],
+        routing: { targetRoles: ['guest'] },
+        variables: [
+          { name: 'guestName', description: 'Guest full name', type: 'string', required: true },
+          { name: 'bookingNumber', description: 'Booking reference number', type: 'string', required: true },
+          { name: 'checkInDate', description: 'Check-in date', type: 'date', required: true },
+          { name: 'checkOutDate', description: 'Check-out date', type: 'date', required: true }
+        ],
+        metadata: { isSystem: true }
+      },
+      {
+        name: 'Payment Success',
+        description: 'Payment confirmation message',
+        category: 'payment',
+        type: 'payment_success',
+        subject: 'Payment Received - {{amount}}',
+        title: 'Payment Confirmed',
+        message: 'Thank you {{guestName}}! Your payment of {{amount}} has been successfully processed for booking {{bookingNumber}}.',
+        channels: ['in_app', 'email'],
+        routing: { targetRoles: ['guest'] },
+        variables: [
+          { name: 'guestName', description: 'Guest full name', type: 'string', required: true },
+          { name: 'amount', description: 'Payment amount', type: 'currency', required: true },
+          { name: 'bookingNumber', description: 'Booking reference number', type: 'string', required: true }
+        ],
+        metadata: { isSystem: true }
+      },
+      {
+        name: 'Maintenance Request',
+        description: 'Maintenance task assignment',
+        category: 'maintenance',
+        type: 'maintenance_request',
+        subject: 'Maintenance Required - Room {{roomNumber}}',
+        title: 'New Maintenance Task',
+        message: 'Maintenance required in room {{roomNumber}}: {{description}}. Priority: {{priority}}',
+        channels: ['in_app', 'push'],
+        priority: 'high',
+        routing: { targetRoles: ['staff'], departments: ['Maintenance'] },
+        variables: [
+          { name: 'roomNumber', description: 'Room number', type: 'string', required: true },
+          { name: 'description', description: 'Issue description', type: 'string', required: true },
+          { name: 'priority', description: 'Task priority', type: 'string', required: true }
+        ],
+        metadata: { isSystem: true }
+      }
+    ];
 
-  const templates = defaultTemplates.map(template => ({
-    ...template,
-    hotelId,
-    metadata: {
-      ...template.metadata,
-      createdBy
-    }
-  }));
+    const templates = defaultTemplates.map(template => ({
+      ...template,
+      hotelId,
+      metadata: {
+        ...template.metadata,
+        createdBy
+      }
+    }));
 
-  return this.insertMany(templates);
+    return this.insertMany(templates);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 export default mongoose.model('NotificationTemplate', notificationTemplateSchema);

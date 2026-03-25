@@ -374,7 +374,7 @@ export default function ReviewsPage() {
                       {[...Array(Math.min(5, totalPages))].map((_, i) => {
                         const page = i + 1;
                         return (
-                          <button
+                          <button aria-label="Close"
                             key={page}
                             onClick={() => handlePageChange(page)}
                             className={cn(

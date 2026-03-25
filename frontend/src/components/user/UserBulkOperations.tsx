@@ -205,7 +205,7 @@ const UserBulkOperations: React.FC<UserBulkOperationsProps> = ({
               Bulk Operations ({selectedUsers.length} users selected)
             </h3>
           </div>
-          <button
+          <button aria-label="Close"
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
           >
@@ -218,7 +218,7 @@ const UserBulkOperations: React.FC<UserBulkOperationsProps> = ({
           <h4 className="text-sm font-medium text-gray-900 mb-3">Select Operation</h4>
           <div className="grid grid-cols-1 gap-3">
             {operations.map((operation) => (
-              <div
+              <div role="button" tabIndex={0}
                 key={operation.id}
                 onClick={() => handleOperationSelect(operation.id)}
                 className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
@@ -226,7 +226,7 @@ const UserBulkOperations: React.FC<UserBulkOperationsProps> = ({
                     ? 'border-blue-500 bg-blue-50'
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
-              >
+               onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => handleOperationSelect(operation.id); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                 <div className="flex items-center">
                   <div className={`flex-shrink-0 w-10 h-10 ${operation.color} rounded-lg flex items-center justify-center text-white mr-4`}>
                     {getOperationIcon(operation)}
@@ -304,7 +304,7 @@ const UserBulkOperations: React.FC<UserBulkOperationsProps> = ({
           >
             Cancel
           </button>
-          <button
+          <button aria-label="Close"
             onClick={handleExecute}
             disabled={loading || !selectedOperation}
             className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 disabled:opacity-50"
@@ -344,7 +344,7 @@ const UserBulkOperations: React.FC<UserBulkOperationsProps> = ({
                 >
                   Cancel
                 </button>
-                <button
+                <button aria-label="Delete"
                   onClick={executeOperation}
                   disabled={loading}
                   className={`px-4 py-2 text-sm font-medium text-white rounded-md hover:opacity-90 disabled:opacity-50 ${

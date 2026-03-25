@@ -116,7 +116,7 @@ export const WorkflowModal: React.FC<WorkflowModalProps> = ({
             {config.icon}
             <h2 className="text-xl font-semibold text-gray-900">{config.title}</h2>
           </div>
-          <button
+          <button aria-label="Close"
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition-colors"
           >
@@ -214,7 +214,7 @@ export const WorkflowModal: React.FC<WorkflowModalProps> = ({
               >
                 Cancel
               </button>
-              <button
+              <button aria-label="Close"
                 type="submit"
                 className={`flex-1 px-4 py-2 bg-${config.color}-600 text-white rounded-md hover:bg-${config.color}-700 transition-colors disabled:opacity-50`}
                 disabled={loading}

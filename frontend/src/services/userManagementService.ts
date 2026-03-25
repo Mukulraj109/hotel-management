@@ -55,50 +55,74 @@ class UserManagementService {
    * Create new user
    */
   async createUser(data: CreateUserData) {
-    const response = await api.post('/users/create', data);
-    return response.data;
+    try {
+      const response = await api.post('/users/create', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Update existing user
    */
   async updateUser(userId: string, data: UpdateUserData) {
-    const response = await api.put(`/users/${userId}`, data);
-    return response.data;
+    try {
+      const response = await api.put(`/users/${userId}`, data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Delete user (soft delete - sets isActive to false)
    */
   async deleteUser(userId: string) {
-    const response = await api.delete(`/users/${userId}`);
-    return response.data;
+    try {
+      const response = await api.delete(`/users/${userId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get list of users with filters
    */
   async getUsers(filters?: UserFilters) {
-    const response = await api.get('/users', {
-      params: filters
-    });
-    return response.data;
+    try {
+      const response = await api.get('/users', {
+        params: filters
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get single user by ID
    */
   async getUserById(userId: string) {
-    const response = await api.get(`/users/${userId}`);
-    return response.data;
+    try {
+      const response = await api.get(`/users/${userId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Generate temporary password
    */
   async generatePassword() {
-    const response = await api.get('/users/generate-password');
-    return response.data.data.password;
+    try {
+      const response = await api.get('/users/generate-password');
+      return response.data.data.password;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

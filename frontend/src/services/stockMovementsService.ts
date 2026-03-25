@@ -263,102 +263,134 @@ class StockMovementsService {
    * Get transaction history with filters
    */
   async getTransactionHistory(filters: StockMovementFilters = {}): Promise<TransactionHistoryResponse> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
 
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/stock-movements?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/stock-movements?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get transaction history for specific item
    */
   async getItemTransactions(itemId: string, options: { limit?: number; startDate?: string; endDate?: string } = {}) {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
 
-    Object.entries(options).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(options).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/stock-movements/item/${itemId}?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/stock-movements/item/${itemId}?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Create manual stock adjustment
    */
   async createAdjustment(data: AdjustmentData) {
-    const response = await api.post('/stock-movements/adjustment', data);
-    return response.data;
+    try {
+      const response = await api.post('/stock-movements/adjustment', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Create item transfer between locations
    */
   async createTransfer(data: TransferData) {
-    const response = await api.post('/stock-movements/transfer', data);
-    return response.data;
+    try {
+      const response = await api.post('/stock-movements/transfer', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Log consumption transaction
    */
   async logConsumption(data: ConsumptionData) {
-    const response = await api.post('/stock-movements/consumption', data);
-    return response.data;
+    try {
+      const response = await api.post('/stock-movements/consumption', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get transaction analytics summary
    */
   async getTransactionSummary(filters: { startDate?: string; endDate?: string; category?: string } = {}): Promise<TransactionSummaryResponse> {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
 
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/stock-movements/summary?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/stock-movements/summary?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Reconcile inventory counts
    */
   async reconcileInventory(data: ReconciliationData) {
-    const response = await api.post('/stock-movements/reconcile', data);
-    return response.data;
+    try {
+      const response = await api.post('/stock-movements/reconcile', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Export transaction data
    */
   async exportTransactions(filters: StockMovementFilters & { format?: 'csv' | 'json' } = {}) {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
 
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        params.append(key, value.toString());
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          params.append(key, value.toString());
+        }
+      });
+
+      const response = await api.get(`/stock-movements/export?${params.toString()}`, {
+        responseType: filters.format === 'csv' ? 'text' : 'json'
+      });
+
+      if (filters.format === 'csv') {
+        return response.data; // Return raw CSV string
+      } else {
+        return response.data; // Return JSON data
       }
-    });
-
-    const response = await api.get(`/stock-movements/export?${params.toString()}`, {
-      responseType: filters.format === 'csv' ? 'text' : 'json'
-    });
-
-    if (filters.format === 'csv') {
-      return response.data; // Return raw CSV string
-    } else {
-      return response.data; // Return JSON data
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
   }
 
@@ -366,32 +398,44 @@ class StockMovementsService {
    * Get auto-reorder suggestions
    */
   async getReorderSuggestions(options: { includeScheduled?: boolean } = {}) {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
 
-    Object.entries(options).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(options).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/stock-movements/reorder-suggestions?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/stock-movements/reorder-suggestions?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get low stock alerts
    */
   async getLowStockAlerts(threshold: number = 5) {
-    const response = await api.get(`/stock-movements/low-stock-alerts?threshold=${threshold}`);
-    return response.data;
+    try {
+      const response = await api.get(`/stock-movements/low-stock-alerts?threshold=${threshold}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get comprehensive item statistics
    */
   async getItemStatistics(itemId: string, days: number = 30): Promise<ItemStatisticsResponse> {
-    const response = await api.get(`/stock-movements/item-statistics/${itemId}?days=${days}`);
-    return response.data;
+    try {
+      const response = await api.get(`/stock-movements/item-statistics/${itemId}?days=${days}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**

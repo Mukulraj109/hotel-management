@@ -461,7 +461,7 @@ export default function RoomDetailsPage() {
             <div className="mt-3">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-gray-900">Change Room Status</h3>
-                <button
+                <button aria-label="Close"
                   onClick={() => setShowStatusModal(false)}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
                 >
@@ -478,7 +478,7 @@ export default function RoomDetailsPage() {
                 <p className="text-sm font-medium text-gray-700 mb-3">Select New Status:</p>
                 <div className="grid grid-cols-2 gap-3">
                   {['vacant', 'dirty', 'maintenance', 'out_of_order'].map((status) => (
-                    <button
+                    <button aria-label="Close"
                       key={status}
                       onClick={() => handleStatusChange(status)}
                       disabled={isUpdatingStatus || currentStatus === status}
@@ -523,7 +523,7 @@ export default function RoomDetailsPage() {
             <div className="mt-3">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-gray-900">Schedule Maintenance</h3>
-                <button
+                <button aria-label="Close"
                   onClick={() => setShowMaintenanceModal(false)}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
                 >

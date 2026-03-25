@@ -28,6 +28,7 @@ import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '../LoadingSpinner';
 import { roomInventoryService, CheckoutInspection, RoomInventory } from '../../services/roomInventoryService';
 import { formatCurrency } from '../../utils/formatters';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface CheckoutVerificationSystemProps {
   bookingId: string;
@@ -126,7 +127,7 @@ const equipmentCategories = [
   }
 ];
 
-export function CheckoutVerificationSystem({
+function CheckoutVerificationSystem({
   bookingId,
   roomId,
   guestId,
@@ -1193,3 +1194,6 @@ export function CheckoutVerificationSystem({
     </div>
   );
 }
+
+export { CheckoutVerificationSystem };
+export default withErrorBoundary(CheckoutVerificationSystem, { level: 'component' });

@@ -223,41 +223,45 @@ stopSellRuleSchema.methods.evaluateRule = function(context) {
 
 // Static methods
 stopSellRuleSchema.statics.evaluateRulesForContext = async function(context) {
-  const {
-    hotelId,
-    date,
-    roomTypeId,
-    channel = 'direct'
-  } = context;
-  
-  // Get all active rules for the hotel
-  const rules = await this.find({
-    hotelId,
-    isActive: true
-  }).sort({ priority: -1, createdAt: 1 });
-  
-  const results = [];
-  
-  for (const rule of rules) {
-    const evaluation = rule.evaluateRule({
+  try {
+    const {
+      hotelId,
       date,
       roomTypeId,
-      channel
-    });
-    
-    if (evaluation.applies) {
-      results.push({
-        ruleId: rule.ruleId,
-        ruleType: rule.ruleType,
-        priority: rule.priority,
-        actions: evaluation.actions,
-        name: rule.name,
-        description: rule.description
-      });
-    }
-  }
+      channel = 'direct'
+    } = context;
   
-  return results;
+    // Get all active rules for the hotel
+    const rules = await this.find({
+      hotelId,
+      isActive: true
+    }).sort({ priority: -1, createdAt: 1 }).lean().limit(1000);
+  
+    const results = [];
+  
+    for (const rule of rules) {
+      const evaluation = rule.evaluateRule({
+        date,
+        roomTypeId,
+        channel
+      });
+    
+      if (evaluation.applies) {
+        results.push({
+          ruleId: rule.ruleId,
+          ruleType: rule.ruleType,
+          priority: rule.priority,
+          actions: evaluation.actions,
+          name: rule.name,
+          description: rule.description
+        });
+      }
+    }
+  
+    return results;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 export default mongoose.model('StopSellRule', stopSellRuleSchema);

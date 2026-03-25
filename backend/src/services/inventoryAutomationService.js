@@ -169,7 +169,7 @@ class InventoryAutomationService {
     try {
       const roomInventory = await RoomInventory.findOne({ roomId })
         .populate('items.itemId', 'name category unitPrice replacementPrice')
-        .populate('roomId', 'roomNumber type floor');
+        .populate('roomId', 'roomNumber type floor').lean();
 
       if (!roomInventory) {
         throw new Error('Room inventory not found');
@@ -571,7 +571,7 @@ class InventoryAutomationService {
    */
   async updateRoomInventoryStatus(roomId, assessment, replacementItems, processedBy) {
     try {
-      const roomInventory = await RoomInventory.findOne({ roomId });
+      const roomInventory = await RoomInventory.findOne({ roomId }).lean();
       if (!roomInventory) {
         throw new Error('Room inventory not found');
       }

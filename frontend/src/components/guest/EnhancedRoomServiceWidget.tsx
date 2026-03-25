@@ -411,7 +411,7 @@ export function EnhancedRoomServiceWidget({
             All Categories
           </button>
           {menuCategories.map(category => (
-            <button
+            <button aria-label="Close"
               key={category.category}
               onClick={() => setSelectedCategory(category.category)}
               className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center ${

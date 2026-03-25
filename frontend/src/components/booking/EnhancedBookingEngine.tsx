@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef} from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -58,6 +58,7 @@ import { roomTypeService } from '@/services/roomTypeService';
 import { inventoryService } from '@/services/inventoryService';
 import { roomTypeLocalizationService, type LocalizedRoomType } from '@/services/roomTypeLocalizationService';
 import { multiCurrencyRateService, type ConvertedRatePlan, type ConversionRatesResponse } from '@/services/multiCurrencyRateService';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 // Use LocalizedRoomType from the service, but keep legacy interface for backward compatibility
 interface RoomType extends Omit<LocalizedRoomType, 'specifications'> {
@@ -191,6 +192,12 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
   const [selectedCurrency, setSelectedCurrency] = useState(currency);
 
   // Load initial data
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   useEffect(() => {
     loadRoomTypes();
     loadConversionRates();
@@ -518,6 +525,7 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
 
       // Mock API call
       await new Promise(resolve => setTimeout(resolve, 2000));
+    if (!isMountedRef.current) return;
 
       toast.success('Booking confirmed successfully!');
       setCurrentStep(5);
@@ -824,11 +832,11 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
             </CardHeader>
             <CardContent className="space-y-4">
               {roomTypes.filter(rt => rt.availableRooms && rt.availableRooms > 0).map(roomType => (
-                <div 
+                <div role="button" tabIndex={0} 
                   key={roomType._id} 
                   className="border rounded-lg p-6 cursor-pointer transition-all hover:shadow-md hover:border-blue-300"
                   onClick={() => selectRoomType(roomType)}
-                >
+                 onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => selectRoomType(roomType); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-3">
@@ -1036,13 +1044,13 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
                     const isSelected = selectedRatePlan?.planId === ratePlan.planId;
                     
                     return (
-                      <div
+                      <div role="button" tabIndex={0}
                         key={ratePlan.planId}
                         className={`border rounded-lg p-4 cursor-pointer transition-all ${
                           isSelected ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'
                         }`}
                         onClick={() => setSelectedRatePlan(ratePlan)}
-                      >
+                       onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => setSelectedRatePlan(ratePlan); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                         <div className="flex items-center justify-between">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
@@ -1329,4 +1337,4 @@ const EnhancedBookingEngine: React.FC<EnhancedBookingEngineProps> = ({
   );
 };
 
-export default EnhancedBookingEngine;
+export default withErrorBoundary(EnhancedBookingEngine, { level: 'component' });

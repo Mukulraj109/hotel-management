@@ -266,7 +266,7 @@ export function InventoryTemplateManagement() {
                   {/* Template Header */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-4">
-                      <button
+                      <button aria-label="Toggle"
                         onClick={() => toggleTemplateExpansion(template._id || '')}
                         className="p-1 hover:bg-gray-100 rounded"
                       >
@@ -474,7 +474,7 @@ function TemplateModal({ template, availableItems, onSave, onClose }: TemplateMo
             <h2 className="text-2xl font-bold text-gray-900">
               {template._id ? 'Edit Template' : 'Create New Template'}
             </h2>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <button aria-label="Close" onClick={onClose} className="text-gray-400 hover:text-gray-600">
               <X className="w-6 h-6" />
             </button>
           </div>
@@ -685,7 +685,7 @@ function TemplateModal({ template, availableItems, onSave, onClose }: TemplateMo
                             </div>
                           </div>
                           
-                          <button
+                          <button aria-label="Delete"
                             type="button"
                             onClick={() => handleRemoveItem(index)}
                             className="ml-4 text-red-600 hover:text-red-800"

@@ -68,7 +68,7 @@ class GuestManagementService {
 
       return await AccountAttribute.find(filter)
         .sort({ category: 1, displayOrder: 1, name: 1 })
-        .populate('createdBy updatedBy', 'name email');
+        .populate('createdBy updatedBy', 'name email').lean().limit(1000);
     } catch (error) {
       logger.error('Error getting account attributes:', error);
       throw error;
@@ -164,7 +164,7 @@ class GuestManagementService {
 
       return await GuestType.find(filter)
         .sort({ category: 1, displayOrder: 1, name: 1 })
-        .populate('createdBy updatedBy', 'name email');
+        .populate('createdBy updatedBy', 'name email').lean().limit(1000);
     } catch (error) {
       logger.error('Error getting guest types:', error);
       throw error;
@@ -266,7 +266,7 @@ class GuestManagementService {
 
       return await IdentificationType.find(filter)
         .sort({ category: 1, displayOrder: 1, name: 1 })
-        .populate('createdBy updatedBy', 'name email');
+        .populate('createdBy updatedBy', 'name email').lean().limit(1000);
     } catch (error) {
       logger.error('Error getting identification types:', error);
       throw error;
@@ -385,7 +385,7 @@ class GuestManagementService {
 
   async duplicateGuestType(guestTypeId, newName, userId) {
     try {
-      const originalGuestType = await GuestType.findById(guestTypeId);
+      const originalGuestType = await GuestType.findById(guestTypeId).lean();
       if (!originalGuestType) {
         throw new ApplicationError('Guest type not found', 404);
       }

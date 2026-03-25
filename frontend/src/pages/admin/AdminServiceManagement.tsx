@@ -28,6 +28,7 @@ import { formatCurrency } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface ServiceFormData {
   name: string;
@@ -906,4 +907,4 @@ const AdminServiceManagement: React.FC = () => {
   );
 };
 
-export default AdminServiceManagement;
+export default withErrorBoundary(AdminServiceManagement, { level: 'page' });

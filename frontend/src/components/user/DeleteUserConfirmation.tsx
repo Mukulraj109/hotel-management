@@ -128,7 +128,7 @@ export function DeleteUserConfirmation({
           >
             Cancel
           </button>
-          <button
+          <button aria-label="Delete"
             type="button"
             onClick={handleDelete}
             disabled={loading || confirmText !== 'DELETE'}

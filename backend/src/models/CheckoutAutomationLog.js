@@ -347,4 +347,7 @@ checkoutAutomationLogSchema.statics.getStatistics = function(hotelId, dateRange 
   ]);
 };
 
+// Data retention TTL: auto-delete checkout automation logs after 180 days
+checkoutAutomationLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 180 * 24 * 60 * 60 });
+
 export default mongoose.model('CheckoutAutomationLog', checkoutAutomationLogSchema);

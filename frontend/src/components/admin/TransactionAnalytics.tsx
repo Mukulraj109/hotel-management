@@ -414,7 +414,7 @@ const TransactionAnalytics: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="flex space-x-2">
             {(['week', 'month', 'quarter', 'year'] as const).map(period => (
-              <button
+              <button aria-label="Filter"
                 key={period}
                 onClick={() => setPeriod(period)}
                 className={`px-3 py-2 text-sm font-medium rounded-md ${

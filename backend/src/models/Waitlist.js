@@ -580,6 +580,9 @@ waitlistSchema.statics.processExpiredEntries = function(hotelId) {
   );
 };
 
+// Data retention TTL: auto-delete waitlist entries after 180 days
+waitlistSchema.index({ createdAt: 1 }, { expireAfterSeconds: 180 * 24 * 60 * 60 });
+
 const Waitlist = mongoose.model('Waitlist', waitlistSchema);
 
 export default Waitlist;

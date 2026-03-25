@@ -20,6 +20,7 @@ import {
   ArrowUp,
   ArrowDown
 } from 'lucide-react';
+import { withErrorBoundary } from '../ErrorBoundary';
 import {
   BarChart,
   Bar,
@@ -528,7 +529,7 @@ const InventoryAnalyticsDashboard: React.FC = () => {
                 { id: 'vendors', label: 'Vendor Performance', icon: Users },
                 { id: 'forecasting', label: 'Forecasting', icon: Calendar }
               ].map(({ id, label, icon: Icon }) => (
-                <button
+                <button aria-label="Close"
                   key={id}
                   onClick={() => setActiveTab(id as unknown)}
                   className={`${
@@ -955,4 +956,4 @@ const InventoryAnalyticsDashboard: React.FC = () => {
   );
 };
 
-export default InventoryAnalyticsDashboard;
+export default withErrorBoundary(InventoryAnalyticsDashboard, { level: 'component' });

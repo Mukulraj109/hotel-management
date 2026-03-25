@@ -186,7 +186,7 @@ export const NotificationBellWidget: React.FC<NotificationBellWidgetProps> = ({
               <h3 className="font-semibold text-gray-900">Notifications</h3>
               <div className="flex items-center gap-2">
                 {unreadCount > 0 && (
-                  <button
+                  <button aria-label="Close"
                     onClick={handleMarkAllAsRead}
                     disabled={markAllAsReadMutation.isPending}
                     className="text-xs text-blue-600 hover:text-blue-700 font-medium disabled:opacity-50"
@@ -194,7 +194,7 @@ export const NotificationBellWidget: React.FC<NotificationBellWidgetProps> = ({
                     {markAllAsReadMutation.isPending ? 'Marking...' : 'Mark all read'}
                   </button>
                 )}
-                <button
+                <button aria-label="Close"
                   onClick={() => setIsOpen(false)}
                   className="p-1 hover:bg-gray-100 rounded transition-colors"
                 >
@@ -214,7 +214,7 @@ export const NotificationBellWidget: React.FC<NotificationBellWidgetProps> = ({
             ) : (
               <div className="divide-y divide-gray-100">
                 {notifications.map((notification) => (
-                  <div
+                  <div role="button" tabIndex={0}
                     key={notification._id}
                     className={`px-4 py-3 border-l-2 ${getPriorityColor(notification.priority)} hover:bg-gray-50 cursor-pointer`}
                     onClick={() => {
@@ -222,7 +222,11 @@ export const NotificationBellWidget: React.FC<NotificationBellWidgetProps> = ({
                         markAsReadMutation.mutate(notification._id);
                       }
                     }}
-                  >
+                   onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => {
+                      if (!notification.readAt) {
+                        markAsReadMutation.mutate(notification._id);
+                      }
+                    }; if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
@@ -246,7 +250,7 @@ export const NotificationBellWidget: React.FC<NotificationBellWidgetProps> = ({
                       </div>
 
                       {!notification.readAt && (
-                        <button
+                        <button aria-label="Notifications"
                           onClick={(e) => handleMarkAsRead(e, notification._id)}
                           className="p-1 hover:bg-white rounded transition-colors"
                           title="Mark as read"

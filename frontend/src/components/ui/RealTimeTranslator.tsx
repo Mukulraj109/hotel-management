@@ -127,7 +127,7 @@ export const RealTimeTranslator: React.FC<RealTimeTranslatorProps> = ({
       )}>
         <div className="flex items-center justify-between mb-3">
           <h4 className="font-medium text-gray-900">Translation Statistics</h4>
-          <button
+          <button aria-label="Close"
             onClick={() => setShowStats(false)}
             className="text-gray-400 hover:text-gray-600"
           >
@@ -169,7 +169,7 @@ export const RealTimeTranslator: React.FC<RealTimeTranslatorProps> = ({
 
     return (
       <div className="flex items-center gap-1 mb-2">
-        <button
+        <button aria-label="Close"
           onClick={() => setShowStats(!showStats)}
           className={cn(
             "p-1.5 text-xs rounded hover:bg-gray-100 transition-colors",
@@ -180,7 +180,7 @@ export const RealTimeTranslator: React.FC<RealTimeTranslatorProps> = ({
           <BarChart3 className="w-3 h-3" />
         </button>
         
-        <button
+        <button aria-label="Refresh"
           onClick={handleClearCache}
           className="p-1.5 text-xs text-gray-500 hover:bg-gray-100 rounded transition-colors"
           title="Clear Translation Cache"

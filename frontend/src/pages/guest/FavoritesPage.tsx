@@ -248,13 +248,13 @@ const FavoritesPage: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex items-center gap-1">
-                      <button
+                      <button aria-label="Edit"
                         onClick={() => setEditingFavorite(favorite)}
                         className="p-2 text-gray-400 hover:text-blue-500 rounded-lg hover:bg-gray-100"
                       >
                         <Settings className="h-4 w-4" />
                       </button>
-                      <button
+                      <button aria-label="Delete"
                         onClick={() => handleRemove(favorite._id)}
                         className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-gray-100"
                       >
@@ -369,7 +369,7 @@ const EditFavoriteModal: React.FC<EditFavoriteModalProps> = ({
       <div className="bg-white rounded-lg max-w-md w-full p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold">Edit Favorite Settings</h2>
-          <button
+          <button aria-label="Close"
             onClick={onClose}
             className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
           >
@@ -432,7 +432,7 @@ const EditFavoriteModal: React.FC<EditFavoriteModalProps> = ({
             >
               Cancel
             </button>
-            <button
+            <button aria-label="Save"
               type="submit"
               disabled={isLoading}
               className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"

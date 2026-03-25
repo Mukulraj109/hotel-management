@@ -10,10 +10,12 @@ import { catchAsync } from '../utils/catchAsync.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { escapeRegex } from '../utils/escapeRegex.js';
 import logger from '../utils/logger.js';
+import financialRateLimiter from '../middleware/financialRateLimiter.js';
 
 const router = express.Router();
 
-// All routes require authentication
+// All routes require rate limiting and authentication
+router.use(financialRateLimiter);
 router.use(authenticate);
 router.use(ensurePropertyAccess);
 
@@ -66,7 +68,7 @@ router.get('/user', catchAsync(async (req, res) => {
     .populate({
       path: 'billingHistory.roomId', 
       select: 'roomNumber type'
-    });
+    }).lean();
 
   if (!user) {
     throw new ApplicationError('User not found', 404);
@@ -272,7 +274,7 @@ router.get('/', catchAsync(async (req, res) => {
       .populate('hotelId', 'name')
       .select('invoiceNumber type status totalAmount issueDate items notes bookingId guestId hotelId payments')
       .sort('-issueDate')
-      .limit(parseInt(req.query.limit) || 50);
+      .limit(parseInt(req.query.limit) || 50).lean();
     
     logger.debug('Invoice query result', { count: invoices.length });
 
@@ -323,7 +325,7 @@ router.get('/', catchAsync(async (req, res) => {
       .populate('hotelId', 'name')
       .select('invoiceNumber totalAmount issueDate payments bookingId guestId hotelId currency')
       .sort('-issueDate')
-      .limit(parseInt(req.query.limit) || 50);
+      .limit(parseInt(req.query.limit) || 50).lean();
     
     logger.debug('Found invoices with payments', { count: invoicesWithPayments.length });
 
@@ -363,7 +365,7 @@ router.get('/', catchAsync(async (req, res) => {
       .populate('hotelId', 'name')
       .select('invoiceNumber type status totalAmount issueDate bookingId guestId hotelId currency')
       .sort('-issueDate')
-      .limit(parseInt(req.query.limit) || 50);
+      .limit(parseInt(req.query.limit) || 50).lean();
 
     logger.debug('Found refund invoices', { count: refundInvoices.length });
 
@@ -408,7 +410,7 @@ router.get('/', catchAsync(async (req, res) => {
       .populate('rooms.roomId', 'roomNumber type')
       .select('bookingNumber status paymentStatus totalAmount checkIn checkOut userId hotelId rooms createdAt currency nights')
       .sort('-createdAt')
-      .limit(parseInt(req.query.limit) || 50);
+      .limit(parseInt(req.query.limit) || 50).lean();
 
     logger.debug('Found bookings for billing history', { count: bookings.length });
 
@@ -725,7 +727,7 @@ router.get('/export', authorize('staff', 'admin'), catchAsync(async (req, res) =
       .populate('guestId', 'name email phone')
       .populate('hotelId', 'name')
       .sort('-issueDate')
-      .limit(parseInt(req.query.limit) || 50);
+      .limit(parseInt(req.query.limit) || 50).lean();
 
     invoices.forEach(invoice => {
       exportData.push({
@@ -757,7 +759,7 @@ router.get('/export', authorize('staff', 'admin'), catchAsync(async (req, res) =
       })
       .populate('hotelId', 'name')
       .sort('-createdAt')
-      .limit(parseInt(req.query.limit) || 50);
+      .limit(parseInt(req.query.limit) || 50).lean();
 
     payments.forEach(payment => {
       exportData.push({

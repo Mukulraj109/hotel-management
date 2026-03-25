@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import {
   Package,
   AlertTriangle,
@@ -235,9 +235,18 @@ const UnifiedInventoryDashboard: React.FC = () => {
     }
   ];
 
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     // Simulate API loading
-    setTimeout(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
       setIsLoading(false);
     }, 1000);
   }, []);
@@ -245,7 +254,8 @@ const UnifiedInventoryDashboard: React.FC = () => {
   const handleRefresh = async () => {
     setRefreshing(true);
     // Simulate API refresh
-    setTimeout(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
       setRefreshing(false);
     }, 1000);
   };
@@ -388,7 +398,7 @@ const UnifiedInventoryDashboard: React.FC = () => {
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {quickActions.map((action) => (
-              <button
+              <button aria-label="Close"
                 key={action.id}
                 onClick={action.action}
                 className={`${action.color} text-white p-4 rounded-lg transition-colors duration-200 flex items-center`}
@@ -415,7 +425,7 @@ const UnifiedInventoryDashboard: React.FC = () => {
                 { id: 'vendors', label: 'Top Vendors', icon: Users },
                 { id: 'analytics', label: 'Cost Analytics', icon: DollarSign }
               ].map(({ id, label, icon: Icon }) => (
-                <button
+                <button aria-label="Close"
                   key={id}
                   onClick={() => setActiveTab(id)}
                   className={`${

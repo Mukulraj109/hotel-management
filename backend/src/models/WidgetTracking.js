@@ -151,150 +151,162 @@ widgetTrackingSchema.virtual('sessionDuration').get(function() {
 
 // Static methods for analytics
 widgetTrackingSchema.statics.getWidgetPerformance = async function(widgetId, dateRange = 7) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - dateRange);
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - dateRange);
 
-  const pipeline = [
-    {
-      $match: {
-        widgetId: widgetId,
-        timestamp: { $gte: startDate }
+    const pipeline = [
+      {
+        $match: {
+          widgetId: widgetId,
+          timestamp: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: '$event',
+          count: { $sum: 1 },
+          totalValue: { $sum: '$conversionValue' }
+        }
       }
-    },
-    {
-      $group: {
-        _id: '$event',
-        count: { $sum: 1 },
-        totalValue: { $sum: '$conversionValue' }
+    ];
+
+    const results = await this.aggregate(pipeline);
+
+    const metrics = {
+      impressions: 0,
+      clicks: 0,
+      conversions: 0,
+      conversionRate: 0,
+      totalRevenue: 0,
+      averageValue: 0
+    };
+
+    results.forEach(result => {
+      switch (result._id) {
+        case 'impression':
+          metrics.impressions = result.count;
+          break;
+        case 'click':
+          metrics.clicks = result.count;
+          break;
+        case 'conversion':
+          metrics.conversions = result.count;
+          metrics.totalRevenue = result.totalValue || 0;
+          break;
       }
+    });
+
+    if (metrics.clicks > 0) {
+      metrics.conversionRate = (metrics.conversions / metrics.clicks) * 100;
     }
-  ];
 
-  const results = await this.aggregate(pipeline);
-
-  const metrics = {
-    impressions: 0,
-    clicks: 0,
-    conversions: 0,
-    conversionRate: 0,
-    totalRevenue: 0,
-    averageValue: 0
-  };
-
-  results.forEach(result => {
-    switch (result._id) {
-      case 'impression':
-        metrics.impressions = result.count;
-        break;
-      case 'click':
-        metrics.clicks = result.count;
-        break;
-      case 'conversion':
-        metrics.conversions = result.count;
-        metrics.totalRevenue = result.totalValue || 0;
-        break;
+    if (metrics.conversions > 0) {
+      metrics.averageValue = metrics.totalRevenue / metrics.conversions;
     }
-  });
 
-  if (metrics.clicks > 0) {
-    metrics.conversionRate = (metrics.conversions / metrics.clicks) * 100;
+    return metrics;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  if (metrics.conversions > 0) {
-    metrics.averageValue = metrics.totalRevenue / metrics.conversions;
-  }
-
-  return metrics;
 };
 
 widgetTrackingSchema.statics.getConversionFunnel = async function(widgetId, dateRange = 7) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - dateRange);
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - dateRange);
 
-  const pipeline = [
-    {
-      $match: {
-        widgetId: widgetId,
-        timestamp: { $gte: startDate }
+    const pipeline = [
+      {
+        $match: {
+          widgetId: widgetId,
+          timestamp: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: '$sessionId',
+          events: { $push: '$event' },
+          firstEvent: { $min: '$timestamp' },
+          lastEvent: { $max: '$timestamp' },
+          hasConversion: { $max: '$isConversion' }
+        }
+      },
+      {
+        $project: {
+          hasImpression: { $in: ['impression', '$events'] },
+          hasClick: { $in: ['click', '$events'] },
+          hasFormStart: { $in: ['form_start', '$events'] },
+          hasFormSubmit: { $in: ['form_submit', '$events'] },
+          hasConversion: '$hasConversion',
+          sessionDuration: { $subtract: ['$lastEvent', '$firstEvent'] }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalSessions: { $sum: 1 },
+          impressions: { $sum: { $cond: ['$hasImpression', 1, 0] } },
+          clicks: { $sum: { $cond: ['$hasClick', 1, 0] } },
+          formStarts: { $sum: { $cond: ['$hasFormStart', 1, 0] } },
+          formSubmits: { $sum: { $cond: ['$hasFormSubmit', 1, 0] } },
+          conversions: { $sum: { $cond: ['$hasConversion', 1, 0] } },
+          avgSessionDuration: { $avg: '$sessionDuration' }
+        }
       }
-    },
-    {
-      $group: {
-        _id: '$sessionId',
-        events: { $push: '$event' },
-        firstEvent: { $min: '$timestamp' },
-        lastEvent: { $max: '$timestamp' },
-        hasConversion: { $max: '$isConversion' }
-      }
-    },
-    {
-      $project: {
-        hasImpression: { $in: ['impression', '$events'] },
-        hasClick: { $in: ['click', '$events'] },
-        hasFormStart: { $in: ['form_start', '$events'] },
-        hasFormSubmit: { $in: ['form_submit', '$events'] },
-        hasConversion: '$hasConversion',
-        sessionDuration: { $subtract: ['$lastEvent', '$firstEvent'] }
-      }
-    },
-    {
-      $group: {
-        _id: null,
-        totalSessions: { $sum: 1 },
-        impressions: { $sum: { $cond: ['$hasImpression', 1, 0] } },
-        clicks: { $sum: { $cond: ['$hasClick', 1, 0] } },
-        formStarts: { $sum: { $cond: ['$hasFormStart', 1, 0] } },
-        formSubmits: { $sum: { $cond: ['$hasFormSubmit', 1, 0] } },
-        conversions: { $sum: { $cond: ['$hasConversion', 1, 0] } },
-        avgSessionDuration: { $avg: '$sessionDuration' }
-      }
-    }
-  ];
+    ];
 
-  const result = await this.aggregate(pipeline);
-  return result[0] || {};
+    const result = await this.aggregate(pipeline);
+    return result[0] || {};
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 widgetTrackingSchema.statics.getTopPerformingWidgets = async function(limit = 10, dateRange = 30) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - dateRange);
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - dateRange);
 
-  const pipeline = [
-    {
-      $match: {
-        timestamp: { $gte: startDate }
-      }
-    },
-    {
-      $group: {
-        _id: '$widgetId',
-        impressions: { $sum: { $cond: [{ $eq: ['$event', 'impression'] }, 1, 0] } },
-        clicks: { $sum: { $cond: [{ $eq: ['$event', 'click'] }, 1, 0] } },
-        conversions: { $sum: { $cond: [{ $eq: ['$event', 'conversion'] }, 1, 0] } },
-        totalRevenue: { $sum: '$conversionValue' }
-      }
-    },
-    {
-      $project: {
-        widgetId: '$_id',
-        impressions: 1,
-        clicks: 1,
-        conversions: 1,
-        totalRevenue: 1,
-        conversionRate: {
-          $cond: [
-            { $gt: ['$clicks', 0] },
-            { $multiply: [{ $divide: ['$conversions', '$clicks'] }, 100] },
-            0
-          ]
+    const pipeline = [
+      {
+        $match: {
+          timestamp: { $gte: startDate }
         }
-      }
-    },
-    { $sort: { conversions: -1, conversionRate: -1 } },
-    { $limit: limit }
-  ];
+      },
+      {
+        $group: {
+          _id: '$widgetId',
+          impressions: { $sum: { $cond: [{ $eq: ['$event', 'impression'] }, 1, 0] } },
+          clicks: { $sum: { $cond: [{ $eq: ['$event', 'click'] }, 1, 0] } },
+          conversions: { $sum: { $cond: [{ $eq: ['$event', 'conversion'] }, 1, 0] } },
+          totalRevenue: { $sum: '$conversionValue' }
+        }
+      },
+      {
+        $project: {
+          widgetId: '$_id',
+          impressions: 1,
+          clicks: 1,
+          conversions: 1,
+          totalRevenue: 1,
+          conversionRate: {
+            $cond: [
+              { $gt: ['$clicks', 0] },
+              { $multiply: [{ $divide: ['$conversions', '$clicks'] }, 100] },
+              0
+            ]
+          }
+        }
+      },
+      { $sort: { conversions: -1, conversionRate: -1 } },
+      { $limit: limit }
+    ];
 
-  return await this.aggregate(pipeline);
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 const WidgetTracking = mongoose.model('WidgetTracking', widgetTrackingSchema);

@@ -252,7 +252,7 @@ export default function GuestDocuments() {
             { id: 'upload', label: 'Upload Documents', icon: DocumentTextIcon },
             { id: 'documents', label: 'All Documents', icon: DocumentTextIcon }
           ].map(tab => (
-            <button
+            <button aria-label="Close"
               key={tab.id}
               onClick={() => setActiveTab(tab.id as unknown)}
               className={`flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors ${

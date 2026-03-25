@@ -299,7 +299,7 @@ const MultiBookingForm: React.FC<MultiBookingFormProps> = ({
             ₹{calculateRoomTotal().toLocaleString()}
           </span>
           {canRemove && (
-            <button
+            <button aria-label="Delete"
               onClick={onRemove}
               className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
               title="Remove Room"
@@ -360,7 +360,7 @@ const MultiBookingForm: React.FC<MultiBookingFormProps> = ({
                 Total Guests *
               </label>
               <div className="flex items-center gap-3">
-                <button
+                <button aria-label="Close"
                   onClick={() => handleGuestCountChange(Math.max(1, roomBooking.guestDetails.totalGuests - 1))}
                   className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                   disabled={roomBooking.guestDetails.totalGuests <= 1}
@@ -370,7 +370,7 @@ const MultiBookingForm: React.FC<MultiBookingFormProps> = ({
                 <span className="text-xl font-semibold text-gray-900 min-w-[3rem] text-center">
                   {roomBooking.guestDetails.totalGuests}
                 </span>
-                <button
+                <button aria-label="Add"
                   onClick={() => handleGuestCountChange(roomBooking.guestDetails.totalGuests + 1)}
                   className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
@@ -523,7 +523,7 @@ const MultiBookingForm: React.FC<MultiBookingFormProps> = ({
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
+                    <button aria-label="Add"
                       onClick={() => handleAddOnChange(addOn.name, Math.max(0, getAddOnQuantity(addOn.name) - 1))}
                       className="p-1 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
                       disabled={getAddOnQuantity(addOn.name) === 0}
@@ -533,7 +533,7 @@ const MultiBookingForm: React.FC<MultiBookingFormProps> = ({
                     <span className="text-sm font-medium text-gray-900 min-w-[2rem] text-center">
                       {getAddOnQuantity(addOn.name)}
                     </span>
-                    <button
+                    <button aria-label="Add"
                       onClick={() => handleAddOnChange(addOn.name, getAddOnQuantity(addOn.name) + 1)}
                       className="p-1 border border-gray-300 rounded hover:bg-gray-50 transition-colors"
                     >
@@ -561,7 +561,7 @@ const MultiBookingForm: React.FC<MultiBookingFormProps> = ({
 
           {/* Validation Button */}
           <div className="flex justify-end">
-            <button
+            <button aria-label="Close"
               className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
                 isFormValid
                   ? 'bg-green-100 text-green-700'

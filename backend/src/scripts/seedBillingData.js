@@ -201,11 +201,11 @@ const seedPOSMenuItems = async () => {
     }
 
     // Get outlet IDs
-    const restaurant = await POSOutlet.findOne({ outletId: 'restaurant-001' });
-    const spa = await POSOutlet.findOne({ outletId: 'spa-001' });
-    const gym = await POSOutlet.findOne({ outletId: 'gym-001' });
-    const shop = await POSOutlet.findOne({ outletId: 'shop-001' });
-    const parking = await POSOutlet.findOne({ outletId: 'parking-001' });
+    const restaurant = await POSOutlet.findOne({ outletId: 'restaurant-001' }).lean();
+    const spa = await POSOutlet.findOne({ outletId: 'spa-001' }).lean();
+    const gym = await POSOutlet.findOne({ outletId: 'gym-001' }).lean();
+    const shop = await POSOutlet.findOne({ outletId: 'shop-001' }).lean();
+    const parking = await POSOutlet.findOne({ outletId: 'parking-001' }).lean();
 
     if (!restaurant || !spa || !gym || !shop || !parking) {
       console.log('❌ Required outlets not found, skipping menu seeding...');
@@ -539,7 +539,7 @@ const seedPOSMenuItems = async () => {
 const seedHotelAndRooms = async () => {
   try {
     // Check if hotel already exists
-    let hotel = await Hotel.findOne();
+    let hotel = await Hotel.findOne().lean();
     if (!hotel) {
       hotel = await Hotel.create({
         name: 'Sample Hotel',
@@ -649,7 +649,7 @@ const seedUsersAndBookings = async (hotel) => {
     console.log(`   - Staff: ${staffUser.name} (${staffUser.email})`);
 
     // Get rooms
-    const rooms = await Room.find({ hotelId: hotel._id });
+    const rooms = await Room.find({ hotelId: hotel._id }).lean().limit(1000);
 
     if (rooms.length > 0) {
       // Create sample booking

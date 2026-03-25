@@ -171,7 +171,7 @@ const CustomFieldBuilder: React.FC<CustomFieldBuilderProps> = ({
             <CogIcon className="w-6 h-6 text-blue-600 mr-2" />
             <h3 className="text-lg font-medium text-gray-900">Custom Field Builder</h3>
           </div>
-          <button
+          <button aria-label="Close"
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600"
           >
@@ -185,7 +185,7 @@ const CustomFieldBuilder: React.FC<CustomFieldBuilderProps> = ({
             <h4 className="text-sm font-medium text-gray-900 mb-3">Choose a Template</h4>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {fieldTemplates.map(template => (
-                <div
+                <div role="button" tabIndex={0}
                   key={template.id}
                   onClick={() => handleTemplateSelect(template.id)}
                   className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
@@ -193,7 +193,7 @@ const CustomFieldBuilder: React.FC<CustomFieldBuilderProps> = ({
                       ? 'border-blue-500 bg-blue-50'
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
-                >
+                 onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => handleTemplateSelect(template.id); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                   <h5 className="font-medium text-gray-900">{template.name}</h5>
                   <p className="text-sm text-gray-500 mt-1">
                     {template.fields.length} fields
@@ -221,7 +221,7 @@ const CustomFieldBuilder: React.FC<CustomFieldBuilderProps> = ({
                 <div key={field.id} className="border border-gray-200 rounded-lg p-4">
                   <div className="flex justify-between items-start mb-3">
                     <h5 className="font-medium text-gray-900">Field {index + 1}</h5>
-                    <button
+                    <button aria-label="Delete"
                       onClick={() => handleRemoveField(index)}
                       className="text-red-600 hover:text-red-800"
                     >
@@ -240,6 +240,7 @@ const CustomFieldBuilder: React.FC<CustomFieldBuilderProps> = ({
                         onChange={(e) => handleFieldChange(index, 'name', e.target.value)}
                         placeholder="e.g., dietary_preferences"
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
                       />
                     </div>
 
@@ -253,6 +254,7 @@ const CustomFieldBuilder: React.FC<CustomFieldBuilderProps> = ({
                         onChange={(e) => handleFieldChange(index, 'label', e.target.value)}
                         placeholder="e.g., Dietary Preferences"
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
                       />
                     </div>
 
@@ -264,6 +266,7 @@ const CustomFieldBuilder: React.FC<CustomFieldBuilderProps> = ({
                         value={field.type}
                         onChange={(e) => handleFieldChange(index, 'type', e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
                       >
                         {fieldTypes.map(type => (
                           <option key={type.value} value={type.value}>

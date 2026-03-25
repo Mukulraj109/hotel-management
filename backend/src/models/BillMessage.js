@@ -373,14 +373,18 @@ billMessageSchema.virtual('processedContent').get(function() {
 
 // Pre-save middleware to generate messageId if not provided
 billMessageSchema.pre('save', async function(next) {
-  if (!this.messageId) {
-    const prefix = this.messageType.substring(0, 3).toUpperCase();
-    const count = await this.constructor.countDocuments({
-      messageId: new RegExp(`^${prefix}`)
-    });
-    this.messageId = `${prefix}${(count + 1).toString().padStart(3, '0')}`;
+  try {
+    if (!this.messageId) {
+      const prefix = this.messageType.substring(0, 3).toUpperCase();
+      const count = await this.constructor.countDocuments({
+        messageId: new RegExp(`^${prefix}`)
+      });
+      this.messageId = `${prefix}${(count + 1).toString().padStart(3, '0')}`;
+    }
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  next();
 });
 
 // Static method to get messages by type

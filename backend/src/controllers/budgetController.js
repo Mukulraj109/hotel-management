@@ -97,7 +97,7 @@ export const getBudget = catchAsync(async (req, res) => {
   const budget = await Budget.findOne({ _id: id })
     .populate('createdBy approvedBy', 'name email')
     .populate('budgetLines.accountId', 'accountCode accountName accountType')
-    .populate('previousVersionId', 'budgetName version status');
+    .populate('previousVersionId', 'budgetName version status').lean();
 
   if (!budget) {
     return res.status(404).json({
@@ -138,7 +138,7 @@ export const createBudget = catchAsync(async (req, res) => {
       _id: { $in: accountIds },
       // hotelId, // Temporarily removed
       isActive: true
-    });
+    }).lean().limit(1000);
 
     if (accounts.length !== accountIds.length) {
       return res.status(400).json({
@@ -150,7 +150,7 @@ export const createBudget = catchAsync(async (req, res) => {
 
   // Get first hotel ID for testing
   const Hotel = (await import('../models/Hotel.js')).default;
-  const firstHotel = await Hotel.findOne();
+  const firstHotel = await Hotel.findOne().lean();
   const hotelId = firstHotel ? firstHotel._id : null;
 
   const budgetData = {
@@ -185,7 +185,7 @@ export const updateBudget = catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { id } = req.params;
 
-  const budget = await Budget.findOne({ _id: id, hotelId });
+  const budget = await Budget.findOne({ _id: id, hotelId }).lean();
   
   if (!budget) {
     return res.status(404).json({
@@ -208,7 +208,7 @@ export const updateBudget = catchAsync(async (req, res) => {
       _id: { $in: accountIds },
       hotelId,
       isActive: true
-    });
+    }).lean().limit(1000);
 
     if (accounts.length !== accountIds.length) {
       return res.status(400).json({
@@ -241,7 +241,7 @@ export const deleteBudget = catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { id } = req.params;
 
-  const budget = await Budget.findOne({ _id: id, hotelId });
+  const budget = await Budget.findOne({ _id: id, hotelId }).lean();
   
   if (!budget) {
     return res.status(404).json({
@@ -276,7 +276,7 @@ export const approveBudget = catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { id } = req.params;
 
-  const budget = await Budget.findOne({ _id: id, hotelId });
+  const budget = await Budget.findOne({ _id: id, hotelId }).lean();
   
   if (!budget) {
     return res.status(404).json({
@@ -421,7 +421,7 @@ export const createRevision = catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { id } = req.params;
 
-  const budget = await Budget.findOne({ _id: id, hotelId });
+  const budget = await Budget.findOne({ _id: id, hotelId }).lean();
   
   if (!budget) {
     return res.status(404).json({
@@ -478,7 +478,7 @@ export const getBudgetSummary = catchAsync(async (req, res) => {
   const budgets = await Budget.find({
     hotelId,
     fiscalYear: parseInt(fiscalYear)
-  }).select('budgetName budgetType status totalRevenue totalExpenses netIncome');
+  }).select('budgetName budgetType status totalRevenue totalExpenses netIncome').lean().limit(1000);
 
   const summary = budgets.reduce((acc, budget) => {
     if (!acc[budget.budgetType]) {
@@ -522,14 +522,14 @@ export const getBudgetStatistics = catchAsync(async (req, res) => {
   try {
     // Get basic counts and stats using simple operations
     const [totalCount, activeBudgets, draftBudgets, approvedBudgets] = await Promise.all([
-      Budget.countDocuments(),
+      Budget.estimatedDocumentCount(),
       Budget.countDocuments({ status: 'Active' }),
       Budget.countDocuments({ status: 'Draft' }),
       Budget.countDocuments({ status: 'Approved' })
     ]);
 
     // Get all budgets for calculations
-    const budgets = await Budget.find().select('totalRevenue totalExpenses netIncome');
+    const budgets = await Budget.find().select('totalRevenue totalExpenses netIncome').lean().limit(1000);
 
     const totalBudgetedRevenue = budgets.reduce((sum, budget) => sum + (budget.totalRevenue || 0), 0);
     const totalBudgetedExpenses = budgets.reduce((sum, budget) => sum + (budget.totalExpenses || 0), 0);

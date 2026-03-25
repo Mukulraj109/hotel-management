@@ -49,13 +49,21 @@ export interface AdminBypassResponse {
 
 class AdminBypassService {
   async getCheckedInBookings() {
-    const response = await api.get('/admin-dashboard/checked-in-bookings');
-    return response.data;
+    try {
+      const response = await api.get('/admin-dashboard/checked-in-bookings');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async bypassCheckout(data: AdminBypassRequest) {
-    const response = await api.post('/admin-dashboard/bypass-checkout', data);
-    return response.data;
+    try {
+      const response = await api.post('/admin-dashboard/bypass-checkout', data);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

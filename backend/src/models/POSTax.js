@@ -288,14 +288,18 @@ posTaxSchema.virtual('effectiveRate').get(function() {
 
 // Pre-save middleware to generate taxId if not provided
 posTaxSchema.pre('save', async function(next) {
-  if (!this.taxId) {
-    const prefix = this.taxType.substring(0, 3).toUpperCase();
-    const count = await this.constructor.countDocuments({
-      taxId: new RegExp(`^${prefix}`)
-    });
-    this.taxId = `${prefix}${(count + 1).toString().padStart(3, '0')}`;
+  try {
+    if (!this.taxId) {
+      const prefix = this.taxType.substring(0, 3).toUpperCase();
+      const count = await this.constructor.countDocuments({
+        taxId: new RegExp(`^${prefix}`)
+      });
+      this.taxId = `${prefix}${(count + 1).toString().padStart(3, '0')}`;
+    }
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  next();
 });
 
 // Static method to get active taxes for a hotel/outlet

@@ -304,150 +304,173 @@ class StockIntegrationService {
    * Get default housekeeping consumption based on cleaning type
    */
   static async getDefaultHousekeepingConsumption(hotelId, cleaningType) {
-    const defaultConsumption = {
-      standard: [
-        { category: 'cleaning', name: 'All-purpose cleaner', quantity: 0.5 },
-        { category: 'cleaning', name: 'Disinfectant', quantity: 0.3 },
-        { category: 'bedding', name: 'Bed sheets', quantity: 1 },
-        { category: 'toiletries', name: 'Towels', quantity: 2 },
-        { category: 'toiletries', name: 'Toilet paper', quantity: 2 },
-        { category: 'toiletries', name: 'Shampoo', quantity: 1 },
-        { category: 'amenities', name: 'Welcome kit', quantity: 1 }
-      ],
-      deep: [
-        { category: 'cleaning', name: 'All-purpose cleaner', quantity: 1 },
-        { category: 'cleaning', name: 'Disinfectant', quantity: 0.5 },
-        { category: 'cleaning', name: 'Carpet cleaner', quantity: 0.3 },
-        { category: 'bedding', name: 'Bed sheets', quantity: 1 },
-        { category: 'bedding', name: 'Pillowcases', quantity: 2 },
-        { category: 'toiletries', name: 'Towels', quantity: 4 },
-        { category: 'toiletries', name: 'Toilet paper', quantity: 3 },
-        { category: 'toiletries', name: 'Shampoo', quantity: 1 },
-        { category: 'toiletries', name: 'Conditioner', quantity: 1 },
-        { category: 'amenities', name: 'Welcome kit', quantity: 1 }
-      ],
-      maintenance: [
-        { category: 'cleaning', name: 'All-purpose cleaner', quantity: 0.2 },
-        { category: 'cleaning', name: 'Disinfectant', quantity: 0.2 }
-      ]
-    };
+    try {
+      const defaultConsumption = {
+        standard: [
+          { category: 'cleaning', name: 'All-purpose cleaner', quantity: 0.5 },
+          { category: 'cleaning', name: 'Disinfectant', quantity: 0.3 },
+          { category: 'bedding', name: 'Bed sheets', quantity: 1 },
+          { category: 'toiletries', name: 'Towels', quantity: 2 },
+          { category: 'toiletries', name: 'Toilet paper', quantity: 2 },
+          { category: 'toiletries', name: 'Shampoo', quantity: 1 },
+          { category: 'amenities', name: 'Welcome kit', quantity: 1 }
+        ],
+        deep: [
+          { category: 'cleaning', name: 'All-purpose cleaner', quantity: 1 },
+          { category: 'cleaning', name: 'Disinfectant', quantity: 0.5 },
+          { category: 'cleaning', name: 'Carpet cleaner', quantity: 0.3 },
+          { category: 'bedding', name: 'Bed sheets', quantity: 1 },
+          { category: 'bedding', name: 'Pillowcases', quantity: 2 },
+          { category: 'toiletries', name: 'Towels', quantity: 4 },
+          { category: 'toiletries', name: 'Toilet paper', quantity: 3 },
+          { category: 'toiletries', name: 'Shampoo', quantity: 1 },
+          { category: 'toiletries', name: 'Conditioner', quantity: 1 },
+          { category: 'amenities', name: 'Welcome kit', quantity: 1 }
+        ],
+        maintenance: [
+          { category: 'cleaning', name: 'All-purpose cleaner', quantity: 0.2 },
+          { category: 'cleaning', name: 'Disinfectant', quantity: 0.2 }
+        ]
+      };
 
-    const items = defaultConsumption[cleaningType] || defaultConsumption.standard;
-    const inventoryItems = [];
+      const items = defaultConsumption[cleaningType] || defaultConsumption.standard;
 
-    for (const item of items) {
-      // Find inventory item by name and category
-      const inventoryItem = await Inventory.findOne({
-        hotelId,
+      // Batch: find all matching inventory items in a single query using $or
+      const orConditions = items.map(item => ({
         name: { $regex: item.name, $options: 'i' },
-        category: item.category,
-        isActive: true
-      });
+        category: item.category
+      }));
+      const matchedItems = orConditions.length > 0
+        ? await Inventory.find({ hotelId, $or: orConditions, isActive: true }).limit(1000).lean()
+        : [];
 
-      if (inventoryItem) {
-        inventoryItems.push({
-          inventoryItemId: inventoryItem._id,
-          quantity: item.quantity,
-          reason: `Housekeeping consumption - ${cleaningType} cleaning`
-        });
+      const inventoryItems = [];
+      for (const item of items) {
+        const regex = new RegExp(item.name, 'i');
+        const inventoryItem = matchedItems.find(inv => regex.test(inv.name) && inv.category === item.category);
+        if (inventoryItem) {
+          inventoryItems.push({
+            inventoryItemId: inventoryItem._id,
+            quantity: item.quantity,
+            reason: `Housekeeping consumption - ${cleaningType} cleaning`
+          });
+        }
       }
-    }
 
-    return inventoryItems;
+      return inventoryItems;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Get default guest service consumption based on service type
    */
   static async getDefaultGuestServiceConsumption(hotelId, serviceType) {
-    const defaultConsumption = {
-      room_service: [
-        { category: 'amenities', name: 'Napkins', quantity: 5 },
-        { category: 'amenities', name: 'Utensils set', quantity: 1 }
-      ],
-      amenities: [
-        { category: 'toiletries', name: 'Extra towels', quantity: 2 },
-        { category: 'amenities', name: 'Slippers', quantity: 1 }
-      ],
-      welcome_package: [
-        { category: 'amenities', name: 'Welcome kit', quantity: 1 },
-        { category: 'minibar', name: 'Complimentary water', quantity: 2 }
-      ],
-      laundry: [
-        { category: 'cleaning', name: 'Laundry detergent', quantity: 0.1 },
-        { category: 'cleaning', name: 'Fabric softener', quantity: 0.05 }
-      ]
-    };
+    try {
+      const defaultConsumption = {
+        room_service: [
+          { category: 'amenities', name: 'Napkins', quantity: 5 },
+          { category: 'amenities', name: 'Utensils set', quantity: 1 }
+        ],
+        amenities: [
+          { category: 'toiletries', name: 'Extra towels', quantity: 2 },
+          { category: 'amenities', name: 'Slippers', quantity: 1 }
+        ],
+        welcome_package: [
+          { category: 'amenities', name: 'Welcome kit', quantity: 1 },
+          { category: 'minibar', name: 'Complimentary water', quantity: 2 }
+        ],
+        laundry: [
+          { category: 'cleaning', name: 'Laundry detergent', quantity: 0.1 },
+          { category: 'cleaning', name: 'Fabric softener', quantity: 0.05 }
+        ]
+      };
 
-    const items = defaultConsumption[serviceType] || [];
-    const inventoryItems = [];
+      const items = defaultConsumption[serviceType] || [];
 
-    for (const item of items) {
-      const inventoryItem = await Inventory.findOne({
-        hotelId,
+      // Batch: find all matching inventory items in a single query using $or
+      const orConditions = items.map(item => ({
         name: { $regex: item.name, $options: 'i' },
-        category: item.category,
-        isActive: true
-      });
+        category: item.category
+      }));
+      const matchedItems = orConditions.length > 0
+        ? await Inventory.find({ hotelId, $or: orConditions, isActive: true }).limit(1000).lean()
+        : [];
 
-      if (inventoryItem) {
-        inventoryItems.push({
-          inventoryItemId: inventoryItem._id,
-          quantity: item.quantity,
-          reason: `Guest service - ${serviceType}`
-        });
+      const inventoryItems = [];
+      for (const item of items) {
+        const regex = new RegExp(item.name, 'i');
+        const inventoryItem = matchedItems.find(inv => regex.test(inv.name) && inv.category === item.category);
+        if (inventoryItem) {
+          inventoryItems.push({
+            inventoryItemId: inventoryItem._id,
+            quantity: item.quantity,
+            reason: `Guest service - ${serviceType}`
+          });
+        }
       }
-    }
 
-    return inventoryItems;
+      return inventoryItems;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Get default maintenance consumption based on maintenance type
    */
   static async getDefaultMaintenanceConsumption(hotelId, maintenanceType) {
-    const defaultConsumption = {
-      plumbing: [
-        { category: 'maintenance', name: 'Pipe sealant', quantity: 0.1 },
-        { category: 'maintenance', name: 'Pipe cleaner', quantity: 0.2 }
-      ],
-      electrical: [
-        { category: 'maintenance', name: 'Electrical tape', quantity: 0.1 },
-        { category: 'maintenance', name: 'Wire nuts', quantity: 2 }
-      ],
-      hvac: [
-        { category: 'maintenance', name: 'Air filter', quantity: 1 },
-        { category: 'cleaning', name: 'HVAC cleaner', quantity: 0.2 }
-      ],
-      general: [
-        { category: 'maintenance', name: 'Multi-tool', quantity: 0 }, // Tool usage, no consumption
-        { category: 'cleaning', name: 'All-purpose cleaner', quantity: 0.1 }
-      ]
-    };
+    try {
+      const defaultConsumption = {
+        plumbing: [
+          { category: 'maintenance', name: 'Pipe sealant', quantity: 0.1 },
+          { category: 'maintenance', name: 'Pipe cleaner', quantity: 0.2 }
+        ],
+        electrical: [
+          { category: 'maintenance', name: 'Electrical tape', quantity: 0.1 },
+          { category: 'maintenance', name: 'Wire nuts', quantity: 2 }
+        ],
+        hvac: [
+          { category: 'maintenance', name: 'Air filter', quantity: 1 },
+          { category: 'cleaning', name: 'HVAC cleaner', quantity: 0.2 }
+        ],
+        general: [
+          { category: 'maintenance', name: 'Multi-tool', quantity: 0 }, // Tool usage, no consumption
+          { category: 'cleaning', name: 'All-purpose cleaner', quantity: 0.1 }
+        ]
+      };
 
-    const items = defaultConsumption[maintenanceType] || defaultConsumption.general;
-    const inventoryItems = [];
+      const items = defaultConsumption[maintenanceType] || defaultConsumption.general;
+      const consumableItems = items.filter(item => item.quantity > 0);
 
-    for (const item of items) {
-      if (item.quantity > 0) { // Only include items with actual consumption
-        const inventoryItem = await Inventory.findOne({
-          hotelId,
-          name: { $regex: item.name, $options: 'i' },
-          category: item.category,
-          isActive: true
-        });
+      // Batch: find all matching inventory items in a single query using $or
+      const orConditions = consumableItems.map(item => ({
+        name: { $regex: item.name, $options: 'i' },
+        category: item.category
+      }));
+      const matchedItems = orConditions.length > 0
+        ? await Inventory.find({ hotelId, $or: orConditions, isActive: true }).limit(1000).lean()
+        : [];
 
+      const inventoryItems = [];
+      for (const item of consumableItems) {
+        const regex = new RegExp(item.name, 'i');
+        const inventoryItem = matchedItems.find(inv => regex.test(inv.name) && inv.category === item.category);
         if (inventoryItem) {
           inventoryItems.push({
             inventoryItemId: inventoryItem._id,
             quantity: item.quantity,
             reason: `Maintenance - ${maintenanceType}`
           });
+          }
         }
       }
-    }
 
-    return inventoryItems;
+      return inventoryItems;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

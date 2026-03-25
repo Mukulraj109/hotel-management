@@ -36,36 +36,41 @@ async function fixPaymentInconsistencies() {
         { 'paymentDetails.totalPaid': 0 },
         { 'paymentDetails.totalPaid': null }
       ]
-    }).toArray();
+    }).toArray().lean().limit(1000);
 
     console.log(`   Found: ${paidWithNoPayment.length} bookings`);
 
     for (const booking of paidWithNoPayment) {
       console.log(`   - ${booking.bookingNumber}: Changing 'paid' → 'pending' (no payment recorded)`);
+      fixedCount++;
+    }
 
-      if (!DRY_RUN) {
-        await Booking.updateOne(
-          { _id: booking._id },
-          {
+    if (!DRY_RUN && paidWithNoPayment.length > 0) {
+      // Batch: use bulkWrite to update all at once
+      const bulkOps = paidWithNoPayment.map(booking => ({
+        updateOne: {
+          filter: { _id: booking._id },
+          update: {
             $set: {
               paymentStatus: 'pending',
               'paymentDetails.totalPaid': 0,
               'paymentDetails.remainingAmount': booking.totalAmount || 0
             }
           }
-        );
-      }
-      fixedCount++;
+        }
+      }));
+      await Booking.bulkWrite(bulkOps);
     }
 
     // FIX 2: Bookings with payment but wrong status
     console.log(`\n🔧 Fix 2: Bookings with payments but wrong status\n`);
     const paidButStatusWrong = await Booking.find({
       'paymentDetails.totalPaid': { $gte: 1 }
-    }).toArray();
+    }).toArray().lean().limit(1000);
 
     console.log(`   Found: ${paidButStatusWrong.length} bookings with payment data`);
 
+    const bulkStatusOps = [];
     for (const booking of paidButStatusWrong) {
       const totalPaid = booking.paymentDetails?.totalPaid || 0;
       const totalAmount = booking.totalAmount || 0;
@@ -81,37 +86,43 @@ async function fixPaymentInconsistencies() {
 
       if (newStatus !== booking.paymentStatus) {
         console.log(`   - ${booking.bookingNumber}: '${booking.paymentStatus}' → '${newStatus}' (paid ₹${totalPaid} of ₹${totalAmount})`);
-
-        if (!DRY_RUN) {
-          await Booking.updateOne(
-            { _id: booking._id },
-            {
+        bulkStatusOps.push({
+          updateOne: {
+            filter: { _id: booking._id },
+            update: {
               $set: {
                 paymentStatus: newStatus,
                 'paymentDetails.remainingAmount': Math.max(0, totalAmount - totalPaid)
               }
             }
-          );
-        }
+          }
+        });
         fixedCount++;
       }
+    }
+
+    if (!DRY_RUN && bulkStatusOps.length > 0) {
+      await Booking.bulkWrite(bulkStatusOps);
     }
 
     // FIX 3: Ensure paymentDetails structure exists for all bookings
     console.log(`\n🔧 Fix 3: Ensure paymentDetails structure\n`);
     const bookingsWithoutPaymentDetails = await Booking.find({
       paymentDetails: { $exists: false }
-    }).toArray();
+    }).toArray().lean().limit(1000);
 
     console.log(`   Found: ${bookingsWithoutPaymentDetails.length} bookings without paymentDetails`);
 
     for (const booking of bookingsWithoutPaymentDetails) {
       console.log(`   - ${booking.bookingNumber}: Adding paymentDetails structure`);
+      fixedCount++;
+    }
 
-      if (!DRY_RUN) {
-        await Booking.updateOne(
-          { _id: booking._id },
-          {
+    if (!DRY_RUN && bookingsWithoutPaymentDetails.length > 0) {
+      const bulkPaymentOps = bookingsWithoutPaymentDetails.map(booking => ({
+        updateOne: {
+          filter: { _id: booking._id },
+          update: {
             $set: {
               paymentDetails: {
                 paymentMethods: [],
@@ -122,8 +133,12 @@ async function fixPaymentInconsistencies() {
               }
             }
           }
-        );
-      }
+        }
+      }));
+      await Booking.bulkWrite(bulkPaymentOps);
+    }
+
+    if (false) { // preserved for loop structure compatibility
       fixedCount++;
     }
 

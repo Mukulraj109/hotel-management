@@ -208,8 +208,12 @@ export default function NotificationSettings({ onSettingsChange }: NotificationS
         }
       };
 
-      const response = await api.put('/notifications/preferences', apiData);
-      return response.data;
+      try {
+        const response = await api.put('/notifications/preferences', apiData);
+        return response.data;
+      } catch (error: unknown) {
+        throw error instanceof Error ? error : new Error('Failed to save notification preferences');
+      }
     },
     onSuccess: () => {
       toast.success('Notification settings updated successfully');

@@ -412,16 +412,20 @@ class EndpointRegistryService {
    * Get endpoints with usage statistics
    */
   async getEndpointsWithUsage(hotelId) {
-    // This would be enhanced to include actual usage statistics from APIMetrics
-    return this.endpoints.map(endpoint => ({
-      ...endpoint,
-      usage: {
-        requests: Math.floor(Math.random() * 10000), // Placeholder - would be real data
-        errors: Math.floor(Math.random() * 100),
-        avgResponseTime: Math.floor(Math.random() * 500) + 50
-      },
-      lastUsed: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
-    }));
+    try {
+      // This would be enhanced to include actual usage statistics from APIMetrics
+      return this.endpoints.map(endpoint => ({
+        ...endpoint,
+        usage: {
+          requests: Math.floor(Math.random() * 10000), // Placeholder - would be real data
+          errors: Math.floor(Math.random() * 100),
+          avgResponseTime: Math.floor(Math.random() * 500) + 50
+        },
+        lastUsed: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
+      }));
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

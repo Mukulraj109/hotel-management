@@ -486,7 +486,7 @@ export default function StaffDocumentUpload() {
         </div>
 
         {/* File Upload Area */}
-        <div
+        <div role="button" tabIndex={0}
           className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
             dragActive
               ? 'border-blue-500 bg-blue-50'
@@ -497,7 +497,7 @@ export default function StaffDocumentUpload() {
           onDragOver={handleDrag}
           onDrop={handleDrop}
           onClick={() => selectedCategory && selectedDocumentType && fileInputRef.current?.click()}
-        >
+         onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => selectedCategory && selectedDocumentType && fileInputRef.current?.click(); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
           <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
           <p className="text-lg font-medium text-gray-700 mb-2">
             {selectedCategory && selectedDocumentType

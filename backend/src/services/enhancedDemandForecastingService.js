@@ -836,44 +836,52 @@ class EnhancedDemandForecastingService {
   }
 
   async calculateConfidenceIntervals(forecast) {
-    const intervals = forecast.map(f => ({
-      date: f.date,
-      prediction: f.predictedDemand,
-      confidence: f.confidence,
-      lowerBound: f.demandRange.lower,
-      upperBound: f.demandRange.upper,
-      intervalWidth: f.demandRange.upper - f.demandRange.lower,
-      reliability: f.confidence > 0.8 ? 'high' : f.confidence > 0.6 ? 'medium' : 'low'
-    }));
+    try {
+      const intervals = forecast.map(f => ({
+        date: f.date,
+        prediction: f.predictedDemand,
+        confidence: f.confidence,
+        lowerBound: f.demandRange.lower,
+        upperBound: f.demandRange.upper,
+        intervalWidth: f.demandRange.upper - f.demandRange.lower,
+        reliability: f.confidence > 0.8 ? 'high' : f.confidence > 0.6 ? 'medium' : 'low'
+      }));
 
-    const avgConfidence = intervals.reduce((sum, i) => sum + i.confidence, 0) / intervals.length;
-    const avgIntervalWidth = intervals.reduce((sum, i) => sum + i.intervalWidth, 0) / intervals.length;
+      const avgConfidence = intervals.reduce((sum, i) => sum + i.confidence, 0) / intervals.length;
+      const avgIntervalWidth = intervals.reduce((sum, i) => sum + i.intervalWidth, 0) / intervals.length;
 
-    return {
-      intervals: intervals,
-      summary: {
-        averageConfidence: Math.round(avgConfidence * 1000) / 1000,
-        averageIntervalWidth: Math.round(avgIntervalWidth * 100) / 100,
-        highConfidenceDays: intervals.filter(i => i.reliability === 'high').length,
-        lowConfidenceDays: intervals.filter(i => i.reliability === 'low').length
-      }
-    };
+      return {
+        intervals: intervals,
+        summary: {
+          averageConfidence: Math.round(avgConfidence * 1000) / 1000,
+          averageIntervalWidth: Math.round(avgIntervalWidth * 100) / 100,
+          highConfidenceDays: intervals.filter(i => i.reliability === 'high').length,
+          lowConfidenceDays: intervals.filter(i => i.reliability === 'low').length
+        }
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async assessForecastAccuracy(hotelId, forecast) {
-    // This would compare against historical accuracy metrics
-    return {
-      modelVersion: this.accuracyMetrics.modelVersion,
-      historicalAccuracy: this.accuracyMetrics.averageAccuracy,
-      expectedAccuracy: 0.78 + Math.random() * 0.15, // 78-93%
-      accuracyByHorizon: {
-        'nextWeek': 0.85,
-        'nextMonth': 0.78,
-        'next3Months': 0.70
-      },
-      lastValidation: this.accuracyMetrics.lastAccuracyCheck,
-      benchmarkComparison: 'above_industry_average'
-    };
+    try {
+      // This would compare against historical accuracy metrics
+      return {
+        modelVersion: this.accuracyMetrics.modelVersion,
+        historicalAccuracy: this.accuracyMetrics.averageAccuracy,
+        expectedAccuracy: 0.78 + Math.random() * 0.15, // 78-93%
+        accuracyByHorizon: {
+          'nextWeek': 0.85,
+          'nextMonth': 0.78,
+          'next3Months': 0.70
+        },
+        lastValidation: this.accuracyMetrics.lastAccuracyCheck,
+        benchmarkComparison: 'above_industry_average'
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   generateForecastInsights(forecast, seasonalPatterns, eventData) {

@@ -420,6 +420,16 @@ app.use('/api/v1', paginationBounds);
 // Enhanced audit logger for all API routes (compliance: audit trails)
 if (enhancedAuditLoggerMiddleware) app.use('/api/v1', enhancedAuditLoggerMiddleware);
 
+// PII protection: mask PII in responses for unauthorized roles, log PII access, sanitize errors
+import { piiResponseFilter, piiAccessLogger, piiErrorSanitizer } from './middleware/piiProtection.js';
+app.use('/api/v1', piiAccessLogger);
+app.use('/api/v1/guests', piiResponseFilter);
+app.use('/api/v1/guest-management', piiResponseFilter);
+app.use('/api/v1/guest-lookup', piiResponseFilter);
+app.use('/api/v1/crm', piiResponseFilter);
+app.use('/api/v1/guest-services', piiResponseFilter);
+app.use('/api/v1/guest-import', piiResponseFilter);
+
 // Maintenance mode middleware (returns 503 for non-health routes when enabled)
 app.use(maintenanceMode);
 
@@ -747,6 +757,9 @@ app.all('*', (req, res) => {
         message: `Can't find ${req.originalUrl} on this server`,
     });
 });
+
+// PII error sanitizer: strip PII from error messages before they reach clients
+app.use(piiErrorSanitizer);
 
 // Global error handler
 app.use(errorHandler);

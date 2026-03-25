@@ -409,24 +409,30 @@ class BatchService {
       const batches = this.splitIntoBatches(bookings, batchSize);
 
       await session.withTransaction(async () => {
-        for (let i = 0; i < batches.length; i++) {
-          const batch = batches[i];
+        try {
+          for (let i = 0; i < batches.length; i++) {
+            const batch = batches[i];
           
-          // Validate each booking in the batch
-          const validBookings = batch.map(booking => ({
-            ...booking,
-            hotelId,
-            status: booking.status || 'confirmed',
-            createdAt: new Date(),
-            updatedAt: new Date()
-          }));
+            // Validate each booking in the batch
+            const validBookings = batch.map(booking => ({
+              ...booking,
+              hotelId,
+              status: booking.status || 'confirmed',
+              createdAt: new Date(),
+              updatedAt: new Date()
+            }));
 
-          const result = await Booking.insertMany(validBookings, { session });
-          results.push(...result);
+            const result = await Booking.insertMany(validBookings, { session });
+            results.push(...result);
 
-          logger.debug(`Booking batch ${i + 1} processed`, {
-            inserted: result.length
-          });
+            logger.debug(`Booking batch ${i + 1} processed`, {
+              inserted: result.length
+            });
+          }
+      
+        } catch (error) {
+          console.error('Operation failed:', error.message);
+          throw error;
         }
       });
 

@@ -27,7 +27,7 @@ const disconnectDB = async () => {
 const createSampleTemplates = async () => {
   try {
     // Get the first hotel (assuming it exists)
-    const hotel = await Hotel.findOne();
+    const hotel = await Hotel.findOne().lean();
     if (!hotel) {
       console.error('No hotel found. Please create a hotel first.');
       return;

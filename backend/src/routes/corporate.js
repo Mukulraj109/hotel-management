@@ -72,10 +72,12 @@ import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { validate } from '../middleware/validation.js';
 import { corporateCompanyValidation, groupBookingValidation, creditTransactionValidation } from '../validation/corporateValidation.js';
+import financialRateLimiter from '../middleware/financialRateLimiter.js';
 
 const router = express.Router();
 
-// Apply authentication and property access to all corporate routes
+// Apply rate limiting, authentication and property access to all corporate routes
+router.use(financialRateLimiter);
 router.use(authenticate);
 router.use(ensurePropertyAccess);
 

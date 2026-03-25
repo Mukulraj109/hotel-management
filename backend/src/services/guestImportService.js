@@ -11,47 +11,51 @@ class GuestImportService {
    * Process CSV file for guest import
    */
   async processCSVFile(filePath, options = {}) {
-    const {
-      skipHeader = true,
-      delimiter = ',',
-      encoding = 'utf8'
-    } = options;
+    try {
+      const {
+        skipHeader = true,
+        delimiter = ',',
+        encoding = 'utf8'
+      } = options;
 
-    return new Promise((resolve, reject) => {
-      const results = [];
-      const errors = [];
-      let lineNumber = skipHeader ? 1 : 0;
+      return new Promise((resolve, reject) => {
+        const results = [];
+        const errors = [];
+        let lineNumber = skipHeader ? 1 : 0;
 
-      fs.createReadStream(filePath, { encoding })
-        .pipe(csv({ 
-          separator: delimiter,
-          skipEmptyLines: true,
-          skipLinesWithError: false
-        }))
-        .on('data', (data) => {
-          lineNumber++;
-          try {
-            const processedRow = this.processGuestRow(data, lineNumber);
-            if (processedRow.errors.length > 0) {
-              errors.push(...processedRow.errors);
-            } else {
-              results.push(processedRow.data);
+        fs.createReadStream(filePath, { encoding })
+          .pipe(csv({ 
+            separator: delimiter,
+            skipEmptyLines: true,
+            skipLinesWithError: false
+          }))
+          .on('data', (data) => {
+            lineNumber++;
+            try {
+              const processedRow = this.processGuestRow(data, lineNumber);
+              if (processedRow.errors.length > 0) {
+                errors.push(...processedRow.errors);
+              } else {
+                results.push(processedRow.data);
+              }
+            } catch (error) {
+              errors.push({
+                line: lineNumber,
+                error: error.message,
+                data: data
+              });
             }
-          } catch (error) {
-            errors.push({
-              line: lineNumber,
-              error: error.message,
-              data: data
-            });
-          }
-        })
-        .on('end', () => {
-          resolve({ results, errors, totalRows: lineNumber });
-        })
-        .on('error', (error) => {
-          reject(new ApplicationError(`CSV processing error: ${error.message}`, 400));
-        });
-    });
+          })
+          .on('end', () => {
+            resolve({ results, errors, totalRows: lineNumber });
+          })
+          .on('error', (error) => {
+            reject(new ApplicationError(`CSV processing error: ${error.message}`, 400));
+          });
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -122,120 +126,124 @@ class GuestImportService {
    * Process a single guest row
    */
   async processGuestRow(rowData, lineNumber, headerMap = null) {
-    const errors = [];
-    const data = {};
+    try {
+      const errors = [];
+      const data = {};
 
-    // Map headers if provided
-    if (headerMap) {
-      const mappedData = {};
-      Object.keys(rowData).forEach(key => {
-        const mappedKey = headerMap[key.toLowerCase()] || key;
-        mappedData[mappedKey] = rowData[key];
-      });
-      Object.assign(rowData, mappedData);
-    }
+      // Map headers if provided
+      if (headerMap) {
+        const mappedData = {};
+        Object.keys(rowData).forEach(key => {
+          const mappedKey = headerMap[key.toLowerCase()] || key;
+          mappedData[mappedKey] = rowData[key];
+        });
+        Object.assign(rowData, mappedData);
+      }
 
-    // Required fields validation
-    if (!rowData.name && !rowData.fullname && !rowData.guestname) {
-      errors.push({
-        line: lineNumber,
-        field: 'name',
-        error: 'Name is required',
-        value: rowData.name || rowData.fullname || rowData.guestname
-      });
-    }
-
-    if (!rowData.email && !rowData.emailaddress) {
-      errors.push({
-        line: lineNumber,
-        field: 'email',
-        error: 'Email is required',
-        value: rowData.email || rowData.emailaddress
-      });
-    }
-
-    // Process and validate data
-    data.name = this.cleanString(rowData.name || rowData.fullname || rowData.guestname);
-    data.email = this.cleanString(rowData.email || rowData.emailaddress).toLowerCase();
-    data.phone = this.cleanString(rowData.phone || rowData.phoneno || rowData.contact);
-    data.guestType = this.cleanString(rowData.guesttype || rowData.type || 'normal');
-    data.role = 'guest';
-
-    // Validate email format
-    if (data.email && !this.isValidEmail(data.email)) {
-      errors.push({
-        line: lineNumber,
-        field: 'email',
-        error: 'Invalid email format',
-        value: data.email
-      });
-    }
-
-    // Validate phone format
-    if (data.phone && !this.isValidPhone(data.phone)) {
-      errors.push({
-        line: lineNumber,
-        field: 'phone',
-        error: 'Invalid phone format',
-        value: data.phone
-      });
-    }
-
-    // Process salutation
-    if (rowData.salutation || rowData.title || rowData.prefix) {
-      const salutationTitle = this.cleanString(rowData.salutation || rowData.title || rowData.prefix);
-      const salutation = await this.findSalutation(salutationTitle);
-      if (salutation) {
-        data.salutationId = salutation._id;
-      } else {
+      // Required fields validation
+      if (!rowData.name && !rowData.fullname && !rowData.guestname) {
         errors.push({
           line: lineNumber,
-          field: 'salutation',
-          error: 'Salutation not found in system',
-          value: salutationTitle
+          field: 'name',
+          error: 'Name is required',
+          value: rowData.name || rowData.fullname || rowData.guestname
         });
       }
+
+      if (!rowData.email && !rowData.emailaddress) {
+        errors.push({
+          line: lineNumber,
+          field: 'email',
+          error: 'Email is required',
+          value: rowData.email || rowData.emailaddress
+        });
+      }
+
+      // Process and validate data
+      data.name = this.cleanString(rowData.name || rowData.fullname || rowData.guestname);
+      data.email = this.cleanString(rowData.email || rowData.emailaddress).toLowerCase();
+      data.phone = this.cleanString(rowData.phone || rowData.phoneno || rowData.contact);
+      data.guestType = this.cleanString(rowData.guesttype || rowData.type || 'normal');
+      data.role = 'guest';
+
+      // Validate email format
+      if (data.email && !this.isValidEmail(data.email)) {
+        errors.push({
+          line: lineNumber,
+          field: 'email',
+          error: 'Invalid email format',
+          value: data.email
+        });
+      }
+
+      // Validate phone format
+      if (data.phone && !this.isValidPhone(data.phone)) {
+        errors.push({
+          line: lineNumber,
+          field: 'phone',
+          error: 'Invalid phone format',
+          value: data.phone
+        });
+      }
+
+      // Process salutation
+      if (rowData.salutation || rowData.title || rowData.prefix) {
+        const salutationTitle = this.cleanString(rowData.salutation || rowData.title || rowData.prefix);
+        const salutation = await this.findSalutation(salutationTitle);
+        if (salutation) {
+          data.salutationId = salutation._id;
+        } else {
+          errors.push({
+            line: lineNumber,
+            field: 'salutation',
+            error: 'Salutation not found in system',
+            value: salutationTitle
+          });
+        }
+      }
+
+      // Process loyalty information
+      data.loyalty = {
+        tier: this.cleanString(rowData.loyaltytier || rowData.tier || 'bronze'),
+        points: this.parseNumber(rowData.loyaltypoints || rowData.points || 0)
+      };
+
+      // Validate loyalty tier
+      const validTiers = ['bronze', 'silver', 'gold', 'platinum'];
+      if (!validTiers.includes(data.loyalty.tier)) {
+        data.loyalty.tier = 'bronze';
+        errors.push({
+          line: lineNumber,
+          field: 'loyaltyTier',
+          error: 'Invalid loyalty tier, defaulting to bronze',
+          value: rowData.loyaltytier || rowData.tier
+        });
+      }
+
+      // Process preferences
+      data.preferences = {
+        bedType: this.cleanString(rowData.bedtype || rowData.bed || ''),
+        floor: this.cleanString(rowData.floor || rowData.preferredfloor || ''),
+        smokingAllowed: this.parseBoolean(rowData.smoking || rowData.smokingallowed || false),
+        other: this.cleanString(rowData.other || rowData.notes || rowData.preferences || '')
+      };
+
+      // Validate bed type
+      const validBedTypes = ['', 'single', 'double', 'queen', 'king'];
+      if (!validBedTypes.includes(data.preferences.bedType)) {
+        data.preferences.bedType = '';
+        errors.push({
+          line: lineNumber,
+          field: 'bedType',
+          error: 'Invalid bed type, clearing preference',
+          value: rowData.bedtype || rowData.bed
+        });
+      }
+
+      return { data, errors };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Process loyalty information
-    data.loyalty = {
-      tier: this.cleanString(rowData.loyaltytier || rowData.tier || 'bronze'),
-      points: this.parseNumber(rowData.loyaltypoints || rowData.points || 0)
-    };
-
-    // Validate loyalty tier
-    const validTiers = ['bronze', 'silver', 'gold', 'platinum'];
-    if (!validTiers.includes(data.loyalty.tier)) {
-      data.loyalty.tier = 'bronze';
-      errors.push({
-        line: lineNumber,
-        field: 'loyaltyTier',
-        error: 'Invalid loyalty tier, defaulting to bronze',
-        value: rowData.loyaltytier || rowData.tier
-      });
-    }
-
-    // Process preferences
-    data.preferences = {
-      bedType: this.cleanString(rowData.bedtype || rowData.bed || ''),
-      floor: this.cleanString(rowData.floor || rowData.preferredfloor || ''),
-      smokingAllowed: this.parseBoolean(rowData.smoking || rowData.smokingallowed || false),
-      other: this.cleanString(rowData.other || rowData.notes || rowData.preferences || '')
-    };
-
-    // Validate bed type
-    const validBedTypes = ['', 'single', 'double', 'queen', 'king'];
-    if (!validBedTypes.includes(data.preferences.bedType)) {
-      data.preferences.bedType = '';
-      errors.push({
-        line: lineNumber,
-        field: 'bedType',
-        error: 'Invalid bed type, clearing preference',
-        value: rowData.bedtype || rowData.bed
-      });
-    }
-
-    return { data, errors };
   }
 
   /**
@@ -304,13 +312,14 @@ class GuestImportService {
       errors: []
     };
 
+    // Batch: check which guests already exist in a single query
+    const emails = guestData.filter(g => g.email).map(g => g.email);
+    const existingGuests = await User.find({ email: { $in: emails }, hotelId }).select('email').lean();
+    const existingEmails = new Set(existingGuests.map(g => g.email));
+
     for (const guest of guestData) {
       try {
-        // Check for existing guest by email
-        const existingGuest = await User.findOne({
-          email: guest.email,
-          hotelId: hotelId
-        });
+        const existingGuest = existingEmails.has(guest.email);
 
         if (existingGuest) {
           results.skipped++;
@@ -344,16 +353,20 @@ class GuestImportService {
    * Find salutation by title
    */
   async findSalutation(title) {
-    if (!title) return null;
+    try {
+      if (!title) return null;
     
-    const cleanTitle = title.trim().toLowerCase();
-    return await Salutation.findOne({
-      $or: [
-        { title: { $regex: `^${cleanTitle}$`, $options: 'i' } },
-        { fullForm: { $regex: `^${cleanTitle}$`, $options: 'i' } }
-      ],
-      isActive: true
-    });
+      const cleanTitle = title.trim().toLowerCase();
+      return await Salutation.findOne({
+        $or: [
+          { title: { $regex: `^${cleanTitle}$`, $options: 'i' } },
+          { fullForm: { $regex: `^${cleanTitle}$`, $options: 'i' } }
+        ],
+        isActive: true
+      }).lean();
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -440,64 +453,68 @@ class GuestImportService {
    * Get import statistics
    */
   async getImportStatistics(hotelId) {
-    const stats = await User.aggregate([
-      { $match: { role: 'guest', hotelId: new mongoose.Types.ObjectId(hotelId) } },
-      {
-        $group: {
-          _id: null,
-          totalGuests: { $sum: 1 },
-          byMonth: {
-            $push: {
-              month: { $month: '$createdAt' },
-              year: { $year: '$createdAt' }
+    try {
+      const stats = await User.aggregate([
+        { $match: { role: 'guest', hotelId: new mongoose.Types.ObjectId(hotelId) } },
+        {
+          $group: {
+            _id: null,
+            totalGuests: { $sum: 1 },
+            byMonth: {
+              $push: {
+                month: { $month: '$createdAt' },
+                year: { $year: '$createdAt' }
+              }
+            },
+            byGuestType: {
+              $push: '$guestType'
+            },
+            byLoyaltyTier: {
+              $push: '$loyalty.tier'
             }
-          },
-          byGuestType: {
-            $push: '$guestType'
-          },
-          byLoyaltyTier: {
-            $push: '$loyalty.tier'
           }
         }
+      ]);
+
+      if (stats.length === 0) {
+        return {
+          totalGuests: 0,
+          monthlyImports: {},
+          guestTypeDistribution: {},
+          loyaltyTierDistribution: {}
+        };
       }
-    ]);
 
-    if (stats.length === 0) {
+      const result = stats[0];
+
+      // Calculate monthly imports
+      const monthlyImports = {};
+      result.byMonth.forEach(item => {
+        const key = `${item.year}-${item.month}`;
+        monthlyImports[key] = (monthlyImports[key] || 0) + 1;
+      });
+
+      // Calculate guest type distribution
+      const guestTypeDistribution = {};
+      result.byGuestType.forEach(type => {
+        guestTypeDistribution[type] = (guestTypeDistribution[type] || 0) + 1;
+      });
+
+      // Calculate loyalty tier distribution
+      const loyaltyTierDistribution = {};
+      result.byLoyaltyTier.forEach(tier => {
+        loyaltyTierDistribution[tier] = (loyaltyTierDistribution[tier] || 0) + 1;
+      });
+
       return {
-        totalGuests: 0,
-        monthlyImports: {},
-        guestTypeDistribution: {},
-        loyaltyTierDistribution: {}
+        totalGuests: result.totalGuests,
+        monthlyImports,
+        guestTypeDistribution,
+        loyaltyTierDistribution
       };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    const result = stats[0];
-
-    // Calculate monthly imports
-    const monthlyImports = {};
-    result.byMonth.forEach(item => {
-      const key = `${item.year}-${item.month}`;
-      monthlyImports[key] = (monthlyImports[key] || 0) + 1;
-    });
-
-    // Calculate guest type distribution
-    const guestTypeDistribution = {};
-    result.byGuestType.forEach(type => {
-      guestTypeDistribution[type] = (guestTypeDistribution[type] || 0) + 1;
-    });
-
-    // Calculate loyalty tier distribution
-    const loyaltyTierDistribution = {};
-    result.byLoyaltyTier.forEach(tier => {
-      loyaltyTierDistribution[tier] = (loyaltyTierDistribution[tier] || 0) + 1;
-    });
-
-    return {
-      totalGuests: result.totalGuests,
-      monthlyImports,
-      guestTypeDistribution,
-      loyaltyTierDistribution
-    };
   }
 }
 

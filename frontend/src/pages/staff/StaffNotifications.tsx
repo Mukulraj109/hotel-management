@@ -45,8 +45,9 @@ import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { PushNotificationSetup } from '../../components/notifications/PushNotificationSetup';
 import { useRealTime } from '../../services/realTimeService';
 import toast from 'react-hot-toast';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
-export default function StaffNotifications() {
+function StaffNotifications() {
   const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState({
     status: '',
@@ -661,3 +662,5 @@ export default function StaffNotifications() {
     </div>
   );
 }
+
+export default withErrorBoundary(StaffNotifications, { level: 'page' });

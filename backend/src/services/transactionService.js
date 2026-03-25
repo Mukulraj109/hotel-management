@@ -82,7 +82,7 @@ class TransactionService {
           lastUpdated: new Date(),
           lastTransactionAt: new Date()
         },
-        { session }
+        { new: true, session }
       );
 
       // Update cost tracking for IN transactions
@@ -99,7 +99,7 @@ class TransactionService {
             lastPurchasePrice: unitCost,
             lastPurchaseDate: new Date()
           },
-          { session }
+          { new: true, session }
         );
       }
 
@@ -109,7 +109,7 @@ class TransactionService {
       return await StockMovement.findById(transaction._id)
         .populate('inventoryItemId', 'name category stock')
         .populate('performedBy', 'name role')
-        .populate('approvedBy', 'name role');
+        .populate('approvedBy', 'name role').lean();
 
     } catch (error) {
       await session.abortTransaction();
@@ -125,59 +125,63 @@ class TransactionService {
    * @returns {Promise<Object>} Paginated transaction history
    */
   static async getTransactionHistory(filters = {}) {
-    const {
-      hotelId,
-      inventoryItemId,
-      transactionType,
-      performedBy,
-      startDate,
-      endDate,
-      status,
-      page = 1,
-      limit = 50,
-      sortBy = 'timestamps.created',
-      sortOrder = -1
-    } = filters;
+    try {
+      const {
+        hotelId,
+        inventoryItemId,
+        transactionType,
+        performedBy,
+        startDate,
+        endDate,
+        status,
+        page = 1,
+        limit = 50,
+        sortBy = 'timestamps.created',
+        sortOrder = -1
+      } = filters;
 
-    // Build query
-    const query = { hotelId };
+      // Build query
+      const query = { hotelId };
 
-    if (inventoryItemId) query.inventoryItemId = inventoryItemId;
-    if (transactionType) query.transactionType = transactionType;
-    if (performedBy) query.performedBy = performedBy;
-    if (status) query.status = status;
+      if (inventoryItemId) query.inventoryItemId = inventoryItemId;
+      if (transactionType) query.transactionType = transactionType;
+      if (performedBy) query.performedBy = performedBy;
+      if (status) query.status = status;
 
-    if (startDate || endDate) {
-      query['timestamps.created'] = {};
-      if (startDate) query['timestamps.created'].$gte = new Date(startDate);
-      if (endDate) query['timestamps.created'].$lte = new Date(endDate);
-    }
-
-    // Calculate pagination
-    const skip = (page - 1) * limit;
-    const sort = { [sortBy]: sortOrder };
-
-    // Get transactions
-    const [transactions, totalCount] = await Promise.all([
-      StockMovement.find(query)
-        .populate('inventoryItemId', 'name category stock unit')
-        .populate('performedBy', 'name role')
-        .populate('approvedBy', 'name role')
-        .sort(sort)
-        .skip(skip)
-        .limit(limit),
-      StockMovement.countDocuments(query)
-    ]);
-
-    return {
-      transactions,
-      pagination: {
-        page,
-        limit,
-        total: totalCount,
-        pages: Math.ceil(totalCount / limit)
+      if (startDate || endDate) {
+        query['timestamps.created'] = {};
+        if (startDate) query['timestamps.created'].$gte = new Date(startDate);
+        if (endDate) query['timestamps.created'].$lte = new Date(endDate);
       }
-    };
+
+      // Calculate pagination
+      const skip = (page - 1) * limit;
+      const sort = { [sortBy]: sortOrder };
+
+      // Get transactions
+      const [transactions, totalCount] = await Promise.all([
+        StockMovement.find(query)
+          .populate('inventoryItemId', 'name category stock unit')
+          .populate('performedBy', 'name role')
+          .populate('approvedBy', 'name role')
+          .sort(sort)
+          .skip(skip)
+          .limit(limit),
+        StockMovement.countDocuments(query)
+      ]);
+
+      return {
+        transactions,
+        pagination: {
+          page,
+          limit,
+          total: totalCount,
+          pages: Math.ceil(totalCount / limit)
+        }
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -187,27 +191,31 @@ class TransactionService {
    * @returns {Promise<Array>} Item transactions
    */
   static async getItemTransactions(itemId, options = {}) {
-    const {
-      hotelId,
-      startDate,
-      endDate,
-      limit = 100
-    } = options;
+    try {
+      const {
+        hotelId,
+        startDate,
+        endDate,
+        limit = 100
+      } = options;
 
-    const query = { inventoryItemId: itemId };
-    if (hotelId) query.hotelId = hotelId;
+      const query = { inventoryItemId: itemId };
+      if (hotelId) query.hotelId = hotelId;
 
-    if (startDate || endDate) {
-      query['timestamps.created'] = {};
-      if (startDate) query['timestamps.created'].$gte = new Date(startDate);
-      if (endDate) query['timestamps.created'].$lte = new Date(endDate);
+      if (startDate || endDate) {
+        query['timestamps.created'] = {};
+        if (startDate) query['timestamps.created'].$gte = new Date(startDate);
+        if (endDate) query['timestamps.created'].$lte = new Date(endDate);
+      }
+
+      return await StockMovement.find(query)
+        .populate('performedBy', 'name role')
+        .populate('approvedBy', 'name role')
+        .sort({ 'timestamps.created': -1 })
+        .limit(limit).lean();
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return await StockMovement.find(query)
-      .populate('performedBy', 'name role')
-      .populate('approvedBy', 'name role')
-      .sort({ 'timestamps.created': -1 })
-      .limit(limit);
   }
 
   /**
@@ -217,129 +225,133 @@ class TransactionService {
    * @returns {Promise<Object>} Transaction analytics
    */
   static async getTransactionSummary(hotelId, filters = {}) {
-    const { startDate, endDate, category } = filters;
+    try {
+      const { startDate, endDate, category } = filters;
 
-    // Build match stage
-    const matchStage = { hotelId: mongoose.Types.ObjectId(hotelId), status: 'completed' };
+      // Build match stage
+      const matchStage = { hotelId: mongoose.Types.ObjectId(hotelId), status: 'completed' };
 
-    if (startDate || endDate) {
-      matchStage['timestamps.created'] = {};
-      if (startDate) matchStage['timestamps.created'].$gte = new Date(startDate);
-      if (endDate) matchStage['timestamps.created'].$lte = new Date(endDate);
-    }
+      if (startDate || endDate) {
+        matchStage['timestamps.created'] = {};
+        if (startDate) matchStage['timestamps.created'].$gte = new Date(startDate);
+        if (endDate) matchStage['timestamps.created'].$lte = new Date(endDate);
+      }
 
-    // Get basic transaction summary
-    const basicSummary = await StockMovement.getTransactionSummary(hotelId, matchStage);
+      // Get basic transaction summary
+      const basicSummary = await StockMovement.getTransactionSummary(hotelId, matchStage);
 
-    // Get category breakdown
-    const categoryPipeline = [
-      { $match: matchStage },
-      {
-        $lookup: {
-          from: 'inventories',
-          localField: 'inventoryItemId',
-          foreignField: '_id',
-          as: 'item'
-        }
-      },
-      { $unwind: '$item' },
-      {
-        $group: {
-          _id: '$item.category',
-          transactionCount: { $sum: 1 },
-          totalQuantity: { $sum: { $abs: '$quantity' } },
-          totalValue: { $sum: '$totalCost' },
-          inQuantity: {
-            $sum: {
-              $cond: [{ $in: ['$transactionType', ['IN', 'REORDER']] }, '$quantity', 0]
-            }
-          },
-          outQuantity: {
-            $sum: {
-              $cond: [{ $in: ['$transactionType', ['OUT', 'CONSUMPTION']] }, { $abs: '$quantity' }, 0]
-            }
+      // Get category breakdown
+      const categoryPipeline = [
+        { $match: matchStage },
+        {
+          $lookup: {
+            from: 'inventories',
+            localField: 'inventoryItemId',
+            foreignField: '_id',
+            as: 'item'
           }
-        }
-      },
-      { $sort: { totalValue: -1 } }
-    ];
-
-    const categoryBreakdown = await StockMovement.aggregate(categoryPipeline);
-
-    // Get top active items
-    const topItemsPipeline = [
-      { $match: matchStage },
-      {
-        $group: {
-          _id: '$inventoryItemId',
-          transactionCount: { $sum: 1 },
-          totalQuantity: { $sum: { $abs: '$quantity' } },
-          totalValue: { $sum: '$totalCost' }
-        }
-      },
-      {
-        $lookup: {
-          from: 'inventories',
-          localField: '_id',
-          foreignField: '_id',
-          as: 'item'
-        }
-      },
-      { $unwind: '$item' },
-      {
-        $project: {
-          itemName: '$item.name',
-          category: '$item.category',
-          transactionCount: 1,
-          totalQuantity: 1,
-          totalValue: 1
-        }
-      },
-      { $sort: { transactionCount: -1 } },
-      { $limit: 10 }
-    ];
-
-    const topActiveItems = await StockMovement.aggregate(topItemsPipeline);
-
-    // Get daily trends
-    const trendsPipeline = [
-      { $match: matchStage },
-      {
-        $group: {
-          _id: {
-            date: {
-              $dateToString: {
-                format: '%Y-%m-%d',
-                date: '$timestamps.created'
+        },
+        { $unwind: '$item' },
+        {
+          $group: {
+            _id: '$item.category',
+            transactionCount: { $sum: 1 },
+            totalQuantity: { $sum: { $abs: '$quantity' } },
+            totalValue: { $sum: '$totalCost' },
+            inQuantity: {
+              $sum: {
+                $cond: [{ $in: ['$transactionType', ['IN', 'REORDER']] }, '$quantity', 0]
+              }
+            },
+            outQuantity: {
+              $sum: {
+                $cond: [{ $in: ['$transactionType', ['OUT', 'CONSUMPTION']] }, { $abs: '$quantity' }, 0]
               }
             }
-          },
-          transactionCount: { $sum: 1 },
-          totalValue: { $sum: '$totalCost' },
-          inTransactions: {
-            $sum: {
-              $cond: [{ $in: ['$transactionType', ['IN', 'REORDER']] }, 1, 0]
-            }
-          },
-          outTransactions: {
-            $sum: {
-              $cond: [{ $in: ['$transactionType', ['OUT', 'CONSUMPTION']] }, 1, 0]
+          }
+        },
+        { $sort: { totalValue: -1 } }
+      ];
+
+      const categoryBreakdown = await StockMovement.aggregate(categoryPipeline);
+
+      // Get top active items
+      const topItemsPipeline = [
+        { $match: matchStage },
+        {
+          $group: {
+            _id: '$inventoryItemId',
+            transactionCount: { $sum: 1 },
+            totalQuantity: { $sum: { $abs: '$quantity' } },
+            totalValue: { $sum: '$totalCost' }
+          }
+        },
+        {
+          $lookup: {
+            from: 'inventories',
+            localField: '_id',
+            foreignField: '_id',
+            as: 'item'
+          }
+        },
+        { $unwind: '$item' },
+        {
+          $project: {
+            itemName: '$item.name',
+            category: '$item.category',
+            transactionCount: 1,
+            totalQuantity: 1,
+            totalValue: 1
+          }
+        },
+        { $sort: { transactionCount: -1 } },
+        { $limit: 10 }
+      ];
+
+      const topActiveItems = await StockMovement.aggregate(topItemsPipeline);
+
+      // Get daily trends
+      const trendsPipeline = [
+        { $match: matchStage },
+        {
+          $group: {
+            _id: {
+              date: {
+                $dateToString: {
+                  format: '%Y-%m-%d',
+                  date: '$timestamps.created'
+                }
+              }
+            },
+            transactionCount: { $sum: 1 },
+            totalValue: { $sum: '$totalCost' },
+            inTransactions: {
+              $sum: {
+                $cond: [{ $in: ['$transactionType', ['IN', 'REORDER']] }, 1, 0]
+              }
+            },
+            outTransactions: {
+              $sum: {
+                $cond: [{ $in: ['$transactionType', ['OUT', 'CONSUMPTION']] }, 1, 0]
+              }
             }
           }
-        }
-      },
-      { $sort: { '_id.date': 1 } },
-      { $limit: 30 }
-    ];
+        },
+        { $sort: { '_id.date': 1 } },
+        { $limit: 30 }
+      ];
 
-    const dailyTrends = await StockMovement.aggregate(trendsPipeline);
+      const dailyTrends = await StockMovement.aggregate(trendsPipeline);
 
-    return {
-      summary: basicSummary,
-      categoryBreakdown,
-      topActiveItems,
-      dailyTrends
-    };
+      return {
+        summary: basicSummary,
+        categoryBreakdown,
+        topActiveItems,
+        dailyTrends
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -437,119 +449,123 @@ class TransactionService {
    * @returns {Promise<Object>} Generated report
    */
   static async generateTransactionReport(reportParams) {
-    const {
-      hotelId,
-      startDate,
-      endDate,
-      reportType = 'summary', // summary, detailed, category, user
-      format = 'json' // json, csv
-    } = reportParams;
+    try {
+      const {
+        hotelId,
+        startDate,
+        endDate,
+        reportType = 'summary', // summary, detailed, category, user
+        format = 'json' // json, csv
+      } = reportParams;
 
-    const baseQuery = {
-      hotelId: mongoose.Types.ObjectId(hotelId),
-      status: 'completed'
-    };
+      const baseQuery = {
+        hotelId: mongoose.Types.ObjectId(hotelId),
+        status: 'completed'
+      };
 
-    if (startDate || endDate) {
-      baseQuery['timestamps.created'] = {};
-      if (startDate) baseQuery['timestamps.created'].$gte = new Date(startDate);
-      if (endDate) baseQuery['timestamps.created'].$lte = new Date(endDate);
+      if (startDate || endDate) {
+        baseQuery['timestamps.created'] = {};
+        if (startDate) baseQuery['timestamps.created'].$gte = new Date(startDate);
+        if (endDate) baseQuery['timestamps.created'].$lte = new Date(endDate);
+      }
+
+      let reportData;
+
+      switch (reportType) {
+        case 'summary':
+          reportData = await this.getTransactionSummary(hotelId, { startDate, endDate });
+          break;
+
+        case 'detailed':
+          const detailedTransactions = await StockMovement.find(baseQuery)
+            .populate('inventoryItemId', 'name category stock unit')
+            .populate('performedBy', 'name role')
+            .sort({ 'timestamps.created': -1 }).lean().limit(1000);
+
+          reportData = {
+            transactions: detailedTransactions,
+            totalTransactions: detailedTransactions.length,
+            totalValue: detailedTransactions.reduce((sum, t) => sum + t.totalCost, 0)
+          };
+          break;
+
+        case 'category':
+          const categoryPipeline = [
+            { $match: baseQuery },
+            {
+              $lookup: {
+                from: 'inventories',
+                localField: 'inventoryItemId',
+                foreignField: '_id',
+                as: 'item'
+              }
+            },
+            { $unwind: '$item' },
+            {
+              $group: {
+                _id: {
+                  category: '$item.category',
+                  transactionType: '$transactionType'
+                },
+                count: { $sum: 1 },
+                totalQuantity: { $sum: { $abs: '$quantity' } },
+                totalValue: { $sum: '$totalCost' }
+              }
+            },
+            { $sort: { '_id.category': 1, '_id.transactionType': 1 } }
+          ];
+
+          reportData = await StockMovement.aggregate(categoryPipeline);
+          break;
+
+        case 'user':
+          const userPipeline = [
+            { $match: baseQuery },
+            {
+              $group: {
+                _id: '$performedBy',
+                transactionCount: { $sum: 1 },
+                totalValue: { $sum: '$totalCost' },
+                transactionTypes: { $addToSet: '$transactionType' }
+              }
+            },
+            {
+              $lookup: {
+                from: 'users',
+                localField: '_id',
+                foreignField: '_id',
+                as: 'user'
+              }
+            },
+            { $unwind: '$user' },
+            {
+              $project: {
+                userName: '$user.name',
+                userRole: '$user.role',
+                transactionCount: 1,
+                totalValue: 1,
+                transactionTypes: 1
+              }
+            },
+            { $sort: { transactionCount: -1 } }
+          ];
+
+          reportData = await StockMovement.aggregate(userPipeline);
+          break;
+
+        default:
+          throw new Error('Invalid report type');
+      }
+
+      return {
+        reportType,
+        generatedAt: new Date(),
+        parameters: reportParams,
+        data: reportData
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    let reportData;
-
-    switch (reportType) {
-      case 'summary':
-        reportData = await this.getTransactionSummary(hotelId, { startDate, endDate });
-        break;
-
-      case 'detailed':
-        const detailedTransactions = await StockMovement.find(baseQuery)
-          .populate('inventoryItemId', 'name category stock unit')
-          .populate('performedBy', 'name role')
-          .sort({ 'timestamps.created': -1 });
-
-        reportData = {
-          transactions: detailedTransactions,
-          totalTransactions: detailedTransactions.length,
-          totalValue: detailedTransactions.reduce((sum, t) => sum + t.totalCost, 0)
-        };
-        break;
-
-      case 'category':
-        const categoryPipeline = [
-          { $match: baseQuery },
-          {
-            $lookup: {
-              from: 'inventories',
-              localField: 'inventoryItemId',
-              foreignField: '_id',
-              as: 'item'
-            }
-          },
-          { $unwind: '$item' },
-          {
-            $group: {
-              _id: {
-                category: '$item.category',
-                transactionType: '$transactionType'
-              },
-              count: { $sum: 1 },
-              totalQuantity: { $sum: { $abs: '$quantity' } },
-              totalValue: { $sum: '$totalCost' }
-            }
-          },
-          { $sort: { '_id.category': 1, '_id.transactionType': 1 } }
-        ];
-
-        reportData = await StockMovement.aggregate(categoryPipeline);
-        break;
-
-      case 'user':
-        const userPipeline = [
-          { $match: baseQuery },
-          {
-            $group: {
-              _id: '$performedBy',
-              transactionCount: { $sum: 1 },
-              totalValue: { $sum: '$totalCost' },
-              transactionTypes: { $addToSet: '$transactionType' }
-            }
-          },
-          {
-            $lookup: {
-              from: 'users',
-              localField: '_id',
-              foreignField: '_id',
-              as: 'user'
-            }
-          },
-          { $unwind: '$user' },
-          {
-            $project: {
-              userName: '$user.name',
-              userRole: '$user.role',
-              transactionCount: 1,
-              totalValue: 1,
-              transactionTypes: 1
-            }
-          },
-          { $sort: { transactionCount: -1 } }
-        ];
-
-        reportData = await StockMovement.aggregate(userPipeline);
-        break;
-
-      default:
-        throw new Error('Invalid report type');
-    }
-
-    return {
-      reportType,
-      generatedAt: new Date(),
-      parameters: reportParams,
-      data: reportData
-    };
   }
 
   /**

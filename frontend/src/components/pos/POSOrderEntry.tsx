@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Plus, Minus, ShoppingCart, CreditCard, Banknote, Home, Coffee, Pizza, Soup, Cake } from 'lucide-react';
+import { Plus, Minus, ShoppingCart, CreditCard, Banknote, Home, Coffee, Pizza, Soup, Cake, Loader2 } from 'lucide-react';
 import { formatCurrency } from '@/utils/currencyUtils';
 import { api } from '../../services/api';
 
@@ -65,6 +65,7 @@ const POSOrderEntry: React.FC = () => {
   const [subtotal, setSubtotal] = useState<number>(0);
   const [tax, setTax] = useState<number>(0);
   const [total, setTotal] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetchOutlets();
@@ -86,12 +87,15 @@ const POSOrderEntry: React.FC = () => {
 
   const fetchOutlets = async () => {
     try {
+      setIsLoading(true);
       const response = await api.get('/pos/outlets');
       if (response.data.success) {
         setOutlets(response.data.data);
       }
     } catch {
       // Error handled silently
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -266,6 +270,15 @@ const POSOrderEntry: React.FC = () => {
       alert('Error processing order');
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        <span className="ml-2 text-gray-600">Loading POS...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-gray-50">

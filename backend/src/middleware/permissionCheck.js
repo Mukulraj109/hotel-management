@@ -246,7 +246,7 @@ async function checkResourceOwnership(userId, resourceType, resourceId) {
     switch (resourceType) {
       case 'booking':
         // Check if booking belongs to user
-        // const booking = await Booking.findById(resourceId);
+        // const booking = await Booking.findById(resourceId).lean();
         // return booking && booking.userId.toString() === userId;
         return true; // Placeholder
 
@@ -256,7 +256,7 @@ async function checkResourceOwnership(userId, resourceType, resourceId) {
 
       case 'invoice':
         // Check if invoice belongs to user
-        // const invoice = await Invoice.findById(resourceId);
+        // const invoice = await Invoice.findById(resourceId).lean();
         // return invoice && invoice.userId.toString() === userId;
         return true; // Placeholder
 

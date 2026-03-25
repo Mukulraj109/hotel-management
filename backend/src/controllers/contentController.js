@@ -59,7 +59,7 @@ class ContentController {
         .sort(options.sortBy)
         .skip(options.skip)
         .limit(options.limit)
-        .populate('createdBy updatedBy', 'name email');
+        .populate('createdBy updatedBy', 'name email').lean();
     }
 
     // If language is specified and different from base language, get translations
@@ -183,7 +183,7 @@ class ContentController {
     }
 
     // Check if content key already exists
-    const existingContent = await Content.findOne({ key: key.toLowerCase() });
+    const existingContent = await Content.findOne({ key: key.toLowerCase() }).lean();
     if (existingContent) {
       return next(new ApplicationError('Content key already exists', 409));
     }
@@ -252,7 +252,7 @@ class ContentController {
       const existing = await Content.findOne({
         key: key.toLowerCase(),
         isActive: true
-      });
+      }).lean();
 
       if (!existing) {
         return next(new ApplicationError('Content not found', 404));
@@ -296,7 +296,7 @@ class ContentController {
     const content = await Content.findOne({ 
       key: key.toLowerCase(), 
       isActive: true 
-    });
+    }).lean();
 
     if (!content) {
       return next(new ApplicationError('Content not found', 404));
@@ -315,14 +315,27 @@ class ContentController {
         ...(hotelId && { hotelId })
       });
       
-      await content.remove();
+      await content.deleteOne();
       
       logger.info('Content permanently deleted', {
         contentKey: content.key,
         userId: req.user._id
       });
     } else {
-      // Soft delete
+      // Soft delete - validate status transition
+      const allowedContentTransitions = {
+        draft: ['published', 'archived'],
+        published: ['draft', 'archived'],
+        archived: []
+      };
+      const allowedTargets = allowedContentTransitions[content.status] || ['archived'];
+      if (!allowedTargets.includes('archived')) {
+        return next(new ApplicationError(
+          `Cannot archive content: invalid transition from '${content.status}' to 'archived'`,
+          400
+        ));
+      }
+
       content.isActive = false;
       content.status = 'archived';
       content.updatedBy = req.user._id;
@@ -349,7 +362,7 @@ class ContentController {
     const content = await Content.findOne({ 
       key: key.toLowerCase(), 
       isActive: true 
-    });
+    }).lean();
 
     if (!content) {
       return next(new ApplicationError('Content not found', 404));
@@ -384,7 +397,7 @@ class ContentController {
     const content = await Content.findOne({ 
       key: key.toLowerCase(), 
       isActive: true 
-    });
+    }).lean();
 
     if (!content) {
       return next(new ApplicationError('Content not found', 404));
@@ -459,7 +472,7 @@ class ContentController {
     const content = await Content.findOne({ 
       key: key.toLowerCase(), 
       isActive: true 
-    });
+    }).lean();
 
     if (!content) {
       return next(new ApplicationError('Content not found', 404));
@@ -542,12 +555,17 @@ class ContentController {
 
     const results = [];
 
+    // Batch-fetch all content items upfront to avoid N+1 queries
+    const lowerKeys = contentKeys.map(k => k.toLowerCase());
+    const allContent = await Content.find({
+      key: { $in: lowerKeys },
+      isActive: true
+    }).lean().limit(1000);
+    const contentByKey = new Map(allContent.map(c => [c.key, c]));
+
     for (const key of contentKeys) {
       try {
-        const content = await Content.findOne({ 
-          key: key.toLowerCase(), 
-          isActive: true 
-        });
+        const content = contentByKey.get(key.toLowerCase());
 
         if (!content || !content.translationConfig.isTranslatable) {
           results.push({

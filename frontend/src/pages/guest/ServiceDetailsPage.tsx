@@ -169,7 +169,7 @@ const ServiceDetailsPage: React.FC = () => {
                   </div>
                 </div>
                 
-                <button
+                <button aria-label="Toggle"
                   onClick={toggleFavorite}
                   className={`p-3 rounded-full transition-colors ${
                     isFavorite 

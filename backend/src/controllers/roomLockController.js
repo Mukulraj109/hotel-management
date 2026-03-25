@@ -22,7 +22,7 @@ export const lockRoom = catchAsync(async (req, res, next) => {
   }
 
   // Check if room exists
-  const room = await Room.findById(roomId);
+  const room = await Room.findById(roomId).lean();
   if (!room) {
     return next(new ApplicationError('Room not found', 404));
   }
@@ -88,7 +88,7 @@ export const unlockRoom = catchAsync(async (req, res, next) => {
   const { force = false } = req.body;
 
   // Check if room exists
-  const room = await Room.findById(roomId);
+  const room = await Room.findById(roomId).lean();
   if (!room) {
     return next(new ApplicationError('Room not found', 404));
   }
@@ -210,7 +210,7 @@ export const extendLock = catchAsync(async (req, res, next) => {
   }).populate([
     { path: 'userId', select: 'name email role' },
     { path: 'roomId', select: 'roomNumber type floor' }
-  ]);
+  ]).lean();
 
   if (!lock) {
     return next(new ApplicationError('No active lock found for this room', 404));
@@ -247,7 +247,7 @@ export const getRoomLockStatus = catchAsync(async (req, res, next) => {
   const { roomId } = req.params;
 
   // Check if room exists
-  const room = await Room.findById(roomId);
+  const room = await Room.findById(roomId).lean();
   if (!room) {
     return next(new ApplicationError('Room not found', 404));
   }

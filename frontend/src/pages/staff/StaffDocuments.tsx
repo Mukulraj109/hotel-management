@@ -219,7 +219,7 @@ export default function StaffDocuments() {
   };
 
   const TabButton = ({ tab, label, icon: Icon }: { tab: string; label: string; icon: React.ComponentType<{ className?: string }> }) => (
-    <button
+    <button aria-label="Close"
       onClick={() => setActiveTab(tab as unknown)}
       className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
         activeTab === tab

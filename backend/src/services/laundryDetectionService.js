@@ -31,7 +31,7 @@ class LaundryDetectionService {
     try {
       logger.info('Starting laundry detection', { bookingId, options });
 
-      const booking = await Booking.findById(bookingId).populate('rooms.roomId');
+      const booking = await Booking.findById(bookingId).populate('rooms.roomId').lean();
       if (!booking) {
         throw new Error('Booking not found');
       }
@@ -108,58 +108,62 @@ class LaundryDetectionService {
    * @param {Object} options - Detection options
    */
   async detectLaundryForRoom(roomId, roomType, booking, options = {}) {
-    // Get laundry template for room type
-    const template = await LaundryTemplate.getForRoomType(booking.hotelId, roomType);
+    try {
+      // Get laundry template for room type
+      const template = await LaundryTemplate.getForRoomType(booking.hotelId, roomType);
     
-    if (!template) {
-      logger.warn('No laundry template found for room type', {
-        roomType,
-        hotelId: booking.hotelId
-      });
-      return this.fallbackDetection(roomId, roomType, booking, options);
+      if (!template) {
+        logger.warn('No laundry template found for room type', {
+          roomType,
+          hotelId: booking.hotelId
+        });
+        return this.fallbackDetection(roomId, roomType, booking, options);
+      }
+
+      // Get room inventory to check current items
+      const roomInventory = await RoomInventory.findOne({ roomId }).lean();
+    
+      // Determine guest count for this room
+      const guestCount = this.calculateGuestCountForRoom(booking, roomId);
+    
+      // Determine season and room condition
+      const season = this.determineSeason();
+      const roomCondition = await this.assessRoomCondition(roomId, roomInventory, options);
+    
+      // Calculate laundry items using template
+      const templateItems = template.calculateLaundryItems(guestCount, season, roomCondition);
+    
+      // Enhance with room inventory data
+      const enhancedItems = await this.enhanceWithInventoryData(templateItems, roomInventory);
+    
+      // Apply intelligent adjustments
+      const finalItems = await this.applyIntelligentAdjustments(
+        enhancedItems,
+        booking,
+        roomId,
+        options
+      );
+
+      // Calculate costs and timing
+      const costAnalysis = this.calculateCostAnalysis(finalItems);
+      const timingAnalysis = this.calculateTimingAnalysis(finalItems, template);
+
+      // Update template usage statistics
+      await template.updateUsageStats(0.5); // Assume 30 minutes processing time
+
+      return {
+        templateUsed: template.templateName,
+        guestCount,
+        season,
+        roomCondition,
+        items: finalItems,
+        costAnalysis,
+        timingAnalysis,
+        detectionMethod: 'template_based'
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Get room inventory to check current items
-    const roomInventory = await RoomInventory.findOne({ roomId });
-    
-    // Determine guest count for this room
-    const guestCount = this.calculateGuestCountForRoom(booking, roomId);
-    
-    // Determine season and room condition
-    const season = this.determineSeason();
-    const roomCondition = await this.assessRoomCondition(roomId, roomInventory, options);
-    
-    // Calculate laundry items using template
-    const templateItems = template.calculateLaundryItems(guestCount, season, roomCondition);
-    
-    // Enhance with room inventory data
-    const enhancedItems = await this.enhanceWithInventoryData(templateItems, roomInventory);
-    
-    // Apply intelligent adjustments
-    const finalItems = await this.applyIntelligentAdjustments(
-      enhancedItems,
-      booking,
-      roomId,
-      options
-    );
-
-    // Calculate costs and timing
-    const costAnalysis = this.calculateCostAnalysis(finalItems);
-    const timingAnalysis = this.calculateTimingAnalysis(finalItems, template);
-
-    // Update template usage statistics
-    await template.updateUsageStats(0.5); // Assume 30 minutes processing time
-
-    return {
-      templateUsed: template.templateName,
-      guestCount,
-      season,
-      roomCondition,
-      items: finalItems,
-      costAnalysis,
-      timingAnalysis,
-      detectionMethod: 'template_based'
-    };
   }
 
   /**
@@ -170,27 +174,31 @@ class LaundryDetectionService {
    * @param {Object} options - Detection options
    */
   async fallbackDetection(roomId, roomType, booking, options = {}) {
-    logger.info('Using fallback laundry detection', { roomId, roomType });
+    try {
+      logger.info('Using fallback laundry detection', { roomId, roomType });
 
-    const roomInventory = await RoomInventory.findOne({ roomId });
-    const guestCount = this.calculateGuestCountForRoom(booking, roomId);
+      const roomInventory = await RoomInventory.findOne({ roomId }).lean();
+      const guestCount = this.calculateGuestCountForRoom(booking, roomId);
     
-    // Use default quantities based on room type and guest count
-    const defaultItems = this.getDefaultLaundryItems(roomType, guestCount);
+      // Use default quantities based on room type and guest count
+      const defaultItems = this.getDefaultLaundryItems(roomType, guestCount);
     
-    // Enhance with actual room inventory
-    const enhancedItems = await this.enhanceWithInventoryData(defaultItems, roomInventory);
+      // Enhance with actual room inventory
+      const enhancedItems = await this.enhanceWithInventoryData(defaultItems, roomInventory);
     
-    return {
-      templateUsed: 'Fallback Detection',
-      guestCount,
-      season: 'normal',
-      roomCondition: 'normal',
-      items: enhancedItems,
-      costAnalysis: this.calculateCostAnalysis(enhancedItems),
-      timingAnalysis: this.calculateTimingAnalysis(enhancedItems),
-      detectionMethod: 'fallback'
-    };
+      return {
+        templateUsed: 'Fallback Detection',
+        guestCount,
+        season: 'normal',
+        roomCondition: 'normal',
+        items: enhancedItems,
+        costAnalysis: this.calculateCostAnalysis(enhancedItems),
+        timingAnalysis: this.calculateTimingAnalysis(enhancedItems),
+        detectionMethod: 'fallback'
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -231,32 +239,36 @@ class LaundryDetectionService {
    * @param {Object} options - Assessment options
    */
   async assessRoomCondition(roomId, roomInventory, options = {}) {
-    // Default to normal condition
-    let condition = 'normal';
+    try {
+      // Default to normal condition
+      let condition = 'normal';
     
-    if (roomInventory) {
-      // Check for damaged or missing items
-      const damagedItems = roomInventory.items.filter(item => 
-        item.condition === 'damaged' || item.condition === 'missing'
-      );
+      if (roomInventory) {
+        // Check for damaged or missing items
+        const damagedItems = roomInventory.items.filter(item => 
+          item.condition === 'damaged' || item.condition === 'missing'
+        );
       
-      const wornItems = roomInventory.items.filter(item => 
-        item.condition === 'worn'
-      );
+        const wornItems = roomInventory.items.filter(item => 
+          item.condition === 'worn'
+        );
       
-      if (damagedItems.length > 0) {
-        condition = 'damaged';
-      } else if (wornItems.length > 2) {
-        condition = 'dirty';
+        if (damagedItems.length > 0) {
+          condition = 'damaged';
+        } else if (wornItems.length > 2) {
+          condition = 'dirty';
+        }
       }
-    }
     
-    // Override with options if provided
-    if (options.roomCondition) {
-      condition = options.roomCondition;
-    }
+      // Override with options if provided
+      if (options.roomCondition) {
+        condition = options.roomCondition;
+      }
     
-    return condition;
+      return condition;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -314,41 +326,50 @@ class LaundryDetectionService {
    * @param {Object} roomInventory - Room inventory data
    */
   async enhanceWithInventoryData(templateItems, roomInventory) {
-    if (!roomInventory) {
-      return templateItems;
-    }
-
-    const enhancedItems = [];
-    
-    for (const templateItem of templateItems) {
-      // Find corresponding item in room inventory
-      const inventoryItem = roomInventory.items.find(item => 
-        item.itemId.category === templateItem.category
-      );
-      
-      if (inventoryItem) {
-        // Get item details from inventory
-        const itemDetails = await InventoryItem.findById(inventoryItem.itemId);
-        
-        enhancedItems.push({
-          ...templateItem,
-          itemId: inventoryItem.itemId._id,
-          itemName: itemDetails?.name || templateItem.itemName,
-          currentQuantity: inventoryItem.currentQuantity,
-          expectedQuantity: inventoryItem.expectedQuantity,
-          condition: inventoryItem.condition,
-          needsReplacement: inventoryItem.needsReplacement,
-          replacementReason: inventoryItem.replacementReason,
-          costPerItem: itemDetails?.unitPrice || 0,
-          estimatedCost: (itemDetails?.unitPrice || 0) * templateItem.quantity
-        });
-      } else {
-        // Keep template item as-is if not found in inventory
-        enhancedItems.push(templateItem);
+    try {
+      if (!roomInventory) {
+        return templateItems;
       }
-    }
+
+      const enhancedItems = [];
     
-    return enhancedItems;
+      // Batch: fetch all inventory item details in a single query
+      const inventoryItemIds = roomInventory.items.map(item => item.itemId._id || item.itemId).filter(Boolean);
+      const inventoryItemDetails = inventoryItemIds.length > 0
+        ? await InventoryItem.find({ _id: { $in: inventoryItemIds } }).lean()
+        : [];
+      const itemDetailsMap = new Map(inventoryItemDetails.map(d => [d._id.toString(), d]));
+
+      for (const templateItem of templateItems) {
+        const inventoryItem = roomInventory.items.find(item =>
+          item.itemId.category === templateItem.category
+        );
+
+        if (inventoryItem) {
+          const itemDetails = itemDetailsMap.get((inventoryItem.itemId._id || inventoryItem.itemId).toString());
+        
+          enhancedItems.push({
+            ...templateItem,
+            itemId: inventoryItem.itemId._id,
+            itemName: itemDetails?.name || templateItem.itemName,
+            currentQuantity: inventoryItem.currentQuantity,
+            expectedQuantity: inventoryItem.expectedQuantity,
+            condition: inventoryItem.condition,
+            needsReplacement: inventoryItem.needsReplacement,
+            replacementReason: inventoryItem.replacementReason,
+            costPerItem: itemDetails?.unitPrice || 0,
+            estimatedCost: (itemDetails?.unitPrice || 0) * templateItem.quantity
+          });
+        } else {
+          // Keep template item as-is if not found in inventory
+          enhancedItems.push(templateItem);
+        }
+      }
+    
+      return enhancedItems;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -359,49 +380,53 @@ class LaundryDetectionService {
    * @param {Object} options - Adjustment options
    */
   async applyIntelligentAdjustments(items, booking, roomId, options = {}) {
-    const adjustedItems = [...items];
+    try {
+      const adjustedItems = [...items];
     
-    // Adjust based on length of stay
-    const stayLength = this.calculateStayLength(booking);
-    if (stayLength > 7) {
-      // Longer stays may need more frequent laundry
-      adjustedItems.forEach(item => {
-        if (item.category === 'towels' || item.category === 'bedding') {
-          item.quantity = Math.ceil(item.quantity * 1.2);
-        }
-      });
-    }
-    
-    // Adjust based on special requests
-    if (booking.guestDetails.specialRequests) {
-      const specialRequests = booking.guestDetails.specialRequests.toLowerCase();
-      
-      if (specialRequests.includes('extra towels') || specialRequests.includes('additional towels')) {
+      // Adjust based on length of stay
+      const stayLength = this.calculateStayLength(booking);
+      if (stayLength > 7) {
+        // Longer stays may need more frequent laundry
         adjustedItems.forEach(item => {
-          if (item.category === 'towels') {
-            item.quantity = Math.ceil(item.quantity * 1.5);
-            item.specialInstructions = (item.specialInstructions || '') + ' Extra towels requested by guest.';
+          if (item.category === 'towels' || item.category === 'bedding') {
+            item.quantity = Math.ceil(item.quantity * 1.2);
           }
         });
       }
+    
+      // Adjust based on special requests
+      if (booking.guestDetails.specialRequests) {
+        const specialRequests = booking.guestDetails.specialRequests.toLowerCase();
       
-      if (specialRequests.includes('allergy') || specialRequests.includes('sensitive')) {
+        if (specialRequests.includes('extra towels') || specialRequests.includes('additional towels')) {
+          adjustedItems.forEach(item => {
+            if (item.category === 'towels') {
+              item.quantity = Math.ceil(item.quantity * 1.5);
+              item.specialInstructions = (item.specialInstructions || '') + ' Extra towels requested by guest.';
+            }
+          });
+        }
+      
+        if (specialRequests.includes('allergy') || specialRequests.includes('sensitive')) {
+          adjustedItems.forEach(item => {
+            item.specialInstructions = (item.specialInstructions || '') + ' Guest has allergies - use hypoallergenic detergent.';
+            item.priority = 'high';
+          });
+        }
+      }
+    
+      // Adjust based on room condition
+      if (options.roomCondition === 'very_dirty') {
         adjustedItems.forEach(item => {
-          item.specialInstructions = (item.specialInstructions || '') + ' Guest has allergies - use hypoallergenic detergent.';
-          item.priority = 'high';
+          item.quantity = Math.ceil(item.quantity * 1.3);
+          item.specialInstructions = (item.specialInstructions || '') + ' Room requires deep cleaning.';
         });
       }
-    }
     
-    // Adjust based on room condition
-    if (options.roomCondition === 'very_dirty') {
-      adjustedItems.forEach(item => {
-        item.quantity = Math.ceil(item.quantity * 1.3);
-        item.specialInstructions = (item.specialInstructions || '') + ' Room requires deep cleaning.';
-      });
+      return adjustedItems;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    return adjustedItems;
   }
 
   /**
@@ -521,39 +546,43 @@ class LaundryDetectionService {
    * @param {Object} dateRange - Date range for statistics
    */
   async getDetectionStatistics(hotelId, dateRange = {}) {
-    // This would typically query the CheckoutAutomationLog for statistics
-    // For now, return basic template usage statistics
+    try {
+      // This would typically query the CheckoutAutomationLog for statistics
+      // For now, return basic template usage statistics
     
-    const templates = await LaundryTemplate.find({ hotelId, isActive: true });
+      const templates = await LaundryTemplate.find({ hotelId, isActive: true }).lean().limit(1000);
     
-    const statistics = {
-      totalTemplates: templates.length,
-      templatesByRoomType: {},
-      averageUsage: 0,
-      mostUsedTemplate: null
-    };
+      const statistics = {
+        totalTemplates: templates.length,
+        templatesByRoomType: {},
+        averageUsage: 0,
+        mostUsedTemplate: null
+      };
     
-    let totalUsage = 0;
-    let maxUsage = 0;
+      let totalUsage = 0;
+      let maxUsage = 0;
     
-    templates.forEach(template => {
-      const usage = template.usageStats.timesUsed || 0;
-      totalUsage += usage;
+      templates.forEach(template => {
+        const usage = template.usageStats.timesUsed || 0;
+        totalUsage += usage;
       
-      if (usage > maxUsage) {
-        maxUsage = usage;
-        statistics.mostUsedTemplate = template.templateName;
-      }
+        if (usage > maxUsage) {
+          maxUsage = usage;
+          statistics.mostUsedTemplate = template.templateName;
+        }
       
-      if (!statistics.templatesByRoomType[template.roomType]) {
-        statistics.templatesByRoomType[template.roomType] = 0;
-      }
-      statistics.templatesByRoomType[template.roomType] += usage;
-    });
+        if (!statistics.templatesByRoomType[template.roomType]) {
+          statistics.templatesByRoomType[template.roomType] = 0;
+        }
+        statistics.templatesByRoomType[template.roomType] += usage;
+      });
     
-    statistics.averageUsage = templates.length > 0 ? totalUsage / templates.length : 0;
+      statistics.averageUsage = templates.length > 0 ? totalUsage / templates.length : 0;
     
-    return statistics;
+      return statistics;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 

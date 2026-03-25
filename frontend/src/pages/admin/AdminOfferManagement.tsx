@@ -31,6 +31,7 @@ import { api } from '../../services/api';
 import toast from 'react-hot-toast';
 import { useProperty } from '../../context/PropertyContext';
 import { PropertyBreadcrumb } from '../../components/common/PropertyBreadcrumb';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface Offer {
   _id: string;
@@ -87,35 +88,59 @@ const initialFormData: OfferFormData = {
 
 // API functions
 const fetchOffers = async (params: Record<string, unknown>) => {
-  const response = await api.get('/admin/loyalty/offers', { params });
-  return response.data.data;
+  try {
+    const response = await api.get('/admin/loyalty/offers', { params });
+    return response.data.data;
+  } catch (error: unknown) {
+    throw error instanceof Error ? error : new Error('Failed to fetch offers');
+  }
 };
 
 const createOffer = async (data: Partial<OfferFormData> & { propertyId?: string }) => {
-  const response = await api.post('/admin/loyalty/offers', data);
-  return response.data.data;
+  try {
+    const response = await api.post('/admin/loyalty/offers', data);
+    return response.data.data;
+  } catch (error: unknown) {
+    throw error instanceof Error ? error : new Error('Failed to create offer');
+  }
 };
 
 const updateOffer = async ({ id, data }: { id: string; data: Partial<OfferFormData> & { propertyId?: string } }) => {
-  const response = await api.put(`/admin/loyalty/offers/${id}`, data);
-  return response.data.data;
+  try {
+    const response = await api.put(`/admin/loyalty/offers/${id}`, data);
+    return response.data.data;
+  } catch (error: unknown) {
+    throw error instanceof Error ? error : new Error('Failed to update offer');
+  }
 };
 
 const deleteOffer = async (id: string) => {
-  const response = await api.delete(`/admin/loyalty/offers/${id}`);
-  return response.data;
+  try {
+    const response = await api.delete(`/admin/loyalty/offers/${id}`);
+    return response.data;
+  } catch (error: unknown) {
+    throw error instanceof Error ? error : new Error('Failed to delete offer');
+  }
 };
 
 const bulkOperation = async (data: { offerIds: string[]; operation: string; propertyId?: string }) => {
-  const response = await api.post('/admin/loyalty/offers/bulk', data);
-  return response.data.data;
+  try {
+    const response = await api.post('/admin/loyalty/offers/bulk', data);
+    return response.data.data;
+  } catch (error: unknown) {
+    throw error instanceof Error ? error : new Error('Failed to perform bulk operation');
+  }
 };
 
 const fetchAnalytics = async (propertyId?: string) => {
-  const response = await api.get('/admin/loyalty/analytics', {
-    params: { propertyId }
-  });
-  return response.data.data;
+  try {
+    const response = await api.get('/admin/loyalty/analytics', {
+      params: { propertyId }
+    });
+    return response.data.data;
+  } catch (error: unknown) {
+    throw error instanceof Error ? error : new Error('Failed to fetch analytics');
+  }
 };
 
 const getTypeColor = (type: string) => {
@@ -184,7 +209,7 @@ const OfferCardInfo = React.memo(({ offer, getTypeColor, getCategoryColor }: {
 ));
 OfferCardInfo.displayName = 'OfferCardInfo';
 
-export default function AdminOfferManagement() {
+function AdminOfferManagement() {
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [activeTab, setActiveTab] = useState('offers');
   const [searchTerm, setSearchTerm] = useState('');
@@ -1012,3 +1037,5 @@ function OfferForm({ formData, setFormData, onSubmit, isLoading, isEdit }: Offer
     </div>
   );
 }
+
+export default withErrorBoundary(AdminOfferManagement, { level: 'page' });

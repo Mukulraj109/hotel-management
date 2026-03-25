@@ -33,6 +33,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 // Metric Card Component
 const MetricCard = ({ 
@@ -826,4 +827,4 @@ const POSReports: React.FC = () => {
   );
 };
 
-export default POSReports;
+export default withErrorBoundary(POSReports, { level: 'component' });

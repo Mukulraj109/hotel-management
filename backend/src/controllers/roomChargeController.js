@@ -86,7 +86,7 @@ export const getRoomCharge = catchAsync(async (req, res, next) => {
     .populate('taxConfiguration.applicableTaxes', 'taxName taxType taxRate taxCategory')
     .populate('integrationSettings.revenueAccountId', 'accountCode accountName revenueCategory')
     .populate('createdBy', 'name email')
-    .populate('updatedBy', 'name email');
+    .populate('updatedBy', 'name email').lean();
 
   if (!charge) {
     return next(new ApplicationError('Room charge not found', 404));
@@ -124,7 +124,7 @@ export const createRoomCharge = catchAsync(async (req, res, next) => {
   const existingCharge = await RoomCharge.findOne({
     hotelId,
     chargeCode: req.body.chargeCode.toUpperCase()
-  });
+  }).lean();
 
   if (existingCharge) {
     return next(new ApplicationError('A charge with this code already exists', 400));
@@ -135,7 +135,7 @@ export const createRoomCharge = catchAsync(async (req, res, next) => {
     const roomTypes = await RoomType.find({
       _id: { $in: req.body.applicableRoomTypes },
       hotelId
-    });
+    }).lean().limit(1000);
 
     if (roomTypes.length !== req.body.applicableRoomTypes.length) {
       return next(new ApplicationError('One or more room types are invalid', 400));
@@ -147,7 +147,7 @@ export const createRoomCharge = catchAsync(async (req, res, next) => {
     const taxes = await RoomTax.find({
       _id: { $in: req.body.taxConfiguration.applicableTaxes },
       hotelId
-    });
+    }).lean().limit(1000);
 
     if (taxes.length !== req.body.taxConfiguration.applicableTaxes.length) {
       return next(new ApplicationError('One or more taxes are invalid', 400));
@@ -192,7 +192,7 @@ export const updateRoomCharge = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user._id;
 
-  const charge = await RoomCharge.findById(id);
+  const charge = await RoomCharge.findById(id).lean();
 
   if (!charge) {
     return next(new ApplicationError('Room charge not found', 404));
@@ -209,7 +209,7 @@ export const updateRoomCharge = catchAsync(async (req, res, next) => {
       hotelId: charge.hotelId,
       chargeCode: req.body.chargeCode.toUpperCase(),
       _id: { $ne: id }
-    });
+    }).lean();
 
     if (existingCharge) {
       return next(new ApplicationError('A charge with this code already exists', 400));
@@ -221,7 +221,7 @@ export const updateRoomCharge = catchAsync(async (req, res, next) => {
     const roomTypes = await RoomType.find({
       _id: { $in: req.body.applicableRoomTypes },
       hotelId: charge.hotelId
-    });
+    }).lean().limit(1000);
 
     if (roomTypes.length !== req.body.applicableRoomTypes.length) {
       return next(new ApplicationError('One or more room types are invalid', 400));
@@ -233,7 +233,7 @@ export const updateRoomCharge = catchAsync(async (req, res, next) => {
     const taxes = await RoomTax.find({
       _id: { $in: req.body.taxConfiguration.applicableTaxes },
       hotelId: charge.hotelId
-    });
+    }).lean().limit(1000);
 
     if (taxes.length !== req.body.taxConfiguration.applicableTaxes.length) {
       return next(new ApplicationError('One or more taxes are invalid', 400));
@@ -280,7 +280,7 @@ export const deleteRoomCharge = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user._id;
 
-  const charge = await RoomCharge.findById(id);
+  const charge = await RoomCharge.findById(id).lean();
 
   if (!charge) {
     return next(new ApplicationError('Room charge not found', 404));
@@ -625,7 +625,7 @@ export const updateChargeAudit = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const { totalCharges, applicationCount } = req.body;
 
-  const charge = await RoomCharge.findById(id);
+  const charge = await RoomCharge.findById(id).lean();
 
   if (!charge) {
     return next(new ApplicationError('Room charge not found', 404));

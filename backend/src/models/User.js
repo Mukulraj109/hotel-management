@@ -442,13 +442,50 @@ const userSchema = new mongoose.Schema({
   // GDPR Compliance Fields
   gdprConsent: { type: Boolean, default: false },
   gdprConsentDate: { type: Date },
+  gdprConsentVersion: { type: String, default: '1.0' },
   marketingConsent: { type: Boolean, default: false },
   marketingConsentDate: { type: Date },
   dataRetentionAcknowledged: { type: Boolean, default: false },
   accountDeletionRequested: { type: Boolean, default: false },
   accountDeletionRequestedAt: { type: Date },
   anonymized: { type: Boolean, default: false },
-  anonymizedAt: { type: Date }
+  anonymizedAt: { type: Date },
+
+  // Enhanced consent tracking
+  consentHistory: [{
+    consentType: {
+      type: String,
+      enum: ['gdpr', 'marketing', 'analytics', 'third_party', 'cookies']
+    },
+    granted: { type: Boolean, required: true },
+    timestamp: { type: Date, default: Date.now },
+    ipAddress: String,
+    policyVersion: String,
+    method: {
+      type: String,
+      enum: ['web_form', 'api', 'email', 'phone', 'in_person']
+    }
+  }],
+
+  // Data retention: auto-expire accounts after retention period
+  dataRetentionExpiresAt: {
+    type: Date,
+    default: function() {
+      // Default: 7 years from account creation (regulatory requirement)
+      return new Date(Date.now() + 2555 * 24 * 60 * 60 * 1000);
+    }
+  },
+
+  // PII classification flag for GDPR data subject access requests
+  piiClassification: {
+    type: String,
+    enum: ['standard', 'sensitive', 'special_category'],
+    default: 'standard'
+  },
+
+  // Last data access request date (for GDPR compliance tracking)
+  lastDataAccessRequest: { type: Date },
+  lastDataExportRequest: { type: Date }
 }, {
   timestamps: true,
   toJSON: { virtuals: true },
@@ -467,15 +504,23 @@ userSchema.virtual('bookings', {
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
+  try {
+    if (!this.isModified('password')) return next();
   
-  this.password = await bcrypt.hash(this.password, 12);
-  next();
+    this.password = await bcrypt.hash(this.password, 12);
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 });
 
 // Compare password method
 userSchema.methods.comparePassword = async function(candidatePassword) {
-  return await bcrypt.compare(candidatePassword, this.password);
+  try {
+    return await bcrypt.compare(candidatePassword, this.password);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Update loyalty tier based on points

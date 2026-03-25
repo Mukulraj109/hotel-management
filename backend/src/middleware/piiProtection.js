@@ -1,0 +1,215 @@
+import logger from '../utils/logger.js';
+
+/**
+ * PII Protection Middleware
+ *
+ * Provides middleware functions for handling Personally Identifiable Information (PII)
+ * in compliance with GDPR and data protection regulations.
+ *
+ * - Strips PII from responses for unauthorized roles
+ * - Masks sensitive fields (email, phone, passport, etc.)
+ * - Logs PII access for audit purposes
+ * - Prevents PII leakage in error responses
+ */
+
+// Fields classified as PII
+const PII_FIELDS = [
+  'email', 'phone', 'passport', 'nationalId', 'ssn',
+  'dateOfBirth', 'address', 'postalCode', 'emergencyContact',
+  'creditCardNumber', 'bankAccountNumber', 'iban',
+  'driverLicense', 'taxId', 'ipAddress'
+];
+
+// Fields that should be masked (partially visible) rather than removed
+const MASKABLE_FIELDS = ['email', 'phone', 'passport', 'nationalId', 'creditCardNumber'];
+
+// Roles allowed to view full PII
+const PII_AUTHORIZED_ROLES = ['admin', 'manager', 'staff'];
+
+/**
+ * Mask a PII value to show only partial information
+ */
+function maskValue(field, value) {
+  if (!value || typeof value !== 'string') return '***';
+
+  switch (field) {
+    case 'email': {
+      const [local, domain] = value.split('@');
+      if (!domain) return '***@***';
+      const maskedLocal = local.length > 2
+        ? local[0] + '*'.repeat(local.length - 2) + local[local.length - 1]
+        : '**';
+      return `${maskedLocal}@${domain}`;
+    }
+    case 'phone':
+      return value.length > 4
+        ? '*'.repeat(value.length - 4) + value.slice(-4)
+        : '****';
+    case 'passport':
+    case 'nationalId':
+    case 'driverLicense':
+      return value.length > 4
+        ? '*'.repeat(value.length - 4) + value.slice(-4)
+        : '****';
+    case 'creditCardNumber':
+      return '*'.repeat(12) + value.slice(-4);
+    default:
+      return '***';
+  }
+}
+
+/**
+ * Recursively mask PII fields in an object
+ */
+function maskPIIInObject(obj, mask = true) {
+  if (!obj || typeof obj !== 'object') return obj;
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => maskPIIInObject(item, mask));
+  }
+
+  const result = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (PII_FIELDS.includes(key)) {
+      if (mask) {
+        result[key] = MASKABLE_FIELDS.includes(key) ? maskValue(key, value) : '[REDACTED]';
+      } else {
+        result[key] = value;
+      }
+    } else if (value && typeof value === 'object') {
+      result[key] = maskPIIInObject(value, mask);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+/**
+ * Middleware: Mask PII in responses for unauthorized roles
+ *
+ * Intercepts res.json() to automatically mask PII fields
+ * when the requesting user does not have an authorized role.
+ */
+export function piiResponseFilter(req, res, next) {
+  const userRole = req.user?.role;
+  const isAuthorized = PII_AUTHORIZED_ROLES.includes(userRole);
+
+  // Only intercept if user is not authorized to view PII
+  if (!isAuthorized) {
+    const originalJson = res.json.bind(res);
+    res.json = function(body) {
+      if (body && typeof body === 'object') {
+        const filtered = maskPIIInObject(body, true);
+        return originalJson(filtered);
+      }
+      return originalJson(body);
+    };
+  }
+
+  next();
+}
+
+/**
+ * Middleware: Log PII access for audit trail
+ *
+ * Records when PII data is accessed, who accessed it, and from where.
+ * This is required for GDPR compliance (Article 30 - Records of Processing Activities).
+ */
+export function piiAccessLogger(req, res, next) {
+  const originalJson = res.json.bind(res);
+
+  res.json = function(body) {
+    // Check if response contains PII
+    if (body && typeof body === 'object') {
+      const containsPII = JSON.stringify(body).match(
+        /"(email|phone|passport|nationalId|address|dateOfBirth)"\s*:/
+      );
+
+      if (containsPII) {
+        logger.info('PII data accessed', {
+          userId: req.user?.id,
+          userRole: req.user?.role,
+          endpoint: `${req.method} ${req.originalUrl}`,
+          piiFieldsPresent: containsPII[1],
+          ipAddress: req.ip,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
+    return originalJson(body);
+  };
+
+  next();
+}
+
+/**
+ * Middleware: Sanitize PII from error responses
+ *
+ * Prevents PII from leaking in error messages and stack traces.
+ */
+export function piiErrorSanitizer(err, req, res, next) {
+  if (err && err.message) {
+    // Mask any email addresses in error messages
+    err.message = err.message.replace(
+      /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
+      '[EMAIL_REDACTED]'
+    );
+    // Mask phone numbers in error messages
+    err.message = err.message.replace(
+      /(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g,
+      '[PHONE_REDACTED]'
+    );
+  }
+
+  next(err);
+}
+
+/**
+ * Middleware: Validate PII input fields
+ *
+ * Ensures PII data in request bodies meets format requirements
+ * before it is stored.
+ */
+export function validatePIIInput(req, res, next) {
+  const body = req.body;
+  if (!body || typeof body !== 'object') return next();
+
+  const errors = [];
+
+  // Validate email format if present
+  if (body.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) {
+    errors.push('Invalid email format');
+  }
+
+  // Validate phone format if present (allow international formats)
+  if (body.phone && !/^\+?[\d\s\-()]{7,20}$/.test(body.phone)) {
+    errors.push('Invalid phone number format');
+  }
+
+  // Reject obviously invalid passport/ID numbers
+  if (body.passport && body.passport.length < 5) {
+    errors.push('Invalid passport number');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'PII_VALIDATION_FAILED',
+        message: 'Invalid PII data format',
+        details: errors
+      }
+    });
+  }
+
+  next();
+}
+
+export default {
+  piiResponseFilter,
+  piiAccessLogger,
+  piiErrorSanitizer,
+  validatePIIInput
+};

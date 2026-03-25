@@ -240,14 +240,18 @@ measurementUnitSchema.virtual('baseConversionRate').get(function() {
 
 // Pre-save middleware to generate unitId if not provided
 measurementUnitSchema.pre('save', async function(next) {
-  if (!this.unitId) {
-    const prefix = this.unitType.substring(0, 3).toUpperCase();
-    const count = await this.constructor.countDocuments({
-      unitId: new RegExp(`^${prefix}`)
-    });
-    this.unitId = `${prefix}${(count + 1).toString().padStart(3, '0')}`;
+  try {
+    if (!this.unitId) {
+      const prefix = this.unitType.substring(0, 3).toUpperCase();
+      const count = await this.constructor.countDocuments({
+        unitId: new RegExp(`^${prefix}`)
+      });
+      this.unitId = `${prefix}${(count + 1).toString().padStart(3, '0')}`;
+    }
+    next();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  next();
 });
 
 // Static method to get units by type
@@ -278,39 +282,43 @@ measurementUnitSchema.statics.getBaseUnits = function(hotelId) {
 
 // Static method to convert between units
 measurementUnitSchema.statics.convert = async function(fromUnitId, toUnitId, value) {
-  if (fromUnitId === toUnitId) return value;
+  try {
+    if (fromUnitId === toUnitId) return value;
 
-  const fromUnit = await this.findById(fromUnitId);
-  const toUnit = await this.findById(toUnitId);
+    const fromUnit = await this.findById(fromUnitId).lean();
+    const toUnit = await this.findById(toUnitId).lean();
 
-  if (!fromUnit || !toUnit) {
-    throw new Error('Invalid unit IDs');
-  }
-
-  if (fromUnit.unitType !== toUnit.unitType) {
-    throw new Error('Cannot convert between different unit types');
-  }
-
-  // Find direct conversion factor
-  const directFactor = fromUnit.conversionFactors.find(
-    cf => cf.targetUnit.toString() === toUnitId.toString()
-  );
-
-  if (directFactor) {
-    return (value * directFactor.factor) + directFactor.offset;
-  }
-
-  // If no direct conversion, try through base unit
-  if (fromUnit.baseUnit && toUnit.baseUnit) {
-    const fromBaseRate = fromUnit.baseConversionRate;
-    const toBaseRate = toUnit.baseConversionRate;
-    
-    if (fromBaseRate && toBaseRate) {
-      return (value * fromBaseRate) / toBaseRate;
+    if (!fromUnit || !toUnit) {
+      throw new Error('Invalid unit IDs');
     }
-  }
 
-  throw new Error(`No conversion path found between ${fromUnit.name} and ${toUnit.name}`);
+    if (fromUnit.unitType !== toUnit.unitType) {
+      throw new Error('Cannot convert between different unit types');
+    }
+
+    // Find direct conversion factor
+    const directFactor = fromUnit.conversionFactors.find(
+      cf => cf.targetUnit.toString() === toUnitId.toString()
+    );
+
+    if (directFactor) {
+      return (value * directFactor.factor) + directFactor.offset;
+    }
+
+    // If no direct conversion, try through base unit
+    if (fromUnit.baseUnit && toUnit.baseUnit) {
+      const fromBaseRate = fromUnit.baseConversionRate;
+      const toBaseRate = toUnit.baseConversionRate;
+    
+      if (fromBaseRate && toBaseRate) {
+        return (value * fromBaseRate) / toBaseRate;
+      }
+    }
+
+    throw new Error(`No conversion path found between ${fromUnit.name} and ${toUnit.name}`);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance method to add conversion factor

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import {
   X,
   Plus,
@@ -128,6 +128,12 @@ export default function PaymentCollectionModal({
   const remainingAmount = Math.max(0, balanceAmount - totalPaid);
   const progressPercentage = balanceAmount > 0 ? ((paidAmount + totalPaid) / totalAmount) * 100 : 0;
 
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   useEffect(() => {
     const total = paymentMethods.reduce((sum, payment) => sum + payment.amount, 0);
     setTotalPaid(total);
@@ -194,6 +200,7 @@ export default function PaymentCollectionModal({
     setIsLoading(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
+    if (!isMountedRef.current) return;
       localStorage.removeItem(`payment-draft-${bookingNumber}`);
       onConfirm({ paymentMethods });
       handleClose();
@@ -351,7 +358,7 @@ export default function PaymentCollectionModal({
                         const Icon = config.icon;
                         const isSelected = selectedMethod === key;
                         return (
-                          <button
+                          <button aria-label="Close"
                             key={key}
                             type="button"
                             onClick={() => setSelectedMethod(key as unknown)}
@@ -391,7 +398,7 @@ export default function PaymentCollectionModal({
                         const Icon = template.icon;
                         const amount = (balanceAmount * template.percentage) / 100;
                         return (
-                          <button
+                          <button aria-label="Close"
                             key={template.percentage}
                             type="button"
                             onClick={() => handleQuickAmount(template.percentage)}

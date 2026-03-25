@@ -27,12 +27,12 @@ async function assignProperties() {
 
     // Find user
     console.log(`🔍 Finding user: ${userEmail}`);
-    const user = await User.findOne({ email: userEmail });
+    const user = await User.findOne({ email: userEmail }).lean();
 
     if (!user) {
       console.error(`❌ User not found: ${userEmail}`);
       console.log('\n💡 Available users:');
-      const allUsers = await User.find({}, 'email name role');
+      const allUsers = await User.find({}, 'email name role').lean().limit(1000);
       allUsers.forEach(u => console.log(`   - ${u.email} (${u.name}) - ${u.role}`));
       process.exit(1);
     }
@@ -41,7 +41,7 @@ async function assignProperties() {
 
     // Get all properties
     console.log('🏨 Fetching all properties...');
-    const properties = await Hotel.find({ active: true });
+    const properties = await Hotel.find({ active: true }).lean().limit(1000);
 
     if (properties.length === 0) {
       console.error('❌ No properties found in database');

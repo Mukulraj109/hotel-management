@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -46,6 +46,14 @@ export default function DailyRoutineCheck() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showCart, setShowCart] = useState(false);
   const [addedItems, setAddedItems] = useState<Set<string>>(new Set());
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     fetchRooms();
@@ -124,7 +132,8 @@ export default function DailyRoutineCheck() {
     setAddedItems(prev => new Set([...prev, itemKey]));
 
     // Remove visual feedback after 2 seconds
-    setTimeout(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
       setAddedItems(prev => {
         const newSet = new Set(prev);
         newSet.delete(itemKey);

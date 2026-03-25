@@ -122,6 +122,10 @@ export const getTravelDashboardOverview = catchAsync(async (req, res) => {
   const totalBookings = totalBookingsFromBookings > 0 ? totalBookingsFromBookings : (totalBookingsFromAgents[0]?.total || 0);
 
   // Get performance data from TravelAgent collection (using seeded data)
+  // Consider caching this aggregation result for 5 minutes
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
   const agentPerformanceData = await TravelAgent.aggregate([
     { $match: baseQuery },
     {
@@ -136,6 +140,10 @@ export const getTravelDashboardOverview = catchAsync(async (req, res) => {
   ]);
 
   // Run one optimized aggregation for financial data from actual bookings (if any exist)
+  // Consider caching this aggregation result for 5 minutes
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
   const financialData = await TravelAgentBooking.aggregate([
     { $match: bookingQuery },
     {
@@ -178,6 +186,10 @@ export const getTravelDashboardOverview = catchAsync(async (req, res) => {
   };
 
   // Get top performers from TravelAgent collection (using seeded performance data)
+  // Consider caching this aggregation result for 5 minutes
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
   const topPerformers = await TravelAgent.aggregate([
     { $match: baseQuery },
     {
@@ -234,6 +246,10 @@ export const getTravelDashboardOverview = catchAsync(async (req, res) => {
   }
 
   // Simplified monthly trends
+  // Consider caching this aggregation result for 5 minutes
+
+  // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
   const monthlyTrends = await TravelAgentBooking.aggregate([
     {
       $match: {

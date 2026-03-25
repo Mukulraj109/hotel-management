@@ -186,105 +186,121 @@ auditLogSchema.pre('save', function(next) {
 
 // Static methods
 auditLogSchema.statics.logChange = async function(data) {
-    const logEntry = {
-        hotelId: data.hotelId,
-        tableName: data.tableName,
-        recordId: data.recordId,
-        changeType: data.changeType,
-        oldValues: data.oldValues || {},
-        newValues: data.newValues || {},
-        userId: data.userId,
-        userEmail: data.userEmail,
-        userRole: data.userRole,
-        source: data.source || 'manual',
-        sourceDetails: data.sourceDetails || {},
-        bookingDetails: data.bookingDetails || {},
-        inventoryDetails: data.inventoryDetails || {},
-        error: data.error,
-        metadata: data.metadata || {}
-    };
+  try {
+      const logEntry = {
+          hotelId: data.hotelId,
+          tableName: data.tableName,
+          recordId: data.recordId,
+          changeType: data.changeType,
+          oldValues: data.oldValues || {},
+          newValues: data.newValues || {},
+          userId: data.userId,
+          userEmail: data.userEmail,
+          userRole: data.userRole,
+          source: data.source || 'manual',
+          sourceDetails: data.sourceDetails || {},
+          bookingDetails: data.bookingDetails || {},
+          inventoryDetails: data.inventoryDetails || {},
+          error: data.error,
+          metadata: data.metadata || {}
+      };
 
-    // Calculate changed fields
-    if (data.oldValues && data.newValues) {
-        logEntry.changedFields = [];
-        const allFields = new Set([...Object.keys(data.oldValues), ...Object.keys(data.newValues)]);
+      // Calculate changed fields
+      if (data.oldValues && data.newValues) {
+          logEntry.changedFields = [];
+          const allFields = new Set([...Object.keys(data.oldValues), ...Object.keys(data.newValues)]);
 
-        for (const field of allFields) {
-            const oldValue = data.oldValues[field];
-            const newValue = data.newValues[field];
+          for (const field of allFields) {
+              const oldValue = data.oldValues[field];
+              const newValue = data.newValues[field];
 
-            if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
-                logEntry.changedFields.push({
-                    field,
-                    oldValue,
-                    newValue
-                });
-            }
-        }
-    }
+              if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+                  logEntry.changedFields.push({
+                      field,
+                      oldValue,
+                      newValue
+                  });
+              }
+          }
+      }
 
-    return await this.create(logEntry);
+      return await this.create(logEntry);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 auditLogSchema.statics.logBookingChange = async function(booking, changeType, userId, additionalData = {}) {
-    return await this.logChange({
-        hotelId: booking.hotelId,
-        tableName: 'Booking',
-        recordId: booking._id,
-        changeType,
-        userId,
-        bookingDetails: {
-            bookingNumber: booking.bookingNumber,
-            checkIn: booking.checkIn,
-            checkOut: booking.checkOut,
-            roomType: booking.roomType,
-            totalAmount: booking.totalAmount,
-            source: booking.source
-        },
-        ...additionalData
-    });
+  try {
+      return await this.logChange({
+          hotelId: booking.hotelId,
+          tableName: 'Booking',
+          recordId: booking._id,
+          changeType,
+          userId,
+          bookingDetails: {
+              bookingNumber: booking.bookingNumber,
+              checkIn: booking.checkIn,
+              checkOut: booking.checkOut,
+              roomType: booking.roomType,
+              totalAmount: booking.totalAmount,
+              source: booking.source
+          },
+          ...additionalData
+      });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 auditLogSchema.statics.logInventoryChange = async function(availability, changeType, userId, additionalData = {}) {
-    return await this.logChange({
-        hotelId: availability.hotelId,
-        tableName: 'RoomAvailability',
-        recordId: availability._id,
-        changeType,
-        userId,
-        inventoryDetails: {
-            date: availability.date,
-            roomTypeId: availability.roomTypeId,
-            availableRooms: availability.availableRooms,
-            soldRooms: availability.soldRooms,
-            rate: availability.baseRate
-        },
-        ...additionalData
-    });
+  try {
+      return await this.logChange({
+          hotelId: availability.hotelId,
+          tableName: 'RoomAvailability',
+          recordId: availability._id,
+          changeType,
+          userId,
+          inventoryDetails: {
+              date: availability.date,
+              roomTypeId: availability.roomTypeId,
+              availableRooms: availability.availableRooms,
+              soldRooms: availability.soldRooms,
+              rate: availability.baseRate
+          },
+          ...additionalData
+      });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 auditLogSchema.statics.logChannelSync = async function(hotelId, channel, data, success = true, error = null) {
-    return await this.logChange({
-        hotelId,
-        tableName: data.tableName || 'RoomAvailability',
-        recordId: data.recordId,
-        changeType: 'sync',
-        source: 'channel_sync',
-        sourceDetails: {
-            channel: channel._id,
-            channelName: channel.name
-        },
-        newValues: data.newValues || {},
-        error: error ? {
-            message: error.message,
-            code: error.code,
-            stack: error.stack
-        } : undefined,
-        metadata: {
-            priority: success ? 'medium' : 'high',
-            tags: ['channel_sync', channel.category]
-        }
-    });
+  try {
+      return await this.logChange({
+          hotelId,
+          tableName: data.tableName || 'RoomAvailability',
+          recordId: data.recordId,
+          changeType: 'sync',
+          source: 'channel_sync',
+          sourceDetails: {
+              channel: channel._id,
+              channelName: channel.name
+          },
+          newValues: data.newValues || {},
+          error: error ? {
+              message: error.message,
+              code: error.code,
+              stack: error.stack
+          } : undefined,
+          metadata: {
+              priority: success ? 'medium' : 'high',
+              tags: ['channel_sync', channel.category]
+          }
+      });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 auditLogSchema.statics.getChangeHistory = function(tableName, recordId, options = {}) {
@@ -318,20 +334,24 @@ auditLogSchema.statics.getChangeHistory = function(tableName, recordId, options 
 };
 
 auditLogSchema.statics.logFormAction = async function(template, action, userId, additionalData = {}) {
-    return await this.logChange({
-        hotelId: template.hotelId,
-        tableName: 'BookingFormTemplate',
-        recordId: template._id,
-        changeType: action,
-        userId,
-        formDetails: {
-            templateName: template.name,
-            templateCategory: template.category,
-            fieldCount: template.fieldCount || template.fields ?.length || 0,
-            status: template.status
-        },
-        ...additionalData
-    });
+  try {
+      return await this.logChange({
+          hotelId: template.hotelId,
+          tableName: 'BookingFormTemplate',
+          recordId: template._id,
+          changeType: action,
+          userId,
+          formDetails: {
+              templateName: template.name,
+              templateCategory: template.category,
+              fieldCount: template.fieldCount || template.fields ?.length || 0,
+              status: template.status
+          },
+          ...additionalData
+      });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 auditLogSchema.statics.getUnreconciledChanges = function(hotelId, channel = null) {
@@ -353,23 +373,27 @@ auditLogSchema.statics.getUnreconciledChanges = function(hotelId, channel = null
 };
 
 auditLogSchema.statics.logSettingsChange = async function(settings, changeType, userId, additionalData = {}) {
-    return await this.logChange({
-        hotelId: settings.hotelId,
-        tableName: 'WebSettings',
-        recordId: settings._id,
-        changeType,
-        userId,
-        source: additionalData.source || 'manual',
-        oldValues: additionalData.backup ?.data || {},
-        newValues: additionalData.changes || {},
-        metadata: {
-            section: additionalData.section,
-            backup: additionalData.backup,
-            priority: 'medium',
-            tags: ['web_settings', changeType]
-        },
-        ...additionalData
-    });
+  try {
+      return await this.logChange({
+          hotelId: settings.hotelId,
+          tableName: 'WebSettings',
+          recordId: settings._id,
+          changeType,
+          userId,
+          source: additionalData.source || 'manual',
+          oldValues: additionalData.backup ?.data || {},
+          newValues: additionalData.changes || {},
+          metadata: {
+              section: additionalData.section,
+              backup: additionalData.backup,
+              priority: 'medium',
+              tags: ['web_settings', changeType]
+          },
+          ...additionalData
+      });
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance methods

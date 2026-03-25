@@ -53,23 +53,31 @@ class DashboardService {
    * Get real-time dashboard overview data
    */
   async getRealTimeData(hotelId?: string): Promise<ApiResponse<RealTimeDashboard>> {
-    const params = new URLSearchParams();
-    if (hotelId) params.append('hotelId', hotelId);
+    try {
+      const params = new URLSearchParams();
+      if (hotelId) params.append('hotelId', hotelId);
 
-    const response = await api.get(`${this.baseUrl}/real-time?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/real-time?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get key performance indicators
    */
   async getKPIs(hotelId?: string, period?: string): Promise<ApiResponse<KPIData>> {
-    const params = new URLSearchParams();
-    if (hotelId) params.append('hotelId', hotelId);
-    if (period) params.append('period', period);
+    try {
+      const params = new URLSearchParams();
+      if (hotelId) params.append('hotelId', hotelId);
+      if (period) params.append('period', period);
 
-    const response = await api.get(`${this.baseUrl}/kpis?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/kpis?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -80,16 +88,20 @@ class DashboardService {
     floor?: string, 
     roomType?: string
   ): Promise<ApiResponse<OccupancyData>> {
-    const params = new URLSearchParams();
-    params.append('hotelId', hotelId);
-    if (floor) params.append('floor', floor);
-    if (roomType) params.append('roomType', roomType);
+    try {
+      const params = new URLSearchParams();
+      params.append('hotelId', hotelId);
+      if (floor) params.append('floor', floor);
+      if (roomType) params.append('roomType', roomType);
 
-    const endpoint = `${this.baseUrl}/occupancy`;
-    return withRateLimit(endpoint, async () => {
-      const response = await api.get(`${endpoint}?${params.toString()}`);
-      return response.data;
-    });
+      const endpoint = `${this.baseUrl}/occupancy`;
+      return withRateLimit(endpoint, async () => {
+        const response = await api.get(`${endpoint}?${params.toString()}`);
+        return response.data;
+      });
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -101,17 +113,21 @@ class DashboardService {
     startDate?: string,
     endDate?: string
   ): Promise<ApiResponse<RevenueData>> {
-    const params = new URLSearchParams();
-    params.append('hotelId', hotelId);
-    if (period) params.append('period', period);
-    if (startDate) params.append('startDate', startDate);
-    if (endDate) params.append('endDate', endDate);
+    try {
+      const params = new URLSearchParams();
+      params.append('hotelId', hotelId);
+      if (period) params.append('period', period);
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
 
-    const endpoint = `${this.baseUrl}/revenue`;
-    return withRateLimit(endpoint, async () => {
-      const response = await api.get(`${endpoint}?${params.toString()}`);
-      return response.data;
-    });
+      const endpoint = `${this.baseUrl}/revenue`;
+      return withRateLimit(endpoint, async () => {
+        const response = await api.get(`${endpoint}?${params.toString()}`);
+        return response.data;
+      });
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -122,13 +138,17 @@ class DashboardService {
     department?: string,
     staffId?: string
   ): Promise<ApiResponse<StaffPerformanceData>> {
-    const params = new URLSearchParams();
-    params.append('hotelId', hotelId);
-    if (department) params.append('department', department);
-    if (staffId) params.append('staffId', staffId);
+    try {
+      const params = new URLSearchParams();
+      params.append('hotelId', hotelId);
+      if (department) params.append('department', department);
+      if (staffId) params.append('staffId', staffId);
 
-    const response = await api.get(`${this.baseUrl}/staff-performance?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/staff-performance?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -139,13 +159,17 @@ class DashboardService {
     period?: string,
     rating?: number
   ): Promise<ApiResponse<GuestSatisfactionData>> {
-    const params = new URLSearchParams();
-    params.append('hotelId', hotelId);
-    if (period) params.append('period', period);
-    if (rating) params.append('rating', rating.toString());
+    try {
+      const params = new URLSearchParams();
+      params.append('hotelId', hotelId);
+      if (period) params.append('period', period);
+      if (rating) params.append('rating', rating.toString());
 
-    const response = await api.get(`${this.baseUrl}/guest-satisfaction?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/guest-satisfaction?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -155,12 +179,16 @@ class DashboardService {
     hotelId: string,
     category?: string
   ): Promise<ApiResponse<OperationsData>> {
-    const params = new URLSearchParams();
-    params.append('hotelId', hotelId);
-    if (category) params.append('category', category);
+    try {
+      const params = new URLSearchParams();
+      params.append('hotelId', hotelId);
+      if (category) params.append('category', category);
 
-    const response = await api.get(`${this.baseUrl}/operations?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/operations?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -171,13 +199,17 @@ class DashboardService {
     campaignType?: string,
     period?: string
   ): Promise<ApiResponse<MarketingData>> {
-    const params = new URLSearchParams();
-    params.append('hotelId', hotelId);
-    if (campaignType) params.append('campaignType', campaignType);
-    if (period) params.append('period', period);
+    try {
+      const params = new URLSearchParams();
+      params.append('hotelId', hotelId);
+      if (campaignType) params.append('campaignType', campaignType);
+      if (period) params.append('period', period);
 
-    const response = await api.get(`${this.baseUrl}/marketing?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/marketing?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -190,15 +222,19 @@ class DashboardService {
     status?: string,
     limit?: number
   ): Promise<ApiResponse<AlertsData>> {
-    const params = new URLSearchParams();
-    params.append('hotelId', hotelId);
-    if (severity) params.append('severity', severity);
-    if (category) params.append('category', category);
-    if (status) params.append('status', status);
-    if (limit) params.append('limit', limit.toString());
+    try {
+      const params = new URLSearchParams();
+      params.append('hotelId', hotelId);
+      if (severity) params.append('severity', severity);
+      if (category) params.append('category', category);
+      if (status) params.append('status', status);
+      if (limit) params.append('limit', limit.toString());
 
-    const response = await api.get(`${this.baseUrl}/alerts?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/alerts?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -208,12 +244,16 @@ class DashboardService {
     hotelId: string,
     component?: string
   ): Promise<ApiResponse<SystemHealthData>> {
-    const params = new URLSearchParams();
-    params.append('hotelId', hotelId);
-    if (component) params.append('component', component);
+    try {
+      const params = new URLSearchParams();
+      params.append('hotelId', hotelId);
+      if (component) params.append('component', component);
 
-    const response = await api.get(`${this.baseUrl}/system-health?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/system-health?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -231,48 +271,52 @@ class DashboardService {
       filters?: Record<string, unknown>;
     }
   ): Promise<ApiResponse<ReportData>> {
-    const params = new URLSearchParams();
-    params.append('hotelId', hotelId);
-    params.append('reportType', reportType);
+    try {
+      const params = new URLSearchParams();
+      params.append('hotelId', hotelId);
+      params.append('reportType', reportType);
     
-    if (options) {
-      Object.entries(options).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          params.append(key, value.toString());
-        }
-      });
-    }
+      if (options) {
+        Object.entries(options).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            params.append(key, value.toString());
+          }
+        });
+      }
 
-    // Use the dedicated reports API endpoint
-    const response = await api.get(`/reports/revenue?${params.toString()}`);
+      // Use the dedicated reports API endpoint
+      const response = await api.get(`/reports/revenue?${params.toString()}`);
     
-    // Transform the response to match the expected ReportData format
-    const reportData: ReportData = {
-      reportType: reportType,
-      generatedAt: new Date().toISOString(),
-      parameters: {
-        hotelId,
-        startDate: options?.startDate || '',
-        endDate: options?.endDate || '',
-        groupBy: options?.groupBy || 'day',
-        filters: options?.filters || {},
-      },
-      summary: {
-        totalRecords: response.data.data.breakdown?.length || 0,
-        dateRange: {
-          start: options?.startDate || '',
-          end: options?.endDate || '',
+      // Transform the response to match the expected ReportData format
+      const reportData: ReportData = {
+        reportType: reportType,
+        generatedAt: new Date().toISOString(),
+        parameters: {
+          hotelId,
+          startDate: options?.startDate || '',
+          endDate: options?.endDate || '',
+          groupBy: options?.groupBy || 'day',
+          filters: options?.filters || {},
         },
-        keyMetrics: response.data.data.summary || {},
-      },
-      data: response.data.data,
-      charts: [], // Charts will be generated on frontend
-    };
+        summary: {
+          totalRecords: response.data.data.breakdown?.length || 0,
+          dateRange: {
+            start: options?.startDate || '',
+            end: options?.endDate || '',
+          },
+          keyMetrics: response.data.data.summary || {},
+        },
+        data: response.data.data,
+        charts: [], // Charts will be generated on frontend
+      };
 
-    return {
-      status: 'success',
-      data: reportData,
-    };
+      return {
+        status: 'success',
+        data: reportData,
+      };
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -294,12 +338,16 @@ class DashboardService {
     revenue: { today: number; month: number };
     lastUpdated: string;
   }>> {
-    // This could be a lightweight endpoint for header/summary info
-    const params = new URLSearchParams();
-    if (hotelId) params.append('hotelId', hotelId);
+    try {
+      // This could be a lightweight endpoint for header/summary info
+      const params = new URLSearchParams();
+      if (hotelId) params.append('hotelId', hotelId);
 
-    const response = await api.get(`${this.baseUrl}/summary?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`${this.baseUrl}/summary?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -310,14 +358,18 @@ class DashboardService {
     format: 'csv' | 'excel' | 'pdf',
     params: Record<string, string> = {}
   ): Promise<Blob> {
-    const searchParams = new URLSearchParams(params);
-    searchParams.append('format', format);
+    try {
+      const searchParams = new URLSearchParams(params);
+      searchParams.append('format', format);
 
-    const response = await api.get(`${this.baseUrl}/${endpoint}/export?${searchParams.toString()}`, {
-      responseType: 'blob'
-    });
+      const response = await api.get(`${this.baseUrl}/${endpoint}/export?${searchParams.toString()}`, {
+        responseType: 'blob'
+      });
     
-    return response.data;
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -331,8 +383,12 @@ class DashboardService {
       country: string;
     };
   }[]>> {
-    const response = await api.get('/hotels');
-    return response.data;
+    try {
+      const response = await api.get('/hotels');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -345,8 +401,12 @@ class DashboardService {
     preferredCharts?: string[];
     theme?: 'light' | 'dark';
   }): Promise<ApiResponse<unknown>> {
-    const response = await api.patch('/user/preferences/dashboard', preferences);
-    return response.data;
+    try {
+      const response = await api.patch('/user/preferences/dashboard', preferences);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -359,8 +419,12 @@ class DashboardService {
     preferredCharts?: string[];
     theme?: 'light' | 'dark';
   }>> {
-    const response = await api.get('/user/preferences/dashboard');
-    return response.data;
+    try {
+      const response = await api.get('/user/preferences/dashboard');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // New simplified dashboard counts for sidebar
@@ -390,8 +454,12 @@ class DashboardService {
       corporate: number;
     };
   }> {
-    const response = await api.get('/dashboard/counts');
-    return response.data.data;
+    try {
+      const response = await api.get('/dashboard/counts');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

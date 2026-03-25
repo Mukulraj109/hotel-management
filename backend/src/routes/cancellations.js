@@ -55,7 +55,7 @@ router.get(
     const { bookingId } = req.params;
     const hotelId = req.user.hotelId || req.user.hotel;
 
-    const booking = await Booking.findOne({ _id: bookingId, hotelId });
+    const booking = await Booking.findOne({ _id: bookingId, hotelId }).lean();
     if (!booking) throw new ApplicationError('Booking not found', 404);
 
     const refundCalc = cancellationService.calculateRefund(booking);

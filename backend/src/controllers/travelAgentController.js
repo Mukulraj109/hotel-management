@@ -78,7 +78,7 @@ export const registerTravelAgent = catchAsync(async (req, res) => {
   } = req.body;
 
   // Verify user exists and has travel_agent role
-  const user = await User.findById(userId);
+  const user = await User.findById(userId).lean();
   if (!user) {
     throw new ApplicationError('User not found', 404);
   }
@@ -88,7 +88,7 @@ export const registerTravelAgent = catchAsync(async (req, res) => {
   }
 
   // Check if travel agent already exists for this user
-  const existingAgent = await TravelAgent.findOne({ userId });
+  const existingAgent = await TravelAgent.findOne({ userId }).lean();
   if (existingAgent) {
     throw new ApplicationError('Travel agent profile already exists for this user', 400);
   }
@@ -122,7 +122,9 @@ export const registerTravelAgent = catchAsync(async (req, res) => {
     'travelAgentDetails.agentCode': travelAgent.agentCode,
     'travelAgentDetails.commissionRate': travelAgent.commissionStructure.defaultRate,
     'travelAgentDetails.status': 'pending_approval'
-  });
+  },
+    { new: true }
+  );
 
   res.status(201).json({
     success: true,
@@ -192,7 +194,7 @@ export const getAllTravelAgents = catchAsync(async (req, res) => {
     .populate('hotelId', 'name')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   const total = await TravelAgent.countDocuments(query);
 
@@ -236,7 +238,7 @@ export const getTravelAgentById = catchAsync(async (req, res) => {
 
   const travelAgent = await TravelAgent.findById(id)
     .populate('userId', 'name email phone')
-    .populate('hotelId', 'name address');
+    .populate('hotelId', 'name address').lean();
 
   if (!travelAgent) {
     throw new ApplicationError('Travel agent not found', 404);
@@ -285,7 +287,7 @@ export const updateTravelAgent = catchAsync(async (req, res) => {
   const { id } = req.params;
   const updates = req.body;
 
-  const travelAgent = await TravelAgent.findById(id);
+  const travelAgent = await TravelAgent.findById(id).lean();
   if (!travelAgent) {
     throw new ApplicationError('Travel agent not found', 404);
   }
@@ -312,7 +314,9 @@ export const updateTravelAgent = catchAsync(async (req, res) => {
   if (updates.commissionStructure?.defaultRate) {
     await User.findByIdAndUpdate(travelAgent.userId, {
       'travelAgentDetails.commissionRate': updates.commissionStructure.defaultRate
-    });
+    },
+      { new: true }
+    );
   }
 
   res.json({
@@ -373,7 +377,9 @@ export const updateTravelAgentStatus = catchAsync(async (req, res) => {
   // Update user's travel agent status
   await User.findByIdAndUpdate(travelAgent.userId, {
     'travelAgentDetails.status': status
-  });
+  },
+    { new: true }
+  );
 
   res.json({
     success: true,
@@ -417,7 +423,7 @@ export const getTravelAgentPerformance = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { startDate, endDate } = req.query;
 
-  const travelAgent = await TravelAgent.findById(id);
+  const travelAgent = await TravelAgent.findById(id).lean();
   if (!travelAgent) {
     throw new ApplicationError('Travel agent not found', 404);
   }
@@ -465,7 +471,7 @@ export const getMyTravelAgentProfile = catchAsync(async (req, res) => {
   }
 
   const travelAgent = await TravelAgent.findOne({ userId: req.user._id })
-    .populate('hotelId', 'name address');
+    .populate('hotelId', 'name address').lean();
 
   if (!travelAgent) {
     throw new ApplicationError('Travel agent profile not found', 404);
@@ -512,7 +518,7 @@ export const getMyBookings = catchAsync(async (req, res) => {
   const { page = 1, limit = 20, status } = req.query;
   const skip = (page - 1) * limit;
 
-  const travelAgent = await TravelAgent.findOne({ userId: req.user._id });
+  const travelAgent = await TravelAgent.findOne({ userId: req.user._id }).lean();
   if (!travelAgent) {
     throw new ApplicationError('Travel agent profile not found', 404);
   }
@@ -528,7 +534,7 @@ export const getMyBookings = catchAsync(async (req, res) => {
     .populate('hotelId', 'name')
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit)).lean();
 
   const total = await TravelAgentBooking.countDocuments(query);
 
@@ -637,7 +643,7 @@ export const exportBookings = catchAsync(async (req, res) => {
   // If user is a travel agent, only allow exporting their own data
   let travelAgentId = null;
   if (req.user.role === 'travel_agent') {
-    const travelAgent = await TravelAgent.findOne({ userId: req.user._id });
+    const travelAgent = await TravelAgent.findOne({ userId: req.user._id }).lean();
     if (!travelAgent) {
       throw new ApplicationError('Travel agent profile not found', 404);
     }
@@ -701,7 +707,7 @@ export const generateCommissionReport = catchAsync(async (req, res) => {
 
   // If user is a travel agent, only allow generating report for themselves
   if (req.user.role === 'travel_agent') {
-    const travelAgent = await TravelAgent.findOne({ userId: req.user._id });
+    const travelAgent = await TravelAgent.findOne({ userId: req.user._id }).lean();
     if (!travelAgent) {
       throw new ApplicationError('Travel agent profile not found', 404);
     }
@@ -756,7 +762,7 @@ export const createBatchExport = catchAsync(async (req, res) => {
 
   // If user is a travel agent, only allow exporting their own data
   if (req.user.role === 'travel_agent') {
-    const travelAgent = await TravelAgent.findOne({ userId: req.user._id });
+    const travelAgent = await TravelAgent.findOne({ userId: req.user._id }).lean();
     if (!travelAgent) {
       throw new ApplicationError('Travel agent profile not found', 404);
     }
@@ -822,7 +828,7 @@ export const getBookingTrends = catchAsync(async (req, res) => {
 
   // If user is a travel agent, only show their own data
   if (req.user.role === 'travel_agent') {
-    const travelAgent = await TravelAgent.findOne({ userId: req.user._id });
+    const travelAgent = await TravelAgent.findOne({ userId: req.user._id }).lean();
     if (!travelAgent) {
       throw new ApplicationError('Travel agent profile not found', 404);
     }
@@ -868,7 +874,7 @@ export const getRevenueForecast = catchAsync(async (req, res) => {
 
   // If user is a travel agent, only show their own forecast
   if (req.user.role === 'travel_agent') {
-    const travelAgent = await TravelAgent.findOne({ userId: req.user._id });
+    const travelAgent = await TravelAgent.findOne({ userId: req.user._id }).lean();
     if (!travelAgent) {
       throw new ApplicationError('Travel agent profile not found', 404);
     }
@@ -915,7 +921,7 @@ export const getPerformanceMetrics = catchAsync(async (req, res) => {
 
   // If user is a travel agent, only show their own metrics
   if (req.user.role === 'travel_agent') {
-    const travelAgent = await TravelAgent.findOne({ userId: req.user._id });
+    const travelAgent = await TravelAgent.findOne({ userId: req.user._id }).lean();
     if (!travelAgent) {
       throw new ApplicationError('Travel agent profile not found', 404);
     }

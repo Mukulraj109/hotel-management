@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -16,6 +16,7 @@ import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/
 import { useProperty } from '../../context/PropertyContext';
 import toast from 'react-hot-toast';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface RoomTax {
   _id: string;
@@ -88,6 +89,15 @@ const AdminRoomTaxes: React.FC = () => {
   );
 
   const hotelId = selectedPropertyId || localStorage.getItem('hotelId') || '';
+
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     fetchTaxes();
@@ -233,7 +243,8 @@ const AdminRoomTaxes: React.FC = () => {
         if (!result) return; // Confirmation dialog shown
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Tax configuration updated successfully${
           applyToScope !== 'single' ? ` for ${result.propertiesUpdated} properties` : ''
         }`);
@@ -253,7 +264,8 @@ const AdminRoomTaxes: React.FC = () => {
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         toast.success(`Tax configuration updated for ${result.propertiesUpdated} properties`);
         fetchTaxes();
         fetchTaxSummary();
@@ -692,4 +704,4 @@ const AdminRoomTaxes: React.FC = () => {
   );
 };
 
-export default AdminRoomTaxes;
+export default withErrorBoundary(AdminRoomTaxes, { level: 'page' });

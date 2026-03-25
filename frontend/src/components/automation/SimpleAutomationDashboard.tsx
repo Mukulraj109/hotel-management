@@ -144,7 +144,7 @@ const SimpleAutomationDashboard: React.FC = () => {
               </div>
               
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
-                <button
+                <button aria-label="Toggle"
                   onClick={toggleAutomation}
                   className={`px-4 sm:px-6 py-2 sm:py-3 rounded-2xl font-semibold transition-all duration-200 transform hover:scale-105 text-xs sm:text-sm ${
                     automationStatus.isEnabled

@@ -30,7 +30,7 @@ router.get('/rules',
     const hotelId = req.user.hotelId;
 
     const chargeRules = await ExtraPersonCharge.find({ hotelId, isActive: true })
-      .sort({ priority: -1, guestType: 1, 'ageRange.min': 1 });
+      .sort({ priority: -1, guestType: 1, 'ageRange.min': 1 }).lean().limit(1000);
 
     res.json({
       status: 'success',

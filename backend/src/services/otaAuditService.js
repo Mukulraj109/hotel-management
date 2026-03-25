@@ -167,7 +167,7 @@ class OTAAuditService {
    */
   async auditPayload(payloadId) {
     try {
-      const payload = await OTAPayload.findOne({ payloadId }).populate('auditLogId');
+      const payload = await OTAPayload.findOne({ payloadId }).populate('auditLogId').lean();
       if (!payload) {
         throw new Error(`Payload ${payloadId} not found`);
       }
@@ -349,43 +349,47 @@ class OTAAuditService {
    * Check compliance requirements (GDPR, PCI, etc.)
    */
   async checkComplianceRequirements(payload) {
-    const compliance = {
-      gdprCompliant: true,
-      dataRetentionCompliant: true,
-      auditTrailComplete: true,
-      issues: []
-    };
+    try {
+      const compliance = {
+        gdprCompliant: true,
+        dataRetentionCompliant: true,
+        auditTrailComplete: true,
+        issues: []
+      };
 
-    // GDPR compliance
-    if (payload.classification.containsPII) {
-      // Check if consent was recorded (this would be more complex in real implementation)
-      if (!payload.metadata.tags?.includes('gdpr_consent')) {
-        compliance.gdprCompliant = false;
-        compliance.issues.push('GDPR consent not recorded for PII data');
+      // GDPR compliance
+      if (payload.classification.containsPII) {
+        // Check if consent was recorded (this would be more complex in real implementation)
+        if (!payload.metadata.tags?.includes('gdpr_consent')) {
+          compliance.gdprCompliant = false;
+          compliance.issues.push('GDPR consent not recorded for PII data');
+        }
       }
-    }
 
-    // Data retention compliance
-    if (!payload.retention.deleteAfter) {
-      compliance.dataRetentionCompliant = false;
-      compliance.issues.push('No data retention policy set');
-    } else {
-      const now = new Date();
-      if (payload.retention.deleteAfter < now) {
-        compliance.issues.push('Data past retention period');
+      // Data retention compliance
+      if (!payload.retention.deleteAfter) {
+        compliance.dataRetentionCompliant = false;
+        compliance.issues.push('No data retention policy set');
+      } else {
+        const now = new Date();
+        if (payload.retention.deleteAfter < now) {
+          compliance.issues.push('Data past retention period');
+        }
       }
-    }
 
-    // Audit trail completeness
-    if (!payload.auditLogId) {
-      compliance.auditTrailComplete = false;
-      compliance.issues.push('No audit log entry linked');
-    }
+      // Audit trail completeness
+      if (!payload.auditLogId) {
+        compliance.auditTrailComplete = false;
+        compliance.issues.push('No audit log entry linked');
+      }
 
-    compliance.passed = compliance.gdprCompliant && 
-                       compliance.dataRetentionCompliant && 
-                       compliance.auditTrailComplete;
-    return compliance;
+      compliance.passed = compliance.gdprCompliant && 
+                         compliance.dataRetentionCompliant && 
+                         compliance.auditTrailComplete;
+      return compliance;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -402,7 +406,7 @@ class OTAAuditService {
     try {
       // Check if related booking exists
       if (payload.relatedBookingId) {
-        const booking = await Booking.findById(payload.relatedBookingId);
+        const booking = await Booking.findById(payload.relatedBookingId).lean();
         crossRef.bookingExists = !!booking;
 
         if (booking) {
@@ -435,7 +439,7 @@ class OTAAuditService {
 
       // Check parent payload relationship
       if (payload.parentPayloadId) {
-        const parentPayload = await OTAPayload.findOne({ payloadId: payload.parentPayloadId });
+        const parentPayload = await OTAPayload.findOne({ payloadId: payload.parentPayloadId }).lean();
         crossRef.relationsValid = !!parentPayload;
         
         if (!parentPayload) {
@@ -647,9 +651,9 @@ class OTAAuditService {
   async reconcileOTAData(bookingId, options = {}) {
     try {
       const payloads = await OTAPayload.find({ relatedBookingId: bookingId })
-        .sort({ createdAt: 1 });
+        .sort({ createdAt: 1 }).lean().limit(1000);
 
-      const booking = await Booking.findById(bookingId);
+      const booking = await Booking.findById(bookingId).lean();
       if (!booking) {
         throw new Error(`Booking ${bookingId} not found`);
       }

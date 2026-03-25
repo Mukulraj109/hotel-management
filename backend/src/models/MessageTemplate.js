@@ -531,68 +531,80 @@ messageTemplateSchema.methods.clone = function(newName, createdBy) {
 
 // Static method to get popular templates
 messageTemplateSchema.statics.getPopularTemplates = async function(hotelId, type, limit = 10) {
-  const query = { hotelId, isActive: true };
-  if (type) query.type = type;
+  try {
+    const query = { hotelId, isActive: true };
+    if (type) query.type = type;
   
-  return await this.find(query)
-    .sort('-usageCount -lastUsed')
-    .limit(limit)
-    .populate('createdBy', 'name')
-    .select('name type category usageCount performance lastUsed');
+    return await this.find(query)
+      .sort('-usageCount -lastUsed')
+      .limit(limit)
+      .populate('createdBy', 'name')
+      .select('name type category usageCount performance lastUsed').lean();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get templates by trigger
 messageTemplateSchema.statics.getByTrigger = async function(hotelId, event) {
-  return await this.find({
-    hotelId,
-    isActive: true,
-    'triggers.event': event,
-    approvalStatus: 'approved'
-  }).populate('createdBy', 'name');
+  try {
+    return await this.find({
+      hotelId,
+      isActive: true,
+      'triggers.event': event,
+      approvalStatus: 'approved'
+    }).populate('createdBy', 'name').lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get template performance
 messageTemplateSchema.statics.getPerformanceStats = async function(hotelId, startDate, endDate) {
-  const matchQuery = { hotelId };
+  try {
+    const matchQuery = { hotelId };
   
-  if (startDate && endDate) {
-    matchQuery.lastUsed = {
-      $gte: new Date(startDate),
-      $lte: new Date(endDate)
-    };
-  }
+    if (startDate && endDate) {
+      matchQuery.lastUsed = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
+    }
 
-  return await this.aggregate([
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: {
-          type: '$type',
-          category: '$category'
-        },
-        totalTemplates: { $sum: 1 },
-        totalUsage: { $sum: '$usageCount' },
-        avgOpenRate: { $avg: '$performance.avgOpenRate' },
-        avgClickRate: { $avg: '$performance.avgClickRate' },
-        totalRevenue: { $sum: '$performance.revenue' }
-      }
-    },
-    {
-      $group: {
-        _id: '$_id.type',
-        stats: {
-          $push: {
-            category: '$_id.category',
-            totalTemplates: '$totalTemplates',
-            totalUsage: '$totalUsage',
-            avgOpenRate: '$avgOpenRate',
-            avgClickRate: '$avgClickRate',
-            totalRevenue: '$totalRevenue'
+    return await this.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: {
+            type: '$type',
+            category: '$category'
+          },
+          totalTemplates: { $sum: 1 },
+          totalUsage: { $sum: '$usageCount' },
+          avgOpenRate: { $avg: '$performance.avgOpenRate' },
+          avgClickRate: { $avg: '$performance.avgClickRate' },
+          totalRevenue: { $sum: '$performance.revenue' }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.type',
+          stats: {
+            $push: {
+              category: '$_id.category',
+              totalTemplates: '$totalTemplates',
+              totalUsage: '$totalUsage',
+              avgOpenRate: '$avgOpenRate',
+              avgClickRate: '$avgClickRate',
+              totalRevenue: '$totalRevenue'
+            }
           }
         }
       }
-    }
-  ]);
+    ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 export default mongoose.model('MessageTemplate', messageTemplateSchema);

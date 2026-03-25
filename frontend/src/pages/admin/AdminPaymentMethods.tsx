@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import {
   Box,
   Card,
@@ -53,6 +53,7 @@ import { paymentMethodService, PaymentMethod, PaymentMethodType, GatewayProvider
 import { ApplyToSelector, ApplyToConfirmation, ApplyToScope } from '../../components/settings/ApplyToSelector';
 import { useSettingsInheritance, useAffectedPropertiesCount } from '../../hooks/useSettingsInheritance';
 import { useProperty } from '../../context/PropertyContext';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -179,6 +180,15 @@ const AdminPaymentMethods: React.FC = () => {
     'admin', 'manager', 'supervisor', 'front_desk', 'accounting', 'guest_services'
   ];
 
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -244,7 +254,8 @@ const AdminPaymentMethods: React.FC = () => {
         if (!result) return; // Confirmation dialog shown
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         setError(null);
         setApplyToScope('single');
       } else {
@@ -274,7 +285,8 @@ const AdminPaymentMethods: React.FC = () => {
         if (!result) return; // Confirmation dialog shown
 
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         setError(null);
         setApplyToScope('single');
       } else {
@@ -293,7 +305,8 @@ const AdminPaymentMethods: React.FC = () => {
       const result = await confirmBulkUpdate();
       if (result) {
         setShowSuccess(true);
-        setTimeout(() => setShowSuccess(false), 3000);
+        if (successTimerRef.current) clearTimeout(successTimerRef.current);
+        successTimerRef.current = setTimeout(() => setShowSuccess(false), 3000);
         setError(null);
         setApplyToScope('single');
         loadData();
@@ -948,4 +961,4 @@ const AdminPaymentMethods: React.FC = () => {
   );
 };
 
-export default AdminPaymentMethods;
+export default withErrorBoundary(AdminPaymentMethods, { level: 'page' });

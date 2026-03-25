@@ -252,7 +252,7 @@ const PredictiveAnalytics: React.FC<PredictiveAnalyticsProps> = ({
               <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </button>
-            <button
+            <button aria-label="Close"
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600"
             >
@@ -320,7 +320,7 @@ const PredictiveAnalytics: React.FC<PredictiveAnalyticsProps> = ({
               ].map((tab) => {
                 const Icon = tab.icon;
                 return (
-                  <button
+                  <button aria-label="Close"
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as unknown)}
                     className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm ${

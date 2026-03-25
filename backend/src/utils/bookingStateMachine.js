@@ -1,6 +1,7 @@
 export const VALID_TRANSITIONS = {
   pending: ['confirmed', 'cancelled'],
-  confirmed: ['checked_in', 'cancelled', 'no_show'],
+  confirmed: ['checked_in', 'cancelled', 'no_show', 'modified'],
+  modified: ['confirmed', 'checked_in', 'cancelled', 'no_show'],
   checked_in: ['checked_out'],
   checked_out: [],
   cancelled: [],

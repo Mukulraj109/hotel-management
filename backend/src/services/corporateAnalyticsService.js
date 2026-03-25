@@ -30,6 +30,10 @@ class CorporateAnalyticsService {
       };
 
       // Get booking trends and revenue data
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
       const bookingAnalytics = await Booking.aggregate([
         { $match: matchCriteria },
         {
@@ -108,6 +112,10 @@ class CorporateAnalyticsService {
       ]);
 
       // Get month-over-month growth
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
       const monthlyGrowth = await Booking.aggregate([
         {
           $match: {
@@ -170,6 +178,10 @@ class CorporateAnalyticsService {
       }
 
       // Get corporate credit and payment status
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
       const paymentAnalytics = await CorporateCredit.aggregate([
         {
           $match: {
@@ -309,6 +321,10 @@ class CorporateAnalyticsService {
       ]);
 
       // Get payment trends over time
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
       const paymentTrends = await Booking.aggregate([
         {
           $match: {
@@ -393,6 +409,10 @@ class CorporateAnalyticsService {
       };
 
       // Get channel performance metrics
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
       const channelMetrics = await Booking.aggregate([
         { $match: matchCriteria },
         {
@@ -478,6 +498,10 @@ class CorporateAnalyticsService {
       ]);
 
       // Get commission analysis for OTA channels
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
       const commissionAnalysis = await Booking.aggregate([
         {
           $match: {

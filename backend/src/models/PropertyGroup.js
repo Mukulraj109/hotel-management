@@ -321,7 +321,7 @@ propertyGroupSchema.methods.updateMetrics = async function() {
     ]);
 
     // Get property IDs for this group
-    const propertyIds = await Hotel.find({ propertyGroupId: this._id, isActive: true }).distinct('_id');
+    const propertyIds = await Hotel.find({ propertyGroupId: this._id, isActive: true }).distinct('_id').lean().limit(1000);
 
     // Count total rooms for all properties in this group
     const Room = mongoose.model('Room');
@@ -385,49 +385,53 @@ propertyGroupSchema.statics.findByOwner = function(ownerId, options = {}) {
 };
 
 propertyGroupSchema.statics.getGroupStats = async function(groupId) {
-  const group = await this.findById(groupId);
-  if (!group) {
-    throw new Error('Property group not found');
-  }
+  try {
+    const group = await this.findById(groupId).lean();
+    if (!group) {
+      throw new Error('Property group not found');
+    }
   
-  const Hotel = mongoose.model('Hotel');
-  const Booking = mongoose.model('Booking');
+    const Hotel = mongoose.model('Hotel');
+    const Booking = mongoose.model('Booking');
   
-  // Get properties in this group
-  const properties = await Hotel.find({ propertyGroupId: groupId, isActive: true });
-  const propertyIds = properties.map(p => p._id);
+    // Get properties in this group
+    const properties = await Hotel.find({ propertyGroupId: groupId, isActive: true }).lean().limit(1000);
+    const propertyIds = properties.map(p => p._id);
   
-  // Calculate stats
-  const stats = await Promise.all([
-    // Total bookings across all properties
-    Booking.countDocuments({ hotelId: { $in: propertyIds } }),
+    // Calculate stats
+    const stats = await Promise.all([
+      // Total bookings across all properties
+      Booking.countDocuments({ hotelId: { $in: propertyIds } }),
     
-    // Revenue stats (last 30 days)
-    Booking.aggregate([
-      {
-        $match: {
-          hotelId: { $in: propertyIds },
-          status: 'completed',
-          createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+      // Revenue stats (last 30 days)
+      Booking.aggregate([
+        {
+          $match: {
+            hotelId: { $in: propertyIds },
+            status: 'completed',
+            createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: '$totalAmount' },
+            totalBookings: { $sum: 1 }
+          }
         }
-      },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: '$totalAmount' },
-          totalBookings: { $sum: 1 }
-        }
-      }
-    ])
-  ]);
+      ])
+    ]);
   
-  return {
-    group: group.toObject(),
-    properties: properties.length,
-    totalBookings: stats[0],
-    monthlyRevenue: stats[1][0]?.totalRevenue || 0,
-    monthlyBookings: stats[1][0]?.totalBookings || 0
-  };
+    return {
+      group: group.toObject(),
+      properties: properties.length,
+      totalBookings: stats[0],
+      monthlyRevenue: stats[1][0]?.totalRevenue || 0,
+      monthlyBookings: stats[1][0]?.totalBookings || 0
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Pre-save middleware
@@ -440,19 +444,23 @@ propertyGroupSchema.pre('save', function(next) {
 
 // Post-save middleware to update related properties
 propertyGroupSchema.post('save', async function(doc) {
-  if (this.isModified('settings')) {
-    const Hotel = mongoose.model('Hotel');
+  try {
+    if (this.isModified('settings')) {
+      const Hotel = mongoose.model('Hotel');
     
-    // Update all properties in this group with new settings
-    await Hotel.updateMany(
-      { propertyGroupId: doc._id },
-      { 
-        $set: { 
-          'groupSettings.lastSyncAt': new Date(),
-          'groupSettings.version': doc.updatedAt
-        } 
-      }
-    );
+      // Update all properties in this group with new settings
+      await Hotel.updateMany(
+        { propertyGroupId: doc._id },
+        { 
+          $set: { 
+            'groupSettings.lastSyncAt': new Date(),
+            'groupSettings.version': doc.updatedAt
+          } 
+        }
+      );
+    }
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
 });
 

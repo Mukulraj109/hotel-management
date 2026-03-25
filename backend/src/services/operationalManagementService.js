@@ -68,7 +68,7 @@ class OperationalManagementService {
 
       return await Counter.find(filter)
         .sort({ type: 1, name: 1 })
-        .populate('createdBy updatedBy', 'name email');
+        .populate('createdBy updatedBy', 'name email').lean().limit(1000);
     } catch (error) {
       logger.error('Error getting counters:', error);
       throw error;
@@ -191,7 +191,7 @@ class OperationalManagementService {
 
       return await ArrivalDepartureMode.find(filter)
         .sort({ category: 1, displayOrder: 1, name: 1 })
-        .populate('createdBy updatedBy', 'name email');
+        .populate('createdBy updatedBy', 'name email').lean().limit(1000);
     } catch (error) {
       logger.error('Error getting arrival/departure modes:', error);
       throw error;
@@ -295,7 +295,7 @@ class OperationalManagementService {
       return await LostFound.find(query)
         .sort({ 'dates.foundDate': -1 })
         .populate('people.foundBy people.claimedBy people.reportedBy', 'name email')
-        .populate('guest.guestId', 'name email phone');
+        .populate('guest.guestId', 'name email phone').lean().limit(1000);
     } catch (error) {
       logger.error('Error getting lost & found items:', error);
       throw error;
@@ -304,7 +304,7 @@ class OperationalManagementService {
 
   async claimLostFoundItem(itemId, claimedBy, notes, userId) {
     try {
-      const item = await LostFound.findById(itemId);
+      const item = await LostFound.findById(itemId).lean();
       if (!item) {
         throw new ApplicationError('Lost & Found item not found', 404);
       }
@@ -332,7 +332,7 @@ class OperationalManagementService {
 
   async disposeLostFoundItem(itemId, notes, userId) {
     try {
-      const item = await LostFound.findById(itemId);
+      const item = await LostFound.findById(itemId).lean();
       if (!item) {
         throw new ApplicationError('Lost & Found item not found', 404);
       }
@@ -355,7 +355,7 @@ class OperationalManagementService {
 
   async updateLostFoundItemLocation(itemId, newLocation, notes, userId) {
     try {
-      const item = await LostFound.findById(itemId);
+      const item = await LostFound.findById(itemId).lean();
       if (!item) {
         throw new ApplicationError('Lost & Found item not found', 404);
       }
@@ -459,20 +459,25 @@ class OperationalManagementService {
     session.startTransaction();
 
     try {
-      const results = [];
+      // Batch: use bulkWrite to update all counters at once
+      const counterBulkOps = updates.map(({ counterId, status }) => ({
+        updateOne: {
+          filter: { _id: counterId },
+          update: { $set: { status, updatedBy: userId } }
+        }
+      }));
 
-      for (const update of updates) {
-        const { counterId, status } = update;
-        const counter = await Counter.findByIdAndUpdate(
-          counterId,
-          { status, updatedBy: userId },
-          { new: true, session }
-        );
+      if (counterBulkOps.length > 0) {
+        await Counter.bulkWrite(counterBulkOps, { session });
+      }
 
+      const updatedIds = updates.map(u => u.counterId);
+      const results = await Counter.find({ _id: { $in: updatedIds } }).session(session);
+
+      // Log all status updates
+      for (const counter of results) {
+        const update = updates.find(u => u.counterId.toString() === counter._id.toString());
         if (counter) {
-          results.push(counter);
-
-          // Log status update
           await AuditLog.logAction('counter_status_updated', userId, {
             source: 'operational_management_service',
             counterId: counter._id,

@@ -416,6 +416,8 @@ class APIMetricsService extends EventEmitter {
 
       const aggregatedData = await APIMetrics.aggregate(pipeline);
       
+      // Batch: build all upsert operations and execute with bulkWrite
+      const metricsBulkOps = [];
       for (const data of aggregatedData) {
         const aggregatedMetric = {
           hotelId: data._id.hotelId,
@@ -442,7 +444,6 @@ class APIMetricsService extends EventEmitter {
           }
         };
 
-        // Calculate performance metrics from aggregated response times
         const allResponseTimes = data.responseTimes.flat().filter(t => t != null);
         if (allResponseTimes.length > 0) {
           const sortedTimes = allResponseTimes.sort((a, b) => a - b);
@@ -456,17 +457,23 @@ class APIMetricsService extends EventEmitter {
           };
         }
 
-        await APIMetrics.findOneAndUpdate(
-          {
-            hotelId: aggregatedMetric.hotelId,
-            period: toPeriod,
-            timestamp: aggregatedMetric.timestamp,
-            'endpoint.method': aggregatedMetric.endpoint.method,
-            'endpoint.path': aggregatedMetric.endpoint.path
-          },
-          { $set: aggregatedMetric },
-          { upsert: true }
-        );
+        metricsBulkOps.push({
+          updateOne: {
+            filter: {
+              hotelId: aggregatedMetric.hotelId,
+              period: toPeriod,
+              timestamp: aggregatedMetric.timestamp,
+              'endpoint.method': aggregatedMetric.endpoint.method,
+              'endpoint.path': aggregatedMetric.endpoint.path
+            },
+            update: { $set: aggregatedMetric },
+            upsert: true
+          }
+        });
+      }
+
+      if (metricsBulkOps.length > 0) {
+        await APIMetrics.bulkWrite(metricsBulkOps);
       }
 
       logger.info(`Generated ${toPeriod} aggregated metrics from ${fromPeriod} data`, {

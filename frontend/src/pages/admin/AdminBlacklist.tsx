@@ -548,13 +548,13 @@ const AdminBlacklist: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex space-x-2">
-                        <button
+                        <button aria-label="Edit"
                           onClick={() => handleEdit(entry)}
                           className="text-blue-600 hover:text-blue-900"
                         >
                           <PencilIcon className="w-4 h-4" />
                         </button>
-                        <button
+                        <button aria-label="Delete"
                           onClick={() => handleRemove(entry._id)}
                           className="text-green-600 hover:text-green-900"
                         >

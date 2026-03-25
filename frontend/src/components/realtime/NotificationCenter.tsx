@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Bell, X, CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -35,12 +35,21 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [visibleNotifications, setVisibleNotifications] = useState<Notification[]>([]);
 
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     // Auto-dismiss notifications
     notifications.forEach(notification => {
       if (notification.autoDismiss && !notification.read) {
         const dismissAfter = notification.dismissAfter || 5000;
-        setTimeout(() => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
           onDismiss(notification.id);
         }, dismissAfter);
       }
@@ -125,7 +134,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
                       {notification.message}
                     </p>
                     {notification.actionUrl && notification.actionLabel && (
-                      <button
+                      <button aria-label="Notifications"
                         onClick={() => {
                           window.open(notification.actionUrl, '_blank');
                           onMarkAsRead(notification.id);
@@ -136,7 +145,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
                       </button>
                     )}
                   </div>
-                  <button
+                  <button aria-label="Close"
                     onClick={() => onDismiss(notification.id)}
                     className="text-gray-400 hover:text-gray-600 transition-colors"
                   >
@@ -179,7 +188,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
                   const colorClass = getNotificationColor(notification.type);
 
                   return (
-                    <div
+                    <div role="button" tabIndex={0}
                       key={notification.id}
                       className={`p-4 hover:bg-gray-50 transition-colors ${
                         !notification.read ? 'bg-blue-50' : ''
@@ -189,7 +198,11 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
                           onMarkAsRead(notification.id);
                         }
                       }}
-                    >
+                     onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => {
+                        if (!notification.read) {
+                          onMarkAsRead(notification.id);
+                        }
+                      }; if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                       <div className="flex items-start gap-3">
                         <Icon className={`h-5 w-5 mt-0.5 ${colorClass.split(' ')[0]}`} />
                         <div className="flex-1 min-w-0">
@@ -212,7 +225,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
                             {notification.timestamp.toLocaleString()}
                           </p>
                           {notification.actionUrl && notification.actionLabel && (
-                            <button
+                            <button aria-label="Notifications"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 window.open(notification.actionUrl, '_blank');
@@ -224,7 +237,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
                             </button>
                           )}
                         </div>
-                        <button
+                        <button aria-label="Close"
                           onClick={(e) => {
                             e.stopPropagation();
                             onDismiss(notification.id);
@@ -245,7 +258,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
 
       {/* Backdrop */}
       {isOpen && (
-        <div
+        <div aria-hidden="true"
           className="fixed inset-0 z-40"
           onClick={() => setIsOpen(false)}
         />

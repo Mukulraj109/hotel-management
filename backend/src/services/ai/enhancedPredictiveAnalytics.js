@@ -431,7 +431,7 @@ class EnhancedPredictiveAnalytics {
   async generateRevenueOptimization(hotelId, timeframe = 30) {
     try {
       const demandForecast = await this.generateDemandForecast(hotelId, timeframe);
-      const rooms = await Room.find({ hotelId }).populate('roomType');
+      const rooms = await Room.find({ hotelId }).populate('roomType').lean().limit(1000);
       const optimizations = [];
 
       for (const room of rooms) {
@@ -489,7 +489,7 @@ class EnhancedPredictiveAnalytics {
       const bookings = await Booking.find({
         hotelId,
         createdAt: { $gte: startDate, $lte: endDate }
-      }).populate('roomId');
+      }).populate('roomId').lean().limit(1000);
 
       const processedData = [];
       for (let i = 0; i < days; i++) {
@@ -522,22 +522,26 @@ class EnhancedPredictiveAnalytics {
   }
 
   async getExternalFactors(hotelId, days) {
-    // Simulate external factors - in production, integrate with weather APIs, event calendars, etc.
-    const factors = [];
-    for (let i = 0; i < days; i++) {
-      const date = addDays(new Date(), i);
-      factors.push({
-        date: format(date, 'yyyy-MM-dd'),
-        weatherScore: Math.random() * 0.3 + 0.7, // 0.7-1.0
-        eventImpact: Math.random() * 0.5, // 0-0.5
-        economicIndex: Math.random() * 0.2 + 0.9, // 0.9-1.1
-        competitorActivity: Math.random() * 0.3,
-        marketingImpact: Math.random() * 0.2,
-        impact: Math.random() * 0.4 + 0.3, // Combined impact 0.3-0.7
-        events: this.generateSimulatedEvents(date)
-      });
+    try {
+      // Simulate external factors - in production, integrate with weather APIs, event calendars, etc.
+      const factors = [];
+      for (let i = 0; i < days; i++) {
+        const date = addDays(new Date(), i);
+        factors.push({
+          date: format(date, 'yyyy-MM-dd'),
+          weatherScore: Math.random() * 0.3 + 0.7, // 0.7-1.0
+          eventImpact: Math.random() * 0.5, // 0-0.5
+          economicIndex: Math.random() * 0.2 + 0.9, // 0.9-1.1
+          competitorActivity: Math.random() * 0.3,
+          marketingImpact: Math.random() * 0.2,
+          impact: Math.random() * 0.4 + 0.3, // Combined impact 0.3-0.7
+          events: this.generateSimulatedEvents(date)
+        });
+      }
+      return factors;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    return factors;
   }
 
   generateSimulatedEvents(date) {
@@ -558,33 +562,37 @@ class EnhancedPredictiveAnalytics {
   }
 
   async prepareForecastFeatures(hotelId, date, historicalData, externalFactors, seasonalityData) {
-    const features = [];
+    try {
+      const features = [];
     
-    // Temporal features
-    features.push(date.getDay() / 6); // Day of week normalized
-    features.push((date.getMonth() + 1) / 12); // Month normalized
-    features.push(Math.floor((date.getMonth() + 1) / 3) / 4); // Quarter normalized
-    features.push(date.getDay() === 0 || date.getDay() === 6 ? 1 : 0); // Is weekend
-    features.push(0); // Is holiday (would need holiday API)
+      // Temporal features
+      features.push(date.getDay() / 6); // Day of week normalized
+      features.push((date.getMonth() + 1) / 12); // Month normalized
+      features.push(Math.floor((date.getMonth() + 1) / 3) / 4); // Quarter normalized
+      features.push(date.getDay() === 0 || date.getDay() === 6 ? 1 : 0); // Is weekend
+      features.push(0); // Is holiday (would need holiday API)
     
-    // Historical averages (last 30 days)
-    const recentData = historicalData.slice(-30);
-    features.push(recentData.reduce((sum, d) => sum + d.occupancyRate, 0) / recentData.length);
-    features.push(recentData.reduce((sum, d) => sum + d.averageRate, 0) / recentData.length);
-    features.push(recentData.reduce((sum, d) => sum + d.leadTime, 0) / recentData.length);
-    features.push(recentData.reduce((sum, d) => sum + d.bookingCount, 0) / recentData.length / 10); // Normalized
+      // Historical averages (last 30 days)
+      const recentData = historicalData.slice(-30);
+      features.push(recentData.reduce((sum, d) => sum + d.occupancyRate, 0) / recentData.length);
+      features.push(recentData.reduce((sum, d) => sum + d.averageRate, 0) / recentData.length);
+      features.push(recentData.reduce((sum, d) => sum + d.leadTime, 0) / recentData.length);
+      features.push(recentData.reduce((sum, d) => sum + d.bookingCount, 0) / recentData.length / 10); // Normalized
     
-    // External factors
-    features.push(externalFactors.weatherScore);
-    features.push(externalFactors.eventImpact);
-    features.push(externalFactors.economicIndex);
-    features.push(externalFactors.competitorActivity);
-    features.push(externalFactors.marketingImpact);
+      // External factors
+      features.push(externalFactors.weatherScore);
+      features.push(externalFactors.eventImpact);
+      features.push(externalFactors.economicIndex);
+      features.push(externalFactors.competitorActivity);
+      features.push(externalFactors.marketingImpact);
     
-    // Seasonality
-    features.push(seasonalityData.weekly[date.getDay()]);
+      // Seasonality
+      features.push(seasonalityData.weekly[date.getDay()]);
     
-    return features;
+      return features;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   preparePricingFeatures(demand, competitorData, historicalPricing, marketConditions) {
@@ -718,13 +726,17 @@ class EnhancedPredictiveAnalytics {
   }
 
   async calculateModelAccuracy(hotelId) {
-    // Simulate model accuracy - in production, compare predictions with actual outcomes
-    return {
-      demandForecast: 0.85,
-      pricingOptimization: 0.78,
-      cancellationPrediction: 0.82,
-      overall: 0.82
-    };
+    try {
+      // Simulate model accuracy - in production, compare predictions with actual outcomes
+      return {
+        demandForecast: 0.85,
+        pricingOptimization: 0.78,
+        cancellationPrediction: 0.82,
+        overall: 0.82
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Additional helper methods for completeness
@@ -768,39 +780,51 @@ class EnhancedPredictiveAnalytics {
   }
 
   async getCompetitorPricing(hotelId, roomTypeId, days) {
-    // Simulate competitor pricing data
-    const pricing = [];
-    for (let i = 0; i < days; i++) {
-      pricing.push({
-        averagePrice: Math.floor(Math.random() * 100) + 150,
-        priceRange: {
-          min: Math.floor(Math.random() * 50) + 100,
-          max: Math.floor(Math.random() * 100) + 200
-        },
-        position: ['budget', 'mid-range', 'premium'][Math.floor(Math.random() * 3)]
-      });
+    try {
+      // Simulate competitor pricing data
+      const pricing = [];
+      for (let i = 0; i < days; i++) {
+        pricing.push({
+          averagePrice: Math.floor(Math.random() * 100) + 150,
+          priceRange: {
+            min: Math.floor(Math.random() * 50) + 100,
+            max: Math.floor(Math.random() * 100) + 200
+          },
+          position: ['budget', 'mid-range', 'premium'][Math.floor(Math.random() * 3)]
+        });
+      }
+      return pricing;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    return pricing;
   }
 
   async getHistoricalPricing(hotelId, roomTypeId, days) {
-    // Get historical pricing data
-    return {
-      averageRate: 180,
-      trend: 0.02,
-      priceElasticity: 0.5
-    };
+    try {
+      // Get historical pricing data
+      return {
+        averageRate: 180,
+        trend: 0.02,
+        priceElasticity: 0.5
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getMarketConditions(hotelId) {
-    // Get market conditions
-    return {
-      economicIndex: 1.02,
-      seasonalMultiplier: 1.1,
-      competitionLevel: 0.7,
-      demandTrend: 0.05,
-      marketShare: 0.15
-    };
+    try {
+      // Get market conditions
+      return {
+        economicIndex: 1.02,
+        seasonalMultiplier: 1.1,
+        competitionLevel: 0.7,
+        demandTrend: 0.05,
+        marketShare: 0.15
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // Additional implementation methods would go here...

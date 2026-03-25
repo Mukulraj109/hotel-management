@@ -489,6 +489,14 @@ export default function AdminInventoryRequests() {
   }, [connect]);
   */
 
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (selectedPropertyId) {
       fetchRequests();
@@ -537,7 +545,8 @@ export default function AdminInventoryRequests() {
       notification.className = 'fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg z-50 animate-bounce';
       notification.textContent = 'Inventory data updated';
       document.body.appendChild(notification);
-      setTimeout(() => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
         if (document.body.contains(notification)) {
           document.body.removeChild(notification);
         }

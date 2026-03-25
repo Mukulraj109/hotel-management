@@ -164,13 +164,19 @@ class ValidationService {
 
     // Business rules validator
     this.addValidator('businessRules', async (value, rules) => {
-      for (const rule of rules) {
-        const result = await rule(value);
-        if (!result.valid) {
-          return result;
+      try {
+        for (const rule of rules) {
+          const result = await rule(value);
+          if (!result.valid) {
+            return result;
+          }
         }
+        return { valid: true };
+    
+      } catch (error) {
+        console.error('Operation failed:', error.message);
+        throw error;
       }
-      return { valid: true };
     });
   }
 
@@ -440,32 +446,36 @@ class ValidationService {
    * Rate limiting validation
    */
   async validateRateLimit(identifier, action, limits) {
-    const key = `rate_limit:${action}:${identifier}`;
-    const now = Date.now();
+    try {
+      const key = `rate_limit:${action}:${identifier}`;
+      const now = Date.now();
     
-    // This would integrate with Redis in production
-    if (!this.rateLimitCache) {
-      this.rateLimitCache = new Map();
+      // This would integrate with Redis in production
+      if (!this.rateLimitCache) {
+        this.rateLimitCache = new Map();
+      }
+
+      const record = this.rateLimitCache.get(key) || { count: 0, resetTime: now + limits.window };
+
+      if (now > record.resetTime) {
+        record.count = 0;
+        record.resetTime = now + limits.window;
+      }
+
+      record.count++;
+      this.rateLimitCache.set(key, record);
+
+      if (record.count > limits.max) {
+        return {
+          valid: false,
+          message: `Rate limit exceeded for ${action}. Try again in ${Math.ceil((record.resetTime - now) / 1000)} seconds`
+        };
+      }
+
+      return { valid: true };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    const record = this.rateLimitCache.get(key) || { count: 0, resetTime: now + limits.window };
-
-    if (now > record.resetTime) {
-      record.count = 0;
-      record.resetTime = now + limits.window;
-    }
-
-    record.count++;
-    this.rateLimitCache.set(key, record);
-
-    if (record.count > limits.max) {
-      return {
-        valid: false,
-        message: `Rate limit exceeded for ${action}. Try again in ${Math.ceil((record.resetTime - now) / 1000)} seconds`
-      };
-    }
-
-    return { valid: true };
   }
 
   /**
@@ -493,22 +503,26 @@ class ValidationService {
    * Batch validation for multiple records
    */
   async validateBatch(records, schema) {
-    const results = [];
+    try {
+      const results = [];
     
-    for (let i = 0; i < records.length; i++) {
-      const result = await this.validateAndSanitize(records[i], schema);
-      results.push({
-        index: i,
-        ...result
-      });
-    }
+      for (let i = 0; i < records.length; i++) {
+        const result = await this.validateAndSanitize(records[i], schema);
+        results.push({
+          index: i,
+          ...result
+        });
+      }
 
-    return {
-      valid: results.every(r => r.valid),
-      results,
-      validCount: results.filter(r => r.valid).length,
-      invalidCount: results.filter(r => !r.valid).length
-    };
+      return {
+        valid: results.every(r => r.valid),
+        results,
+        validCount: results.filter(r => r.valid).length,
+        invalidCount: results.filter(r => !r.valid).length
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

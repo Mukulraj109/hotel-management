@@ -63,13 +63,17 @@ class PredictiveAnalyticsEngine {
   }
 
   async updateAllModels() {
-    const tasks = [
-      this.updateOccupancyForecastingModel(),
-      this.updateDemandPredictionModel(),
-      this.updateRevenueOptimizationModel()
-    ];
+    try {
+      const tasks = [
+        this.updateOccupancyForecastingModel(),
+        this.updateDemandPredictionModel(),
+        this.updateRevenueOptimizationModel()
+      ];
 
-    await Promise.allSettled(tasks);
+      await Promise.allSettled(tasks);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // OCCUPANCY FORECASTING
@@ -108,56 +112,68 @@ class PredictiveAnalyticsEngine {
   }
 
   async getHistoricalOccupancyData(hotelId, days) {
-    const endDate = new Date();
-    const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    try {
+      const endDate = new Date();
+      const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    // Get aggregated occupancy data
-    const occupancyData = await MonthlyRevenueAggregate.aggregate([
-      {
-        $match: {
-          hotel_id: hotelId,
-          created_at: { $gte: startDate, $lte: endDate }
-        }
-      },
-      {
-        $project: {
-          date: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } },
-          occupancyRate: '$avg_occupancy',
-          revenue: '$total_revenue',
-          bookings: '$total_bookings',
-          month: '$month',
-          year: '$year'
-        }
-      },
-      { $sort: { year: 1, month: 1 } }
-    ]);
+      // Get aggregated occupancy data
+      // Consider caching this aggregation result for 5 minutes
 
-    // Also get daily booking patterns from fact table
-    const dailyPatterns = await FactBookings.aggregate([
-      {
-        $match: {
-          hotel_key: hotelId,
-          check_in_date: { $gte: startDate, $lte: endDate }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            date: { $dateToString: { format: '%Y-%m-%d', date: '$check_in_date' } },
-            dayOfWeek: { $dayOfWeek: '$check_in_date' },
-            month: { $month: '$check_in_date' }
-          },
-          bookingCount: { $sum: 1 },
-          revenue: { $sum: '$revenue_amount' },
-          avgADR: { $avg: '$adr' },
-          isWeekend: { $first: '$is_weekend' },
-          season: { $first: '$season' }
-        }
-      },
-      { $sort: { '_id.date': 1 } }
-    ]);
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
 
-    return { aggregatedData: occupancyData, dailyPatterns };
+      const occupancyData = await MonthlyRevenueAggregate.aggregate([
+        {
+          $match: {
+            hotel_id: hotelId,
+            created_at: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $project: {
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } },
+            occupancyRate: '$avg_occupancy',
+            revenue: '$total_revenue',
+            bookings: '$total_bookings',
+            month: '$month',
+            year: '$year'
+          }
+        },
+        { $sort: { year: 1, month: 1 } }
+      ]);
+
+      // Also get daily booking patterns from fact table
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const dailyPatterns = await FactBookings.aggregate([
+        {
+          $match: {
+            hotel_key: hotelId,
+            check_in_date: { $gte: startDate, $lte: endDate }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              date: { $dateToString: { format: '%Y-%m-%d', date: '$check_in_date' } },
+              dayOfWeek: { $dayOfWeek: '$check_in_date' },
+              month: { $month: '$check_in_date' }
+            },
+            bookingCount: { $sum: 1 },
+            revenue: { $sum: '$revenue_amount' },
+            avgADR: { $avg: '$adr' },
+            isWeekend: { $first: '$is_weekend' },
+            season: { $first: '$season' }
+          }
+        },
+        { $sort: { '_id.date': 1 } }
+      ]);
+
+      return { aggregatedData: occupancyData, dailyPatterns };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // DEMAND PREDICTION
@@ -195,55 +211,67 @@ class PredictiveAnalyticsEngine {
   }
 
   async getHistoricalDemandData(hotelId) {
-    // Get booking lead time patterns, cancellation rates, etc.
-    const demandMetrics = await FactBookings.aggregate([
-      {
-        $match: {
-          hotel_key: hotelId,
-          created_at: { $gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            month: { $month: '$check_in_date' },
-            dayOfWeek: { $dayOfWeek: '$check_in_date' },
-            season: '$season'
-          },
-          avgBookingLeadDays: { $avg: '$booking_lead_days' },
-          totalBookings: { $sum: 1 },
-          avgRevenue: { $avg: '$revenue_amount' },
-          avgADR: { $avg: '$adr' },
-          bookingChannels: { 
-            $push: {
-              channel: '$booking_channel',
-              guestSegment: '$guest_segment'
+    try {
+      // Get booking lead time patterns, cancellation rates, etc.
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const demandMetrics = await FactBookings.aggregate([
+        {
+          $match: {
+            hotel_key: hotelId,
+            created_at: { $gte: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000) }
+          }
+        },
+        {
+          $group: {
+            _id: {
+              month: { $month: '$check_in_date' },
+              dayOfWeek: { $dayOfWeek: '$check_in_date' },
+              season: '$season'
+            },
+            avgBookingLeadDays: { $avg: '$booking_lead_days' },
+            totalBookings: { $sum: 1 },
+            avgRevenue: { $avg: '$revenue_amount' },
+            avgADR: { $avg: '$adr' },
+            bookingChannels: { 
+              $push: {
+                channel: '$booking_channel',
+                guestSegment: '$guest_segment'
+              }
             }
           }
         }
-      }
-    ]);
+      ]);
 
-    return demandMetrics;
+      return demandMetrics;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getExternalFactors(targetDate) {
-    // In a real implementation, you'd fetch from external APIs
-    // For now, we'll simulate with basic calendar and seasonal factors
-    const date = new Date(targetDate);
-    const month = date.getMonth() + 1;
-    const dayOfWeek = date.getDay();
-    const season = DataWarehouseHelpers.calculateSeason(date);
+    try {
+      // In a real implementation, you'd fetch from external APIs
+      // For now, we'll simulate with basic calendar and seasonal factors
+      const date = new Date(targetDate);
+      const month = date.getMonth() + 1;
+      const dayOfWeek = date.getDay();
+      const season = DataWarehouseHelpers.calculateSeason(date);
     
-    return {
-      season,
-      isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
-      isHoliday: this.isHolidayPeriod(date),
-      economicIndicator: 1.0, // Placeholder
-      weatherForecast: 'fair', // Placeholder
-      eventCalendar: [], // Placeholder for local events
-      competitorPricing: null // Placeholder
-    };
+      return {
+        season,
+        isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
+        isHoliday: this.isHolidayPeriod(date),
+        economicIndicator: 1.0, // Placeholder
+        weatherForecast: 'fair', // Placeholder
+        eventCalendar: [], // Placeholder for local events
+        competitorPricing: null // Placeholder
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   isHolidayPeriod(date) {
@@ -291,44 +319,52 @@ class PredictiveAnalyticsEngine {
   }
 
   async calculateMarketPosition(hotelId) {
-    const metrics = await MonthlyRevenueAggregate.aggregate([
-      {
-        $match: {
-          hotel_id: hotelId,
-          created_at: { $gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) }
+    try {
+      // Consider caching this aggregation result for 5 minutes
+
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const metrics = await MonthlyRevenueAggregate.aggregate([
+        {
+          $match: {
+            hotel_id: hotelId,
+            created_at: { $gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            avgADR: { $avg: '$avg_adr' },
+            avgRevPAR: { $avg: '$avg_revpar' },
+            avgOccupancy: { $avg: '$avg_occupancy' },
+            marketShare: { $avg: '$total_bookings' } // Simplified
+          }
         }
-      },
-      {
-        $group: {
-          _id: null,
-          avgADR: { $avg: '$avg_adr' },
-          avgRevPAR: { $avg: '$avg_revpar' },
-          avgOccupancy: { $avg: '$avg_occupancy' },
-          marketShare: { $avg: '$total_bookings' } // Simplified
-        }
+      ]);
+
+      if (!metrics.length) {
+        return {
+          adrPercentile: 50,
+          revparPercentile: 50,
+          occupancyPercentile: 50,
+          overallRank: 'average'
+        };
       }
-    ]);
 
-    if (!metrics.length) {
-      return {
-        adrPercentile: 50,
-        revparPercentile: 50,
-        occupancyPercentile: 50,
-        overallRank: 'average'
-      };
-    }
-
-    const hotelMetrics = metrics[0];
+      const hotelMetrics = metrics[0];
     
-    // In a real system, you'd compare against market benchmarks
-    return {
-      adrPercentile: this.calculatePercentile(hotelMetrics.avgADR, 'adr'),
-      revparPercentile: this.calculatePercentile(hotelMetrics.avgRevPAR, 'revpar'),
-      occupancyPercentile: this.calculatePercentile(hotelMetrics.avgOccupancy, 'occupancy'),
-      overallRank: this.determineOverallRank(hotelMetrics),
-      strengthAreas: this.identifyStrengths(hotelMetrics),
-      improvementAreas: this.identifyWeaknesses(hotelMetrics)
-    };
+      // In a real system, you'd compare against market benchmarks
+      return {
+        adrPercentile: this.calculatePercentile(hotelMetrics.avgADR, 'adr'),
+        revparPercentile: this.calculatePercentile(hotelMetrics.avgRevPAR, 'revpar'),
+        occupancyPercentile: this.calculatePercentile(hotelMetrics.avgOccupancy, 'occupancy'),
+        overallRank: this.determineOverallRank(hotelMetrics),
+        strengthAreas: this.identifyStrengths(hotelMetrics),
+        improvementAreas: this.identifyWeaknesses(hotelMetrics)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   calculatePercentile(value, metric) {
@@ -390,68 +426,84 @@ class PredictiveAnalyticsEngine {
   }
 
   async performCompetitiveAnalysis(hotelId, competitors) {
-    // Placeholder for competitive analysis
-    // In production, you'd integrate with competitive intelligence APIs
-    return {
-      competitorCount: competitors.length,
-      marketShareEstimate: '15%', // Placeholder
-      pricingComparison: 'competitive',
-      strengthsVsCompetitors: ['service quality', 'location'],
-      weaknessesVsCompetitors: ['pricing', 'amenities'],
-      competitiveThreats: ['new competitor opening', 'price wars'],
-      competitiveOpportunities: ['underserved segments', 'premium positioning']
-    };
+    try {
+      // Placeholder for competitive analysis
+      // In production, you'd integrate with competitive intelligence APIs
+      return {
+        competitorCount: competitors.length,
+        marketShareEstimate: '15%', // Placeholder
+        pricingComparison: 'competitive',
+        strengthsVsCompetitors: ['service quality', 'location'],
+        weaknessesVsCompetitors: ['pricing', 'amenities'],
+        competitiveThreats: ['new competitor opening', 'price wars'],
+        competitiveOpportunities: ['underserved segments', 'premium positioning']
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async identifyMarketTrends(hotelId, timeframe) {
-    const days = parseInt(timeframe.replace('d', ''));
-    const trends = await this.calculateTrends(hotelId, days);
+    try {
+      const days = parseInt(timeframe.replace('d', ''));
+      const trends = await this.calculateTrends(hotelId, days);
     
-    return {
-      occupancyTrend: trends.occupancy,
-      adrTrend: trends.adr,
-      revparTrend: trends.revpar,
-      bookingPatternTrends: trends.bookingPatterns,
-      seasonalFactors: trends.seasonal,
-      emergingPatterns: trends.emerging
-    };
+      return {
+        occupancyTrend: trends.occupancy,
+        adrTrend: trends.adr,
+        revparTrend: trends.revpar,
+        bookingPatternTrends: trends.bookingPatterns,
+        seasonalFactors: trends.seasonal,
+        emergingPatterns: trends.emerging
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async calculateTrends(hotelId, days) {
-    const data = await MonthlyRevenueAggregate.aggregate([
-      {
-        $match: {
-          hotel_id: hotelId,
-          created_at: { $gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) }
-        }
-      },
-      { $sort: { created_at: 1 } }
-    ]);
+    try {
+      // Consider caching this aggregation result for 5 minutes
 
-    if (data.length < 2) {
+      // const cacheKey = `agg:${JSON.stringify(filter || {})}`;
+
+      const data = await MonthlyRevenueAggregate.aggregate([
+        {
+          $match: {
+            hotel_id: hotelId,
+            created_at: { $gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) }
+          }
+        },
+        { $sort: { created_at: 1 } }
+      ]);
+
+      if (data.length < 2) {
+        return {
+          occupancy: 'insufficient_data',
+          adr: 'insufficient_data',
+          revpar: 'insufficient_data',
+          bookingPatterns: [],
+          seasonal: {},
+          emerging: []
+        };
+      }
+
+      // Calculate simple linear trends
+      const occupancyTrend = this.calculateLinearTrend(data.map(d => d.avg_occupancy));
+      const adrTrend = this.calculateLinearTrend(data.map(d => d.avg_adr));
+      const revparTrend = this.calculateLinearTrend(data.map(d => d.avg_revpar));
+
       return {
-        occupancy: 'insufficient_data',
-        adr: 'insufficient_data',
-        revpar: 'insufficient_data',
-        bookingPatterns: [],
-        seasonal: {},
-        emerging: []
+        occupancy: this.interpretTrend(occupancyTrend),
+        adr: this.interpretTrend(adrTrend),
+        revpar: this.interpretTrend(revparTrend),
+        bookingPatterns: this.analyzeBookingPatterns(data),
+        seasonal: this.analyzeSeasonalPatterns(data),
+        emerging: this.identifyEmergingPatterns(data)
       };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Calculate simple linear trends
-    const occupancyTrend = this.calculateLinearTrend(data.map(d => d.avg_occupancy));
-    const adrTrend = this.calculateLinearTrend(data.map(d => d.avg_adr));
-    const revparTrend = this.calculateLinearTrend(data.map(d => d.avg_revpar));
-
-    return {
-      occupancy: this.interpretTrend(occupancyTrend),
-      adr: this.interpretTrend(adrTrend),
-      revpar: this.interpretTrend(revparTrend),
-      bookingPatterns: this.analyzeBookingPatterns(data),
-      seasonal: this.analyzeSeasonalPatterns(data),
-      emerging: this.identifyEmergingPatterns(data)
-    };
   }
 
   calculateLinearTrend(values) {
@@ -533,104 +585,116 @@ class PredictiveAnalyticsEngine {
   }
 
   async identifyOpportunities(hotelId) {
-    // Analyze data to identify revenue opportunities
-    const opportunities = [];
+    try {
+      // Analyze data to identify revenue opportunities
+      const opportunities = [];
     
-    const metrics = await this.calculateMarketPosition(hotelId);
+      const metrics = await this.calculateMarketPosition(hotelId);
     
-    if (metrics.occupancyPercentile >= 75 && metrics.adrPercentile <= 50) {
-      opportunities.push({
-        type: 'pricing_optimization',
-        description: 'High occupancy with below-average ADR suggests pricing opportunity',
-        potential_impact: 'high',
-        effort: 'medium'
-      });
+      if (metrics.occupancyPercentile >= 75 && metrics.adrPercentile <= 50) {
+        opportunities.push({
+          type: 'pricing_optimization',
+          description: 'High occupancy with below-average ADR suggests pricing opportunity',
+          potential_impact: 'high',
+          effort: 'medium'
+        });
+      }
+    
+      if (metrics.adrPercentile >= 75 && metrics.occupancyPercentile <= 50) {
+        opportunities.push({
+          type: 'demand_generation',
+          description: 'High ADR with low occupancy suggests need for marketing/promotion',
+          potential_impact: 'high',
+          effort: 'high'
+        });
+      }
+    
+      return opportunities;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    if (metrics.adrPercentile >= 75 && metrics.occupancyPercentile <= 50) {
-      opportunities.push({
-        type: 'demand_generation',
-        description: 'High ADR with low occupancy suggests need for marketing/promotion',
-        potential_impact: 'high',
-        effort: 'high'
-      });
-    }
-    
-    return opportunities;
   }
 
   async assessMarketRisks(hotelId) {
-    // Assess potential market risks
-    const risks = [];
+    try {
+      // Assess potential market risks
+      const risks = [];
     
-    const trends = await this.calculateTrends(hotelId, 90);
+      const trends = await this.calculateTrends(hotelId, 90);
     
-    if (trends.occupancy === 'decreasing') {
-      risks.push({
-        type: 'demand_decline',
-        severity: 'medium',
-        description: 'Declining occupancy trend observed',
-        mitigation: 'Increase marketing efforts and review pricing strategy'
-      });
+      if (trends.occupancy === 'decreasing') {
+        risks.push({
+          type: 'demand_decline',
+          severity: 'medium',
+          description: 'Declining occupancy trend observed',
+          mitigation: 'Increase marketing efforts and review pricing strategy'
+        });
+      }
+    
+      if (trends.adr === 'decreasing') {
+        risks.push({
+          type: 'price_erosion',
+          severity: 'high',
+          description: 'Average daily rate showing downward trend',
+          mitigation: 'Review competitive positioning and value proposition'
+        });
+      }
+    
+      return risks;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    if (trends.adr === 'decreasing') {
-      risks.push({
-        type: 'price_erosion',
-        severity: 'high',
-        description: 'Average daily rate showing downward trend',
-        mitigation: 'Review competitive positioning and value proposition'
-      });
-    }
-    
-    return risks;
   }
 
   async generateStrategyRecommendations(hotelId) {
-    const position = await this.calculateMarketPosition(hotelId);
-    const opportunities = await this.identifyOpportunities(hotelId);
-    const risks = await this.assessMarketRisks(hotelId);
+    try {
+      const position = await this.calculateMarketPosition(hotelId);
+      const opportunities = await this.identifyOpportunities(hotelId);
+      const risks = await this.assessMarketRisks(hotelId);
     
-    const recommendations = [];
+      const recommendations = [];
     
-    // Strategic recommendations based on market position
-    switch (position.overallRank) {
-      case 'top_performer':
-        recommendations.push({
-          strategy: 'maintain_leadership',
-          actions: ['Monitor competitive threats', 'Invest in service excellence', 'Premium positioning']
-        });
-        break;
-      case 'above_average':
-        recommendations.push({
-          strategy: 'growth_acceleration',
-          actions: ['Identify underperforming segments', 'Optimize pricing', 'Market share expansion']
-        });
-        break;
-      case 'average':
-        recommendations.push({
-          strategy: 'differentiation',
-          actions: ['Find unique value proposition', 'Improve operational efficiency', 'Targeted marketing']
-        });
-        break;
-      default:
-        recommendations.push({
-          strategy: 'turnaround',
-          actions: ['Address fundamental issues', 'Cost optimization', 'Repositioning strategy']
-        });
-    }
-    
-    // Opportunity-based recommendations
-    opportunities.forEach(opp => {
-      if (opp.potential_impact === 'high') {
-        recommendations.push({
-          strategy: 'opportunity_capture',
-          actions: [opp.description, `Focus on ${opp.type}`]
-        });
+      // Strategic recommendations based on market position
+      switch (position.overallRank) {
+        case 'top_performer':
+          recommendations.push({
+            strategy: 'maintain_leadership',
+            actions: ['Monitor competitive threats', 'Invest in service excellence', 'Premium positioning']
+          });
+          break;
+        case 'above_average':
+          recommendations.push({
+            strategy: 'growth_acceleration',
+            actions: ['Identify underperforming segments', 'Optimize pricing', 'Market share expansion']
+          });
+          break;
+        case 'average':
+          recommendations.push({
+            strategy: 'differentiation',
+            actions: ['Find unique value proposition', 'Improve operational efficiency', 'Targeted marketing']
+          });
+          break;
+        default:
+          recommendations.push({
+            strategy: 'turnaround',
+            actions: ['Address fundamental issues', 'Cost optimization', 'Repositioning strategy']
+          });
       }
-    });
     
-    return recommendations;
+      // Opportunity-based recommendations
+      opportunities.forEach(opp => {
+        if (opp.potential_impact === 'high') {
+          recommendations.push({
+            strategy: 'opportunity_capture',
+            actions: [opp.description, `Focus on ${opp.type}`]
+          });
+        }
+      });
+    
+      return recommendations;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   // MODEL UPDATE METHODS
@@ -666,66 +730,74 @@ class PredictiveAnalyticsEngine {
   }
 
   async shutdown() {
-    this.logger.info('Shutting down Predictive Analytics Engine');
+    try {
+      this.logger.info('Shutting down Predictive Analytics Engine');
     
-    // Stop all scheduled jobs
-    this.scheduledJobs.forEach((job, name) => {
-      job.destroy();
-      this.logger.info(`Stopped scheduled job: ${name}`);
-    });
+      // Stop all scheduled jobs
+      this.scheduledJobs.forEach((job, name) => {
+        job.destroy();
+        this.logger.info(`Stopped scheduled job: ${name}`);
+      });
     
-    this.scheduledJobs.clear();
-    this.isInitialized = false;
+      this.scheduledJobs.clear();
+      this.isInitialized = false;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 
 // SIMPLIFIED STATISTICAL MODELS
 class OccupancyForecastingModel {
   async predict(historicalData, forecastDays, options = {}) {
-    // Simplified linear regression forecasting
-    const { aggregatedData, dailyPatterns } = historicalData;
+    try {
+      // Simplified linear regression forecasting
+      const { aggregatedData, dailyPatterns } = historicalData;
     
-    if (!aggregatedData.length && !dailyPatterns.length) {
+      if (!aggregatedData.length && !dailyPatterns.length) {
+        return {
+          predictions: Array(forecastDays).fill(50), // Default to 50% occupancy
+          confidence: 0.3,
+          seasonalFactors: {},
+          trendAnalysis: { trend: 'insufficient_data', strength: 'weak' },
+          accuracy: 0.3
+        };
+      }
+    
+      // Use daily patterns for more granular forecasting
+      const occupancyValues = dailyPatterns.length > 0 ? 
+        dailyPatterns.map(d => (d.bookingCount / 100) * 100) : // Simplified occupancy calculation
+        aggregatedData.map(d => d.occupancyRate);
+    
+      const predictions = [];
+      const trend = this.calculateTrend(occupancyValues);
+      const seasonalFactors = this.calculateSeasonalFactors(dailyPatterns);
+    
+      for (let i = 0; i < forecastDays; i++) {
+        const baseValue = occupancyValues.length > 0 ? 
+          occupancyValues[occupancyValues.length - 1] : 50;
+        const trendAdjustment = trend * (i + 1);
+        const seasonalAdjustment = this.getSeasonalAdjustment(i, seasonalFactors);
+      
+        let prediction = baseValue + trendAdjustment + seasonalAdjustment;
+        prediction = Math.max(0, Math.min(100, prediction)); // Clamp to 0-100%
+      
+        predictions.push(Math.round(prediction * 100) / 100);
+      }
+    
       return {
-        predictions: Array(forecastDays).fill(50), // Default to 50% occupancy
-        confidence: 0.3,
-        seasonalFactors: {},
-        trendAnalysis: { trend: 'insufficient_data', strength: 'weak' },
-        accuracy: 0.3
+        predictions,
+        confidence: 0.75,
+        seasonalFactors,
+        trendAnalysis: {
+          trend: trend > 0 ? 'increasing' : trend < 0 ? 'decreasing' : 'stable',
+          strength: Math.abs(trend) > 1 ? 'strong' : 'moderate'
+        },
+        accuracy: 0.75
       };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    // Use daily patterns for more granular forecasting
-    const occupancyValues = dailyPatterns.length > 0 ? 
-      dailyPatterns.map(d => (d.bookingCount / 100) * 100) : // Simplified occupancy calculation
-      aggregatedData.map(d => d.occupancyRate);
-    
-    const predictions = [];
-    const trend = this.calculateTrend(occupancyValues);
-    const seasonalFactors = this.calculateSeasonalFactors(dailyPatterns);
-    
-    for (let i = 0; i < forecastDays; i++) {
-      const baseValue = occupancyValues.length > 0 ? 
-        occupancyValues[occupancyValues.length - 1] : 50;
-      const trendAdjustment = trend * (i + 1);
-      const seasonalAdjustment = this.getSeasonalAdjustment(i, seasonalFactors);
-      
-      let prediction = baseValue + trendAdjustment + seasonalAdjustment;
-      prediction = Math.max(0, Math.min(100, prediction)); // Clamp to 0-100%
-      
-      predictions.push(Math.round(prediction * 100) / 100);
-    }
-    
-    return {
-      predictions,
-      confidence: 0.75,
-      seasonalFactors,
-      trendAnalysis: {
-        trend: trend > 0 ? 'increasing' : trend < 0 ? 'decreasing' : 'stable',
-        strength: Math.abs(trend) > 1 ? 'strong' : 'moderate'
-      },
-      accuracy: 0.75
-    };
   }
   
   calculateTrend(values) {
@@ -767,18 +839,22 @@ class OccupancyForecastingModel {
 
 class DemandPredictionModel {
   async predict(historicalDemand, targetDate, externalFactors, options = {}) {
-    // Simplified demand prediction
-    const baseDemand = this.calculateBaseDemand(historicalDemand, targetDate);
-    const adjustedDemand = this.applyExternalFactors(baseDemand, externalFactors);
+    try {
+      // Simplified demand prediction
+      const baseDemand = this.calculateBaseDemand(historicalDemand, targetDate);
+      const adjustedDemand = this.applyExternalFactors(baseDemand, externalFactors);
     
-    return {
-      demand: Math.round(adjustedDemand),
-      category: this.categorizeDemand(adjustedDemand),
-      confidence: 0.7,
-      factors: this.identifyInfluencingFactors(externalFactors),
-      recommendations: this.generateRecommendations(adjustedDemand, externalFactors),
-      elasticity: this.calculatePriceElasticity(historicalDemand)
-    };
+      return {
+        demand: Math.round(adjustedDemand),
+        category: this.categorizeDemand(adjustedDemand),
+        confidence: 0.7,
+        factors: this.identifyInfluencingFactors(externalFactors),
+        recommendations: this.generateRecommendations(adjustedDemand, externalFactors),
+        elasticity: this.calculatePriceElasticity(historicalDemand)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   calculateBaseDemand(historicalDemand, targetDate) {
@@ -869,13 +945,17 @@ class DemandPredictionModel {
 
 class RevenueOptimizationModel {
   async predict(data, options = {}) {
-    // Placeholder for revenue optimization
-    // In production, this would use complex algorithms
-    return {
-      optimizedPricing: {},
-      revenueProjection: 0,
-      recommendations: []
-    };
+    try {
+      // Placeholder for revenue optimization
+      // In production, this would use complex algorithms
+      return {
+        optimizedPricing: {},
+        revenueProjection: 0,
+        recommendations: []
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 

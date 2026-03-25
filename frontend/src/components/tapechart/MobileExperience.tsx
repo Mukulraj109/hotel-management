@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -60,6 +60,20 @@ export const MobileExperience: React.FC<MobileExperienceProps> = () => {
   const [loading, setLoading] = useState(false);
 
   // Generate mock data for mobile features
+  const isMountedRef = useRef(true);
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
+
   useEffect(() => {
     generateMockDevices();
     generateMockQRScans();
@@ -192,6 +206,7 @@ export const MobileExperience: React.FC<MobileExperienceProps> = () => {
     try {
       // Simulate sync process
       await new Promise(resolve => setTimeout(resolve, 2000));
+    if (!isMountedRef.current) return;
 
       // Update all devices to syncing status
       setMobileDevices(prev => prev.map(device => ({
@@ -200,7 +215,8 @@ export const MobileExperience: React.FC<MobileExperienceProps> = () => {
       })));
 
       // After sync, mark as online
-      setTimeout(() => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
         setMobileDevices(prev => prev.map(device => ({
           ...device,
           status: 'online',

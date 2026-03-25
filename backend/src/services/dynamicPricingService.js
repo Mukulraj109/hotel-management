@@ -50,7 +50,7 @@ class DynamicPricingService {
       const roomTypeQuery = { hotelId, isActive: true };
       if (roomTypeId) roomTypeQuery._id = roomTypeId;
       
-      const roomTypes = await RoomType.find(roomTypeQuery);
+      const roomTypes = await RoomType.find(roomTypeQuery).lean().limit(1000);
       
       const results = [];
       const dateRange = this.getDateRange(startDate, endDate);
@@ -111,7 +111,7 @@ class DynamicPricingService {
         hotelId,
         roomTypeId: roomType._id,
         date
-      });
+      }).lean();
 
       if (!availability) {
         logger.warn(`No availability data for ${roomType.name} on ${date}`);
@@ -239,7 +239,7 @@ class DynamicPricingService {
         hotelId,
         roomTypeId,
         date
-      });
+      }).lean();
 
       // Generate forecast if not exists or outdated
       if (!forecast || this.isForecastOutdated(forecast)) {
@@ -285,7 +285,7 @@ class DynamicPricingService {
         roomType: roomType.legacyType, // Map room type
         date,
         'dataQuality.confidence': { $gte: 70 }
-      }).populate('competitorId');
+      }).populate('competitorId').lean().limit(1000);
 
       if (competitorRates.length === 0) {
         return null;
@@ -365,26 +365,30 @@ class DynamicPricingService {
    * Calculate revenue impact of price change
    */
   async calculateRevenueImpact(currentRate, newRate, totalRooms, currentOccupancy) {
-    const rateChange = newRate - currentRate;
-    const rateChangePercent = (rateChange / currentRate) * 100;
+    try {
+      const rateChange = newRate - currentRate;
+      const rateChangePercent = (rateChange / currentRate) * 100;
 
-    // Simple price elasticity model
-    const priceElasticity = -0.8; // Assumed elasticity
-    const demandChange = rateChangePercent * priceElasticity;
-    const newOccupancy = Math.max(0, Math.min(100, currentOccupancy + demandChange));
+      // Simple price elasticity model
+      const priceElasticity = -0.8; // Assumed elasticity
+      const demandChange = rateChangePercent * priceElasticity;
+      const newOccupancy = Math.max(0, Math.min(100, currentOccupancy + demandChange));
 
-    const currentRevenue = (currentOccupancy / 100) * totalRooms * currentRate;
-    const projectedRevenue = (newOccupancy / 100) * totalRooms * newRate;
-    const revenueChange = projectedRevenue - currentRevenue;
+      const currentRevenue = (currentOccupancy / 100) * totalRooms * currentRate;
+      const projectedRevenue = (newOccupancy / 100) * totalRooms * newRate;
+      const revenueChange = projectedRevenue - currentRevenue;
 
-    return {
-      currentRevenue: Math.round(currentRevenue),
-      projectedRevenue: Math.round(projectedRevenue),
-      revenueChange: Math.round(revenueChange),
-      revenueChangePercent: Math.round((revenueChange / currentRevenue) * 10000) / 100,
-      occupancyImpact: Math.round((newOccupancy - currentOccupancy) * 100) / 100,
-      recommendationScore: this.calculateRecommendationScore(revenueChange, rateChangePercent)
-    };
+      return {
+        currentRevenue: Math.round(currentRevenue),
+        projectedRevenue: Math.round(projectedRevenue),
+        revenueChange: Math.round(revenueChange),
+        revenueChangePercent: Math.round((revenueChange / currentRevenue) * 10000) / 100,
+        occupancyImpact: Math.round((newOccupancy - currentOccupancy) * 100) / 100,
+        recommendationScore: this.calculateRecommendationScore(revenueChange, rateChangePercent)
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**

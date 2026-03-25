@@ -44,7 +44,7 @@ class RoomBlockController {
         _id: { $in: roomIds },
         isActive: true,
         ...(hotelId && { hotelId })
-      });
+      }).lean().limit(1000);
 
       if (rooms.length !== roomIds.length) {
         return res.status(400).json({
@@ -63,7 +63,7 @@ class RoomBlockController {
           { endDate: { $gt: startDate, $lte: endDate } },
           { startDate: { $lte: startDate }, endDate: { $gte: endDate } }
         ]
-      });
+      }).lean().limit(1000);
 
       if (conflictingBlocks.length > 0) {
         return res.status(400).json({
@@ -113,7 +113,7 @@ class RoomBlockController {
       const populatedBlock = await RoomBlock.findById(roomBlock._id)
         .populate('corporateId', 'name')
         .populate('rooms.roomId', 'roomNumber type')
-        .populate('createdBy', 'name email');
+        .populate('createdBy', 'name email').lean();
 
       res.status(201).json({
         success: true,
@@ -238,35 +238,36 @@ class RoomBlockController {
       const { id } = req.params;
       const updates = req.body;
 
-      const roomBlock = await RoomBlock.findById(id);
-      if (!roomBlock) {
-        return res.status(404).json({
-          success: false,
-          message: 'Room block not found'
-        });
-      }
-
-      // Update allowed fields
+      // Build $set with only allowed fields
       const allowedUpdates = [
         'blockName', 'groupName', 'eventType', 'contactPerson',
         'billingInstructions', 'specialInstructions', 'amenities',
         'cateringRequirements', 'paymentTerms', 'status'
       ];
 
+      const setFields = { lastModifiedBy: req.user._id };
       allowedUpdates.forEach(field => {
         if (updates[field] !== undefined) {
-          roomBlock[field] = updates[field];
+          setFields[field] = updates[field];
         }
       });
 
-      roomBlock.lastModifiedBy = req.user._id;
-      await roomBlock.save();
-
-      const updatedBlock = await RoomBlock.findById(id)
+      const updatedBlock = await RoomBlock.findOneAndUpdate(
+        { _id: id },
+        { $set: setFields },
+        { new: true, runValidators: true }
+      )
         .populate('corporateId', 'name')
         .populate('rooms.roomId', 'roomNumber type')
         .populate('createdBy', 'name email')
         .populate('lastModifiedBy', 'name email');
+
+      if (!updatedBlock) {
+        return res.status(404).json({
+          success: false,
+          message: 'Room block not found'
+        });
+      }
 
       res.json({
         success: true,
@@ -290,45 +291,51 @@ class RoomBlockController {
       const { id, roomId } = req.params;
       const { reason } = req.body;
 
-      const roomBlock = await RoomBlock.findById(id);
+      // Atomically update the room status and add a note in one operation
+      // Match block by id and the subdocument room by _id where status is not already released
+      const roomBlock = await RoomBlock.findOneAndUpdate(
+        {
+          _id: id,
+          'rooms._id': roomId,
+          'rooms.status': { $ne: 'released' }
+        },
+        {
+          $set: {
+            'rooms.$.status': 'released',
+            lastModifiedBy: req.user._id
+          },
+          $push: {
+            notes: {
+              content: `Room released. Reason: ${reason || 'Not specified'}`,
+              createdBy: req.user._id,
+              createdAt: new Date()
+            }
+          }
+        },
+        { new: true }
+      );
+
       if (!roomBlock) {
-        return res.status(404).json({
-          success: false,
-          message: 'Room block not found'
-        });
-      }
-
-      const room = roomBlock.rooms.id(roomId);
-      if (!room) {
-        return res.status(404).json({
-          success: false,
-          message: 'Room not found in block'
-        });
-      }
-
-      if (room.status === 'released') {
+        // Determine whether block not found, room not found, or already released
+        const existing = await RoomBlock.findById(id).lean();
+        if (!existing) {
+          return res.status(404).json({
+            success: false,
+            message: 'Room block not found'
+          });
+        }
+        const room = existing.rooms?.find(r => r._id.toString() === roomId);
+        if (!room) {
+          return res.status(404).json({
+            success: false,
+            message: 'Room not found in block'
+          });
+        }
         return res.status(400).json({
           success: false,
           message: 'Room is already released'
         });
       }
-
-      room.status = 'released';
-      
-      // Initialize notes array if it doesn't exist
-      if (!roomBlock.notes) {
-        roomBlock.notes = [];
-      }
-      
-      // Add note about release
-      roomBlock.notes.push({
-        content: `Room ${room.roomNumber} released. Reason: ${reason || 'Not specified'}`,
-        createdBy: req.user._id,
-        createdAt: new Date()
-      });
-
-      roomBlock.lastModifiedBy = req.user._id;
-      await roomBlock.save();
 
       res.json({
         success: true,
@@ -352,48 +359,57 @@ class RoomBlockController {
       const { id, roomId } = req.params;
       const { guestName, specialRequests, bookingId } = req.body;
 
-      const roomBlock = await RoomBlock.findById(id);
+      // Build the subdocument update fields
+      const roomSetFields = {
+        'rooms.$.status': 'booked',
+        'rooms.$.guestName': guestName,
+        'rooms.$.specialRequests': specialRequests,
+        lastModifiedBy: req.user._id
+      };
+      if (bookingId) {
+        roomSetFields['rooms.$.bookingId'] = bookingId;
+      }
+
+      // Atomically update room status from 'blocked' to 'booked'
+      const roomBlock = await RoomBlock.findOneAndUpdate(
+        {
+          _id: id,
+          'rooms._id': roomId,
+          'rooms.status': 'blocked'
+        },
+        {
+          $set: roomSetFields,
+          $push: {
+            notes: {
+              content: `Room booked for ${guestName}`,
+              createdBy: req.user._id,
+              createdAt: new Date()
+            }
+          }
+        },
+        { new: true }
+      );
+
       if (!roomBlock) {
-        return res.status(404).json({
-          success: false,
-          message: 'Room block not found'
-        });
-      }
-
-      const room = roomBlock.rooms.id(roomId);
-      if (!room) {
-        return res.status(404).json({
-          success: false,
-          message: 'Room not found in block'
-        });
-      }
-
-      if (room.status !== 'blocked') {
+        const existing = await RoomBlock.findById(id).lean();
+        if (!existing) {
+          return res.status(404).json({
+            success: false,
+            message: 'Room block not found'
+          });
+        }
+        const room = existing.rooms?.find(r => r._id.toString() === roomId);
+        if (!room) {
+          return res.status(404).json({
+            success: false,
+            message: 'Room not found in block'
+          });
+        }
         return res.status(400).json({
           success: false,
           message: 'Room is not available for booking'
         });
       }
-
-      room.status = 'booked';
-      room.guestName = guestName;
-      room.specialRequests = specialRequests;
-      if (bookingId) room.bookingId = bookingId;
-
-      // Initialize notes array if it doesn't exist
-      if (!roomBlock.notes) {
-        roomBlock.notes = [];
-      }
-
-      // Add note about booking
-      roomBlock.notes.push({
-        content: `Room ${room.roomNumber} booked for ${guestName}`,
-        createdBy: req.user._id,
-        createdAt: new Date()
-      });
-
-      roomBlock.lastModifiedBy = req.user._id;
-      await roomBlock.save();
 
       res.json({
         success: true,
@@ -445,7 +461,7 @@ class RoomBlockController {
       const recentBlocks = await RoomBlock.find(query)
         .populate('createdBy', 'name')
         .sort({ createdAt: -1 })
-        .limit(5);
+        .limit(5).lean();
 
       res.json({
         success: true,
@@ -472,7 +488,21 @@ class RoomBlockController {
       const { id } = req.params;
       const { content, isInternal = true } = req.body;
 
-      const roomBlock = await RoomBlock.findById(id);
+      // Atomically push note onto the array
+      const roomBlock = await RoomBlock.findOneAndUpdate(
+        { _id: id },
+        {
+          $push: {
+            notes: {
+              content,
+              createdBy: req.user._id,
+              isInternal
+            }
+          }
+        },
+        { new: true }
+      );
+
       if (!roomBlock) {
         return res.status(404).json({
           success: false,
@@ -480,21 +510,8 @@ class RoomBlockController {
         });
       }
 
-      // Initialize notes array if it doesn't exist
-      if (!roomBlock.notes) {
-        roomBlock.notes = [];
-      }
-
-      roomBlock.notes.push({
-        content,
-        createdBy: req.user._id,
-        isInternal
-      });
-
-      await roomBlock.save();
-
       const updatedBlock = await RoomBlock.findById(id)
-        .populate('notes.createdBy', 'name');
+        .populate('notes.createdBy', 'name').lean();
 
       res.json({
         success: true,

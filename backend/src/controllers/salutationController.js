@@ -33,7 +33,7 @@ export const getAllSalutations = catchAsync(async (req, res) => {
   const salutations = await Salutation.find(query)
     .populate('createdBy', 'name email')
     .populate('updatedBy', 'name email')
-    .sort({ sortOrder: 1, title: 1 });
+    .sort({ sortOrder: 1, title: 1 }).lean().limit(1000);
 
   res.json({
     status: 'success',
@@ -46,7 +46,7 @@ export const getAllSalutations = catchAsync(async (req, res) => {
 export const getSalutation = catchAsync(async (req, res) => {
   const salutation = await Salutation.findById(req.params.id)
     .populate('createdBy', 'name email')
-    .populate('updatedBy', 'name email');
+    .populate('updatedBy', 'name email').lean();
 
   if (!salutation) {
     throw new ApplicationError('Salutation not found', 404);
@@ -78,7 +78,7 @@ export const createSalutation = catchAsync(async (req, res) => {
 
 // Update salutation
 export const updateSalutation = catchAsync(async (req, res) => {
-  const salutation = await Salutation.findById(req.params.id);
+  const salutation = await Salutation.findById(req.params.id).lean();
 
   if (!salutation) {
     throw new ApplicationError('Salutation not found', 404);
@@ -104,7 +104,7 @@ export const updateSalutation = catchAsync(async (req, res) => {
 
 // Delete salutation
 export const deleteSalutation = catchAsync(async (req, res) => {
-  const salutation = await Salutation.findById(req.params.id);
+  const salutation = await Salutation.findById(req.params.id).lean();
 
   if (!salutation) {
     throw new ApplicationError('Salutation not found', 404);
@@ -192,23 +192,30 @@ export const seedDefaultSalutations = catchAsync(async (req, res) => {
 
 // Toggle salutation status
 export const toggleSalutationStatus = catchAsync(async (req, res) => {
-  const salutation = await Salutation.findById(req.params.id);
+  // First read the current state to check permissions and get current isActive
+  const existing = await Salutation.findById(req.params.id).lean();
 
-  if (!salutation) {
+  if (!existing) {
     throw new ApplicationError('Salutation not found', 404);
   }
 
   // Check if user can update this salutation
-  if (salutation.hotelId && salutation.hotelId.toString() !== req.user.hotelId?.toString()) {
+  if (existing.hotelId && existing.hotelId.toString() !== req.user.hotelId?.toString()) {
     throw new ApplicationError('You can only update salutations for your hotel', 403);
   }
 
-  salutation.isActive = !salutation.isActive;
-  salutation.updatedBy = req.user._id;
-  await salutation.save();
+  // Atomically toggle the status using the known current value
+  const salutation = await Salutation.findOneAndUpdate(
+    { _id: req.params.id, isActive: existing.isActive },
+    { $set: { isActive: !existing.isActive, updatedBy: req.user._id } },
+    { new: true, runValidators: true }
+  )
+    .populate('createdBy', 'name email')
+    .populate('updatedBy', 'name email');
 
-  await salutation.populate('createdBy', 'name email');
-  await salutation.populate('updatedBy', 'name email');
+  if (!salutation) {
+    throw new ApplicationError('Salutation was modified concurrently, please retry', 409);
+  }
 
   res.json({
     status: 'success',

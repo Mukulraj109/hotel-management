@@ -324,36 +324,40 @@ webhookEndpointSchema.methods.evaluateCondition = function(fieldValue, operator,
 
 // Method to record delivery attempt
 webhookEndpointSchema.methods.recordDelivery = async function(success, statusCode, responseTime, errorMessage = null) {
-  this.stats.totalDeliveries += 1;
+  try {
+    this.stats.totalDeliveries += 1;
   
-  if (success) {
-    this.stats.successfulDeliveries += 1;
-    this.health.consecutiveFailures = 0;
-  } else {
-    this.stats.failedDeliveries += 1;
-    this.health.consecutiveFailures += 1;
+    if (success) {
+      this.stats.successfulDeliveries += 1;
+      this.health.consecutiveFailures = 0;
+    } else {
+      this.stats.failedDeliveries += 1;
+      this.health.consecutiveFailures += 1;
+    }
+  
+    // Update last delivery info
+    this.stats.lastDelivery = {
+      attempt: new Date(),
+      success,
+      statusCode,
+      responseTime,
+      errorMessage
+    };
+  
+    // Update average response time
+    if (responseTime && success) {
+      const totalSuccessful = this.stats.successfulDeliveries;
+      const currentAverage = this.stats.averageResponseTime || 0;
+      this.stats.averageResponseTime = ((currentAverage * (totalSuccessful - 1)) + responseTime) / totalSuccessful;
+    }
+  
+    // Update health status
+    this.updateHealthStatus();
+  
+    await this.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  // Update last delivery info
-  this.stats.lastDelivery = {
-    attempt: new Date(),
-    success,
-    statusCode,
-    responseTime,
-    errorMessage
-  };
-  
-  // Update average response time
-  if (responseTime && success) {
-    const totalSuccessful = this.stats.successfulDeliveries;
-    const currentAverage = this.stats.averageResponseTime || 0;
-    this.stats.averageResponseTime = ((currentAverage * (totalSuccessful - 1)) + responseTime) / totalSuccessful;
-  }
-  
-  // Update health status
-  this.updateHealthStatus();
-  
-  await this.save();
 };
 
 // Method to update health status

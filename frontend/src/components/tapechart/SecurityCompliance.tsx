@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from '@/utils/toast';
+import { withErrorBoundary } from '../ErrorBoundary';
 import {
   Shield, Lock, Key, Eye, EyeOff, UserCheck,
   AlertTriangle, CheckCircle, XCircle, Clock,
@@ -129,6 +130,14 @@ export const SecurityCompliance: React.FC = () => {
   const [securityThreats, setSecurityThreats] = useState<SecurityThreat[]>([]);
   const [complianceChecks, setComplianceChecks] = useState<ComplianceCheck[]>([]);
   const [securityScore, setSecurityScore] = useState(0);
+
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     loadSecurityData();
@@ -318,7 +327,8 @@ export const SecurityCompliance: React.FC = () => {
   const runComplianceCheck = (standard: string) => {
     toast.info(`Running ${standard} compliance check...`);
     // Mock compliance check
-    setTimeout(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => {
       toast.success(`${standard} compliance check completed`);
     }, 2000);
   };
@@ -1008,3 +1018,5 @@ export const SecurityCompliance: React.FC = () => {
     </Dialog>
   );
 };
+
+export default withErrorBoundary(SecurityCompliance, { level: 'component' });

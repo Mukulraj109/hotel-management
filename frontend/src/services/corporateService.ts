@@ -99,143 +99,219 @@ export interface CorporateDashboardMetrics {
 class CorporateService {
   // Dashboard Metrics
   async getDashboardMetrics(): Promise<ApiResponse<CorporateDashboardMetrics>> {
-    const response = await api.get('/corporate/dashboard/metrics');
-    return response.data;
+    try {
+      const response = await api.get('/corporate/dashboard/metrics');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Corporate Companies
   async getAllCompanies(filters: Record<string, unknown> = {}): Promise<ApiResponse<{ companies: CorporateCompany[] }>> {
-    const params = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/corporate/companies?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/corporate/companies?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getCompany(id: string): Promise<ApiResponse<{ company: CorporateCompany }>> {
-    const response = await api.get(`/corporate/companies/${id}`);
-    return response.data;
+    try {
+      const response = await api.get(`/corporate/companies/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async createCompany(companyData: Partial<CorporateCompany>): Promise<ApiResponse<{ company: CorporateCompany }>> {
-    const response = await api.post('/corporate/companies', companyData);
-    return response.data;
+    try {
+      const response = await api.post('/corporate/companies', companyData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateCompany(id: string, updates: Partial<CorporateCompany>): Promise<ApiResponse<{ company: CorporateCompany }>> {
-    const response = await api.patch(`/corporate/companies/${id}`, updates);
-    return response.data;
+    try {
+      const response = await api.patch(`/corporate/companies/${id}`, updates);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async deleteCompany(id: string): Promise<ApiResponse<null>> {
-    const response = await api.delete(`/corporate/companies/${id}`);
-    return response.data;
+    try {
+      const response = await api.delete(`/corporate/companies/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getLowCreditCompanies(threshold?: number): Promise<ApiResponse<{ companies: CorporateCompany[]; threshold: number }>> {
-    const params = new URLSearchParams();
-    if (threshold) {
-      params.append('threshold', threshold.toString());
-    }
+    try {
+      const params = new URLSearchParams();
+      if (threshold) {
+        params.append('threshold', threshold.toString());
+      }
 
-    const response = await api.get(`/corporate/companies/low-credit?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/corporate/companies/low-credit?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateCompanyCredit(id: string, amount: number, description?: string): Promise<ApiResponse<{ company: unknown }>> {
-    const response = await api.patch(`/corporate/companies/${id}/update-credit`, {
-      amount,
-      description
-    });
-    return response.data;
+    try {
+      const response = await api.patch(`/corporate/companies/${id}/update-credit`, {
+        amount,
+        description
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getCompanyCreditSummary(id: string): Promise<ApiResponse<{ company: unknown; creditSummary: unknown }>> {
-    const response = await api.get(`/corporate/companies/${id}/credit-summary`);
-    return response.data;
+    try {
+      const response = await api.get(`/corporate/companies/${id}/credit-summary`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getCompanyBookings(id: string, filters: Record<string, unknown> = {}): Promise<ApiResponse<{ bookings: unknown[] }>> {
-    const params = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/corporate/companies/${id}/bookings?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/corporate/companies/${id}/bookings?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Credit Transactions
   async getAllCreditTransactions(filters: Record<string, unknown> = {}): Promise<ApiResponse<{ transactions: CorporateCredit[] }>> {
-    const params = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/corporate/credit/transactions?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/corporate/credit/transactions?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getCreditTransaction(id: string): Promise<ApiResponse<{ transaction: CorporateCredit }>> {
-    const response = await api.get(`/corporate/credit/transactions/${id}`);
-    return response.data;
+    try {
+      const response = await api.get(`/corporate/credit/transactions/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async createCreditTransaction(transactionData: Partial<CorporateCredit>): Promise<ApiResponse<{ transaction: CorporateCredit }>> {
-    const response = await api.post('/corporate/credit/transactions', transactionData);
-    return response.data;
+    try {
+      const response = await api.post('/corporate/credit/transactions', transactionData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async approveCreditTransaction(id: string): Promise<ApiResponse<{ transaction: CorporateCredit }>> {
-    const response = await api.patch(`/corporate/credit/transactions/${id}/approve`);
-    return response.data;
+    try {
+      const response = await api.patch(`/corporate/credit/transactions/${id}/approve`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async rejectCreditTransaction(id: string, reason?: string): Promise<ApiResponse<{ transaction: CorporateCredit }>> {
-    const response = await api.patch(`/corporate/credit/transactions/${id}/reject`, { reason });
-    return response.data;
+    try {
+      const response = await api.patch(`/corporate/credit/transactions/${id}/reject`, { reason });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getOverdueTransactions(filters: Record<string, unknown> = {}): Promise<ApiResponse<{ transactions: CorporateCredit[] }>> {
-    const params = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/corporate/credit/overdue?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/corporate/credit/overdue?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getMonthlyCreditReport(filters: Record<string, unknown> = {}): Promise<ApiResponse<unknown>> {
-    const params = new URLSearchParams();
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+    try {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/corporate/credit/monthly-report?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/corporate/credit/monthly-report?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async bulkApproveCreditTransactions(transactionIds: string[]): Promise<ApiResponse<{ approved: string[]; failed: string[] }>> {
-    const response = await api.patch('/corporate/credit/bulk-approve', { transactionIds });
-    return response.data;
+    try {
+      const response = await api.patch('/corporate/credit/bulk-approve', { transactionIds });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getCreditAnalysis(): Promise<ApiResponse<unknown>> {
-    const response = await api.get('/corporate/admin/credit-analysis');
-    return response.data;
+    try {
+      const response = await api.get('/corporate/admin/credit-analysis');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

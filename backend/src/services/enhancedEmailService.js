@@ -40,7 +40,7 @@ class EnhancedEmailService {
         throw new Error('Email transporter not configured');
       }
 
-      const campaign = await EmailCampaign.findOne({ campaignId });
+      const campaign = await EmailCampaign.findOne({ campaignId }).lean();
       if (!campaign) {
         throw new Error(`Campaign ${campaignId} not found`);
       }
@@ -130,34 +130,38 @@ class EnhancedEmailService {
    * Send email to individual recipient with personalization and tracking
    */
   async sendEmailToRecipient(campaign, recipient) {
-    const trackingId = uuidv4();
+    try {
+      const trackingId = uuidv4();
 
-    // Personalize content
-    const personalizedContent = this.personalizeContent(campaign.content, recipient);
+      // Personalize content
+      const personalizedContent = this.personalizeContent(campaign.content, recipient);
 
-    // Add tracking pixels and links
-    const htmlWithTracking = this.addEmailTracking(personalizedContent.htmlContent, campaign.campaignId, recipient.email, trackingId);
+      // Add tracking pixels and links
+      const htmlWithTracking = this.addEmailTracking(personalizedContent.htmlContent, campaign.campaignId, recipient.email, trackingId);
 
-    const mailOptions = {
-      from: process.env.FROM_EMAIL || `"THE PENTOUZ Hotels" <${process.env.SMTP_USER}>`,
-      to: recipient.email,
-      subject: personalizedContent.subject,
-      html: htmlWithTracking,
-      text: personalizedContent.textContent,
-      headers: {
-        'X-Campaign-ID': campaign.campaignId,
-        'X-Tracking-ID': trackingId,
-        'List-Unsubscribe': `<${this.unsubscribeUrl}?email=${encodeURIComponent(recipient.email)}&campaign=${campaign.campaignId}>`
-      }
-    };
+      const mailOptions = {
+        from: process.env.FROM_EMAIL || `"THE PENTOUZ Hotels" <${process.env.SMTP_USER}>`,
+        to: recipient.email,
+        subject: personalizedContent.subject,
+        html: htmlWithTracking,
+        text: personalizedContent.textContent,
+        headers: {
+          'X-Campaign-ID': campaign.campaignId,
+          'X-Tracking-ID': trackingId,
+          'List-Unsubscribe': `<${this.unsubscribeUrl}?email=${encodeURIComponent(recipient.email)}&campaign=${campaign.campaignId}>`
+        }
+      };
 
-    const info = await this.transporter.sendMail(mailOptions);
+      const info = await this.transporter.sendMail(mailOptions);
 
-    return {
-      messageId: info.messageId,
-      trackingId: trackingId,
-      recipient: recipient.email
-    };
+      return {
+        messageId: info.messageId,
+        trackingId: trackingId,
+        recipient: recipient.email
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -223,7 +227,7 @@ class EnhancedEmailService {
         matchConditions['engagement.emailEngagement.lastSent'] = { $lt: recentDate };
       }
 
-      const recipients = await GuestCRM.find(matchConditions).limit(10000); // Safety limit
+      const recipients = await GuestCRM.find(matchConditions).limit(10000).lean(); // Safety limit
 
       return recipients.map(guest => ({
         email: guest.profile.email,
@@ -556,11 +560,15 @@ class EnhancedEmailService {
    * Verify SMTP connection
    */
   async verifyConnection() {
-    if (!this.transporter) {
-      throw new Error('Email transporter not configured');
-    }
+    try {
+      if (!this.transporter) {
+        throw new Error('Email transporter not configured');
+      }
 
-    return await this.transporter.verify();
+      return await this.transporter.verify();
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -573,7 +581,7 @@ class EnhancedEmailService {
 
       const campaigns = await EmailCampaign.find({
         updatedAt: { $gte: startDate }
-      });
+      }).lean().limit(1000);
 
       const stats = {
         totalCampaigns: campaigns.length,

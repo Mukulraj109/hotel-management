@@ -228,7 +228,7 @@ export async function seedExtraPersonChargeRules() {
 
   try {
     // Get all hotels to create rules for each
-    const hotelSettings = await HotelSettings.find({}).select('hotelId');
+    const hotelSettings = await HotelSettings.find({}).select('hotelId').lean().limit(1000);
 
     if (hotelSettings.length === 0) {
       console.log('⚠️ No hotels found. Creating default rules for testing...');
@@ -247,7 +247,7 @@ export async function seedExtraPersonChargeRules() {
           hotelId: defaultHotelId,
           name: ruleData.name,
           guestType: ruleData.guestType
-        });
+        }).lean();
 
         if (!existingRule) {
           const newRule = new ExtraPersonCharge(rule);
@@ -273,7 +273,7 @@ export async function seedExtraPersonChargeRules() {
             hotelId: hotel.hotelId,
             name: ruleData.name,
             guestType: ruleData.guestType
-          });
+          }).lean();
 
           if (!existingRule) {
             const newRule = new ExtraPersonCharge(rule);

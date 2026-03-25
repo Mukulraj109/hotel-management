@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { CreditCard, AlertTriangle, CheckCircle, Loader2, Receipt } from 'lucide-react';
 import { getStripe, stripePaymentService } from '../../services/stripePaymentService';
@@ -57,7 +57,8 @@ function PaymentForm({ settlement, paymentAmount, description, onSuccess, onCanc
 
       if (result.success) {
         setPaymentSuccessful(true);
-        setTimeout(() => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
           onSuccess();
         }, 2000);
       } else {
@@ -65,6 +66,7 @@ function PaymentForm({ settlement, paymentAmount, description, onSuccess, onCanc
       }
     } catch (err: unknown) {
       setError(err.message || 'An unexpected error occurred');
+    if (timerRef.current) clearTimeout(timerRef.current);
     } finally {
       setIsProcessing(false);
     }
@@ -195,6 +197,14 @@ export function SettlementPayment({
 
   const effectiveAmount = paymentAmount || settlement.outstandingBalance;
 
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     setStripePromise(getStripe());
     setCustomAmount(effectiveAmount);
@@ -212,7 +222,7 @@ export function SettlementPayment({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-        <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose} />
+        <div aria-hidden="true" className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={onClose} />
 
         <div className="relative inline-block w-full max-w-2xl p-6 overflow-hidden text-left align-bottom transition-all transform bg-white shadow-xl rounded-lg sm:my-8 sm:align-middle">
           <div className="mb-6">
@@ -259,6 +269,7 @@ export function SettlementPayment({
                       max={settlement.outstandingBalance}
                       className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                       placeholder="Enter amount"
+                      required
                     />
                   </div>
                 )}

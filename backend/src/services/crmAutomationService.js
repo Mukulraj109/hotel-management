@@ -8,7 +8,7 @@ import logger from '../utils/logger.js';
 class CRMAutomationService {
   async createOrUpdateGuestProfile(userId, hotelId, data = {}) {
     try {
-      const user = await User.findById(userId);
+      const user = await User.findById(userId).lean();
       if (!user) throw new Error('User not found');
 
       let profile = await GuestCRMProfile.findOne({ userId, hotelId });
@@ -74,7 +74,7 @@ class CRMAutomationService {
         userId,
         hotelId,
         status: { $in: ['confirmed', 'checked-in', 'checked-out'] }
-      }).sort({ createdAt: -1 });
+      }).sort({ createdAt: -1 }).lean().limit(1000);
 
       const now = new Date();
 
@@ -250,7 +250,7 @@ class CRMAutomationService {
         userId,
         hotelId,
         timestamp: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // Last 30 days
-      });
+      }).lean().limit(1000);
 
       if (recentBehaviors.length > 0) {
         const totalScore = recentBehaviors.reduce((sum, b) => sum + b.engagementScore, 0);
@@ -265,7 +265,7 @@ class CRMAutomationService {
 
   async triggerAutomatedActions(userId, hotelId, behavior) {
     try {
-      const profile = await GuestCRMProfile.findOne({ userId, hotelId });
+      const profile = await GuestCRMProfile.findOne({ userId, hotelId }).lean();
       if (!profile) return;
 
       // Trigger based on behavior type
@@ -299,18 +299,22 @@ class CRMAutomationService {
   }
 
   async handleBookingComplete(profile, behavior) {
-    // Send booking confirmation
-    // Update loyalty status
-    // Schedule follow-up communications
-    profile.engagementMetrics.totalBookings += 1;
-    profile.engagementMetrics.totalSpending += behavior.transactionValue;
+    try {
+      // Send booking confirmation
+      // Update loyalty status
+      // Schedule follow-up communications
+      profile.engagementMetrics.totalBookings += 1;
+      profile.engagementMetrics.totalSpending += behavior.transactionValue;
 
-    // Add tags
-    if (!profile.tags.includes('recent-booker')) {
-      profile.tags.push('recent-booker');
+      // Add tags
+      if (!profile.tags.includes('recent-booker')) {
+        profile.tags.push('recent-booker');
+      }
+
+      await profile.save();
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    await profile.save();
   }
 
   async handleAbandonedCart(profile, behavior) {
@@ -336,56 +340,68 @@ class CRMAutomationService {
   }
 
   async handleEmailEngagement(profile, behavior) {
-    // Track email engagement
-    profile.engagementMetrics.totalEmailOpens += 1;
-    profile.engagementMetrics.lastEngagement = new Date();
-    await profile.save();
+    try {
+      // Track email engagement
+      profile.engagementMetrics.totalEmailOpens += 1;
+      profile.engagementMetrics.lastEngagement = new Date();
+      await profile.save();
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async handleSupportContact(profile, behavior) {
-    // Flag for support team attention
-    if (!profile.tags.includes('needs-attention')) {
-      profile.tags.push('needs-attention');
-      await profile.save();
+    try {
+      // Flag for support team attention
+      if (!profile.tags.includes('needs-attention')) {
+        profile.tags.push('needs-attention');
+        await profile.save();
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
   async triggerSegmentChangeActions(profile, oldSegment) {
-    const newSegment = profile.rfmAnalysis.segment;
+    try {
+      const newSegment = profile.rfmAnalysis.segment;
 
-    // Trigger segment-specific campaigns
-    if (newSegment === 'Champions' && oldSegment !== 'Champions') {
-      // Send VIP welcome email
-      if (profile.communicationPreferences.email) {
-        await enhancedEmailService.sendEmail({
-          to: profile.personalInfo.email,
-          subject: 'Welcome to Our VIP Program!',
-          template: 'vip_welcome',
-          data: {
-            firstName: profile.personalInfo.firstName,
-            segment: newSegment
-          }
-        });
+      // Trigger segment-specific campaigns
+      if (newSegment === 'Champions' && oldSegment !== 'Champions') {
+        // Send VIP welcome email
+        if (profile.communicationPreferences.email) {
+          await enhancedEmailService.sendEmail({
+            to: profile.personalInfo.email,
+            subject: 'Welcome to Our VIP Program!',
+            template: 'vip_welcome',
+            data: {
+              firstName: profile.personalInfo.firstName,
+              segment: newSegment
+            }
+          });
+        }
+      } else if (newSegment === 'At Risk' && oldSegment !== 'At Risk') {
+        // Send win-back campaign
+        if (profile.communicationPreferences.email) {
+          await enhancedEmailService.sendEmail({
+            to: profile.personalInfo.email,
+            subject: 'We Miss You!',
+            template: 'winback',
+            data: {
+              firstName: profile.personalInfo.firstName,
+              specialOffer: '20% off your next stay'
+            }
+          });
+        }
       }
-    } else if (newSegment === 'At Risk' && oldSegment !== 'At Risk') {
-      // Send win-back campaign
-      if (profile.communicationPreferences.email) {
-        await enhancedEmailService.sendEmail({
-          to: profile.personalInfo.email,
-          subject: 'We Miss You!',
-          template: 'winback',
-          data: {
-            firstName: profile.personalInfo.firstName,
-            specialOffer: '20% off your next stay'
-          }
-        });
-      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
   async getGuestInsights(userId, hotelId) {
     try {
-      const profile = await GuestCRMProfile.findOne({ userId, hotelId });
+      const profile = await GuestCRMProfile.findOne({ userId, hotelId }).lean();
       if (!profile) return null;
 
       const behaviorAnalytics = await GuestBehavior.getBehaviorAnalytics(userId, 90); // Last 90 days
@@ -393,7 +409,7 @@ class CRMAutomationService {
         userId,
         hotelId,
         status: { $in: ['confirmed', 'checked-in', 'checked-out'] }
-      }).sort({ createdAt: -1 }).limit(10);
+      }).sort({ createdAt: -1 }).limit(10).lean();
 
       return {
         profile,
@@ -414,38 +430,46 @@ class CRMAutomationService {
   }
 
   async getNextBestAction(profile) {
-    const segment = profile.rfmAnalysis.segment;
-    const daysSinceLastBooking = profile.rfmAnalysis.recency.value;
+    try {
+      const segment = profile.rfmAnalysis.segment;
+      const daysSinceLastBooking = profile.rfmAnalysis.recency.value;
 
-    switch (segment) {
-      case 'Champions':
-        return 'Offer exclusive VIP experiences or early access to new rooms';
-      case 'Loyal Customers':
-        return 'Provide loyalty rewards and referral incentives';
-      case 'Potential Loyalists':
-        return 'Engage with personalized offers to increase frequency';
-      case 'New Customers':
-        return 'Nurture with welcome series and onboarding content';
-      case 'At Risk':
-        return 'Send win-back campaign with special discount';
-      case 'Cannot Lose Them':
-        return 'Urgent intervention - personal outreach from management';
-      default:
-        return 'Re-engage with targeted promotional offers';
+      switch (segment) {
+        case 'Champions':
+          return 'Offer exclusive VIP experiences or early access to new rooms';
+        case 'Loyal Customers':
+          return 'Provide loyalty rewards and referral incentives';
+        case 'Potential Loyalists':
+          return 'Engage with personalized offers to increase frequency';
+        case 'New Customers':
+          return 'Nurture with welcome series and onboarding content';
+        case 'At Risk':
+          return 'Send win-back campaign with special discount';
+        case 'Cannot Lose Them':
+          return 'Urgent intervention - personal outreach from management';
+        default:
+          return 'Re-engage with targeted promotional offers';
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
   async getPredictedLifetimeValue(profile) {
-    const avgBookingValue = profile.engagementMetrics.averageBookingValue;
-    const frequency = profile.rfmAnalysis.frequency.value;
-    const loyaltyScore = profile.loyaltyMetrics.score;
+    try {
+      const avgBookingValue = profile.engagementMetrics.averageBookingValue;
+      const frequency = profile.rfmAnalysis.frequency.value;
+      const loyaltyScore = profile.loyaltyMetrics.score;
 
-    // Simple CLV prediction based on current metrics
-    const yearlyBookings = Math.max(1, frequency * (loyaltyScore / 50));
-    const predictedAnnualValue = avgBookingValue * yearlyBookings;
-    const customerLifespan = Math.max(1, loyaltyScore / 10); // Years
+      // Simple CLV prediction based on current metrics
+      const yearlyBookings = Math.max(1, frequency * (loyaltyScore / 50));
+      const predictedAnnualValue = avgBookingValue * yearlyBookings;
+      const customerLifespan = Math.max(1, loyaltyScore / 10); // Years
 
-    return predictedAnnualValue * customerLifespan;
+      return predictedAnnualValue * customerLifespan;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 }
 

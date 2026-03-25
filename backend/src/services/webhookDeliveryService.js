@@ -53,7 +53,7 @@ class WebhookDeliveryService extends EventEmitter {
         hotelId,
         isActive: true,
         events: eventType
-      });
+      }).lean().limit(1000);
 
       if (webhookEndpoints.length === 0) {
         logger.debug(`No webhook endpoints found for event ${eventType} in hotel ${hotelId}`);
@@ -261,33 +261,37 @@ class WebhookDeliveryService extends EventEmitter {
    * Add failed delivery to retry queue
    */
   async addToRetryQueue(endpoint, eventType, eventData, metadata, attempt, error) {
-    const retryId = `${endpoint._id}_${eventType}_${Date.now()}`;
-    const nextDelay = this.calculateRetryDelay(attempt, endpoint.retryPolicy);
-    const nextAttempt = new Date(Date.now() + nextDelay);
+    try {
+      const retryId = `${endpoint._id}_${eventType}_${Date.now()}`;
+      const nextDelay = this.calculateRetryDelay(attempt, endpoint.retryPolicy);
+      const nextAttempt = new Date(Date.now() + nextDelay);
 
-    const retryEntry = {
-      id: retryId,
-      endpointId: endpoint._id,
-      eventType,
-      eventData,
-      metadata,
-      attempt: attempt + 1,
-      nextAttempt,
-      error,
-      createdAt: new Date(),
-      maxRetries: endpoint.retryPolicy.maxRetries
-    };
+      const retryEntry = {
+        id: retryId,
+        endpointId: endpoint._id,
+        eventType,
+        eventData,
+        metadata,
+        attempt: attempt + 1,
+        nextAttempt,
+        error,
+        createdAt: new Date(),
+        maxRetries: endpoint.retryPolicy.maxRetries
+      };
 
-    this.retryQueue.set(retryId, retryEntry);
+      this.retryQueue.set(retryId, retryEntry);
 
-    logger.info('Added webhook to retry queue', {
-      retryId,
-      endpointId: endpoint._id,
-      eventType,
-      attempt: attempt + 1,
-      nextAttempt,
-      delay: nextDelay
-    });
+      logger.info('Added webhook to retry queue', {
+        retryId,
+        endpointId: endpoint._id,
+        eventType,
+        attempt: attempt + 1,
+        nextAttempt,
+        delay: nextDelay
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -306,59 +310,66 @@ class WebhookDeliveryService extends EventEmitter {
    * Process the retry queue
    */
   async processRetryQueue() {
-    if (this.retryQueue.size === 0) return;
+    try {
+      if (this.retryQueue.size === 0) return;
 
-    this.processing = true;
-    const now = new Date();
-    const toRetry = [];
+      this.processing = true;
+      const now = new Date();
+      const toRetry = [];
 
-    // Find entries ready for retry
-    for (const [key, entry] of this.retryQueue.entries()) {
-      if (entry.nextAttempt <= now) {
-        toRetry.push({ key, entry });
-      }
-    }
-
-    if (toRetry.length === 0) {
-      this.processing = false;
-      return;
-    }
-
-    logger.info(`Processing ${toRetry.length} webhook retries`);
-
-    for (const { key, entry } of toRetry) {
-      try {
-        // Remove from queue first
-        this.retryQueue.delete(key);
-
-        // Get fresh endpoint data
-        const endpoint = await WebhookEndpoint.findById(entry.endpointId);
-        if (!endpoint || !endpoint.isActive) {
-          logger.info('Skipping retry for inactive webhook endpoint', {
-            endpointId: entry.endpointId
-          });
-          continue;
+      // Find entries ready for retry
+      for (const [key, entry] of this.retryQueue.entries()) {
+        if (entry.nextAttempt <= now) {
+          toRetry.push({ key, entry });
         }
-
-        // Retry delivery
-        await this.deliverToEndpoint(
-          endpoint,
-          entry.eventType,
-          entry.eventData,
-          entry.metadata,
-          entry.attempt
-        );
-
-      } catch (error) {
-        logger.debug('Retry delivery failed', {
-          retryId: entry.id,
-          attempt: entry.attempt,
-          error: error.message
-        });
       }
-    }
 
-    this.processing = false;
+      if (toRetry.length === 0) {
+        this.processing = false;
+        return;
+      }
+
+      logger.info(`Processing ${toRetry.length} webhook retries`);
+
+      // Batch: fetch all endpoints in a single query
+      const endpointIds = toRetry.map(r => r.entry.endpointId);
+      const endpoints = await WebhookEndpoint.find({ _id: { $in: endpointIds } }).lean();
+      const endpointMap = new Map(endpoints.map(e => [e._id.toString(), e]));
+
+      for (const { key, entry } of toRetry) {
+        try {
+          this.retryQueue.delete(key);
+
+          const endpoint = endpointMap.get(entry.endpointId.toString());
+          if (!endpoint || !endpoint.isActive) {
+            logger.info('Skipping retry for inactive webhook endpoint', {
+              endpointId: entry.endpointId
+            });
+            continue;
+          }
+
+          // Retry delivery
+          await this.deliverToEndpoint(
+            endpoint,
+            entry.eventType,
+            entry.eventData,
+            entry.metadata,
+            entry.attempt
+          );
+
+        } catch (error) {
+          logger.debug('Retry delivery failed', {
+            retryId: entry.id,
+            attempt: entry.attempt,
+            error: error.message
+          });
+        }
+      }
+
+      this.processing = false;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -432,7 +443,7 @@ class WebhookDeliveryService extends EventEmitter {
    */
   async testEndpoint(endpointId) {
     try {
-      const endpoint = await WebhookEndpoint.findById(endpointId);
+      const endpoint = await WebhookEndpoint.findById(endpointId).lean();
       if (!endpoint) {
         throw new Error('Webhook endpoint not found');
       }

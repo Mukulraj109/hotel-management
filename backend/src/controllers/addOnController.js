@@ -129,7 +129,7 @@ class AddOnController {
       const service = await AddOnService.findById(id)
         .populate('upselling.complementaryServices', 'name pricing.basePrice category')
         .populate('createdBy', 'firstName lastName')
-        .populate('updatedBy', 'firstName lastName');
+        .populate('updatedBy', 'firstName lastName').lean();
       
       if (!service) {
         return res.status(404).json({
@@ -359,7 +359,7 @@ class AddOnController {
       const { serviceId } = req.params;
       const { quantity = 1, currency = 'USD', guestProfile } = req.query;
       
-      const service = await AddOnService.findOne({ serviceId, isActive: true });
+      const service = await AddOnService.findOne({ serviceId, isActive: true }).lean();
       
       if (!service) {
         return res.status(404).json({
@@ -471,7 +471,7 @@ class AddOnController {
       const inclusions = await ServiceInclusion.find(filter)
         .populate('bundling.requiredWithServices', 'name category')
         .populate('bundling.compatibleServices.serviceId', 'name category')
-        .sort({ 'marketing.displayPriority': -1, createdAt: -1 });
+        .sort({ 'marketing.displayPriority': -1, createdAt: -1 }).lean().limit(1000);
       
       res.json({
         success: true,

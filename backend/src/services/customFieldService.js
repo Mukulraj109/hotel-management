@@ -14,7 +14,7 @@ class CustomFieldService {
       const existingField = await CustomField.findOne({
         name: fieldData.name,
         hotelId
-      });
+      }).lean();
 
       if (existingField) {
         throw new ApplicationError('Field name already exists', 400);
@@ -133,7 +133,7 @@ class CustomFieldService {
         .populate('updatedBy', 'name email')
         .sort(sort)
         .skip(skip)
-        .limit(limit);
+        .limit(limit).lean();
 
       const total = await CustomField.countDocuments(query);
 
@@ -160,7 +160,7 @@ class CustomFieldService {
         _id: fieldId,
         hotelId
       }).populate('createdBy', 'name email')
-        .populate('updatedBy', 'name email');
+        .populate('updatedBy', 'name email').lean();
 
       if (!customField) {
         throw new ApplicationError('Custom field not found', 404);
@@ -219,7 +219,7 @@ class CustomFieldService {
       const field = await CustomField.findOne({
         _id: fieldId,
         hotelId
-      });
+      }).lean();
 
       if (!field) {
         throw new ApplicationError('Custom field not found', 404);
@@ -265,7 +265,7 @@ class CustomFieldService {
   async updateGuestCustomData(guestId, fieldId, value, updatedBy, hotelId) {
     try {
       // Validate guest exists
-      const guest = await User.findById(guestId);
+      const guest = await User.findById(guestId).lean();
       if (!guest || guest.role !== 'guest') {
         throw new ApplicationError('Guest not found', 404);
       }
@@ -274,7 +274,7 @@ class CustomFieldService {
       const field = await CustomField.findOne({
         _id: fieldId,
         hotelId
-      });
+      }).lean();
 
       if (!field) {
         throw new ApplicationError('Custom field not found', 404);
@@ -326,7 +326,7 @@ class CustomFieldService {
   async bulkUpdateGuestCustomData(guestId, dataUpdates, updatedBy, hotelId) {
     try {
       // Validate guest exists
-      const guest = await User.findById(guestId);
+      const guest = await User.findById(guestId).lean();
       if (!guest || guest.role !== 'guest') {
         throw new ApplicationError('Guest not found', 404);
       }
@@ -336,7 +336,7 @@ class CustomFieldService {
       const fields = await CustomField.find({
         _id: { $in: fieldIds },
         hotelId
-      });
+      }).lean().limit(1000);
 
       if (fields.length !== fieldIds.length) {
         throw new ApplicationError('One or more custom fields not found', 404);
@@ -399,7 +399,7 @@ class CustomFieldService {
     try {
       const fields = await CustomField.find({ hotelId })
         .populate('createdBy', 'name email')
-        .sort({ displayOrder: 1, name: 1 });
+        .sort({ displayOrder: 1, name: 1 }).lean().limit(1000);
 
       if (format === 'csv') {
         const csvHeader = 'Name,Label,Type,Category,Required,Active,Visible,Editable,Default Value,Help Text,Group,Display Order,Created By,Created At\n';
@@ -442,25 +442,28 @@ class CustomFieldService {
         errors: []
       };
 
+      // Batch: check which fields already exist in a single query
+      const fieldNames = fieldsData.map(f => f.name);
+      const existingFields = await CustomField.find({ name: { $in: fieldNames }, hotelId }).lean();
+      const existingByName = new Map(existingFields.map(f => [f.name, f]));
+
+      const updateOps = [];
+      const newFields = [];
+
       for (const fieldData of fieldsData) {
         try {
-          // Check if field already exists
-          const existingField = await CustomField.findOne({
-            name: fieldData.name,
-            hotelId
-          });
+          const existingField = existingByName.get(fieldData.name);
 
           if (existingField) {
-            // Update existing field
-            await CustomField.findByIdAndUpdate(
-              existingField._id,
-              { ...fieldData, updatedBy: createdBy },
-              { runValidators: true }
-            );
+            updateOps.push({
+              updateOne: {
+                filter: { _id: existingField._id },
+                update: { $set: { ...fieldData, updatedBy: createdBy } }
+              }
+            });
             results.updated++;
           } else {
-            // Create new field
-            await CustomField.create({
+            newFields.push({
               ...fieldData,
               hotelId,
               createdBy
@@ -473,6 +476,14 @@ class CustomFieldService {
             error: error.message
           });
         }
+      }
+
+      // Batch: execute all DB operations
+      if (updateOps.length > 0) {
+        await CustomField.bulkWrite(updateOps);
+      }
+      if (newFields.length > 0) {
+        await CustomField.insertMany(newFields);
       }
 
       return results;

@@ -24,7 +24,7 @@ class SettingsService {
       let settings = await UserSettings.findOne({ userId }).populate('userId', 'name email role');
 
       if (!settings) {
-        const user = await User.findById(userId);
+        const user = await User.findById(userId).lean();
         if (!user) {
           throw new AppError('User not found', 404);
         }
@@ -93,7 +93,7 @@ class SettingsService {
   async resetUserSettings(userId, category = null) {
     try {
       const settings = await this.getUserSettings(userId, false);
-      const user = await User.findById(userId);
+      const user = await User.findById(userId).lean();
 
       const defaultSettings = UserSettings.getDefaultSettings(user.role);
 
@@ -354,7 +354,7 @@ class SettingsService {
         }
       ]);
 
-      const totalUsers = await UserSettings.countDocuments();
+      const totalUsers = await UserSettings.estimatedDocumentCount();
       const recentlyActive = await UserSettings.countDocuments({
         lastModified: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
       });

@@ -251,7 +251,7 @@ translationSchema.statics.getResourceTranslations = async function(resourceType,
     return await this.find(query)
       .sort({ fieldName: 1, version: -1 })
       .populate('createdBy updatedBy quality.reviewedBy', 'name email')
-      .lean();
+      .lean().limit(1000);
 
   } catch (error) {
     logger.error('Failed to get resource translations', {
@@ -283,7 +283,7 @@ translationSchema.statics.getFieldTranslation = async function(resourceType, res
     // Get the latest version
     const translation = await this.findOne(query)
       .sort({ version: -1 })
-      .populate('createdBy updatedBy quality.reviewedBy', 'name email');
+      .populate('createdBy updatedBy quality.reviewedBy', 'name email').lean();
 
     return translation;
 
@@ -324,7 +324,7 @@ translationSchema.statics.getPendingTranslations = async function(options = {}) 
     return await this.find(query)
       .sort({ 'workflow.dueDate': 1, 'workflow.priority': -1, createdAt: 1 })
       .populate('createdBy workflow.assignedTo', 'name email')
-      .limit(options.limit || 50);
+      .limit(options.limit || 50).lean();
 
   } catch (error) {
     logger.error('Failed to get pending translations', { error: error.message });

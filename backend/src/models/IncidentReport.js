@@ -455,101 +455,120 @@ incidentReportSchema.methods.assignIncident = function(userId) {
 
 // Static method to get incident statistics
 incidentReportSchema.statics.getIncidentStats = async function(hotelId, startDate, endDate) {
-  const matchQuery = { hotelId };
+  try {
+    const matchQuery = { hotelId };
   
-  if (startDate && endDate) {
-    matchQuery.timeOccurred = {
-      $gte: new Date(startDate),
-      $lte: new Date(endDate)
-    };
-  }
-
-  const pipeline = [
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: {
-          type: '$type',
-          severity: '$severity'
-        },
-        count: { $sum: 1 },
-        avgResolutionTime: { $avg: { $divide: [{ $subtract: ['$updatedAt', '$timeOccurred'] }, 1000 * 60 * 60] } },
-        totalCost: { $sum: '$totalCost' }
-      }
-    },
-    {
-      $group: {
-        _id: '$_id.type',
-        stats: {
-          $push: {
-            severity: '$_id.severity',
-            count: '$count',
-            avgResolutionTime: '$avgResolutionTime',
-            totalCost: '$totalCost'
-          }
-        },
-        totalIncidents: { $sum: '$count' }
-      }
+    if (startDate && endDate) {
+      matchQuery.timeOccurred = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
     }
-  ];
 
-  return await this.aggregate(pipeline);
+    const pipeline = [
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: {
+            type: '$type',
+            severity: '$severity'
+          },
+          count: { $sum: 1 },
+          avgResolutionTime: { $avg: { $divide: [{ $subtract: ['$updatedAt', '$timeOccurred'] }, 1000 * 60 * 60] } },
+          totalCost: { $sum: '$totalCost' }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.type',
+          stats: {
+            $push: {
+              severity: '$_id.severity',
+              count: '$count',
+              avgResolutionTime: '$avgResolutionTime',
+              totalCost: '$totalCost'
+            }
+          },
+          totalIncidents: { $sum: '$count' }
+        }
+      }
+    ];
+
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get recent incidents
 incidentReportSchema.statics.getRecentIncidents = async function(hotelId, limit = 10) {
-  return await this.find({ hotelId })
-    .populate('reportedBy', 'name')
-    .populate('assignedTo', 'name')
-    .populate('roomId', 'number type')
-    .populate('guestId', 'name')
-    .sort('-timeOccurred')
-    .limit(limit)
-    .select('incidentNumber title type severity status timeOccurred location');
+  try {
+    return await this.find({ hotelId })
+      .populate('reportedBy', 'name')
+      .populate('assignedTo', 'name')
+      .populate('roomId', 'number type')
+      .populate('guestId', 'name')
+      .sort('-timeOccurred')
+      .limit(limit)
+      .select('incidentNumber title type severity status timeOccurred location').lean();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get critical incidents
 incidentReportSchema.statics.getCriticalIncidents = async function(hotelId) {
-  return await this.find({
-    hotelId,
-    $or: [
-      { severity: { $in: ['critical', 'emergency'] } },
-      { injuryInvolved: true },
-      { policeNotified: true }
-    ],
-    status: { $ne: 'closed' }
-  })
-  .populate('reportedBy', 'name')
-  .populate('assignedTo', 'name')
-  .populate('roomId', 'number type')
-  .sort('-timeOccurred');
+  try {
+    return await this.find({
+      hotelId,
+      $or: [
+        { severity: { $in: ['critical', 'emergency'] } },
+        { injuryInvolved: true },
+        { policeNotified: true }
+      ],
+      status: { $ne: 'closed' }
+    })
+    .populate('reportedBy', 'name')
+    .populate('assignedTo', 'name')
+    .populate('roomId', 'number type')
+    .sort('-timeOccurred').lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method for incident trends
 incidentReportSchema.statics.getIncidentTrends = async function(hotelId, days = 30) {
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
+  try {
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
 
-  return await this.aggregate([
-    {
-      $match: {
-        hotelId: new mongoose.Types.ObjectId(hotelId),
-        timeOccurred: { $gte: startDate }
+    return await this.aggregate([
+      {
+        $match: {
+          hotelId: new mongoose.Types.ObjectId(hotelId),
+          timeOccurred: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$timeOccurred' } },
+            type: '$type'
+          },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { '_id.date': 1 }
       }
-    },
-    {
-      $group: {
-        _id: {
-          date: { $dateToString: { format: '%Y-%m-%d', date: '$timeOccurred' } },
-          type: '$type'
-        },
-        count: { $sum: 1 }
-      }
-    },
-    {
-      $sort: { '_id.date': 1 }
-    }
-  ]);
+    ]);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
+
+// Data retention TTL: auto-delete incident reports after 2 years (regulatory compliance)
+incidentReportSchema.index({ createdAt: 1 }, { expireAfterSeconds: 730 * 24 * 60 * 60 });
 
 export default mongoose.model('IncidentReport', incidentReportSchema);

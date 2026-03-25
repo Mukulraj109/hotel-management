@@ -44,7 +44,7 @@ class InventoryAlertService {
       const inventoryRecords = await RoomAvailability.find({
         hotelId,
         date: { $gte: startDate, $lte: endDate }
-      }).populate('roomTypeId', 'name totalRooms');
+      }).populate('roomTypeId', 'name totalRooms').lean().limit(1000);
       
       const alerts = [];
       
@@ -73,91 +73,95 @@ class InventoryAlertService {
    * Analyze a single inventory record for potential issues
    */
   async analyzeInventoryRecord(record) {
-    const alerts = [];
-    const alertKey = `${record._id}_${record.date.toISOString().split('T')[0]}`;
+    try {
+      const alerts = [];
+      const alertKey = `${record._id}_${record.date.toISOString().split('T')[0]}`;
     
-    // Check if we already have an active alert for this record
-    if (this.activeAlerts.has(alertKey)) {
-      return alerts; // Skip if alert already active
-    }
+      // Check if we already have an active alert for this record
+      if (this.activeAlerts.has(alertKey)) {
+        return alerts; // Skip if alert already active
+      }
     
-    // Calculate inventory percentages
-    const totalRooms = record.totalRooms || 0;
-    const availableRooms = record.availableRooms || 0;
-    const soldRooms = record.soldRooms || 0;
-    const blockedRooms = record.blockedRooms || 0;
+      // Calculate inventory percentages
+      const totalRooms = record.totalRooms || 0;
+      const availableRooms = record.availableRooms || 0;
+      const soldRooms = record.soldRooms || 0;
+      const blockedRooms = record.blockedRooms || 0;
     
-    if (totalRooms === 0) return alerts;
+      if (totalRooms === 0) return alerts;
     
-    const occupancyRate = (soldRooms + blockedRooms) / totalRooms;
-    const availabilityRate = availableRooms / totalRooms;
+      const occupancyRate = (soldRooms + blockedRooms) / totalRooms;
+      const availabilityRate = availableRooms / totalRooms;
     
-    // Check for overbooking
-    if (soldRooms + blockedRooms > totalRooms) {
-      const alert = this.createAlert('overbooking', {
-        severity: 'critical',
-        hotelId: record.hotelId,
-        roomTypeId: record.roomTypeId,
-        date: record.date,
-        details: {
-          totalRooms,
-          soldRooms,
-          blockedRooms,
-          overbookedBy: (soldRooms + blockedRooms) - totalRooms
-        }
-      });
+      // Check for overbooking
+      if (soldRooms + blockedRooms > totalRooms) {
+        const alert = this.createAlert('overbooking', {
+          severity: 'critical',
+          hotelId: record.hotelId,
+          roomTypeId: record.roomTypeId,
+          date: record.date,
+          details: {
+            totalRooms,
+            soldRooms,
+            blockedRooms,
+            overbookedBy: (soldRooms + blockedRooms) - totalRooms
+          }
+        });
       
-      alerts.push(alert);
-      this.activeAlerts.set(alertKey, alert);
-    }
+        alerts.push(alert);
+        this.activeAlerts.set(alertKey, alert);
+      }
     
-    // Check for low inventory
-    if (availabilityRate <= this.alertThresholds.criticalInventory) {
-      const alert = this.createAlert('critical_inventory', {
-        severity: 'critical',
-        hotelId: record.hotelId,
-        roomTypeId: record.roomTypeId,
-        date: record.date,
-        details: {
-          totalRooms,
-          availableRooms,
-          availabilityRate: Math.round(availabilityRate * 100),
-          threshold: Math.round(this.alertThresholds.criticalInventory * 100)
-        }
-      });
+      // Check for low inventory
+      if (availabilityRate <= this.alertThresholds.criticalInventory) {
+        const alert = this.createAlert('critical_inventory', {
+          severity: 'critical',
+          hotelId: record.hotelId,
+          roomTypeId: record.roomTypeId,
+          date: record.date,
+          details: {
+            totalRooms,
+            availableRooms,
+            availabilityRate: Math.round(availabilityRate * 100),
+            threshold: Math.round(this.alertThresholds.criticalInventory * 100)
+          }
+        });
       
-      alerts.push(alert);
-      this.activeAlerts.set(alertKey, alert);
+        alerts.push(alert);
+        this.activeAlerts.set(alertKey, alert);
       
-    } else if (availabilityRate <= this.alertThresholds.lowInventory) {
-      const alert = this.createAlert('low_inventory', {
-        severity: 'warning',
-        hotelId: record.hotelId,
-        roomTypeId: record.roomTypeId,
-        date: record.date,
-        details: {
-          totalRooms,
-          availableRooms,
-          availabilityRate: Math.round(availabilityRate * 100),
-          threshold: Math.round(this.alertThresholds.lowInventory * 100)
-        }
-      });
+      } else if (availabilityRate <= this.alertThresholds.lowInventory) {
+        const alert = this.createAlert('low_inventory', {
+          severity: 'warning',
+          hotelId: record.hotelId,
+          roomTypeId: record.roomTypeId,
+          date: record.date,
+          details: {
+            totalRooms,
+            availableRooms,
+            availabilityRate: Math.round(availabilityRate * 100),
+            threshold: Math.round(this.alertThresholds.lowInventory * 100)
+          }
+        });
       
-      alerts.push(alert);
-      this.activeAlerts.set(alertKey, alert);
+        alerts.push(alert);
+        this.activeAlerts.set(alertKey, alert);
+      }
+    
+      // Check stop sell rules
+      if (this.alertThresholds.stopSellViolation) {
+        const stopSellAlerts = await this.checkStopSellRules(record);
+        alerts.push(...stopSellAlerts);
+      }
+    
+      // Check for unusual patterns
+      const patternAlerts = this.checkUnusualPatterns(record);
+      alerts.push(...patternAlerts);
+    
+      return alerts;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    // Check stop sell rules
-    if (this.alertThresholds.stopSellViolation) {
-      const stopSellAlerts = await this.checkStopSellRules(record);
-      alerts.push(...stopSellAlerts);
-    }
-    
-    // Check for unusual patterns
-    const patternAlerts = this.checkUnusualPatterns(record);
-    alerts.push(...patternAlerts);
-    
-    return alerts;
   }
 
   /**
@@ -173,7 +177,7 @@ class InventoryAlertService {
         isActive: true,
         'dateRange.startDate': { $lte: record.date },
         'dateRange.endDate': { $gte: record.date }
-      });
+      }).lean().limit(1000);
       
       for (const rule of rules) {
         // Check if rule applies to this room type

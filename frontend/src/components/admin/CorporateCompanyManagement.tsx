@@ -59,6 +59,7 @@ import {
 } from '../../utils/corporateValidators';
 import toast from 'react-hot-toast';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface CorporateCompany {
   _id: string;
@@ -163,45 +164,47 @@ const initialFormData: CompanyFormData = {
 
 // API functions
 const fetchCorporateCompanies = async (): Promise<{ companies: CorporateCompany[] }> => {
-  const response = await api.get('/corporate/companies');
-  
-  if (!response.ok) {
-    throw new Error('Failed to fetch corporate companies');
+  try {
+    const response = await api.get('/corporate/companies');
+    return response.data.data;
+  } catch (error: unknown) {
+    throw error instanceof Error ? error : new Error('Failed to fetch corporate companies');
   }
-  
-  const data = await response.json();
-  return data.data;
 };
 
 const createCorporateCompany = async (companyData: CompanyFormData): Promise<CorporateCompany> => {
-  const { data } = await api.post('/corporate/companies', companyData);
-  return data.data.company;
+  try {
+    const { data } = await api.post('/corporate/companies', companyData);
+    return data.data.company;
+  } catch (error: unknown) {
+    throw error instanceof Error ? error : new Error('Failed to create corporate company');
+  }
 };
 
 const updateCorporateCompany = async ({ id, ...companyData }: CompanyFormData & { id: string }): Promise<CorporateCompany> => {
-  const { data } = await api.patch(`/corporate/companies/${id}`, companyData);
-  return data.data.company;
+  try {
+    const { data } = await api.patch(`/corporate/companies/${id}`, companyData);
+    return data.data.company;
+  } catch (error: unknown) {
+    throw error instanceof Error ? error : new Error('Failed to update corporate company');
+  }
 };
 
 const deleteCorporateCompany = async (id: string): Promise<void> => {
-  const response = await api.delete(`/corporate/companies/${id}`);
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to delete corporate company');
+  try {
+    await api.delete(`/corporate/companies/${id}`);
+  } catch (error: unknown) {
+    throw error instanceof Error ? error : new Error('Failed to delete corporate company');
   }
 };
 
 const toggleCompanyStatus = async (id: string): Promise<CorporateCompany> => {
-  const response = await api.patch(`/corporate/companies/${id}/toggle-status`);
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error?.message || error.message || 'Failed to toggle company status');
+  try {
+    const { data } = await api.patch(`/corporate/companies/${id}/toggle-status`);
+    return data.data.company;
+  } catch (error: unknown) {
+    throw error instanceof Error ? error : new Error('Failed to toggle company status');
   }
-
-  const data = await response.json();
-  return data.data.company;
 };
 
 const CompanyRowInfo = React.memo(({ company }: { company: CorporateCompany }) => (
@@ -250,7 +253,7 @@ const CompanyRowInfo = React.memo(({ company }: { company: CorporateCompany }) =
 ));
 CompanyRowInfo.displayName = 'CompanyRowInfo';
 
-export default function CorporateCompanyManagement() {
+function CorporateCompanyManagement() {
   const [showForm, setShowForm] = useState(false);
   const [editingCompany, setEditingCompany] = useState<CorporateCompany | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -756,6 +759,7 @@ export default function CorporateCompanyManagement() {
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
         <input
           type="text"
+          required
           placeholder="Search companies by name, email, or GST number..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
@@ -849,7 +853,7 @@ export default function CorporateCompanyManagement() {
               <h3 className="text-lg font-semibold text-gray-900">
                 {editingCompany ? 'Edit Company' : 'Add New Company'}
               </h3>
-              <button
+              <button aria-label="Close"
                 onClick={handleCloseForm}
                 className="text-gray-400 hover:text-gray-500"
               >
@@ -872,6 +876,7 @@ export default function CorporateCompanyManagement() {
                     </label>
                     <input
                       type="text"
+                      required
                       value={formData.name}
                       onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                       className={cn(
@@ -891,6 +896,7 @@ export default function CorporateCompanyManagement() {
                     </label>
                     <input
                       type="email"
+                      required
                       value={formData.email}
                       onChange={(e) => {
                         setFormData(prev => ({ ...prev, email: e.target.value }));
@@ -959,6 +965,7 @@ export default function CorporateCompanyManagement() {
                     </label>
                     <input
                       type="text"
+                      required
                       value={formData.gstNumber}
                       onChange={(e) => {
                         const formatted = formatGST(e.target.value);
@@ -1039,6 +1046,7 @@ export default function CorporateCompanyManagement() {
                     </label>
                     <input
                       type="text"
+                      required
                       value={formData.address.street}
                       onChange={(e) => setFormData(prev => ({
                         ...prev,
@@ -1061,6 +1069,7 @@ export default function CorporateCompanyManagement() {
                     </label>
                     <input
                       type="text"
+                      required
                       value={formData.address.city}
                       onChange={(e) => setFormData(prev => ({
                         ...prev,
@@ -1083,6 +1092,7 @@ export default function CorporateCompanyManagement() {
                     </label>
                     <input
                       type="text"
+                      required
                       value={formData.address.state}
                       onChange={(e) => setFormData(prev => ({
                         ...prev,
@@ -1120,6 +1130,7 @@ export default function CorporateCompanyManagement() {
                     </label>
                     <input
                       type="text"
+                      required
                       value={formData.address.zipCode}
                       onChange={(e) => {
                         const value = e.target.value.replace(/\D/g, '').slice(0, 6);
@@ -1251,6 +1262,7 @@ export default function CorporateCompanyManagement() {
                         </label>
                         <input
                           type="text"
+                          required
                           value={contact.name}
                           onChange={(e) => handleHRContactChange(index, 'name', e.target.value)}
                           className={cn(
@@ -1270,6 +1282,7 @@ export default function CorporateCompanyManagement() {
                         </label>
                         <input
                           type="email"
+                          required
                           value={contact.email}
                           onChange={(e) => {
                             handleHRContactChange(index, 'email', e.target.value);
@@ -1403,3 +1416,5 @@ export default function CorporateCompanyManagement() {
     </div>
   );
 }
+
+export default withErrorBoundary(CorporateCompanyManagement, { level: 'component' });

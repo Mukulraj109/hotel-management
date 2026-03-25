@@ -5,10 +5,14 @@ import { authenticate, authorize } from '../middleware/auth.js';
 import { ensurePropertyAccess } from '../middleware/propertyAccess.js';
 import { ApplicationError } from '../middleware/errorHandler.js';
 import { catchAsync } from '../utils/catchAsync.js';
+import financialRateLimiter from '../middleware/financialRateLimiter.js';
+import { validateFinancial, invoiceCreationSchema } from '../middleware/financialValidation.js';
+import { verifyHotelOwnership } from '../middleware/idorProtection.js';
 
 const router = express.Router();
 
-// All routes require authentication and property access
+// All routes require rate limiting, authentication and property access
+router.use(financialRateLimiter);
 router.use(authenticate);
 router.use(ensurePropertyAccess);
 
@@ -71,7 +75,7 @@ router.use(ensurePropertyAccess);
  *       201:
  *         description: Invoice created successfully
  */
-router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
+router.post('/', authorize('staff', 'admin'), validateFinancial(invoiceCreationSchema), catchAsync(async (req, res) => {
   const {
     bookingId,
     type,
@@ -86,7 +90,7 @@ router.post('/', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   // Verify booking exists
   const booking = await Booking.findById(bookingId)
     .populate('userId', 'name email')
-    .populate('hotelId', 'name');
+    .populate('hotelId', 'name').lean();
   
   if (!booking) {
     throw new ApplicationError('Booking not found', 404);
@@ -274,14 +278,14 @@ router.get('/', catchAsync(async (req, res) => {
  *       200:
  *         description: Invoice details
  */
-router.get('/:id', catchAsync(async (req, res) => {
+router.get('/:id', verifyHotelOwnership('Invoice'), catchAsync(async (req, res) => {
   const invoice = await Invoice.findById(req.params.id)
     .populate('hotelId', 'name address contact')
     .populate('bookingId', 'bookingNumber checkIn checkOut rooms')
     .populate('guestId', 'name email phone')
     .populate('payments.paidBy', 'name')
     .populate('discounts.appliedBy', 'name')
-    .populate('splitBilling.splits.guestId', 'name email');
+    .populate('splitBilling.splits.guestId', 'name email').lean();
 
   if (!invoice) {
     throw new ApplicationError('Invoice not found', 404);
@@ -336,40 +340,47 @@ router.get('/:id', catchAsync(async (req, res) => {
  *       200:
  *         description: Invoice updated successfully
  */
-router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) => {
-  const invoice = await Invoice.findById(req.params.id);
-  
-  if (!invoice) {
-    throw new ApplicationError('Invoice not found', 404);
-  }
-
-  // Check access permissions
-  if (req.user.role === 'staff' && invoice.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('You can only update invoices for your hotel', 403);
-  }
-
-  // Don't allow updates to paid invoices
-  if (invoice.status === 'paid') {
-    throw new ApplicationError('Cannot update paid invoices', 400);
-  }
-
+router.patch('/:id', authorize('staff', 'admin'), verifyHotelOwnership('Invoice'), catchAsync(async (req, res) => {
   const allowedUpdates = ['status', 'dueDate', 'items', 'notes', 'internalNotes'];
   const updates = {};
-  
+
   Object.keys(req.body).forEach(key => {
     if (allowedUpdates.includes(key)) {
       updates[key] = req.body[key];
     }
   });
 
-  Object.assign(invoice, updates);
-  
-  // Recalculate if items were updated
-  if (updates.items) {
-    invoice.calculateTotals();
+  // Build query to match non-paid invoices with access permissions
+  const matchQuery = { _id: req.params.id, status: { $ne: 'paid' } };
+  if (req.user.role === 'staff') {
+    matchQuery.hotelId = req.user.hotelId;
   }
-  
-  await invoice.save();
+
+  const invoice = await Invoice.findOneAndUpdate(
+    matchQuery,
+    { $set: updates },
+    { new: true, runValidators: true }
+  );
+
+  if (!invoice) {
+    // Determine specific error
+    const exists = await Invoice.findById(req.params.id).lean();
+    if (!exists) {
+      throw new ApplicationError('Invoice not found', 404);
+    }
+    if (req.user.role === 'staff' && exists.hotelId.toString() !== req.user.hotelId.toString()) {
+      throw new ApplicationError('You can only update invoices for your hotel', 403);
+    }
+    if (exists.status === 'paid') {
+      throw new ApplicationError('Cannot update paid invoices', 400);
+    }
+  }
+
+  // Recalculate totals if items were updated (uses model instance method)
+  if (updates.items && invoice) {
+    invoice.calculateTotals();
+    await invoice.save();
+  }
 
   res.json({
     status: 'success',
@@ -416,7 +427,7 @@ router.patch('/:id', authorize('staff', 'admin'), catchAsync(async (req, res) =>
 router.post('/:id/payments', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   const { amount, method, transactionId, notes } = req.body;
   
-  const invoice = await Invoice.findById(req.params.id);
+  const invoice = await Invoice.findById(req.params.id).lean();
   
   if (!invoice) {
     throw new ApplicationError('Invoice not found', 404);
@@ -487,7 +498,7 @@ router.post('/:id/payments', authorize('staff', 'admin'), catchAsync(async (req,
 router.post('/:id/discounts', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   const { description, type, value } = req.body;
   
-  const invoice = await Invoice.findById(req.params.id);
+  const invoice = await Invoice.findById(req.params.id).lean();
   
   if (!invoice) {
     throw new ApplicationError('Invoice not found', 404);
@@ -560,7 +571,7 @@ router.post('/:id/discounts', authorize('staff', 'admin'), catchAsync(async (req
 router.post('/:id/split-billing', authorize('staff', 'admin'), catchAsync(async (req, res) => {
   const { method, splits } = req.body;
   
-  const invoice = await Invoice.findById(req.params.id);
+  const invoice = await Invoice.findById(req.params.id).lean();
   
   if (!invoice) {
     throw new ApplicationError('Invoice not found', 404);
@@ -627,7 +638,7 @@ router.post('/:id/splits/:splitIndex/pay', authorize('staff', 'admin', 'guest'),
   const { amount, method, transactionId } = req.body;
   const { splitIndex } = req.params;
   
-  const invoice = await Invoice.findById(req.params.id);
+  const invoice = await Invoice.findById(req.params.id).lean();
   
   if (!invoice) {
     throw new ApplicationError('Invoice not found', 404);
@@ -840,7 +851,7 @@ router.post('/supplementary/extra-person-charges', authorize('staff', 'admin'), 
   }
 
   // Verify booking exists and check permissions
-  const booking = await Booking.findById(bookingId).populate('hotelId');
+  const booking = await Booking.findById(bookingId).populate('hotelId').lean();
   if (!booking) {
     throw new ApplicationError('Booking not found', 404);
   }
@@ -923,7 +934,7 @@ router.post('/supplementary/settlement', authorize('staff', 'admin'), catchAsync
     .populate({
       path: 'bookingId',
       populate: { path: 'hotelId' }
-    });
+    }).lean();
 
   if (!settlement) {
     throw new ApplicationError('Settlement not found', 404);
@@ -1006,30 +1017,39 @@ router.put('/:id/add-extra-charges', authorize('staff', 'admin'), catchAsync(asy
     throw new ApplicationError('Extra person charges are required', 400);
   }
 
-  const invoice = await Invoice.findById(req.params.id);
-  if (!invoice) {
-    throw new ApplicationError('Invoice not found', 404);
+  // Build query to match non-paid invoices with access permissions
+  const matchQuery = { _id: req.params.id, status: { $ne: 'paid' } };
+  if (req.user.role === 'staff') {
+    matchQuery.hotelId = req.user.hotelId;
   }
 
-  // Check permissions
-  if (req.user.role === 'staff' && invoice.hotelId.toString() !== req.user.hotelId.toString()) {
-    throw new ApplicationError('You can only modify invoices for your hotel', 403);
-  }
-
-  // Don't allow modifications to paid invoices
-  if (invoice.status === 'paid') {
-    throw new ApplicationError('Cannot modify paid invoices', 400);
-  }
-
-  // Add extra person charges
-  invoice.addExtraPersonCharges(extraPersonCharges);
-  await invoice.save();
-
-  await invoice.populate([
+  // Use $push to atomically add extra person charges
+  const invoice = await Invoice.findOneAndUpdate(
+    matchQuery,
+    {
+      $push: {
+        extraPersonCharges: { $each: extraPersonCharges }
+      }
+    },
+    { new: true, runValidators: true }
+  ).populate([
     { path: 'guestId', select: 'name email phone' },
     { path: 'bookingId', select: 'bookingNumber checkIn checkOut' },
     { path: 'hotelId', select: 'name' }
   ]);
+
+  if (!invoice) {
+    const exists = await Invoice.findById(req.params.id).lean();
+    if (!exists) {
+      throw new ApplicationError('Invoice not found', 404);
+    }
+    if (req.user.role === 'staff' && exists.hotelId.toString() !== req.user.hotelId.toString()) {
+      throw new ApplicationError('You can only modify invoices for your hotel', 403);
+    }
+    if (exists.status === 'paid') {
+      throw new ApplicationError('Cannot modify paid invoices', 400);
+    }
+  }
 
   res.json({
     status: 'success',
@@ -1068,7 +1088,7 @@ router.get('/:id/download', authenticate, catchAsync(async (req, res) => {
   const invoice = await Invoice.findById(req.params.id)
     .populate('hotelId', 'name address phone email')
     .populate('guestId', 'name email phone')
-    .populate('bookingId', 'bookingNumber checkIn checkOut totalAmount');
+    .populate('bookingId', 'bookingNumber checkIn checkOut totalAmount').lean();
 
   if (!invoice) {
     throw new ApplicationError('Invoice not found', 404);
@@ -1128,7 +1148,7 @@ router.get('/:id/view', catchAsync(async (req, res) => {
       const jwt = require('jsonwebtoken');
       const decoded = jwt.verify(req.query.token, process.env.JWT_SECRET);
       const User = require('../models/User');
-      user = await User.findById(decoded.id);
+      user = await User.findById(decoded.id).lean();
     } catch (error) {
       throw new ApplicationError('Invalid token', 401);
     }
@@ -1141,7 +1161,7 @@ router.get('/:id/view', catchAsync(async (req, res) => {
   const invoice = await Invoice.findById(req.params.id)
     .populate('hotelId', 'name address phone email')
     .populate('guestId', 'name email phone')
-    .populate('bookingId', 'bookingNumber checkIn checkOut totalAmount');
+    .populate('bookingId', 'bookingNumber checkIn checkOut totalAmount').lean();
 
   if (!invoice) {
     throw new ApplicationError('Invoice not found', 404);

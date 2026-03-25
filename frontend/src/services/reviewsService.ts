@@ -102,49 +102,77 @@ class ReviewsService {
       sortBy?: 'newest' | 'oldest' | 'highest_rated' | 'lowest_rated' | 'most_helpful';
     }
   ): Promise<ReviewsResponse> {
-    const queryParams = new URLSearchParams();
-    if (params?.page) queryParams.append('page', params.page.toString());
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
-    if (params?.rating) queryParams.append('rating', params.rating.toString());
-    if (params?.sortBy) queryParams.append('sortBy', params.sortBy);
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.page) queryParams.append('page', params.page.toString());
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
+      if (params?.rating) queryParams.append('rating', params.rating.toString());
+      if (params?.sortBy) queryParams.append('sortBy', params.sortBy);
 
-    const response = await api.get(`/reviews/hotel/${hotelId}?${queryParams.toString()}`);
-    return response.data.data;
+      const response = await api.get(`/reviews/hotel/${hotelId}?${queryParams.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get hotel rating summary
   async getHotelRatingSummary(hotelId: string): Promise<ReviewSummary> {
-    const response = await api.get(`/reviews/hotel/${hotelId}/summary`);
-    return response.data.data;
+    try {
+      const response = await api.get(`/reviews/hotel/${hotelId}/summary`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Create a new review
   async createReview(reviewData: CreateReviewData): Promise<Review> {
-    const response = await api.post('/reviews', reviewData);
-    return response.data.data.review;
+    try {
+      const response = await api.post('/reviews', reviewData);
+      return response.data.data.review;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get a specific review
   async getReview(reviewId: string): Promise<Review> {
-    const response = await api.get(`/reviews/${reviewId}`);
-    return response.data.data.review;
+    try {
+      const response = await api.get(`/reviews/${reviewId}`);
+      return response.data.data.review;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Add response to review (staff/admin only)
   async addResponse(reviewId: string, content: string): Promise<Review> {
-    const response = await api.post(`/reviews/${reviewId}/response`, { content });
-    return response.data.data.review;
+    try {
+      const response = await api.post(`/reviews/${reviewId}/response`, { content });
+      return response.data.data.review;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Mark review as helpful
   async markHelpful(reviewId: string): Promise<{ helpfulVotes: number }> {
-    const response = await api.post(`/reviews/${reviewId}/helpful`);
-    return response.data.data;
+    try {
+      const response = await api.post(`/reviews/${reviewId}/helpful`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Report review
   async reportReview(reviewId: string, reason?: string): Promise<void> {
-    await api.post(`/reviews/${reviewId}/report`, { reason });
+    try {
+      await api.post(`/reviews/${reviewId}/report`, { reason });
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get current user's reviews
@@ -157,12 +185,16 @@ class ReviewsService {
       pages: number;
     };
   }> {
-    const queryParams = new URLSearchParams();
-    if (params?.page) queryParams.append('page', params.page.toString());
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.page) queryParams.append('page', params.page.toString());
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
 
-    const response = await api.get(`/reviews/user/my-reviews?${queryParams.toString()}`);
-    return response.data.data;
+      const response = await api.get(`/reviews/user/my-reviews?${queryParams.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Moderate review (admin only)
@@ -171,8 +203,12 @@ class ReviewsService {
     status: 'approved' | 'rejected' | 'pending',
     notes?: string
   ): Promise<Review> {
-    const response = await api.patch(`/reviews/${reviewId}/moderate`, { status, notes });
-    return response.data.data.review;
+    try {
+      const response = await api.patch(`/reviews/${reviewId}/moderate`, { status, notes });
+      return response.data.data.review;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get pending reviews (admin only)
@@ -185,12 +221,16 @@ class ReviewsService {
       pages: number;
     };
   }> {
-    const queryParams = new URLSearchParams();
-    if (params?.page) queryParams.append('page', params.page.toString());
-    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.page) queryParams.append('page', params.page.toString());
+      if (params?.limit) queryParams.append('limit', params.limit.toString());
 
-    const response = await api.get(`/reviews/pending?${queryParams.toString()}`);
-    return response.data.data;
+      const response = await api.get(`/reviews/pending?${queryParams.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

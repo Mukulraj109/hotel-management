@@ -54,14 +54,18 @@ class LaundryService {
       });
 
       const transactions = [];
-      const room = await Room.findById(roomId);
+      const room = await Room.findById(roomId).lean();
       if (!room) {
         throw new Error('Room not found');
       }
 
+      // Batch: fetch all inventory items in a single query
+      const itemIds = items.map(i => i.itemId);
+      const inventoryItems = await InventoryItem.find({ _id: { $in: itemIds } }).limit(1000).lean();
+      const inventoryItemMap = new Map(inventoryItems.map(it => [it._id.toString(), it]));
+
       for (const item of items) {
-        // Get item details
-        const inventoryItem = await InventoryItem.findById(item.itemId);
+        const inventoryItem = inventoryItemMap.get(item.itemId.toString());
         if (!inventoryItem) {
           logger.warn('Inventory item not found', { itemId: item.itemId });
           continue;
@@ -129,7 +133,7 @@ class LaundryService {
    */
   async markItemsAsInLaundry(transactionId, processedBy) {
     try {
-      const transaction = await LaundryTransaction.findById(transactionId);
+      const transaction = await LaundryTransaction.findById(transactionId).lean();
       if (!transaction) {
         throw new Error('Laundry transaction not found');
       }
@@ -159,7 +163,7 @@ class LaundryService {
    */
   async markItemsAsCleaning(transactionId, processedBy) {
     try {
-      const transaction = await LaundryTransaction.findById(transactionId);
+      const transaction = await LaundryTransaction.findById(transactionId).lean();
       if (!transaction) {
         throw new Error('Laundry transaction not found');
       }
@@ -275,7 +279,7 @@ class LaundryService {
    */
   async markItemsAsLost(transactionId, processedBy, notes) {
     try {
-      const transaction = await LaundryTransaction.findById(transactionId);
+      const transaction = await LaundryTransaction.findById(transactionId).lean();
       if (!transaction) {
         throw new Error('Laundry transaction not found');
       }
@@ -315,7 +319,7 @@ class LaundryService {
    */
   async markItemsAsDamaged(transactionId, processedBy, notes) {
     try {
-      const transaction = await LaundryTransaction.findById(transactionId);
+      const transaction = await LaundryTransaction.findById(transactionId).lean();
       if (!transaction) {
         throw new Error('Laundry transaction not found');
       }
@@ -414,7 +418,7 @@ class LaundryService {
         .populate('roomId', 'roomNumber type')
         .populate('itemId', 'name category')
         .populate('processedBy', 'name')
-        .sort({ expectedReturnDate: 1 });
+        .sort({ expectedReturnDate: 1 }).lean().limit(1000);
 
       return overdueItems;
     } catch (error) {
@@ -637,38 +641,40 @@ class LaundryService {
       const expectedReturnDate = new Date();
       expectedReturnDate.setDate(expectedReturnDate.getDate() + roomResult.timingAnalysis.recommendedReturnDays);
 
+      // Batch: prepare all transactions for insertMany
+      const transactionsToInsert = roomResult.items.map(item => ({
+        hotelId: options.hotelId,
+        roomId,
+        itemId: item.itemId,
+        bookingId,
+        transactionType: 'send_to_laundry',
+        quantity: item.quantity,
+        status: 'pending',
+        expectedReturnDate,
+        cost: item.costPerItem || 0,
+        totalCost: item.estimatedCost || 0,
+        notes: `Checkout laundry - ${item.itemName} (${item.category})`,
+        specialInstructions: item.specialInstructions || '',
+        processedBy,
+        isUrgent: item.priority === 'urgent',
+        priority: item.priority || 'medium',
+        metadata: {
+          createdBy: processedBy,
+          source: 'checkout_automation_enhanced',
+          detectionMethod: roomResult.detectionMethod,
+          templateUsed: roomResult.templateUsed,
+          guestCount: roomResult.guestCount,
+          season: roomResult.season,
+          roomCondition: roomResult.roomCondition
+        }
+      }));
+
+      const insertedTransactions = await LaundryTransaction.insertMany(transactionsToInsert);
+      transactions.push(...insertedTransactions);
+
       for (const item of roomResult.items) {
         try {
-          // Create laundry transaction
-          const transaction = new LaundryTransaction({
-            hotelId: options.hotelId,
-            roomId,
-            itemId: item.itemId,
-            bookingId,
-            transactionType: 'send_to_laundry',
-            quantity: item.quantity,
-            status: 'pending',
-            expectedReturnDate,
-            cost: item.costPerItem || 0,
-            totalCost: item.estimatedCost || 0,
-            notes: `Checkout laundry - ${item.itemName} (${item.category})`,
-            specialInstructions: item.specialInstructions || '',
-            processedBy,
-            isUrgent: item.priority === 'urgent',
-            priority: item.priority || 'medium',
-            metadata: {
-              createdBy: processedBy,
-              source: 'checkout_automation_enhanced',
-              detectionMethod: roomResult.detectionMethod,
-              templateUsed: roomResult.templateUsed,
-              guestCount: roomResult.guestCount,
-              season: roomResult.season,
-              roomCondition: roomResult.roomCondition
-            }
-          });
-
-          await transaction.save();
-          transactions.push(transaction);
+          const transaction = insertedTransactions.find(t => t.itemId?.toString() === item.itemId?.toString());
 
           // Update room inventory status
           await this.updateRoomInventoryStatus(roomId, item.itemId, 'sent_to_laundry', item.quantity);

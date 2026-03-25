@@ -183,29 +183,64 @@ export class BugDetectionAgent extends BaseAgent {
   }
 
   _checkPromiseAntiPatterns(state, content, lines, file) {
-    const forgottenAwait = /(?:const|let|var)\s+\w+\s*=\s*(?!await)\s*\w+\.(find|findOne|findById|create|update|delete|save|remove|aggregate)\s*\(/g;
+    const forgottenAwait = /(?:const|let|var)\s+(\w+)\s*=\s*(?!await)\s*(\w+)\.(find|findOne|findById|create|update|delete|save|remove|aggregate)\s*\(/g;
     let match;
     while ((match = forgottenAwait.exec(content))) {
+      const assignedVar = match[1];
+      const calledOn = match[2];
+      const method = match[3];
+
       // Check if there's an await on this line
       const lineStart = content.lastIndexOf('\n', match.index) + 1;
       const lineEnd = content.indexOf('\n', match.index);
       const line = content.substring(lineStart, lineEnd);
-      // Also check the NEXT line for .exec() or .then() or await (chained calls)
-      const nextLineIdx = content.indexOf('\n', match.index);
-      const nextLine = nextLineIdx > 0 ? content.substring(nextLineIdx, nextLineIdx + 100) : '';
-      if (!line.includes('await') && !line.includes('.then(') && !line.includes('.exec(') && !nextLine.includes('.exec(') && !nextLine.includes('.then(') && !nextLine.includes('await')) {
-        const lineNum = content.substring(0, match.index).split('\n').length;
-        this.addFinding(state, {
-          severity: 'high',
-          category: 'bug',
-          title: `Possible missing await on Mongoose operation: .${match[1]}()`,
-          description: `At line ${lineNum}, a Mongoose operation (.${match[1]}()) appears to be called without await. This means the variable will hold a Query/Promise instead of the actual result.`,
-          file: file.relativePath,
-          line: lineNum,
-          suggestion: `Add 'await' before the Mongoose operation or chain .exec().`,
-          fixable: true,
-        });
+
+      // Skip 1: If using 'let' — likely a query builder pattern (query is built then executed later)
+      if (line.trimStart().startsWith('let ')) continue;
+
+      // Skip 2: Array.find() — if the variable being called on was assigned from an array literal,
+      // Array method (.map, .filter, .push, etc.), or is a common array variable name
+      if (method === 'find' || method === 'delete') {
+        // Check if calledOn was assigned from an array or array-like source
+        const arrayAssignmentPattern = new RegExp(
+          `(?:const|let|var)\\s+${calledOn}\\s*=\\s*(?:\\[|` +            // direct array literal
+          `\\w+\\.(?:map|filter|reduce|flat|flatMap|concat|slice|from)\\s*\\(|` + // array method result
+          `Array\\.|\\.split\\(|Object\\.(?:keys|values|entries)\\()`,     // Array.from, .split(), Object.keys()
+          'g'
+        );
+        if (arrayAssignmentPattern.test(content)) continue;
+
+        // Also skip if calledOn looks like a plural/collection variable name (common array naming)
+        if (/(?:s|List|Items|Array|Collection|Set|Results|Records|Entries|Options|Elements|rows|docs|data)$/i.test(calledOn)) continue;
+
+        // Skip if the .find() uses a fat arrow or function callback (Array.find pattern)
+        const afterMatch = content.substring(match.index, Math.min(content.length, match.index + 200));
+        if (/\.find\s*\(\s*(?:\w+\s*=>|function\s*\(|[\({]\s*\w+\s*[,})])/.test(afterMatch)) continue;
       }
+
+      // Also check the NEXT 3 lines for .exec(), .populate(), .sort(), .then(), or await (chained calls)
+      const lineNum = content.substring(0, match.index).split('\n').length;
+      const lineIdx = lineNum - 1; // zero-based
+      const nearbyLines = lines.slice(lineIdx, lineIdx + 4).join(' '); // current + next 3 lines
+
+      if (nearbyLines.includes('await') || nearbyLines.includes('.then(') ||
+          nearbyLines.includes('.exec(') || nearbyLines.includes('.populate(') ||
+          nearbyLines.includes('.sort(') || nearbyLines.includes('.lean(') ||
+          nearbyLines.includes('.limit(') || nearbyLines.includes('.skip(') ||
+          nearbyLines.includes('.select(') || nearbyLines.includes('.where(')) {
+        continue;
+      }
+
+      this.addFinding(state, {
+        severity: 'high',
+        category: 'bug',
+        title: `Possible missing await on Mongoose operation: .${method}()`,
+        description: `At line ${lineNum}, a Mongoose operation (.${method}()) appears to be called without await. This means the variable will hold a Query/Promise instead of the actual result.`,
+        file: file.relativePath,
+        line: lineNum,
+        suggestion: `Add 'await' before the Mongoose operation or chain .exec().`,
+        fixable: true,
+      });
     }
   }
 

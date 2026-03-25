@@ -34,6 +34,7 @@ import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '../../components/LoadingSpinner';
 import { toast } from 'sonner';
 import { api } from '../../services/api';
+import { withErrorBoundary } from '../../components/ErrorBoundary';
 
 interface AnalyticsData {
   overview: {
@@ -138,7 +139,7 @@ const staffDocumentCategories = {
   bank_details: { icon: PiggyBank, label: 'Banking Information' }
 };
 
-export default function AdminDocumentAnalytics() {
+function AdminDocumentAnalytics() {
   const { user } = useAuth();
   const { selectedPropertyId, selectedProperty, viewMode } = useProperty();
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
@@ -675,3 +676,5 @@ export default function AdminDocumentAnalytics() {
     </div>
   );
 }
+
+export default withErrorBoundary(AdminDocumentAnalytics, { level: 'page' });

@@ -51,7 +51,7 @@ class DynamicPricingService {
    */
   async calculateDynamicPricing(hotelId, days = 30) {
     try {
-      const roomTypes = await RoomType.find({ hotelId });
+      const roomTypes = await RoomType.find({ hotelId }).lean().limit(1000);
       const pricingResults = [];
 
       for (const roomType of roomTypes) {
@@ -89,9 +89,9 @@ class DynamicPricingService {
   async calculateRoomTypePricing(hotelId, roomTypeId, days) {
     try {
       // Get base pricing data
-      const roomType = await RoomType.findById(roomTypeId);
+      const roomType = await RoomType.findById(roomTypeId).lean();
       const basePrice = roomType.basePrice || 200;
-      const pricingRules = await PricingRule.find({ hotelId, roomTypeId });
+      const pricingRules = await PricingRule.find({ hotelId, roomTypeId }).lean().limit(1000);
       
       // Get AI predictions
       const demandForecast = await enhancedPredictiveAnalytics.generateDemandForecast(hotelId, days);
@@ -174,58 +174,62 @@ class DynamicPricingService {
    * Calculate pricing using all available strategies
    */
   async calculateAllStrategies(basePrice, demandData, competitorData, date, roomType, historical, market) {
-    const strategies = {};
+    try {
+      const strategies = {};
 
-    // 1. Demand-based pricing
-    strategies[this.pricingStrategies.DEMAND_BASED] = this.calculateDemandBasedPrice(
-      basePrice,
-      demandData.demandScore,
-      demandData.expectedOccupancy
-    );
+      // 1. Demand-based pricing
+      strategies[this.pricingStrategies.DEMAND_BASED] = this.calculateDemandBasedPrice(
+        basePrice,
+        demandData.demandScore,
+        demandData.expectedOccupancy
+      );
 
-    // 2. Competitive pricing
-    strategies[this.pricingStrategies.COMPETITIVE] = this.calculateCompetitivePrice(
-      basePrice,
-      competitorData.averagePrice,
-      competitorData.position,
-      market.competitionLevel
-    );
+      // 2. Competitive pricing
+      strategies[this.pricingStrategies.COMPETITIVE] = this.calculateCompetitivePrice(
+        basePrice,
+        competitorData.averagePrice,
+        competitorData.position,
+        market.competitionLevel
+      );
 
-    // 3. Time-based pricing (advance booking discount/premium)
-    strategies[this.pricingStrategies.TIME_BASED] = this.calculateTimeBasedPrice(
-      basePrice,
-      date,
-      historical.averageAdvanceBooking
-    );
+      // 3. Time-based pricing (advance booking discount/premium)
+      strategies[this.pricingStrategies.TIME_BASED] = this.calculateTimeBasedPrice(
+        basePrice,
+        date,
+        historical.averageAdvanceBooking
+      );
 
-    // 4. Revenue optimization
-    strategies[this.pricingStrategies.REVENUE_OPTIMIZATION] = this.calculateRevenueOptimizedPrice(
-      basePrice,
-      demandData,
-      historical.priceElasticity,
-      roomType
-    );
+      // 4. Revenue optimization
+      strategies[this.pricingStrategies.REVENUE_OPTIMIZATION] = this.calculateRevenueOptimizedPrice(
+        basePrice,
+        demandData,
+        historical.priceElasticity,
+        roomType
+      );
 
-    // 5. Seasonal pricing
-    strategies[this.pricingStrategies.SEASONAL] = this.calculateSeasonalPrice(
-      basePrice,
-      date,
-      historical.seasonalMultipliers,
-      market.seasonalTrend
-    );
+      // 5. Seasonal pricing
+      strategies[this.pricingStrategies.SEASONAL] = this.calculateSeasonalPrice(
+        basePrice,
+        date,
+        historical.seasonalMultipliers,
+        market.seasonalTrend
+      );
 
-    // 6. Event-based pricing
-    strategies[this.pricingStrategies.EVENT_BASED] = this.calculateEventBasedPrice(
-      basePrice,
-      demandData.factors.events,
-      market.localEvents
-    );
+      // 6. Event-based pricing
+      strategies[this.pricingStrategies.EVENT_BASED] = this.calculateEventBasedPrice(
+        basePrice,
+        demandData.factors.events,
+        market.localEvents
+      );
 
-    // Calculate weighted average with confidence scores
-    const weightedPrice = this.calculateWeightedPrice(strategies, demandData, market);
-    strategies.weighted = weightedPrice;
+      // Calculate weighted average with confidence scores
+      const weightedPrice = this.calculateWeightedPrice(strategies, demandData, market);
+      strategies.weighted = weightedPrice;
 
-    return strategies;
+      return strategies;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -607,49 +611,61 @@ class DynamicPricingService {
    */
 
   async getCompetitorPricing(hotelId, roomTypeId, days) {
-    // Simulate competitor pricing - in production, integrate with competitor analysis APIs
-    const pricing = [];
-    for (let i = 0; i < days; i++) {
-      const baseCompetitorPrice = 180 + (Math.random() - 0.5) * 60;
-      pricing.push({
-        averagePrice: Math.round(baseCompetitorPrice),
-        medianPrice: Math.round(baseCompetitorPrice * 0.95),
-        priceRange: {
-          min: Math.round(baseCompetitorPrice * 0.7),
-          max: Math.round(baseCompetitorPrice * 1.4)
-        },
-        position: ['budget', 'mid-range', 'premium'][Math.floor(Math.random() * 3)],
-        competitorCount: Math.floor(Math.random() * 10) + 5,
-        marketShare: Math.random() * 0.3 + 0.1
-      });
+    try {
+      // Simulate competitor pricing - in production, integrate with competitor analysis APIs
+      const pricing = [];
+      for (let i = 0; i < days; i++) {
+        const baseCompetitorPrice = 180 + (Math.random() - 0.5) * 60;
+        pricing.push({
+          averagePrice: Math.round(baseCompetitorPrice),
+          medianPrice: Math.round(baseCompetitorPrice * 0.95),
+          priceRange: {
+            min: Math.round(baseCompetitorPrice * 0.7),
+            max: Math.round(baseCompetitorPrice * 1.4)
+          },
+          position: ['budget', 'mid-range', 'premium'][Math.floor(Math.random() * 3)],
+          competitorCount: Math.floor(Math.random() * 10) + 5,
+          marketShare: Math.random() * 0.3 + 0.1
+        });
+      }
+      return pricing;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    return pricing;
   }
 
   async getHistoricalPerformance(hotelId, roomTypeId, days) {
-    // Get historical performance data
-    return {
-      averageRate: 200,
-      occupancyRate: 0.75,
-      revPAR: 150,
-      priceElasticity: 1.2,
-      seasonalMultipliers: {
-        monthly: Array(12).fill(1).map(() => 0.8 + Math.random() * 0.4)
-      },
-      averageAdvanceBooking: 14,
-      cancellationRate: 0.1
-    };
+    try {
+      // Get historical performance data
+      return {
+        averageRate: 200,
+        occupancyRate: 0.75,
+        revPAR: 150,
+        priceElasticity: 1.2,
+        seasonalMultipliers: {
+          monthly: Array(12).fill(1).map(() => 0.8 + Math.random() * 0.4)
+        },
+        averageAdvanceBooking: 14,
+        cancellationRate: 0.1
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async getMarketConditions(hotelId) {
-    return {
-      competitionLevel: 0.6,
-      seasonalTrend: 0.05,
-      economicIndex: 1.02,
-      demandTrend: 0.03,
-      marketGrowth: 0.02,
-      localEvents: []
-    };
+    try {
+      return {
+        competitionLevel: 0.6,
+        seasonalTrend: 0.05,
+        economicIndex: 1.02,
+        demandTrend: 0.03,
+        marketGrowth: 0.02,
+        localEvents: []
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   getBookingWindow(days) {

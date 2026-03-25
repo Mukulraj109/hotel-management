@@ -396,7 +396,7 @@ router.put('/settings', catchAsync(async (req, res, next) => {
 router.get('/health', catchAsync(async (req, res, next) => {
   const userId = req.user._id;
 
-  const settings = await UserSettings.findOne({ userId });
+  const settings = await UserSettings.findOne({ userId }).lean();
 
   if (!settings || !settings.integrations) {
     return res.status(200).json({

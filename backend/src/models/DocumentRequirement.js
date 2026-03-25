@@ -584,33 +584,37 @@ documentRequirementSchema.methods.validateDocument = function(document) {
 };
 
 documentRequirementSchema.methods.createNewVersion = async function(changes, changedBy, reason = '') {
-  // Create new version
-  const newVersion = new this.constructor({
-    ...this.toObject(),
-    _id: undefined,
-    version: this.version + 1,
-    previousVersionId: this._id,
-    createdAt: undefined,
-    updatedAt: undefined
-  });
+  try {
+    // Create new version
+    const newVersion = new this.constructor({
+      ...this.toObject(),
+      _id: undefined,
+      version: this.version + 1,
+      previousVersionId: this._id,
+      createdAt: undefined,
+      updatedAt: undefined
+    });
 
-  // Apply changes
-  Object.assign(newVersion, changes);
+    // Apply changes
+    Object.assign(newVersion, changes);
 
-  // Add to change log
-  newVersion.changeLog.push({
-    version: newVersion.version,
-    changedBy,
-    changes: Object.keys(changes),
-    reason
-  });
+    // Add to change log
+    newVersion.changeLog.push({
+      version: newVersion.version,
+      changedBy,
+      changes: Object.keys(changes),
+      reason
+    });
 
-  // Deactivate current version
-  this.isActive = false;
-  this.effectiveTo = new Date();
+    // Deactivate current version
+    this.isActive = false;
+    this.effectiveTo = new Date();
 
-  await this.save();
-  return await newVersion.save();
+    await this.save();
+    return await newVersion.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static methods

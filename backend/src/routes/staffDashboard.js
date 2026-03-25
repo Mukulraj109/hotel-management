@@ -347,7 +347,7 @@ router.get('/inventory/summary', catchAsync(async (req, res) => {
       hotelId: new mongoose.Types.ObjectId(hotelId),
       $expr: { $lte: ['$quantity', '$minimumThreshold'] },
       isActive: true
-    }).select('name category quantity minimumThreshold unit').limit(10);
+    }).select('name category quantity minimumThreshold unit').limit(10).lean();
     
     // Get rooms that need inspection (cleaned more than 30 days ago or never cleaned)
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -358,7 +358,7 @@ router.get('/inventory/summary', catchAsync(async (req, res) => {
         { lastCleaned: { $lt: thirtyDaysAgo } },
         { lastCleaned: { $exists: false } }
       ]
-    }).select('_id roomNumber lastCleaned').sort('lastCleaned');
+    }).select('_id roomNumber lastCleaned').sort('lastCleaned').lean().limit(1000);
 
     // Calculate days past due for each room
     const inspectionRooms = roomsNeedingInspection.map(room => {
@@ -421,22 +421,27 @@ router.post('/inventory/:itemId/order', catchAsync(async (req, res) => {
   const { hotelId } = req.user;
   const { quantity = 50 } = req.body; // Default order quantity
 
-  // Find the inventory item and verify it belongs to the user's hotel (using unified Inventory model)
-  const inventoryItem = await Inventory.findOne({ 
-    _id: itemId, 
+  // Atomic: find the inventory item, verify ownership, and compute new stock in one step
+  // First read to get threshold for calculation
+  const existingItem = await Inventory.findOne({
+    _id: itemId,
     hotelId: new mongoose.Types.ObjectId(hotelId),
     isActive: true
-  });
+  }).lean();
 
-  if (!inventoryItem) {
+  if (!existingItem) {
     throw new ApplicationError('Inventory item not found', 404);
   }
 
   // For this demo, we'll just increase the current stock to above threshold
   // In a real system, this would create a purchase order
-  const newStock = inventoryItem.minimumThreshold + quantity;
-  inventoryItem.quantity = newStock;
-  await inventoryItem.save();
+  const newStock = existingItem.minimumThreshold + quantity;
+
+  const inventoryItem = await Inventory.findOneAndUpdate(
+    { _id: itemId, hotelId: new mongoose.Types.ObjectId(hotelId), isActive: true },
+    { $set: { quantity: newStock } },
+    { new: true }
+  );
 
   res.status(200).json({
     status: 'success',
@@ -460,19 +465,16 @@ router.patch('/rooms/:roomId/inspect', catchAsync(async (req, res) => {
   const { roomId } = req.params;
   const { hotelId } = req.user;
 
-  // Find the room and verify it belongs to the user's hotel
-  const room = await Room.findOne({ 
-    _id: roomId, 
-    hotelId: new mongoose.Types.ObjectId(hotelId) 
-  });
+  // Atomic update: find room, verify ownership, and update lastCleaned
+  const room = await Room.findOneAndUpdate(
+    { _id: roomId, hotelId: new mongoose.Types.ObjectId(hotelId) },
+    { $set: { lastCleaned: new Date() } },
+    { new: true }
+  );
 
   if (!room) {
     throw new ApplicationError('Room not found', 404);
   }
-
-  // Update the lastCleaned date to current date/time
-  room.lastCleaned = new Date();
-  await room.save();
 
   res.status(200).json({
     status: 'success',

@@ -24,45 +24,52 @@ class FinancialService {
    * Initialize default chart of accounts
    */
   async initializeChartOfAccounts() {
-    const defaultAccounts = [
-      // Assets
-      { code: '1001', name: 'Cash - Operating Account', type: 'asset', category: 'current_assets', normalBalance: 'debit' },
-      { code: '1002', name: 'Petty Cash', type: 'asset', category: 'current_assets', normalBalance: 'debit' },
-      { code: '1100', name: 'Accounts Receivable', type: 'asset', category: 'current_assets', normalBalance: 'debit' },
-      { code: '1200', name: 'Inventory', type: 'asset', category: 'current_assets', normalBalance: 'debit' },
-      { code: '1500', name: 'Property & Equipment', type: 'asset', category: 'fixed_assets', normalBalance: 'debit' },
+    try {
+      const defaultAccounts = [
+        // Assets
+        { code: '1001', name: 'Cash - Operating Account', type: 'asset', category: 'current_assets', normalBalance: 'debit' },
+        { code: '1002', name: 'Petty Cash', type: 'asset', category: 'current_assets', normalBalance: 'debit' },
+        { code: '1100', name: 'Accounts Receivable', type: 'asset', category: 'current_assets', normalBalance: 'debit' },
+        { code: '1200', name: 'Inventory', type: 'asset', category: 'current_assets', normalBalance: 'debit' },
+        { code: '1500', name: 'Property & Equipment', type: 'asset', category: 'fixed_assets', normalBalance: 'debit' },
       
-      // Liabilities
-      { code: '2000', name: 'Accounts Payable', type: 'liability', category: 'current_liabilities', normalBalance: 'credit' },
-      { code: '2100', name: 'Sales Tax Payable', type: 'liability', category: 'current_liabilities', normalBalance: 'credit' },
-      { code: '2200', name: 'Accrued Expenses', type: 'liability', category: 'current_liabilities', normalBalance: 'credit' },
-      { code: '2500', name: 'Long-term Debt', type: 'liability', category: 'long_term_liabilities', normalBalance: 'credit' },
+        // Liabilities
+        { code: '2000', name: 'Accounts Payable', type: 'liability', category: 'current_liabilities', normalBalance: 'credit' },
+        { code: '2100', name: 'Sales Tax Payable', type: 'liability', category: 'current_liabilities', normalBalance: 'credit' },
+        { code: '2200', name: 'Accrued Expenses', type: 'liability', category: 'current_liabilities', normalBalance: 'credit' },
+        { code: '2500', name: 'Long-term Debt', type: 'liability', category: 'long_term_liabilities', normalBalance: 'credit' },
       
-      // Equity
-      { code: '3000', name: 'Owner\'s Capital', type: 'equity', category: 'owner_equity', normalBalance: 'credit' },
-      { code: '3100', name: 'Retained Earnings', type: 'equity', category: 'retained_earnings', normalBalance: 'credit' },
+        // Equity
+        { code: '3000', name: 'Owner\'s Capital', type: 'equity', category: 'owner_equity', normalBalance: 'credit' },
+        { code: '3100', name: 'Retained Earnings', type: 'equity', category: 'retained_earnings', normalBalance: 'credit' },
       
-      // Revenue
-      { code: '4000', name: 'Room Revenue', type: 'revenue', category: 'room_revenue', normalBalance: 'credit' },
-      { code: '4100', name: 'Food & Beverage Revenue', type: 'revenue', category: 'food_beverage_revenue', normalBalance: 'credit' },
-      { code: '4200', name: 'Other Revenue', type: 'revenue', category: 'other_revenue', normalBalance: 'credit' },
+        // Revenue
+        { code: '4000', name: 'Room Revenue', type: 'revenue', category: 'room_revenue', normalBalance: 'credit' },
+        { code: '4100', name: 'Food & Beverage Revenue', type: 'revenue', category: 'food_beverage_revenue', normalBalance: 'credit' },
+        { code: '4200', name: 'Other Revenue', type: 'revenue', category: 'other_revenue', normalBalance: 'credit' },
       
-      // Expenses
-      { code: '5000', name: 'Cost of Goods Sold', type: 'cost_of_goods_sold', category: 'cost_of_sales', normalBalance: 'debit' },
-      { code: '6000', name: 'Salaries & Wages', type: 'expense', category: 'operating_expenses', normalBalance: 'debit' },
-      { code: '6100', name: 'Utilities', type: 'expense', category: 'operating_expenses', normalBalance: 'debit' },
-      { code: '6200', name: 'Marketing & Advertising', type: 'expense', category: 'marketing_expenses', normalBalance: 'debit' },
-      { code: '6300', name: 'Administrative Expenses', type: 'expense', category: 'administrative_expenses', normalBalance: 'debit' }
-    ];
+        // Expenses
+        { code: '5000', name: 'Cost of Goods Sold', type: 'cost_of_goods_sold', category: 'cost_of_sales', normalBalance: 'debit' },
+        { code: '6000', name: 'Salaries & Wages', type: 'expense', category: 'operating_expenses', normalBalance: 'debit' },
+        { code: '6100', name: 'Utilities', type: 'expense', category: 'operating_expenses', normalBalance: 'debit' },
+        { code: '6200', name: 'Marketing & Advertising', type: 'expense', category: 'marketing_expenses', normalBalance: 'debit' },
+        { code: '6300', name: 'Administrative Expenses', type: 'expense', category: 'administrative_expenses', normalBalance: 'debit' }
+      ];
 
-    for (const accountData of defaultAccounts) {
-      const existingAccount = await ChartOfAccounts.findOne({ accountCode: accountData.code });
-      if (!existingAccount) {
-        await ChartOfAccounts.create({
-          accountId: uuidv4(),
-          ...accountData
-        });
+      // Batch: check which accounts already exist in a single query
+      const codes = defaultAccounts.map(a => a.code);
+      const existingAccounts = await ChartOfAccounts.find({ accountCode: { $in: codes } }).select('accountCode').limit(1000).lean();
+      const existingCodes = new Set(existingAccounts.map(a => a.accountCode));
+
+      const newAccounts = defaultAccounts
+        .filter(a => !existingCodes.has(a.code))
+        .map(a => ({ accountId: uuidv4(), ...a }));
+
+      if (newAccounts.length > 0) {
+        await ChartOfAccounts.insertMany(newAccounts);
       }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -75,9 +82,13 @@ class FinancialService {
       const reference = `BOOKING-${booking.bookingId}`;
 
       // Get relevant accounts
-      const arAccount = await ChartOfAccounts.findOne({ accountCode: '1100' }); // A/R
-      const revenueAccount = await ChartOfAccounts.findOne({ accountCode: '4000' }); // Room Revenue
-      const taxAccount = await ChartOfAccounts.findOne({ accountCode: '2100' }); // Sales Tax Payable
+      const arAccount = await ChartOfAccounts.findOne({ accountCode: '1100' }).lean(); // A/R
+      const revenueAccount = await ChartOfAccounts.findOne({ accountCode: '4000' }).lean(); // Room Revenue
+      const taxAccount = await ChartOfAccounts.findOne({ accountCode: '2100' }).lean(); // Sales Tax Payable
+
+      if (!arAccount || !revenueAccount || !taxAccount) {
+        throw new Error('Required chart of accounts entries not found. Please initialize chart of accounts first.');
+      }
 
       switch (eventType) {
         case 'booking_confirmed':
@@ -160,8 +171,12 @@ class FinancialService {
       await payment.save();
 
       // Create journal entries
-      const cashAccount = await ChartOfAccounts.findOne({ accountCode: '1001' }); // Cash
-      const arAccount = await ChartOfAccounts.findOne({ accountCode: '1100' }); // A/R
+      const cashAccount = await ChartOfAccounts.findOne({ accountCode: '1001' }).lean(); // Cash
+      const arAccount = await ChartOfAccounts.findOne({ accountCode: '1100' }).lean(); // A/R
+
+      if (!cashAccount || !arAccount) {
+        throw new Error('Required chart of accounts entries not found. Please initialize chart of accounts first.');
+      }
 
       const entries = [];
 
@@ -223,7 +238,7 @@ class FinancialService {
    */
   async generateInvoice(bookingId, invoiceType = 'guest_folio') {
     try {
-      const booking = await Booking.findById(bookingId).populate('guest');
+      const booking = await Booking.findById(bookingId).populate('guest').lean();
       if (!booking) {
         throw new Error('Booking not found');
       }
@@ -282,20 +297,34 @@ class FinancialService {
    * Update account balances after journal entries
    */
   async updateAccountBalances(entries, session = null) {
-    for (const entry of entries) {
-      const account = await ChartOfAccounts.findById(entry.account).session(session);
-      if (account) {
-        const balanceChange = account.normalBalance === 'Debit'
-          ? (entry.debit - entry.credit)
-          : (entry.credit - entry.debit);
+    try {
+      // Batch: fetch all accounts in a single query to determine normalBalance
+      const accountIds = [...new Set(entries.map(e => e.account.toString()))];
+      const accounts = await ChartOfAccounts.find({ _id: { $in: accountIds } }).session(session).lean();
+      const accountMap = new Map(accounts.map(a => [a._id.toString(), a]));
 
-        // Use atomic $inc to avoid read-modify-write race condition
-        await ChartOfAccounts.findByIdAndUpdate(
-          entry.account,
-          { $inc: { currentBalance: balanceChange } },
-          { session }
-        );
+      // Build bulkWrite operations for atomic balance updates
+      const bulkOps = [];
+      for (const entry of entries) {
+        const account = accountMap.get(entry.account.toString());
+        if (account) {
+          const balanceChange = account.normalBalance === 'Debit'
+            ? (entry.debit - entry.credit)
+            : (entry.credit - entry.debit);
+
+          bulkOps.push({
+            updateOne: {
+              filter: { _id: entry.account },
+              update: { $inc: { currentBalance: balanceChange } }
+            }
+          });
+        }
       }
+      if (bulkOps.length > 0) {
+        await ChartOfAccounts.bulkWrite(bulkOps, { session });
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -303,22 +332,28 @@ class FinancialService {
    * Update invoice payment status
    */
   async updateInvoicePayment(invoiceId, paymentAmount) {
-    // First atomically increment the paidAmount
-    const invoice = await FinancialInvoice.findByIdAndUpdate(
-      invoiceId,
-      { $inc: { paidAmount: paymentAmount } },
-      { new: true }
-    );
-
-    if (invoice) {
-      // Now compute derived fields and update status atomically
-      const balanceAmount = invoice.totalAmount - invoice.paidAmount;
-      const status = balanceAmount <= 0 ? 'paid' : (invoice.paidAmount > 0 ? 'partially_paid' : invoice.status);
-
-      await FinancialInvoice.findByIdAndUpdate(
+    try {
+      // First atomically increment the paidAmount
+      const invoice = await FinancialInvoice.findByIdAndUpdate(
         invoiceId,
-        { $set: { balanceAmount, status } }
+        { $inc: { paidAmount: paymentAmount } },
+        { new: true }
       );
+
+      if (invoice) {
+        // Now compute derived fields and update status atomically
+        const balanceAmount = invoice.totalAmount - invoice.paidAmount;
+        const status = balanceAmount <= 0 ? 'paid' : (invoice.paidAmount > 0 ? 'partially_paid' : invoice.status);
+
+        await FinancialInvoice.findByIdAndUpdate(
+          invoiceId,
+          { $set: { balanceAmount, status } }
+        ,
+          { new: true }
+        );
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -341,8 +376,8 @@ class FinancialService {
         expenseFilter.hotelId = hotelId;
       }
 
-      const revenueAccounts = await ChartOfAccounts.find(revenueFilter);
-      const expenseAccounts = await ChartOfAccounts.find(expenseFilter);
+      const revenueAccounts = await ChartOfAccounts.find(revenueFilter).lean().limit(1000);
+      const expenseAccounts = await ChartOfAccounts.find(expenseFilter).lean().limit(1000);
 
       const revenue = {};
       const expenses = {};
@@ -461,152 +496,177 @@ class FinancialService {
    * Get account balances by type
    */
   async getAccountBalancesByType(accountType, asOfDate, hotelId = null) {
-    // Convert accountType to proper case for enum validation
-    let searchAccountType = accountType;
-    if (accountType === 'asset') searchAccountType = 'Asset';
-    if (accountType === 'liability') searchAccountType = 'Liability';
-    if (accountType === 'equity') searchAccountType = 'Equity';
-    if (accountType === 'revenue') searchAccountType = 'Revenue';
-    if (accountType === 'expense') searchAccountType = 'Expense';
+    try {
+      // Convert accountType to proper case for enum validation
+      let searchAccountType = accountType;
+      if (accountType === 'asset') searchAccountType = 'Asset';
+      if (accountType === 'liability') searchAccountType = 'Liability';
+      if (accountType === 'equity') searchAccountType = 'Equity';
+      if (accountType === 'revenue') searchAccountType = 'Revenue';
+      if (accountType === 'expense') searchAccountType = 'Expense';
     
-    let filter = { 
-      accountType: searchAccountType,
-      isActive: true
-    };
-
-    if (hotelId) {
-      filter.hotelId = hotelId;
-    }
-
-    const accounts = await ChartOfAccounts.find(filter);
-
-    const balances = {};
-
-    for (const account of accounts) {
-      // Use account's current balance directly
-      let balance = account.currentBalance || 0;
-
-      balances[account.accountName] = {
-        accountCode: account.accountCode,
-        amount: balance,
-        category: account.accountSubType
+      let filter = { 
+        accountType: searchAccountType,
+        isActive: true
       };
-    }
 
-    return balances;
+      if (hotelId) {
+        filter.hotelId = hotelId;
+      }
+
+      const accounts = await ChartOfAccounts.find(filter).lean().limit(1000);
+
+      const balances = {};
+
+      for (const account of accounts) {
+        // Use account's current balance directly
+        let balance = account.currentBalance || 0;
+
+        balances[account.accountName] = {
+          accountCode: account.accountCode,
+          amount: balance,
+          category: account.accountSubType
+        };
+      }
+
+      return balances;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Calculate aged receivables
    */
   async getAgedReceivables(asOfDate = new Date(), hotelId = null) {
-    let filter = {
-      status: { $in: ['sent', 'partially_paid', 'overdue'] },
-      balanceAmount: { $gt: 0 }
-    };
-
-    if (hotelId) {
-      filter.hotelId = hotelId;
-    }
-
-    const invoices = await FinancialInvoice.find(filter).populate('customer.guestId', 'firstName lastName email');
-
-    const aged = {
-      current: [], // 0-30 days
-      thirty: [], // 31-60 days
-      sixty: [], // 61-90 days
-      ninety: [], // 91-120 days
-      over: [] // 120+ days
-    };
-
-    const totals = {
-      current: 0,
-      thirty: 0,
-      sixty: 0,
-      ninety: 0,
-      over: 0
-    };
-
-    for (const invoice of invoices) {
-      const daysPastDue = Math.floor((asOfDate - invoice.dueDate) / (1000 * 60 * 60 * 24));
-      
-      const invoiceData = {
-        invoiceId: invoice.invoiceId,
-        invoiceNumber: invoice.invoiceNumber,
-        customer: invoice.customer.details.name,
-        amount: invoice.balanceAmount,
-        dueDate: invoice.dueDate,
-        daysPastDue: Math.max(0, daysPastDue)
+    try {
+      let filter = {
+        status: { $in: ['sent', 'partially_paid', 'overdue'] },
+        balanceAmount: { $gt: 0 }
       };
 
-      if (daysPastDue <= 30) {
-        aged.current.push(invoiceData);
-        totals.current += invoice.balanceAmount;
-      } else if (daysPastDue <= 60) {
-        aged.thirty.push(invoiceData);
-        totals.thirty += invoice.balanceAmount;
-      } else if (daysPastDue <= 90) {
-        aged.sixty.push(invoiceData);
-        totals.sixty += invoice.balanceAmount;
-      } else if (daysPastDue <= 120) {
-        aged.ninety.push(invoiceData);
-        totals.ninety += invoice.balanceAmount;
-      } else {
-        aged.over.push(invoiceData);
-        totals.over += invoice.balanceAmount;
+      if (hotelId) {
+        filter.hotelId = hotelId;
       }
+
+      const invoices = await FinancialInvoice.find(filter).populate('customer.guestId', 'firstName lastName email').lean().limit(1000);
+
+      const aged = {
+        current: [], // 0-30 days
+        thirty: [], // 31-60 days
+        sixty: [], // 61-90 days
+        ninety: [], // 91-120 days
+        over: [] // 120+ days
+      };
+
+      const totals = {
+        current: 0,
+        thirty: 0,
+        sixty: 0,
+        ninety: 0,
+        over: 0
+      };
+
+      for (const invoice of invoices) {
+        const daysPastDue = Math.floor((asOfDate - invoice.dueDate) / (1000 * 60 * 60 * 24));
+      
+        const invoiceData = {
+          invoiceId: invoice.invoiceId,
+          invoiceNumber: invoice.invoiceNumber,
+          customer: invoice.customer.details.name,
+          amount: invoice.balanceAmount,
+          dueDate: invoice.dueDate,
+          daysPastDue: Math.max(0, daysPastDue)
+        };
+
+        if (daysPastDue <= 30) {
+          aged.current.push(invoiceData);
+          totals.current += invoice.balanceAmount;
+        } else if (daysPastDue <= 60) {
+          aged.thirty.push(invoiceData);
+          totals.thirty += invoice.balanceAmount;
+        } else if (daysPastDue <= 90) {
+          aged.sixty.push(invoiceData);
+          totals.sixty += invoice.balanceAmount;
+        } else if (daysPastDue <= 120) {
+          aged.ninety.push(invoiceData);
+          totals.ninety += invoice.balanceAmount;
+        } else {
+          aged.over.push(invoiceData);
+          totals.over += invoice.balanceAmount;
+        }
+      }
+
+      const grandTotal = Object.values(totals).reduce((sum, amount) => sum + amount, 0);
+
+      return {
+        aged,
+        totals,
+        grandTotal,
+        asOfDate
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    const grandTotal = Object.values(totals).reduce((sum, amount) => sum + amount, 0);
-
-    return {
-      aged,
-      totals,
-      grandTotal,
-      asOfDate
-    };
   }
 
   /**
    * Handle multi-currency transactions
    */
   async convertCurrency(amount, fromCurrency, toCurrency, date = new Date()) {
-    if (fromCurrency === toCurrency) {
-      return amount;
+    try {
+      if (fromCurrency === toCurrency) {
+        return amount;
+      }
+
+      const exchangeRate = await CurrencyExchange.findOne({
+        baseCurrency: fromCurrency,
+        targetCurrency: toCurrency,
+        date: { $lte: date },
+        isActive: true
+      }).sort({ date: -1 }).lean();
+
+      if (!exchangeRate) {
+        throw new Error(`Exchange rate not found for ${fromCurrency} to ${toCurrency}`);
+      }
+
+      return amount * exchangeRate.rate;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    const exchangeRate = await CurrencyExchange.findOne({
-      baseCurrency: fromCurrency,
-      targetCurrency: toCurrency,
-      date: { $lte: date },
-      isActive: true
-    }).sort({ date: -1 });
-
-    if (!exchangeRate) {
-      throw new Error(`Exchange rate not found for ${fromCurrency} to ${toCurrency}`);
-    }
-
-    return amount * exchangeRate.rate;
   }
 
   /**
    * Update exchange rates
    */
   async updateExchangeRates(rates) {
-    for (const rate of rates) {
-      const existingRate = await CurrencyExchange.findOne({
-        baseCurrency: rate.baseCurrency,
-        targetCurrency: rate.targetCurrency,
-        date: rate.date
-      });
+    try {
+      // Use bulkWrite with upsert to handle both insert and update in a single operation
+      const bulkOps = rates.map(rate => ({
+        updateOne: {
+          filter: {
+            baseCurrency: rate.baseCurrency,
+            targetCurrency: rate.targetCurrency,
+            date: rate.date
+          },
+          update: {
+            $set: {
+              rate: rate.rate,
+              source: rate.source || 'manual',
+              baseCurrency: rate.baseCurrency,
+              targetCurrency: rate.targetCurrency,
+              date: rate.date
+            }
+          },
+          upsert: true
+        }
+      }));
 
-      if (existingRate) {
-        existingRate.rate = rate.rate;
-        existingRate.source = rate.source || 'manual';
-        await existingRate.save();
-      } else {
-        await CurrencyExchange.create(rate);
+      if (bulkOps.length > 0) {
+        await CurrencyExchange.bulkWrite(bulkOps);
       }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -614,54 +674,58 @@ class FinancialService {
    * Generate tax summary report
    */
   async generateTaxSummary(startDate, endDate) {
-    const taxConfigs = await TaxConfiguration.find({ isActive: true });
-    const summary = {};
+    try {
+      const taxConfigs = await TaxConfiguration.find({ isActive: true }).lean().limit(1000);
+      const summary = {};
 
-    for (const tax of taxConfigs) {
-      const taxEntries = await GeneralLedger.aggregate([
-        {
-          $match: {
-            date: { $gte: startDate, $lte: endDate },
-            status: 'posted',
-            'entries.account': tax.payableAccount
+      for (const tax of taxConfigs) {
+        const taxEntries = await GeneralLedger.aggregate([
+          {
+            $match: {
+              date: { $gte: startDate, $lte: endDate },
+              status: 'posted',
+              'entries.account': tax.payableAccount
+            }
+          },
+          {
+            $unwind: '$entries'
+          },
+          {
+            $match: {
+              'entries.account': tax.payableAccount
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              collected: { $sum: '$entries.credit' },
+              paid: { $sum: '$entries.debit' }
+            }
           }
-        },
-        {
-          $unwind: '$entries'
-        },
-        {
-          $match: {
-            'entries.account': tax.payableAccount
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            collected: { $sum: '$entries.credit' },
-            paid: { $sum: '$entries.debit' }
-          }
-        }
-      ]);
+        ]);
 
-      const collected = taxEntries.length > 0 ? taxEntries[0].collected : 0;
-      const paid = taxEntries.length > 0 ? taxEntries[0].paid : 0;
+        const collected = taxEntries.length > 0 ? taxEntries[0].collected : 0;
+        const paid = taxEntries.length > 0 ? taxEntries[0].paid : 0;
 
-      summary[tax.taxName] = {
-        taxCode: tax.taxCode,
-        rate: tax.rate,
-        collected,
-        paid,
-        balance: collected - paid
+        summary[tax.taxName] = {
+          taxCode: tax.taxCode,
+          rate: tax.rate,
+          collected,
+          paid,
+          balance: collected - paid
+        };
+      }
+
+      return {
+        period: { startDate, endDate },
+        taxes: summary,
+        totalCollected: Object.values(summary).reduce((sum, tax) => sum + tax.collected, 0),
+        totalPaid: Object.values(summary).reduce((sum, tax) => sum + tax.paid, 0),
+        totalBalance: Object.values(summary).reduce((sum, tax) => sum + tax.balance, 0)
       };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return {
-      period: { startDate, endDate },
-      taxes: summary,
-      totalCollected: Object.values(summary).reduce((sum, tax) => sum + tax.collected, 0),
-      totalPaid: Object.values(summary).reduce((sum, tax) => sum + tax.paid, 0),
-      totalBalance: Object.values(summary).reduce((sum, tax) => sum + tax.balance, 0)
-    };
   }
 
   /**
@@ -704,7 +768,7 @@ class FinancialService {
    */
   async generateTrialBalance(asOfDate) {
     try {
-      const accounts = await ChartOfAccounts.find({ isActive: true }).sort({ accountCode: 1 });
+      const accounts = await ChartOfAccounts.find({ isActive: true }).sort({ accountCode: 1 }).lean().limit(1000);
       const balances = [];
       let totalDebits = 0;
       let totalCredits = 0;
@@ -773,7 +837,11 @@ class FinancialService {
    * Generate Aged Receivables Report
    */
   async generateAgedReceivablesReport(asOfDate = new Date()) {
-    return await this.getAgedReceivables(asOfDate);
+    try {
+      return await this.getAgedReceivables(asOfDate);
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -785,7 +853,7 @@ class FinancialService {
         status: 'active',
         'period.startDate': { $lte: endDate },
         'period.endDate': { $gte: startDate }
-      }).populate('budgetItems.account', 'accountName accountCode');
+      }).populate('budgetItems.account', 'accountName accountCode').lean().limit(1000);
 
       const variances = [];
 
@@ -858,7 +926,10 @@ class FinancialService {
       const entries = [];
       
       // Debit: Accounts Receivable
-      const arAccount = await ChartOfAccounts.findOne({ accountCode: '1100' });
+      const arAccount = await ChartOfAccounts.findOne({ accountCode: '1100' }).lean();
+      if (!arAccount) {
+        throw new Error('Accounts Receivable account (1100) not found. Please initialize chart of accounts first.');
+      }
       entries.push({
         account: arAccount._id,
         debit: invoice.totalAmount,
@@ -880,7 +951,10 @@ class FinancialService {
 
       // Credit: Tax Payable
       if (invoice.totalTax > 0) {
-        const taxAccount = await ChartOfAccounts.findOne({ accountCode: '2100' });
+        const taxAccount = await ChartOfAccounts.findOne({ accountCode: '2100' }).lean();
+        if (!taxAccount) {
+          throw new Error('Sales Tax Payable account (2100) not found. Please initialize chart of accounts first.');
+        }
         entries.push({
           account: taxAccount._id,
           debit: 0,
@@ -922,7 +996,10 @@ class FinancialService {
       const entries = [];
       
       // Debit: Cash/Bank Account
-      const cashAccount = await ChartOfAccounts.findOne({ accountCode: '1001' });
+      const cashAccount = await ChartOfAccounts.findOne({ accountCode: '1001' }).lean();
+      if (!cashAccount) {
+        throw new Error('Cash account (1001) not found. Please initialize chart of accounts first.');
+      }
       entries.push({
         account: payment.bankAccount || cashAccount._id,
         debit: payment.amount,
@@ -931,7 +1008,10 @@ class FinancialService {
       });
 
       // Credit: Accounts Receivable
-      const arAccount = await ChartOfAccounts.findOne({ accountCode: '1100' });
+      const arAccount = await ChartOfAccounts.findOne({ accountCode: '1100' }).lean();
+      if (!arAccount) {
+        throw new Error('Accounts Receivable account (1100) not found. Please initialize chart of accounts first.');
+      }
       entries.push({
         account: arAccount._id,
         debit: 0,
@@ -1113,7 +1193,7 @@ class FinancialService {
    */
   async performBankReconciliation(bankAccountId, statementDate, transactions) {
     try {
-      const bankAccount = await BankAccount.findById(bankAccountId);
+      const bankAccount = await BankAccount.findById(bankAccountId).lean();
       if (!bankAccount) {
         throw new Error('Bank account not found');
       }
@@ -1123,7 +1203,7 @@ class FinancialService {
         bankAccount: bankAccountId,
         date: { $lte: statementDate },
         reconciled: false
-      });
+      }).lean().limit(1000);
 
       const reconciliation = {
         bankAccount: bankAccount.accountName,
@@ -1137,8 +1217,9 @@ class FinancialService {
       };
 
       // Match transactions
+      const reconciledIds = [];
       for (const stmtTxn of transactions) {
-        const matchedBook = bookTransactions.find(bookTxn => 
+        const matchedBook = bookTransactions.find(bookTxn =>
           Math.abs(bookTxn.amount - Math.abs(stmtTxn.amount)) < 0.01 &&
           Math.abs(bookTxn.date - new Date(stmtTxn.date)) < 24 * 60 * 60 * 1000
         );
@@ -1152,16 +1233,21 @@ class FinancialService {
           reconciliation.unmatchedBookTransactions = reconciliation.unmatchedBookTransactions.filter(
             t => t._id.toString() !== matchedBook._id.toString()
           );
-          
+
           reconciliation.unmatchedStatementTransactions = reconciliation.unmatchedStatementTransactions.filter(
             t => t !== stmtTxn
           );
 
-          // Mark as reconciled
-          matchedBook.reconciled = true;
-          matchedBook.reconciledDate = statementDate;
-          await matchedBook.save();
+          reconciledIds.push(matchedBook._id);
         }
+      }
+
+      // Batch: mark all matched transactions as reconciled in a single updateMany
+      if (reconciledIds.length > 0) {
+        await FinancialPayment.updateMany(
+          { _id: { $in: reconciledIds } },
+          { $set: { reconciled: true, reconciledDate: statementDate } }
+        );
       }
 
       // Update bank account reconciliation info
@@ -1179,12 +1265,16 @@ class FinancialService {
 
   // Helper methods
   async calculateOperatingCashFlow(startDate, endDate) {
-    // Simplified operating cash flow calculation
-    const profitLoss = await this.generateProfitLossReport(startDate, endDate);
-    return {
-      net: profitLoss.summary.netIncome * 0.8, // Simplified calculation
-      details: {}
-    };
+    try {
+      // Simplified operating cash flow calculation
+      const profitLoss = await this.generateProfitLossReport(startDate, endDate);
+      return {
+        net: profitLoss.summary.netIncome * 0.8, // Simplified calculation
+        details: {}
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   async calculateInvestingCashFlow(startDate, endDate) {
@@ -1247,35 +1337,39 @@ class FinancialService {
   }
 
   async getCashBalanceAsOf(date) {
-    const cashAccount = await ChartOfAccounts.findOne({ accountCode: '1001' });
-    if (!cashAccount) return 0;
+    try {
+      const cashAccount = await ChartOfAccounts.findOne({ accountCode: '1001' }).lean();
+      if (!cashAccount) return 0;
 
-    const transactions = await GeneralLedger.aggregate([
-      {
-        $match: {
-          date: { $lte: date },
-          status: 'posted',
-          'entries.account': cashAccount._id
+      const transactions = await GeneralLedger.aggregate([
+        {
+          $match: {
+            date: { $lte: date },
+            status: 'posted',
+            'entries.account': cashAccount._id
+          }
+        },
+        {
+          $unwind: '$entries'
+        },
+        {
+          $match: {
+            'entries.account': cashAccount._id
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            debit: { $sum: '$entries.debit' },
+            credit: { $sum: '$entries.credit' }
+          }
         }
-      },
-      {
-        $unwind: '$entries'
-      },
-      {
-        $match: {
-          'entries.account': cashAccount._id
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          debit: { $sum: '$entries.debit' },
-          credit: { $sum: '$entries.credit' }
-        }
-      }
-    ]);
+      ]);
 
-    return transactions.length > 0 ? transactions[0].debit - transactions[0].credit : 0;
+      return transactions.length > 0 ? transactions[0].debit - transactions[0].credit : 0;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   generateDateLabels(startDate, endDate, period) {

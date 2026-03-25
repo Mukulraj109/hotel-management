@@ -366,7 +366,7 @@ class MultiCurrencyRateController {
       const end = new Date(endDate);
 
       // Get rate plan
-      const ratePlan = await RatePlan.findOne({ planId: ratePlanId, isActive: true });
+      const ratePlan = await RatePlan.findOne({ planId: ratePlanId, isActive: true }).lean();
       if (!ratePlan) {
         return res.status(404).json({
           success: false,
@@ -385,7 +385,7 @@ class MultiCurrencyRateController {
         query.roomType = roomType;
       }
 
-      const overrides = await RateOverride.find(query).sort({ date: 1 });
+      const overrides = await RateOverride.find(query).sort({ date: 1 }).lean().limit(1000);
 
       // Build history with currency conversion
       const history = [];

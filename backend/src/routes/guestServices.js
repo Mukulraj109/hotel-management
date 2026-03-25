@@ -11,6 +11,7 @@ import { validate, schemas } from '../middleware/validation.js';
 import websocketService from '../services/websocketService.js';
 import guestServicePOSIntegration from '../services/guestServicePOSIntegration.js';
 import logger from '../utils/logger.js';
+import { validateStatusTransition, GUEST_SERVICE_TRANSITIONS } from '../utils/statusTransitions.js';
 
 const router = express.Router();
 
@@ -90,7 +91,7 @@ router.post('/', authenticate, catchAsync(async (req, res) => {
   } = req.body;
 
   // Verify booking exists and belongs to user
-  const booking = await Booking.findById(bookingId);
+  const booking = await Booking.findById(bookingId).lean();
   if (!booking) {
     throw new ApplicationError('Booking not found', 404);
   }
@@ -426,7 +427,7 @@ router.get('/available-staff', authenticate, authorize('staff', 'admin', 'frontd
     hotelId: hotelId,
     role: 'staff',
     isActive: true
-  }).select('_id name email department');
+  }).select('_id name email department').lean().limit(1000);
   
   res.json({ status: 'success', data: staffMembers });
 }));
@@ -461,7 +462,7 @@ router.get('/:id', authenticate, catchAsync(async (req, res) => {
         select: 'roomNumber'
       }
     })
-    .populate('assignedTo', 'name email');
+    .populate('assignedTo', 'name email').lean();
 
   if (!serviceRequest) {
     throw new ApplicationError('Service request not found', 404);
@@ -520,9 +521,10 @@ router.get('/:id', authenticate, catchAsync(async (req, res) => {
  *         description: Service request updated successfully
  */
 router.patch('/:id', authenticate, catchAsync(async (req, res) => {
-  const serviceRequest = await GuestService.findById(req.params.id);
-  
-  if (!serviceRequest) {
+  // First fetch current state to validate permissions and transitions
+  const currentRequest = await GuestService.findById(req.params.id).lean();
+
+  if (!currentRequest) {
     throw new ApplicationError('Service request not found', 404);
   }
 
@@ -539,37 +541,63 @@ router.patch('/:id', authenticate, catchAsync(async (req, res) => {
   // Permission checks
   const canUpdate =
     req.user.role === 'admin' ||
-    ((req.user.role === 'staff' || req.user.role === 'frontdesk') && serviceRequest.hotelId.toString() === req.user.hotelId.toString()) ||
-    (req.user.role === 'guest' && serviceRequest.userId.toString() === req.user._id.toString() && serviceRequest.canCancel());
+    ((req.user.role === 'staff' || req.user.role === 'frontdesk') && currentRequest.hotelId.toString() === req.user.hotelId.toString()) ||
+    (req.user.role === 'guest' && currentRequest.userId.toString() === req.user._id.toString());
 
   if (!canUpdate) {
     throw new ApplicationError('You do not have permission to update this request', 403);
   }
+
+  const setFields = {};
 
   // Guests can only cancel their own requests
   if (req.user.role === 'guest') {
     if (status && status !== 'cancelled') {
       throw new ApplicationError('Guests can only cancel their requests', 403);
     }
-    serviceRequest.status = 'cancelled';
+    const guestTransition = validateStatusTransition(GUEST_SERVICE_TRANSITIONS, currentRequest.status, 'cancelled');
+    if (!guestTransition.valid) {
+      throw new ApplicationError(guestTransition.error, 400);
+    }
+    setFields.status = 'cancelled';
   } else {
-    // Staff/admin updates
-    if (status !== undefined) serviceRequest.updateStatus(status);
-    if (assignedTo !== undefined) serviceRequest.assignedTo = assignedTo;
-    if (notes !== undefined) serviceRequest.notes = notes;
-    if (actualCost !== undefined) serviceRequest.actualCost = actualCost;
-    if (scheduledTime !== undefined) serviceRequest.scheduledTime = scheduledTime;
-    if (priority !== undefined) serviceRequest.priority = priority;
-    if (completedServiceVariations !== undefined) serviceRequest.completedServiceVariations = completedServiceVariations;
+    // Staff/admin updates - validate transition if status is changing
+    if (status !== undefined) {
+      const staffTransition = validateStatusTransition(GUEST_SERVICE_TRANSITIONS, currentRequest.status, status);
+      if (!staffTransition.valid) {
+        throw new ApplicationError(staffTransition.error, 400);
+      }
+      setFields.status = status;
+      if (status === 'completed') setFields.completedAt = new Date();
+      setFields.statusUpdatedAt = new Date();
+    }
+    if (assignedTo !== undefined) setFields.assignedTo = assignedTo;
+    if (notes !== undefined) setFields.notes = notes;
+    if (actualCost !== undefined) setFields.actualCost = actualCost;
+    if (scheduledTime !== undefined) setFields.scheduledTime = scheduledTime;
+    if (priority !== undefined) setFields.priority = priority;
+    if (completedServiceVariations !== undefined) setFields.completedServiceVariations = completedServiceVariations;
   }
 
-  await serviceRequest.save();
-  
-  await serviceRequest.populate([
+  // Atomic update with status guard to prevent concurrent transition conflicts
+  const matchQuery = { _id: req.params.id };
+  if (status !== undefined) {
+    matchQuery.status = currentRequest.status; // Ensure status hasn't changed since read
+  }
+
+  const serviceRequest = await GuestService.findOneAndUpdate(
+    matchQuery,
+    { $set: setFields },
+    { new: true, runValidators: true }
+  ).populate([
     { path: 'hotelId', select: 'name' },
     { path: 'userId', select: 'name email' },
     { path: 'assignedTo', select: 'name' }
   ]);
+
+  if (!serviceRequest) {
+    throw new ApplicationError('Service request was modified concurrently. Please retry.', 409);
+  }
 
   res.json({
     status: 'success',
@@ -612,24 +640,28 @@ router.patch('/:id', authenticate, catchAsync(async (req, res) => {
  */
 router.post('/:id/feedback', authenticate, authorize('guest'), catchAsync(async (req, res) => {
   const { rating, feedback } = req.body;
-  
-  const serviceRequest = await GuestService.findById(req.params.id);
-  
+
+  const serviceRequest = await GuestService.findOneAndUpdate(
+    {
+      _id: req.params.id,
+      userId: req.user._id,
+      status: 'completed'
+    },
+    { $set: { rating, feedback } },
+    { new: true, runValidators: true }
+  );
+
   if (!serviceRequest) {
-    throw new ApplicationError('Service request not found', 404);
-  }
-
-  if (serviceRequest.userId.toString() !== req.user._id.toString()) {
-    throw new ApplicationError('You can only rate your own service requests', 403);
-  }
-
-  if (serviceRequest.status !== 'completed') {
+    // Determine specific error
+    const exists = await GuestService.findById(req.params.id).lean();
+    if (!exists) {
+      throw new ApplicationError('Service request not found', 404);
+    }
+    if (exists.userId.toString() !== req.user._id.toString()) {
+      throw new ApplicationError('You can only rate your own service requests', 403);
+    }
     throw new ApplicationError('You can only rate completed services', 400);
   }
-
-  serviceRequest.rating = rating;
-  serviceRequest.feedback = feedback;
-  await serviceRequest.save();
 
   res.json({
     status: 'success',

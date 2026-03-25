@@ -211,6 +211,8 @@ class NotificationService {
   private listeners: Map<string, Set<(notification: Notification) => void>> = new Map();
   private browserNotificationEnabled = false;
   private serviceWorkerRegistration: ServiceWorkerRegistration | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private scheduledTimers: Set<ReturnType<typeof setTimeout>> = new Set();
 
   // Get notifications with pagination and filters
   async getNotifications(params?: {
@@ -220,68 +222,104 @@ class NotificationService {
     type?: string;
     unreadOnly?: boolean;
   }): Promise<NotificationsResponse> {
-    const searchParams = new URLSearchParams();
+    try {
+      const searchParams = new URLSearchParams();
     
-    if (params?.page) searchParams.append('page', params.page.toString());
-    if (params?.limit) searchParams.append('limit', params.limit.toString());
-    if (params?.status) searchParams.append('status', params.status);
-    if (params?.type) searchParams.append('type', params.type);
-    if (params?.unreadOnly) searchParams.append('unreadOnly', params.unreadOnly.toString());
+      if (params?.page) searchParams.append('page', params.page.toString());
+      if (params?.limit) searchParams.append('limit', params.limit.toString());
+      if (params?.status) searchParams.append('status', params.status);
+      if (params?.type) searchParams.append('type', params.type);
+      if (params?.unreadOnly) searchParams.append('unreadOnly', params.unreadOnly.toString());
     
-    const response = await api.get(`/notifications?${searchParams.toString()}`);
-    return response.data.data;
+      const response = await api.get(`/notifications?${searchParams.toString()}`);
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get unread notification count
   async getUnreadCount(): Promise<number> {
-    const response = await api.get('/notifications/unread-count');
-    return response.data.data.unreadCount;
+    try {
+      const response = await api.get('/notifications/unread-count');
+      return response.data.data.unreadCount;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get specific notification
   async getNotification(id: string): Promise<Notification> {
-    const response = await api.get(`/notifications/${id}`);
-    return response.data.data.notification;
+    try {
+      const response = await api.get(`/notifications/${id}`);
+      return response.data.data.notification;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Mark notification as read
   async markAsRead(id: string): Promise<void> {
-    await api.patch(`/notifications/${id}/read`);
-    // Track read event
-    await this.trackNotificationEvent('read', {
-      notificationId: id,
-      channel: 'in_app',
-      metadata: { action: 'mark_as_read' }
-    });
+    try {
+      await api.patch(`/notifications/${id}/read`);
+      // Track read event
+      await this.trackNotificationEvent('read', {
+        notificationId: id,
+        channel: 'in_app',
+        metadata: { action: 'mark_as_read' }
+      });
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Mark multiple notifications as read
   async markMultipleAsRead(notificationIds: string[]): Promise<{ modifiedCount: number }> {
-    const response = await api.post('/notifications/mark-read', { notificationIds });
-    return response.data.data;
+    try {
+      const response = await api.post('/notifications/mark-read', { notificationIds });
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Mark all notifications as read
   async markAllAsRead(): Promise<{ modifiedCount: number }> {
-    const response = await api.post('/notifications/mark-all-read');
-    return response.data.data;
+    try {
+      const response = await api.post('/notifications/mark-all-read');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Delete notification
   async deleteNotification(id: string): Promise<void> {
-    await api.delete(`/notifications/${id}`);
+    try {
+      await api.delete(`/notifications/${id}`);
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get notification preferences
   async getPreferences(): Promise<NotificationPreference> {
-    const response = await api.get('/notifications/preferences');
-    return response.data.data.preferences;
+    try {
+      const response = await api.get('/notifications/preferences');
+      return response.data.data.preferences;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Update notification preferences
   async updatePreferences(request: UpdatePreferencesRequest): Promise<NotificationPreference> {
-    const response = await api.patch('/notifications/preferences', request);
-    return response.data.data.preferences;
+    try {
+      const response = await api.patch('/notifications/preferences', request);
+      return response.data.data.preferences;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Update specific notification type setting
@@ -290,26 +328,42 @@ class NotificationService {
     type: string,
     enabled: boolean
   ): Promise<NotificationPreference> {
-    const response = await api.patch(`/notifications/preferences/${channel}/${type}`, { enabled });
-    return response.data.data.preferences;
+    try {
+      const response = await api.patch(`/notifications/preferences/${channel}/${type}`, { enabled });
+      return response.data.data.preferences;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get available notification types
   async getNotificationTypes(): Promise<NotificationType[]> {
-    const response = await api.get('/notifications/types');
-    return response.data.data.notificationTypes;
+    try {
+      const response = await api.get('/notifications/types');
+      return response.data.data.notificationTypes;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Get available notification channels
   async getNotificationChannels(): Promise<NotificationChannel[]> {
-    const response = await api.get('/notifications/channels');
-    return response.data.data.channels;
+    try {
+      const response = await api.get('/notifications/channels');
+      return response.data.data.channels;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Send test notification
   async sendTestNotification(request: TestNotificationRequest): Promise<Notification> {
-    const response = await api.post('/notifications/test', request);
-    return response.data.data.notification;
+    try {
+      const response = await api.post('/notifications/test', request);
+      return response.data.data.notification;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Utility functions
@@ -579,7 +633,9 @@ class NotificationService {
 
       // Reconnect with exponential backoff
       if (this.reconnectAttempts < this.maxReconnectAttempts) {
-        setTimeout(() => {
+        if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = setTimeout(() => {
+          this.reconnectTimer = null;
           this.reconnectAttempts++;
           this.reconnectDelay *= 2;
           this.connectToStream(token);
@@ -657,8 +713,12 @@ class NotificationService {
 
   // Get notification summary
   async getSummary() {
-    const response = await api.get('/notifications/summary');
-    return response.data.data;
+    try {
+      const response = await api.get('/notifications/summary');
+      return response.data.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Initialize browser notifications
@@ -742,9 +802,11 @@ class NotificationService {
 
       // Auto-close non-urgent notifications after 8 seconds
       if (notification.priority !== 'urgent') {
-        setTimeout(() => {
+        const autoCloseTimer = setTimeout(() => {
+          this.scheduledTimers.delete(autoCloseTimer);
           browserNotification.close();
         }, 8000);
+        this.scheduledTimers.add(autoCloseTimer);
       }
 
       // Handle notification click
@@ -906,9 +968,25 @@ class NotificationService {
       return;
     }
 
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      this.scheduledTimers.delete(timer);
       this.sendBrowserNotification(notification);
     }, delay);
+    this.scheduledTimers.add(timer);
+  }
+
+  // Cleanup all timers
+  destroy() {
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.scheduledTimers.forEach(timer => clearTimeout(timer));
+    this.scheduledTimers.clear();
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
+    }
   }
 }
 

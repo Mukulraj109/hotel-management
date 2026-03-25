@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -86,6 +86,12 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
   const [maintenanceIssues, setMaintenanceIssues] = useState<MaintenanceIssue[]>([]);
   const [staffPerformance, setStaffPerformance] = useState<StaffPerformance[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     generateMockInspections();
@@ -242,6 +248,7 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
     setLoading(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 1000));
+    if (!isMountedRef.current) return;
 
       setRoomInspections(prev => prev.map(inspection =>
         inspection.id === inspectionId ? {
@@ -263,6 +270,7 @@ export const AdvancedHousekeeping: React.FC<AdvancedHousekeepingProps> = () => {
     setLoading(true);
     try {
       await new Promise(resolve => setTimeout(resolve, 1500));
+    if (!isMountedRef.current) return;
 
       setRoomInspections(prev => prev.map(inspection =>
         inspection.id === inspectionId ? {

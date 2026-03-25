@@ -50,7 +50,7 @@ export const getAccounts = catchAsync(async (req, res) => {
   let accounts = await ChartOfAccounts.find(filter)
     .populate('parentAccount', 'accountName accountCode')
     .populate('createdBy', 'name email')
-    .sort({ accountCode: 1 });
+    .sort({ accountCode: 1 }).lean().limit(1000);
 
   // Include current balances if requested
   if (includeBalances === 'true') {
@@ -112,7 +112,7 @@ export const getAccount = catchAsync(async (req, res) => {
 
   const account = await ChartOfAccounts.findOne({ _id: id, hotelId })
     .populate('parentAccount', 'accountName accountCode')
-    .populate('createdBy updatedBy', 'name email');
+    .populate('createdBy updatedBy', 'name email').lean();
 
   if (!account) {
     return res.status(404).json({
@@ -131,7 +131,7 @@ export const getAccount = catchAsync(async (req, res) => {
     })
     .sort({ transactionDate: -1 })
     .limit(parseInt(transactionLimit))
-    .populate('journalEntryId', 'entryNumber description');
+    .populate('journalEntryId', 'entryNumber description').lean();
 
     responseData.recentTransactions = transactions;
   }
@@ -161,7 +161,7 @@ export const createAccount = catchAsync(async (req, res) => {
     const parentAccount = await ChartOfAccounts.findOne({
       _id: accountData.parentAccount,
       hotelId
-    });
+    }).lean();
     
     if (!parentAccount) {
       return res.status(400).json({
@@ -201,7 +201,7 @@ export const updateAccount = catchAsync(async (req, res) => {
   const { hotelId, _id: userId } = req.user;
   const { id } = req.params;
 
-  const account = await ChartOfAccounts.findOne({ _id: id, hotelId });
+  const account = await ChartOfAccounts.findOne({ _id: id, hotelId }).lean();
   
   if (!account) {
     return res.status(404).json({
@@ -223,7 +223,7 @@ export const updateAccount = catchAsync(async (req, res) => {
     const parentAccount = await ChartOfAccounts.findOne({
       _id: req.body.parentAccount,
       hotelId
-    });
+    }).lean();
     
     if (!parentAccount) {
       return res.status(400).json({
@@ -266,7 +266,7 @@ export const deleteAccount = catchAsync(async (req, res) => {
   const { id } = req.params;
   const { force = false } = req.query;
 
-  const account = await ChartOfAccounts.findOne({ _id: id, hotelId });
+  const account = await ChartOfAccounts.findOne({ _id: id, hotelId }).lean();
   
   if (!account) {
     return res.status(404).json({
@@ -339,7 +339,7 @@ export const getAccountActivity = catchAsync(async (req, res) => {
     limit = 50 
   } = req.query;
 
-  const account = await ChartOfAccounts.findOne({ _id: id, hotelId });
+  const account = await ChartOfAccounts.findOne({ _id: id, hotelId }).lean();
   
   if (!account) {
     return res.status(404).json({
@@ -418,13 +418,17 @@ export const bulkImportAccounts = catchAsync(async (req, res) => {
     duplicates: []
   };
 
+  // Batch: check for duplicates in a single query
+  const accountCodes = accounts.map(a => a.accountCode);
+  const existingAccounts = await ChartOfAccounts.find({
+    hotelId,
+    accountCode: { $in: accountCodes }
+  }).select('accountCode').lean();
+  const existingCodes = new Set(existingAccounts.map(a => a.accountCode));
+
   for (const accountData of accounts) {
     try {
-      // Check for duplicates
-      const existing = await ChartOfAccounts.findOne({
-        hotelId,
-        accountCode: accountData.accountCode
-      });
+      const existing = existingCodes.has(accountData.accountCode);
 
       if (existing) {
         results.duplicates.push({

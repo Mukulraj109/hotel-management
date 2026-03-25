@@ -269,7 +269,7 @@ export default function GuestFeedback() {
                   </label>
                   <div className="flex items-center gap-2">
                     {[1, 2, 3, 4, 5].map((star) => (
-                      <button
+                      <button aria-label="Previous"
                         key={star}
                         type="button"
                         onClick={() => setFeedbackForm(prev => ({ ...prev, rating: star }))}
@@ -331,7 +331,7 @@ export default function GuestFeedback() {
                         </label>
                         <div className="flex items-center gap-1">
                           {[1, 2, 3, 4, 5].map((star) => (
-                            <button
+                            <button aria-label="Favorite"
                               key={star}
                               type="button"
                               onClick={() => updateCategoryRating(category as keyof typeof feedbackForm.categories, star)}

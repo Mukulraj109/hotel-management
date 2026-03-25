@@ -88,7 +88,7 @@ export const getRateById = catchAsync(async (req, res) => {
   const rate = await CentralizedRate.findById(rateId)
     .populate('propertyGroup.groupId')
     .populate('createdBy', 'name email')
-    .populate('updatedBy', 'name email');
+    .populate('updatedBy', 'name email').lean();
 
   if (!rate) {
     return res.status(404).json({
@@ -282,7 +282,7 @@ export const getRateHistory = catchAsync(async (req, res) => {
   const { rateId } = req.params;
   const { page = 1, limit = 20 } = req.query;
 
-  const rate = await CentralizedRate.findById(rateId);
+  const rate = await CentralizedRate.findById(rateId).lean();
   if (!rate) {
     return res.status(404).json({
       success: false,
@@ -348,7 +348,7 @@ export const exportRates = catchAsync(async (req, res) => {
 export const getGroupDashboard = catchAsync(async (req, res) => {
   const { groupId } = req.params;
 
-  const group = await PropertyGroup.findById(groupId);
+  const group = await PropertyGroup.findById(groupId).lean();
   if (!group) {
     return res.status(404).json({
       success: false,

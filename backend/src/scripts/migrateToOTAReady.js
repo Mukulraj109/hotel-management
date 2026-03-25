@@ -79,7 +79,7 @@ class OTAMigrationScript {
               hotelId: hotel._id,
               type: legacyType,
               isActive: true
-            });
+            }).lean();
 
             // Create new room type
             roomType = new RoomType({
@@ -130,7 +130,7 @@ class OTAMigrationScript {
         filter.hotelId = hotelId;
       }
 
-      const roomsToMigrate = await Room.find(filter);
+      const roomsToMigrate = await Room.find(filter).lean().limit(1000);
       console.log(`  Found ${roomsToMigrate.length} rooms to migrate`);
 
       for (const room of roomsToMigrate) {
@@ -139,7 +139,7 @@ class OTAMigrationScript {
           const roomType = await RoomType.findOne({
             hotelId: room.hotelId,
             legacyType: room.type
-          });
+          }).lean();
 
           if (!roomType) {
             throw new Error(`Room type not found for legacy type: ${room.type}`);
@@ -178,7 +178,7 @@ class OTAMigrationScript {
         filter.hotelId = hotelId;
       }
 
-      const roomTypes = await RoomType.find(filter);
+      const roomTypes = await RoomType.find(filter).lean().limit(1000);
       console.log(`  Found ${roomTypes.length} room types`);
 
       const currentDate = new Date();
@@ -207,7 +207,7 @@ class OTAMigrationScript {
               hotelId: roomType.hotelId,
               roomTypeId: roomType._id,
               date: new Date(date)
-            });
+            }).lean();
 
             if (existing) {
               continue; // Skip if already exists

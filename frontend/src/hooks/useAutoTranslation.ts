@@ -85,6 +85,14 @@ export const useAutoTranslation = (
   const debounceRefs = useRef<{ [key: string]: NodeJS.Timeout }>({});
   const currentContent = useRef<{ [key: string]: string }>({});
 
+  // Cleanup all debounce timers on unmount
+  useEffect(() => {
+    const refs = debounceRefs;
+    return () => {
+      Object.values(refs.current).forEach(timer => clearTimeout(timer));
+    };
+  }, []);
+
   // Update translation stats periodically
   useEffect(() => {
     const updateStats = () => {

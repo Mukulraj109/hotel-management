@@ -345,79 +345,87 @@ otaPayloadSchema.virtual('decompressedResponse').get(async function() {
 
 // Static methods for payload management
 otaPayloadSchema.statics.storeInboundPayload = async function(data) {
-  const payload = new this({
-    direction: 'inbound',
-    channel: data.channel,
-    channelId: data.channelId,
-    endpoint: {
-      url: data.url,
-      method: data.method,
-      path: data.path,
-      query: data.query
-    },
-    headers: new Map(Object.entries(data.headers || {})),
-    rawPayload: {
-      data: Buffer.from(JSON.stringify(data.payload)),
-      size: Buffer.byteLength(JSON.stringify(data.payload)),
-      encoding: 'utf8'
-    },
-    parsedPayload: data.parsedPayload || {},
-    correlationId: data.correlationId,
-    traceId: data.traceId,
-    relatedBookingId: data.bookingId,
-    relatedAmendmentId: data.amendmentId,
-    businessContext: data.businessContext || {},
-    security: {
-      authenticated: data.authenticated,
-      signature: data.signature,
-      signatureValid: data.signatureValid,
-      ipAddress: data.ipAddress,
-      userAgent: data.userAgent
-    },
-    classification: data.classification || {}
-  });
+  try {
+    const payload = new this({
+      direction: 'inbound',
+      channel: data.channel,
+      channelId: data.channelId,
+      endpoint: {
+        url: data.url,
+        method: data.method,
+        path: data.path,
+        query: data.query
+      },
+      headers: new Map(Object.entries(data.headers || {})),
+      rawPayload: {
+        data: Buffer.from(JSON.stringify(data.payload)),
+        size: Buffer.byteLength(JSON.stringify(data.payload)),
+        encoding: 'utf8'
+      },
+      parsedPayload: data.parsedPayload || {},
+      correlationId: data.correlationId,
+      traceId: data.traceId,
+      relatedBookingId: data.bookingId,
+      relatedAmendmentId: data.amendmentId,
+      businessContext: data.businessContext || {},
+      security: {
+        authenticated: data.authenticated,
+        signature: data.signature,
+        signatureValid: data.signatureValid,
+        ipAddress: data.ipAddress,
+        userAgent: data.userAgent
+      },
+      classification: data.classification || {}
+    });
   
-  return await payload.save();
+    return await payload.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 otaPayloadSchema.statics.storeOutboundPayload = async function(data) {
-  const payload = new this({
-    direction: 'outbound',
-    channel: data.channel,
-    channelId: data.channelId,
-    endpoint: {
-      url: data.url,
-      method: data.method,
-      path: data.path,
-      query: data.query
-    },
-    headers: new Map(Object.entries(data.requestHeaders || {})),
-    rawPayload: {
-      data: Buffer.from(JSON.stringify(data.requestPayload)),
-      size: Buffer.byteLength(JSON.stringify(data.requestPayload)),
-      encoding: 'utf8'
-    },
-    response: {
-      statusCode: data.responseStatus,
-      headers: new Map(Object.entries(data.responseHeaders || {})),
-      body: data.responseBody ? {
-        data: Buffer.from(JSON.stringify(data.responseBody)),
-        size: Buffer.byteLength(JSON.stringify(data.responseBody))
-      } : undefined,
-      responseTime: data.responseTime
-    },
-    parsedPayload: data.parsedPayload || {},
-    correlationId: data.correlationId,
-    traceId: data.traceId,
-    relatedBookingId: data.bookingId,
-    businessContext: data.businessContext || {},
-    security: {
-      ipAddress: data.ipAddress,
-      userAgent: data.userAgent
-    }
-  });
+  try {
+    const payload = new this({
+      direction: 'outbound',
+      channel: data.channel,
+      channelId: data.channelId,
+      endpoint: {
+        url: data.url,
+        method: data.method,
+        path: data.path,
+        query: data.query
+      },
+      headers: new Map(Object.entries(data.requestHeaders || {})),
+      rawPayload: {
+        data: Buffer.from(JSON.stringify(data.requestPayload)),
+        size: Buffer.byteLength(JSON.stringify(data.requestPayload)),
+        encoding: 'utf8'
+      },
+      response: {
+        statusCode: data.responseStatus,
+        headers: new Map(Object.entries(data.responseHeaders || {})),
+        body: data.responseBody ? {
+          data: Buffer.from(JSON.stringify(data.responseBody)),
+          size: Buffer.byteLength(JSON.stringify(data.responseBody))
+        } : undefined,
+        responseTime: data.responseTime
+      },
+      parsedPayload: data.parsedPayload || {},
+      correlationId: data.correlationId,
+      traceId: data.traceId,
+      relatedBookingId: data.bookingId,
+      businessContext: data.businessContext || {},
+      security: {
+        ipAddress: data.ipAddress,
+        userAgent: data.userAgent
+      }
+    });
   
-  return await payload.save();
+    return await payload.save();
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Find payloads for a booking
@@ -449,45 +457,49 @@ otaPayloadSchema.statics.findByCorrelationId = function(correlationId) {
 
 // Get payload statistics
 otaPayloadSchema.statics.getStats = async function(filters = {}) {
-  const matchStage = {};
+  try {
+    const matchStage = {};
   
-  if (filters.channel) matchStage.channel = filters.channel;
-  if (filters.direction) matchStage.direction = filters.direction;
-  if (filters.startDate || filters.endDate) {
-    matchStage.createdAt = {};
-    if (filters.startDate) matchStage.createdAt.$gte = new Date(filters.startDate);
-    if (filters.endDate) matchStage.createdAt.$lte = new Date(filters.endDate);
-  }
+    if (filters.channel) matchStage.channel = filters.channel;
+    if (filters.direction) matchStage.direction = filters.direction;
+    if (filters.startDate || filters.endDate) {
+      matchStage.createdAt = {};
+      if (filters.startDate) matchStage.createdAt.$gte = new Date(filters.startDate);
+      if (filters.endDate) matchStage.createdAt.$lte = new Date(filters.endDate);
+    }
   
-  const stats = await this.aggregate([
-    { $match: matchStage },
-    {
-      $group: {
-        _id: null,
-        totalPayloads: { $sum: 1 },
-        totalSize: { $sum: '$metrics.payloadSize' },
-        avgSize: { $avg: '$metrics.payloadSize' },
-        byChannel: {
-          $push: {
-            channel: '$channel',
-            direction: '$direction',
-            operation: '$businessContext.operation'
+    const stats = await this.aggregate([
+      { $match: matchStage },
+      {
+        $group: {
+          _id: null,
+          totalPayloads: { $sum: 1 },
+          totalSize: { $sum: '$metrics.payloadSize' },
+          avgSize: { $avg: '$metrics.payloadSize' },
+          byChannel: {
+            $push: {
+              channel: '$channel',
+              direction: '$direction',
+              operation: '$businessContext.operation'
+            }
+          },
+          byStatus: {
+            $push: '$processingStatus'
           }
-        },
-        byStatus: {
-          $push: '$processingStatus'
         }
       }
-    }
-  ]);
+    ]);
   
-  return stats[0] || {
-    totalPayloads: 0,
-    totalSize: 0,
-    avgSize: 0,
-    byChannel: [],
-    byStatus: []
-  };
+    return stats[0] || {
+      totalPayloads: 0,
+      totalSize: 0,
+      avgSize: 0,
+      byChannel: [],
+      byStatus: []
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance methods

@@ -6,10 +6,8 @@ import Room from '../models/Room.js';
 import User from '../models/User.js';
 import AuditLog from '../models/AuditLog.js';
 import inventoryIntegrationService from './inventoryIntegrationService.js';
-import {
 import logger from '../utils/logger.js';
-    sendNotification
-} from './notificationService.js';
+import { sendNotification } from './notificationService.js';
 
 class BypassFinancialService {
     constructor() {
@@ -111,7 +109,7 @@ class BypassFinancialService {
             const auditRecord = await AdminBypassAudit.findById(bypassAuditId)
                 .populate('bookingId')
                 .populate('adminId')
-                .populate('hotelId');
+                .populate('hotelId').lean();
 
             if (!auditRecord) {
                 throw new Error('Bypass audit record not found');
@@ -119,7 +117,7 @@ class BypassFinancialService {
 
             // Get booking details
             const booking = auditRecord.bookingId;
-            const room = await Room.findById(booking.rooms[0]?.roomId);
+            const room = await Room.findById(booking.rooms[0]?.roomId).lean();
 
             // Calculate financial impact
             const impactData = await this.calculateFinancialImpact(auditRecord, booking, room, additionalData);
@@ -194,120 +192,132 @@ class BypassFinancialService {
      * Calculate comprehensive financial impact
      */
     async calculateFinancialImpact(auditRecord, booking, room, additionalData) {
-        const reasonCategory = auditRecord.reason.category;
-        const urgencyLevel = auditRecord.reason.urgencyLevel || 'medium';
-        const riskScore = auditRecord.securityMetadata.riskScore || 0;
-        const estimatedLoss = auditRecord.financialImpact.estimatedLoss || 0;
+      try {
+          const reasonCategory = auditRecord.reason.category;
+          const urgencyLevel = auditRecord.reason.urgencyLevel || 'medium';
+          const riskScore = auditRecord.securityMetadata.riskScore || 0;
+          const estimatedLoss = auditRecord.financialImpact.estimatedLoss || 0;
 
-        // Calculate direct costs
-        const directCosts = await this.calculateDirectCosts(auditRecord, booking, room, additionalData);
+          // Calculate direct costs
+          const directCosts = await this.calculateDirectCosts(auditRecord, booking, room, additionalData);
 
-        // Calculate indirect costs
-        const indirectCosts = await this.calculateIndirectCosts(auditRecord, booking, room, reasonCategory, urgencyLevel, riskScore);
+          // Calculate indirect costs
+          const indirectCosts = await this.calculateIndirectCosts(auditRecord, booking, room, reasonCategory, urgencyLevel, riskScore);
 
-        // Calculate revenue impact
-        const revenueImpact = await this.calculateRevenueImpact(auditRecord, booking, room, estimatedLoss);
+          // Calculate revenue impact
+          const revenueImpact = await this.calculateRevenueImpact(auditRecord, booking, room, estimatedLoss);
 
-        // Calculate budget impact
-        const budgetImpact = await this.calculateBudgetImpact(auditRecord, directCosts, indirectCosts, revenueImpact);
+          // Calculate budget impact
+          const budgetImpact = await this.calculateBudgetImpact(auditRecord, directCosts, indirectCosts, revenueImpact);
 
-        // Perform analytics
-        const analytics = await this.performFinancialAnalytics(auditRecord, directCosts.totalDirectCost + indirectCosts.totalIndirectCost);
+          // Perform analytics
+          const analytics = await this.performFinancialAnalytics(auditRecord, directCosts.totalDirectCost + indirectCosts.totalIndirectCost);
 
-        return {
-            directCosts,
-            indirectCosts,
-            revenueImpact,
-            budgetImpact,
-            analytics,
-            reconciliation: {
-                status: 'pending',
-                reconciledDirectCost: directCosts.totalDirectCost,
-                reconciledIndirectCost: indirectCosts.totalIndirectCost,
-                reconciledRevenueImpact: revenueImpact.netRevenueImpact,
-                totalReconciledImpact: directCosts.totalDirectCost + indirectCosts.totalIndirectCost + Math.abs(revenueImpact.netRevenueImpact)
-            },
-            recovery: {
-                recoveredAmount: 0,
-                recoveryPercentage: 0,
-                outstandingAmount: directCosts.totalDirectCost + indirectCosts.totalIndirectCost + Math.abs(revenueImpact.netRevenueImpact)
-            }
-        };
+          return {
+              directCosts,
+              indirectCosts,
+              revenueImpact,
+              budgetImpact,
+              analytics,
+              reconciliation: {
+                  status: 'pending',
+                  reconciledDirectCost: directCosts.totalDirectCost,
+                  reconciledIndirectCost: indirectCosts.totalIndirectCost,
+                  reconciledRevenueImpact: revenueImpact.netRevenueImpact,
+                  totalReconciledImpact: directCosts.totalDirectCost + indirectCosts.totalIndirectCost + Math.abs(revenueImpact.netRevenueImpact)
+              },
+              recovery: {
+                  recoveredAmount: 0,
+                  recoveryPercentage: 0,
+                  outstandingAmount: directCosts.totalDirectCost + indirectCosts.totalIndirectCost + Math.abs(revenueImpact.netRevenueImpact)
+              }
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Calculate direct costs
      */
     async calculateDirectCosts(auditRecord, booking, room, additionalData) {
-        const reasonCategory = auditRecord.reason.category;
-        const urgencyLevel = auditRecord.reason.urgencyLevel || 'medium';
+      try {
+          const reasonCategory = auditRecord.reason.category;
+          const urgencyLevel = auditRecord.reason.urgencyLevel || 'medium';
 
-        // Calculate inventory costs (if inventory items were bypassed)
-        const inventoryItems = await this.calculateInventoryCosts(auditRecord, additionalData.bypassedItems || []);
+          // Calculate inventory costs (if inventory items were bypassed)
+          const inventoryItems = await this.calculateInventoryCosts(auditRecord, additionalData.bypassedItems || []);
 
-        // Calculate labor costs
-        const laborCosts = this.calculateLaborCosts(reasonCategory, urgencyLevel, auditRecord.operationStatus.duration);
+          // Calculate labor costs
+          const laborCosts = this.calculateLaborCosts(reasonCategory, urgencyLevel, auditRecord.operationStatus.duration);
 
-        // Calculate processing fees
-        const processingFees = this.calculateProcessingFees(auditRecord, urgencyLevel);
+          // Calculate processing fees
+          const processingFees = this.calculateProcessingFees(auditRecord, urgencyLevel);
 
-        // Calculate emergency procurement costs
-        const emergencyProcurement = await this.calculateEmergencyProcurementCosts(auditRecord, additionalData.emergencyItems || []);
+          // Calculate emergency procurement costs
+          const emergencyProcurement = await this.calculateEmergencyProcurementCosts(auditRecord, additionalData.emergencyItems || []);
 
-        return {
-            inventoryItems,
-            laborCosts,
-            processingFees,
-            emergencyProcurement,
-            totalDirectCost: 0 // Will be calculated in pre-save middleware
-        };
+          return {
+              inventoryItems,
+              laborCosts,
+              processingFees,
+              emergencyProcurement,
+              totalDirectCost: 0 // Will be calculated in pre-save middleware
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Calculate inventory costs for bypassed items
      */
     async calculateInventoryCosts(auditRecord, bypassedItems) {
-        const inventoryItems = [];
+      try {
+          const inventoryItems = [];
 
-        // If specific items provided, calculate their costs
-        for (const item of bypassedItems) {
-            inventoryItems.push({
-                itemId: item.itemId,
-                itemName: item.itemName || 'Unknown Item',
-                category: item.category || 'General',
-                quantity: item.quantity || 1,
-                unitCost: item.unitCost || 0,
-                totalCost: (item.unitCost || 0) * (item.quantity || 1),
-                supplierCost: item.supplierCost || item.unitCost || 0,
-                replacementCost: item.replacementCost || (item.unitCost || 0) * 1.1,
-                wasBypassed: true,
-                bypassReason: auditRecord.reason.category,
-                alternativeProvided: item.alternativeProvided || false,
-                alternativeCost: item.alternativeCost || 0
-            });
-        }
+          // If specific items provided, calculate their costs
+          for (const item of bypassedItems) {
+              inventoryItems.push({
+                  itemId: item.itemId,
+                  itemName: item.itemName || 'Unknown Item',
+                  category: item.category || 'General',
+                  quantity: item.quantity || 1,
+                  unitCost: item.unitCost || 0,
+                  totalCost: (item.unitCost || 0) * (item.quantity || 1),
+                  supplierCost: item.supplierCost || item.unitCost || 0,
+                  replacementCost: item.replacementCost || (item.unitCost || 0) * 1.1,
+                  wasBypassed: true,
+                  bypassReason: auditRecord.reason.category,
+                  alternativeProvided: item.alternativeProvided || false,
+                  alternativeCost: item.alternativeCost || 0
+              });
+          }
 
-        // If no specific items, estimate based on bypass category
-        if (inventoryItems.length === 0) {
-            const estimatedCost = this.estimateInventoryCostByCategory(auditRecord.reason.category);
-            if (estimatedCost > 0) {
-                inventoryItems.push({
-                    itemName: `Estimated ${auditRecord.reason.category} items`,
-                    category: auditRecord.reason.category,
-                    quantity: 1,
-                    unitCost: estimatedCost,
-                    totalCost: estimatedCost,
-                    supplierCost: estimatedCost * 0.7,
-                    replacementCost: estimatedCost * 1.1,
-                    wasBypassed: true,
-                    bypassReason: auditRecord.reason.category,
-                    alternativeProvided: false,
-                    alternativeCost: 0
-                });
-            }
-        }
+          // If no specific items, estimate based on bypass category
+          if (inventoryItems.length === 0) {
+              const estimatedCost = this.estimateInventoryCostByCategory(auditRecord.reason.category);
+              if (estimatedCost > 0) {
+                  inventoryItems.push({
+                      itemName: `Estimated ${auditRecord.reason.category} items`,
+                      category: auditRecord.reason.category,
+                      quantity: 1,
+                      unitCost: estimatedCost,
+                      totalCost: estimatedCost,
+                      supplierCost: estimatedCost * 0.7,
+                      replacementCost: estimatedCost * 1.1,
+                      wasBypassed: true,
+                      bypassReason: auditRecord.reason.category,
+                      alternativeProvided: false,
+                      alternativeCost: 0
+                  });
+              }
+          }
 
-        return inventoryItems;
+          return inventoryItems;
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
@@ -411,78 +421,86 @@ class BypassFinancialService {
      * Calculate emergency procurement costs
      */
     async calculateEmergencyProcurementCosts(auditRecord, emergencyItems) {
-        const urgencyLevel = auditRecord.reason.urgencyLevel || 'medium';
-        const premiumRates = this.costRates.emergency;
+      try {
+          const urgencyLevel = auditRecord.reason.urgencyLevel || 'medium';
+          const premiumRates = this.costRates.emergency;
 
-        let totalEmergencyCost = 0;
-        let totalStandardCost = 0;
-        const items = [];
+          let totalEmergencyCost = 0;
+          let totalStandardCost = 0;
+          const items = [];
 
-        for (const item of emergencyItems) {
-            const standardRate = item.standardRate || 0;
-            let premiumMultiplier = 1;
+          for (const item of emergencyItems) {
+              const standardRate = item.standardRate || 0;
+              let premiumMultiplier = 1;
 
-            switch (urgencyLevel) {
-                case 'critical':
-                    premiumMultiplier = 1 + premiumRates.criticalPremium;
-                    break;
-                case 'high':
-                    premiumMultiplier = 1 + premiumRates.urgentPremium;
-                    break;
-                default:
-                    premiumMultiplier = 1 + premiumRates.standardPremium;
-            }
+              switch (urgencyLevel) {
+                  case 'critical':
+                      premiumMultiplier = 1 + premiumRates.criticalPremium;
+                      break;
+                  case 'high':
+                      premiumMultiplier = 1 + premiumRates.urgentPremium;
+                      break;
+                  default:
+                      premiumMultiplier = 1 + premiumRates.standardPremium;
+              }
 
-            const emergencyRate = standardRate * premiumMultiplier;
-            const quantity = item.quantity || 1;
-            const itemEmergencyCost = emergencyRate * quantity;
-            const itemStandardCost = standardRate * quantity;
+              const emergencyRate = standardRate * premiumMultiplier;
+              const quantity = item.quantity || 1;
+              const itemEmergencyCost = emergencyRate * quantity;
+              const itemStandardCost = standardRate * quantity;
 
-            items.push({
-                itemName: item.itemName,
-                quantity,
-                emergencyRate,
-                standardRate,
-                premiumPaid: itemEmergencyCost - itemStandardCost,
-                supplier: item.supplier || 'Emergency Vendor',
-                procurementTime: item.procurementTime || 1
-            });
+              items.push({
+                  itemName: item.itemName,
+                  quantity,
+                  emergencyRate,
+                  standardRate,
+                  premiumPaid: itemEmergencyCost - itemStandardCost,
+                  supplier: item.supplier || 'Emergency Vendor',
+                  procurementTime: item.procurementTime || 1
+              });
 
-            totalEmergencyCost += itemEmergencyCost;
-            totalStandardCost += itemStandardCost;
-        }
+              totalEmergencyCost += itemEmergencyCost;
+              totalStandardCost += itemStandardCost;
+          }
 
-        return {
-            items,
-            totalEmergencyCost,
-            totalStandardCost,
-            totalPremium: totalEmergencyCost - totalStandardCost
-        };
+          return {
+              items,
+              totalEmergencyCost,
+              totalStandardCost,
+              totalPremium: totalEmergencyCost - totalStandardCost
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Calculate indirect costs
      */
     async calculateIndirectCosts(auditRecord, booking, room, reasonCategory, urgencyLevel, riskScore) {
-        // Guest satisfaction impact
-        const guestSatisfaction = this.calculateGuestSatisfactionCosts(reasonCategory, urgencyLevel, booking);
+      try {
+          // Guest satisfaction impact
+          const guestSatisfaction = this.calculateGuestSatisfactionCosts(reasonCategory, urgencyLevel, booking);
 
-        // Operational disruption
-        const operationalDisruption = this.calculateOperationalDisruptionCosts(reasonCategory, urgencyLevel, riskScore);
+          // Operational disruption
+          const operationalDisruption = this.calculateOperationalDisruptionCosts(reasonCategory, urgencyLevel, riskScore);
 
-        // Compliance costs
-        const compliance = this.calculateComplianceCosts(riskScore, auditRecord);
+          // Compliance costs
+          const compliance = this.calculateComplianceCosts(riskScore, auditRecord);
 
-        // Risk impact
-        const riskImpact = this.calculateRiskImpactCosts(riskScore, reasonCategory);
+          // Risk impact
+          const riskImpact = this.calculateRiskImpactCosts(riskScore, reasonCategory);
 
-        return {
-            guestSatisfaction,
-            operationalDisruption,
-            compliance,
-            riskImpact,
-            totalIndirectCost: 0 // Will be calculated in pre-save middleware
-        };
+          return {
+              guestSatisfaction,
+              operationalDisruption,
+              compliance,
+              riskImpact,
+              totalIndirectCost: 0 // Will be calculated in pre-save middleware
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
@@ -587,139 +605,155 @@ class BypassFinancialService {
      * Calculate revenue impact
      */
     async calculateRevenueImpact(auditRecord, booking, room, estimatedLoss) {
-        const bookingValue = booking.totalAmount || 0;
-        const reasonCategory = auditRecord.reason.category;
+      try {
+          const bookingValue = booking.totalAmount || 0;
+          const reasonCategory = auditRecord.reason.category;
 
-        // Calculate lost revenue
-        const lostRevenue = {
-            inventoryCharges: estimatedLoss * 0.3, // Assume 30% of estimated loss is inventory charges
-            serviceCharges: reasonCategory === 'inventory_unavailable' ? bookingValue * 0.05 : 0,
-            upsellOpportunities: bookingValue * 0.15, // Missed upsell opportunities
-            crossSellOpportunities: bookingValue * 0.08, // Missed cross-sell opportunities
-            futureBookingsLost: reasonCategory === 'guest_complaint' ? bookingValue * 1.5 : bookingValue * 0.1
-        };
+          // Calculate lost revenue
+          const lostRevenue = {
+              inventoryCharges: estimatedLoss * 0.3, // Assume 30% of estimated loss is inventory charges
+              serviceCharges: reasonCategory === 'inventory_unavailable' ? bookingValue * 0.05 : 0,
+              upsellOpportunities: bookingValue * 0.15, // Missed upsell opportunities
+              crossSellOpportunities: bookingValue * 0.08, // Missed cross-sell opportunities
+              futureBookingsLost: reasonCategory === 'guest_complaint' ? bookingValue * 1.5 : bookingValue * 0.1
+          };
 
-        // Calculate recovery efforts
-        const recoveryEfforts = {
-            alternativeServicesProvided: estimatedLoss * 0.5,
-            compensatoryRevenue: 0, // Will be updated based on alternatives provided
-            retentionIncentives: reasonCategory === 'guest_complaint' ? bookingValue * 0.1 : 0,
-            loyaltyRecovery: bookingValue * 0.02 // Loyalty program recovery value
-        };
+          // Calculate recovery efforts
+          const recoveryEfforts = {
+              alternativeServicesProvided: estimatedLoss * 0.5,
+              compensatoryRevenue: 0, // Will be updated based on alternatives provided
+              retentionIncentives: reasonCategory === 'guest_complaint' ? bookingValue * 0.1 : 0,
+              loyaltyRecovery: bookingValue * 0.02 // Loyalty program recovery value
+          };
 
-        return {
-            lostRevenue,
-            recoveryEfforts,
-            netRevenueImpact: 0, // Will be calculated in pre-save middleware
-            revenueImpactPercentage: 0 // Will be calculated in pre-save middleware
-        };
+          return {
+              lostRevenue,
+              recoveryEfforts,
+              netRevenueImpact: 0, // Will be calculated in pre-save middleware
+              revenueImpactPercentage: 0 // Will be calculated in pre-save middleware
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Calculate budget impact
      */
     async calculateBudgetImpact(auditRecord, directCosts, indirectCosts, revenueImpact) {
-        const currentDate = new Date();
-        const fiscalYear = currentDate.getFullYear();
-        const fiscalQuarter = Math.ceil((currentDate.getMonth() + 1) / 3);
-        const fiscalMonth = currentDate.getMonth() + 1;
+      try {
+          const currentDate = new Date();
+          const fiscalYear = currentDate.getFullYear();
+          const fiscalQuarter = Math.ceil((currentDate.getMonth() + 1) / 3);
+          const fiscalMonth = currentDate.getMonth() + 1;
 
-        const totalImpact = directCosts.totalDirectCost + indirectCosts.totalIndirectCost;
+          const totalImpact = directCosts.totalDirectCost + indirectCosts.totalIndirectCost;
 
-        // Simulate department budget data (in production, this would come from actual budget system)
-        const affectedDepartments = await this.getAffectedDepartments(auditRecord.reason.category, totalImpact);
+          // Simulate department budget data (in production, this would come from actual budget system)
+          const affectedDepartments = await this.getAffectedDepartments(auditRecord.reason.category, totalImpact);
 
-        // Create fiscal impact
-        const fiscalImpact = {
-            fiscalYear,
-            fiscalQuarter,
-            fiscalMonth,
-            quarterlyBudgetImpact: totalImpact,
-            annualBudgetImpact: totalImpact,
-            budgetUtilizationIncrease: this.calculateBudgetUtilizationIncrease(totalImpact)
-        };
+          // Create fiscal impact
+          const fiscalImpact = {
+              fiscalYear,
+              fiscalQuarter,
+              fiscalMonth,
+              quarterlyBudgetImpact: totalImpact,
+              annualBudgetImpact: totalImpact,
+              budgetUtilizationIncrease: this.calculateBudgetUtilizationIncrease(totalImpact)
+          };
 
-        // Create cost center attribution
-        const costCenters = this.createCostCenterAttribution(auditRecord.reason.category, totalImpact);
+          // Create cost center attribution
+          const costCenters = this.createCostCenterAttribution(auditRecord.reason.category, totalImpact);
 
-        return {
-            affectedDepartments,
-            fiscalImpact,
-            costCenters,
-            budgetAlerts: [] // Will be populated by checkBudgetAlerts
-        };
+          return {
+              affectedDepartments,
+              fiscalImpact,
+              costCenters,
+              budgetAlerts: [] // Will be populated by checkBudgetAlerts
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Get affected departments based on bypass category
      */
     async getAffectedDepartments(reasonCategory, totalImpact) {
-        const departments = [];
+      try {
+          const departments = [];
 
-        // Determine which departments are affected based on reason category
-        const departmentMapping = {
-            'inventory_unavailable': ['housekeeping', 'frontdesk'],
-            'system_failure': ['frontdesk', 'maintenance'],
-            'guest_complaint': ['frontdesk', 'management'],
-            'staff_shortage': ['frontdesk', 'housekeeping'],
-            'technical_issue': ['maintenance', 'frontdesk'],
-            'emergency_medical': ['frontdesk', 'management'],
-            'management_override': ['management'],
-            'compliance_requirement': ['management', 'frontdesk'],
-            'other': ['frontdesk']
-        };
+          // Determine which departments are affected based on reason category
+          const departmentMapping = {
+              'inventory_unavailable': ['housekeeping', 'frontdesk'],
+              'system_failure': ['frontdesk', 'maintenance'],
+              'guest_complaint': ['frontdesk', 'management'],
+              'staff_shortage': ['frontdesk', 'housekeeping'],
+              'technical_issue': ['maintenance', 'frontdesk'],
+              'emergency_medical': ['frontdesk', 'management'],
+              'management_override': ['management'],
+              'compliance_requirement': ['management', 'frontdesk'],
+              'other': ['frontdesk']
+          };
 
-        const affectedDepts = departmentMapping[reasonCategory] || ['frontdesk'];
+          const affectedDepts = departmentMapping[reasonCategory] || ['frontdesk'];
 
-        for (const deptName of affectedDepts) {
-            // Simulate department budget data (in production, fetch from budget system)
-            const deptBudget = await this.getDepartmentBudget(deptName);
-            const impactAmount = totalImpact / affectedDepts.length; // Distribute impact evenly
+          for (const deptName of affectedDepts) {
+              // Simulate department budget data (in production, fetch from budget system)
+              const deptBudget = await this.getDepartmentBudget(deptName);
+              const impactAmount = totalImpact / affectedDepts.length; // Distribute impact evenly
 
-            departments.push({
-                departmentId: `dept_${deptName}`,
-                departmentName: deptName,
-                budgetCode: `BUDGET_${deptName.toUpperCase()}`,
-                allocatedBudget: deptBudget.allocated,
-                spentAmount: deptBudget.spent + impactAmount,
-                impactAmount,
-                impactPercentage: 0, // Will be calculated in pre-save middleware
-                budgetVariance: 0, // Will be calculated in pre-save middleware
-                isOverBudget: false // Will be calculated in pre-save middleware
-            });
-        }
+              departments.push({
+                  departmentId: `dept_${deptName}`,
+                  departmentName: deptName,
+                  budgetCode: `BUDGET_${deptName.toUpperCase()}`,
+                  allocatedBudget: deptBudget.allocated,
+                  spentAmount: deptBudget.spent + impactAmount,
+                  impactAmount,
+                  impactPercentage: 0, // Will be calculated in pre-save middleware
+                  budgetVariance: 0, // Will be calculated in pre-save middleware
+                  isOverBudget: false // Will be calculated in pre-save middleware
+              });
+          }
 
-        return departments;
+          return departments;
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Simulate department budget data
      */
     async getDepartmentBudget(departmentName) {
-        // In production, this would fetch from actual budget system
-        const budgets = {
-            housekeeping: {
-                allocated: 50000,
-                spent: 35000
-            },
-            frontdesk: {
-                allocated: 75000,
-                spent: 55000
-            },
-            maintenance: {
-                allocated: 40000,
-                spent: 28000
-            },
-            management: {
-                allocated: 100000,
-                spent: 70000
-            }
-        };
+      try {
+          // In production, this would fetch from actual budget system
+          const budgets = {
+              housekeeping: {
+                  allocated: 50000,
+                  spent: 35000
+              },
+              frontdesk: {
+                  allocated: 75000,
+                  spent: 55000
+              },
+              maintenance: {
+                  allocated: 40000,
+                  spent: 28000
+              },
+              management: {
+                  allocated: 100000,
+                  spent: 70000
+              }
+          };
 
-        return budgets[departmentName] || {
-            allocated: 25000,
-            spent: 15000
-        };
+          return budgets[departmentName] || {
+              allocated: 25000,
+              spent: 15000
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
@@ -797,124 +831,136 @@ class BypassFinancialService {
      * Perform financial analytics
      */
     async performFinancialAnalytics(auditRecord, totalCost) {
-        const hotelId = auditRecord.hotelId;
-        const reasonCategory = auditRecord.reason.category;
+      try {
+          const hotelId = auditRecord.hotelId;
+          const reasonCategory = auditRecord.reason.category;
 
-        // Check for recurring patterns
-        const frequencyPattern = await this.analyzeFrequencyPattern(hotelId, reasonCategory);
+          // Check for recurring patterns
+          const frequencyPattern = await this.analyzeFrequencyPattern(hotelId, reasonCategory);
 
-        // Analyze cost trends
-        const costTrends = await this.analyzeCostTrends(hotelId, totalCost);
+          // Analyze cost trends
+          const costTrends = await this.analyzeCostTrends(hotelId, totalCost);
 
-        // Perform comparative analysis
-        const comparativeAnalysis = await this.performComparativeAnalysis(hotelId, totalCost);
+          // Perform comparative analysis
+          const comparativeAnalysis = await this.performComparativeAnalysis(hotelId, totalCost);
 
-        // Generate predictive indicators
-        const predictiveIndicators = await this.generatePredictiveIndicators(hotelId, reasonCategory, totalCost);
+          // Generate predictive indicators
+          const predictiveIndicators = await this.generatePredictiveIndicators(hotelId, reasonCategory, totalCost);
 
-        return {
-            frequencyPattern,
-            costTrends,
-            comparativeAnalysis,
-            predictiveIndicators
-        };
+          return {
+              frequencyPattern,
+              costTrends,
+              comparativeAnalysis,
+              predictiveIndicators
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Analyze frequency patterns
      */
     async analyzeFrequencyPattern(hotelId, reasonCategory) {
-        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      try {
+          const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-        // Count similar bypasses in the last 30 days
-        const similarBypasses = await AdminBypassAudit.countDocuments({
-            hotelId,
-            'reason.category': reasonCategory,
-            createdAt: {
-                $gte: thirtyDaysAgo
-            }
-        });
+          // Count similar bypasses in the last 30 days
+          const similarBypasses = await AdminBypassAudit.countDocuments({
+              hotelId,
+              'reason.category': reasonCategory,
+              createdAt: {
+                  $gte: thirtyDaysAgo
+              }
+          });
 
-        // Get all bypasses for this category to calculate intervals
-        const allBypasses = await AdminBypassAudit.find({
-            hotelId,
-            'reason.category': reasonCategory,
-            createdAt: {
-                $gte: thirtyDaysAgo
-            }
-        }).sort({
-            createdAt: 1
-        }).select('createdAt');
+          // Get all bypasses for this category to calculate intervals
+          const allBypasses = await AdminBypassAudit.find({
+              hotelId,
+              'reason.category': reasonCategory,
+              createdAt: {
+                  $gte: thirtyDaysAgo
+              }
+          }).sort({
+              createdAt: 1
+          }).select('createdAt').lean().limit(1000);
 
-        let averageInterval = 0;
-        let isRecurring = false;
+          let averageInterval = 0;
+          let isRecurring = false;
 
-        if (allBypasses.length > 1) {
-            let totalInterval = 0;
-            for (let i = 1; i < allBypasses.length; i++) {
-                const interval = allBypasses[i].createdAt - allBypasses[i - 1].createdAt;
-                totalInterval += interval;
-            }
-            averageInterval = totalInterval / (allBypasses.length - 1);
-            averageInterval = averageInterval / (24 * 60 * 60 * 1000); // Convert to days
+          if (allBypasses.length > 1) {
+              let totalInterval = 0;
+              for (let i = 1; i < allBypasses.length; i++) {
+                  const interval = allBypasses[i].createdAt - allBypasses[i - 1].createdAt;
+                  totalInterval += interval;
+              }
+              averageInterval = totalInterval / (allBypasses.length - 1);
+              averageInterval = averageInterval / (24 * 60 * 60 * 1000); // Convert to days
 
-            // Consider recurring if more than 3 occurrences with average interval < 10 days
-            isRecurring = allBypasses.length >= 3 && averageInterval < 10;
-        }
+              // Consider recurring if more than 3 occurrences with average interval < 10 days
+              isRecurring = allBypasses.length >= 3 && averageInterval < 10;
+          }
 
-        return {
-            isRecurring,
-            recurrenceInterval: Math.round(averageInterval),
-            similarBypassesCount: similarBypasses,
-            patternConfidence: Math.min(similarBypasses / 10, 1.0) // Max confidence at 10 occurrences
-        };
+          return {
+              isRecurring,
+              recurrenceInterval: Math.round(averageInterval),
+              similarBypassesCount: similarBypasses,
+              patternConfidence: Math.min(similarBypasses / 10, 1.0) // Max confidence at 10 occurrences
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Analyze cost trends
      */
     async analyzeCostTrends(hotelId, currentCost) {
-        // Get cost data for the last 12 months
-        const costData = await BypassFinancialImpact.getCostTrends(hotelId, 12);
+      try {
+          // Get cost data for the last 12 months
+          const costData = await BypassFinancialImpact.getCostTrends(hotelId, 12);
 
-        if (costData.length < 2) {
-            return {
-                monthlyTrend: 'stable',
-                quarterlyTrend: 'stable',
-                yearlyTrend: 'stable',
-                trendConfidence: 0,
-                projectedMonthlyCost: currentCost,
-                projectedQuarterlyCost: currentCost * 3,
-                projectedYearlyCost: currentCost * 12
-            };
-        }
+          if (costData.length < 2) {
+              return {
+                  monthlyTrend: 'stable',
+                  quarterlyTrend: 'stable',
+                  yearlyTrend: 'stable',
+                  trendConfidence: 0,
+                  projectedMonthlyCost: currentCost,
+                  projectedQuarterlyCost: currentCost * 3,
+                  projectedYearlyCost: currentCost * 12
+              };
+          }
 
-        // Calculate trends
-        const recentCosts = costData.slice(-3); // Last 3 months
-        const monthlyTrend = this.calculateTrend(recentCosts.map(d => d.totalCost));
+          // Calculate trends
+          const recentCosts = costData.slice(-3); // Last 3 months
+          const monthlyTrend = this.calculateTrend(recentCosts.map(d => d.totalCost));
 
-        const quarterlyData = this.groupByQuarter(costData);
-        const quarterlyTrend = quarterlyData.length > 1 ?
-            this.calculateTrend(quarterlyData.slice(-2).map(d => d.totalCost)) : 'stable';
+          const quarterlyData = this.groupByQuarter(costData);
+          const quarterlyTrend = quarterlyData.length > 1 ?
+              this.calculateTrend(quarterlyData.slice(-2).map(d => d.totalCost)) : 'stable';
 
-        const yearlyTrend = costData.length >= 12 ?
-            this.calculateTrend([costData.slice(0, 6).reduce((sum, d) => sum + d.totalCost, 0),
-                costData.slice(-6).reduce((sum, d) => sum + d.totalCost, 0)
-            ]) : 'stable';
+          const yearlyTrend = costData.length >= 12 ?
+              this.calculateTrend([costData.slice(0, 6).reduce((sum, d) => sum + d.totalCost, 0),
+                  costData.slice(-6).reduce((sum, d) => sum + d.totalCost, 0)
+              ]) : 'stable';
 
-        // Project future costs based on trends
-        const avgMonthlyCost = costData.reduce((sum, d) => sum + d.totalCost, 0) / costData.length;
-        const trendMultiplier = monthlyTrend === 'increasing' ? 1.1 : monthlyTrend === 'decreasing' ? 0.9 : 1.0;
+          // Project future costs based on trends
+          const avgMonthlyCost = costData.reduce((sum, d) => sum + d.totalCost, 0) / costData.length;
+          const trendMultiplier = monthlyTrend === 'increasing' ? 1.1 : monthlyTrend === 'decreasing' ? 0.9 : 1.0;
 
-        return {
-            monthlyTrend,
-            quarterlyTrend,
-            yearlyTrend,
-            trendConfidence: Math.min(costData.length / 12, 1.0),
-            projectedMonthlyCost: avgMonthlyCost * trendMultiplier,
-            projectedQuarterlyCost: avgMonthlyCost * trendMultiplier * 3,
-            projectedYearlyCost: avgMonthlyCost * trendMultiplier * 12
-        };
+          return {
+              monthlyTrend,
+              quarterlyTrend,
+              yearlyTrend,
+              trendConfidence: Math.min(costData.length / 12, 1.0),
+              projectedMonthlyCost: avgMonthlyCost * trendMultiplier,
+              projectedQuarterlyCost: avgMonthlyCost * trendMultiplier * 3,
+              projectedYearlyCost: avgMonthlyCost * trendMultiplier * 12
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
@@ -961,79 +1007,87 @@ class BypassFinancialService {
      * Perform comparative analysis
      */
     async performComparativeAnalysis(hotelId, currentCost) {
-        // Get average cost per bypass for this hotel
-        const summary = await BypassFinancialImpact.getHotelFinancialSummary(hotelId, 90);
-        const averageCost = summary.averageImpactPerBypass || 0;
+      try {
+          // Get average cost per bypass for this hotel
+          const summary = await BypassFinancialImpact.getHotelFinancialSummary(hotelId, 90);
+          const averageCost = summary.averageImpactPerBypass || 0;
 
-        // Calculate percentile ranking
-        const allCosts = await BypassFinancialImpact.find({
-                hotelId
-            })
-            .select('directCosts.totalDirectCost indirectCosts.totalIndirectCost')
-            .lean();
+          // Calculate percentile ranking
+          const allCosts = await BypassFinancialImpact.find({
+                  hotelId
+              })
+              .select('directCosts.totalDirectCost indirectCosts.totalIndirectCost')
+              .lean().limit(1000);
 
-        const totalCosts = allCosts.map(impact =>
-            (impact.directCosts?.totalDirectCost || 0) + (impact.indirectCosts?.totalIndirectCost || 0)
-        ).sort((a, b) => a - b);
+          const totalCosts = allCosts.map(impact =>
+              (impact.directCosts?.totalDirectCost || 0) + (impact.indirectCosts?.totalIndirectCost || 0)
+          ).sort((a, b) => a - b);
 
-        let percentileRanking = 50; // Default to median
-        if (totalCosts.length > 0) {
-            const position = totalCosts.findIndex(cost => cost >= currentCost);
-            percentileRanking = position === -1 ? 100 : (position / totalCosts.length) * 100;
-        }
+          let percentileRanking = 50; // Default to median
+          if (totalCosts.length > 0) {
+              const position = totalCosts.findIndex(cost => cost >= currentCost);
+              percentileRanking = position === -1 ? 100 : (position / totalCosts.length) * 100;
+          }
 
-        const costVariance = currentCost - averageCost;
-        const isOutlier = Math.abs(costVariance) > averageCost * 2; // More than 2x average
+          const costVariance = currentCost - averageCost;
+          const isOutlier = Math.abs(costVariance) > averageCost * 2; // More than 2x average
 
-        return {
-            averageCostPerBypass: averageCost,
-            percentileRanking: Math.round(percentileRanking),
-            costVarianceFromAverage: costVariance,
-            isOutlier,
-            outlierReason: isOutlier ? (costVariance > 0 ? 'Exceptionally high cost' : 'Exceptionally low cost') : null
-        };
+          return {
+              averageCostPerBypass: averageCost,
+              percentileRanking: Math.round(percentileRanking),
+              costVarianceFromAverage: costVariance,
+              isOutlier,
+              outlierReason: isOutlier ? (costVariance > 0 ? 'Exceptionally high cost' : 'Exceptionally low cost') : null
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Generate predictive indicators
      */
     async generatePredictiveIndicators(hotelId, reasonCategory, currentCost) {
-        // Analyze historical patterns
-        const historicalData = await AdminBypassAudit.find({
-            hotelId,
-            'reason.category': reasonCategory,
-            createdAt: {
-                $gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
-            }
-        }).sort({
-            createdAt: 1
-        });
+      try {
+          // Analyze historical patterns
+          const historicalData = await AdminBypassAudit.find({
+              hotelId,
+              'reason.category': reasonCategory,
+              createdAt: {
+                  $gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+              }
+          }).sort({
+              createdAt: 1
+          }).lean().limit(1000);
 
-        const likelyToRecur = historicalData.length >= 3;
-        const recurrenceProbability = Math.min(historicalData.length / 10, 0.9); // Max 90% probability
+          const likelyToRecur = historicalData.length >= 3;
+          const recurrenceProbability = Math.min(historicalData.length / 10, 0.9); // Max 90% probability
 
-        // Predict next occurrence
-        let nextOccurrencePrediction = null;
-        if (likelyToRecur && historicalData.length > 1) {
-            const intervals = [];
-            for (let i = 1; i < historicalData.length; i++) {
-                intervals.push(historicalData[i].createdAt - historicalData[i - 1].createdAt);
-            }
-            const avgInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
-            nextOccurrencePrediction = new Date(Date.now() + avgInterval);
-        }
+          // Predict next occurrence
+          let nextOccurrencePrediction = null;
+          if (likelyToRecur && historicalData.length > 1) {
+              const intervals = [];
+              for (let i = 1; i < historicalData.length; i++) {
+                  intervals.push(historicalData[i].createdAt - historicalData[i - 1].createdAt);
+              }
+              const avgInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
+              nextOccurrencePrediction = new Date(Date.now() + avgInterval);
+          }
 
-        // Generate recommendations
-        const preventionRecommendations = this.generatePreventionRecommendations(reasonCategory, historicalData.length);
-        const riskMitigationSuggestions = this.generateRiskMitigationSuggestions(reasonCategory, currentCost);
+          // Generate recommendations
+          const preventionRecommendations = this.generatePreventionRecommendations(reasonCategory, historicalData.length);
+          const riskMitigationSuggestions = this.generateRiskMitigationSuggestions(reasonCategory, currentCost);
 
-        return {
-            likelyToRecur,
-            recurrenceProbability,
-            nextOccurrencePrediction,
-            preventionRecommendations,
-            riskMitigationSuggestions
-        };
+          return {
+              likelyToRecur,
+              recurrenceProbability,
+              nextOccurrencePrediction,
+              preventionRecommendations,
+              riskMitigationSuggestions
+          };
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
@@ -1105,46 +1159,50 @@ class BypassFinancialService {
      * Check and create budget alerts
      */
     async checkBudgetAlerts(financialImpact) {
-        const totalImpact = financialImpact.getTotalFinancialImpact();
-        const thresholds = this.budgetThresholds;
+      try {
+          const totalImpact = financialImpact.getTotalFinancialImpact();
+          const thresholds = this.budgetThresholds;
 
-        // Check impact level alerts
-        if (totalImpact >= thresholds.impact.critical) {
-            financialImpact.addBudgetAlert(
-                'threshold_exceeded',
-                thresholds.impact.critical,
-                totalImpact,
-                `Critical financial impact threshold exceeded: $${totalImpact.toLocaleString()}`
-            );
-        }
+          // Check impact level alerts
+          if (totalImpact >= thresholds.impact.critical) {
+              financialImpact.addBudgetAlert(
+                  'threshold_exceeded',
+                  thresholds.impact.critical,
+                  totalImpact,
+                  `Critical financial impact threshold exceeded: $${totalImpact.toLocaleString()}`
+              );
+          }
 
-        // Check department budget alerts
-        for (const dept of financialImpact.budgetImpact.affectedDepartments) {
-            const utilization = dept.spentAmount / dept.allocatedBudget;
-            const deptThresholds = thresholds.departments[dept.departmentName] || thresholds.departments.frontdesk;
+          // Check department budget alerts
+          for (const dept of financialImpact.budgetImpact.affectedDepartments) {
+              const utilization = dept.spentAmount / dept.allocatedBudget;
+              const deptThresholds = thresholds.departments[dept.departmentName] || thresholds.departments.frontdesk;
 
-            if (utilization >= deptThresholds.critical) {
-                financialImpact.addBudgetAlert(
-                    'budget_overrun',
-                    deptThresholds.critical,
-                    utilization,
-                    `Department ${dept.departmentName} budget overrun: ${(utilization * 100).toFixed(1)}%`
-                );
-            } else if (utilization >= deptThresholds.warning) {
-                financialImpact.addBudgetAlert(
-                    'threshold_exceeded',
-                    deptThresholds.warning,
-                    utilization,
-                    `Department ${dept.departmentName} approaching budget limit: ${(utilization * 100).toFixed(1)}%`
-                );
-            }
-        }
+              if (utilization >= deptThresholds.critical) {
+                  financialImpact.addBudgetAlert(
+                      'budget_overrun',
+                      deptThresholds.critical,
+                      utilization,
+                      `Department ${dept.departmentName} budget overrun: ${(utilization * 100).toFixed(1)}%`
+                  );
+              } else if (utilization >= deptThresholds.warning) {
+                  financialImpact.addBudgetAlert(
+                      'threshold_exceeded',
+                      deptThresholds.warning,
+                      utilization,
+                      `Department ${dept.departmentName} approaching budget limit: ${(utilization * 100).toFixed(1)}%`
+                  );
+              }
+          }
 
-        // Send notifications for critical alerts
-        const criticalAlerts = financialImpact.budgetImpact.budgetAlerts.filter(alert => alert.alertLevel === 'critical');
-        if (criticalAlerts.length > 0) {
-            await this.sendBudgetAlertNotifications(financialImpact, criticalAlerts);
-        }
+          // Send notifications for critical alerts
+          const criticalAlerts = financialImpact.budgetImpact.budgetAlerts.filter(alert => alert.alertLevel === 'critical');
+          if (criticalAlerts.length > 0) {
+              await this.sendBudgetAlertNotifications(financialImpact, criticalAlerts);
+          }
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
@@ -1159,7 +1217,7 @@ class BypassFinancialService {
                     $in: ['manager', 'admin']
                 },
                 status: 'active'
-            });
+            }).lean().limit(1000);
 
             for (const manager of managers) {
                 if (manager.email) {
@@ -1233,39 +1291,55 @@ Please review the financial impact and take appropriate action.`,
      * Update financial impact with actual costs
      */
     async updateFinancialImpact(impactId, updateData) {
-        const financialImpact = await BypassFinancialImpact.findOne({
-            impactId
-        });
-        if (!financialImpact) {
-            throw new Error('Financial impact record not found');
-        }
+      try {
+          const financialImpact = await BypassFinancialImpact.findOne({
+              impactId
+          });
+          if (!financialImpact) {
+              throw new Error('Financial impact record not found');
+          }
 
-        // Update the record with new data
-        Object.assign(financialImpact, updateData);
-        await financialImpact.save();
+          // Update the record with new data
+          Object.assign(financialImpact, updateData);
+          await financialImpact.save();
 
-        return financialImpact;
+          return financialImpact;
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Get financial summary for a hotel
      */
     async getHotelFinancialSummary(hotelId, timeRange = 30) {
-        return await BypassFinancialImpact.getHotelFinancialSummary(hotelId, timeRange);
+      try {
+          return await BypassFinancialImpact.getHotelFinancialSummary(hotelId, timeRange);
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Get cost trends for a hotel
      */
     async getCostTrends(hotelId, months = 12) {
-        return await BypassFinancialImpact.getCostTrends(hotelId, months);
+      try {
+          return await BypassFinancialImpact.getCostTrends(hotelId, months);
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 
     /**
      * Get top cost drivers
      */
     async getTopCostDrivers(hotelId, limit = 10) {
-        return await BypassFinancialImpact.getTopCostDrivers(hotelId, limit);
+      try {
+          return await BypassFinancialImpact.getTopCostDrivers(hotelId, limit);
+      } catch (error) {
+        throw new Error(`${error.message}`);
+      }
     }
 }
 

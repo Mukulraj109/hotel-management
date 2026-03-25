@@ -63,7 +63,7 @@ router.get('/', catchAsync(async (req, res) => {
   } else {
     services = await HotelService.find(query)
       .sort({ featured: -1, 'rating.average': -1 })
-      .populate('hotelId', 'name');
+      .populate('hotelId', 'name').lean().limit(1000);
   }
 
   res.json({
@@ -153,7 +153,7 @@ router.get('/bookings/:bookingId',
     const booking = await ServiceBooking.findById(bookingId)
       .populate('serviceId', 'name type price images description')
       .populate('hotelId', 'name address')
-      .populate('userId', 'name email');
+      .populate('userId', 'name email').lean();
       
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
@@ -242,7 +242,7 @@ router.get('/:serviceId', catchAsync(async (req, res) => {
   const { serviceId } = req.params;
   
   const service = await HotelService.findById(serviceId)
-    .populate('hotelId', 'name address');
+    .populate('hotelId', 'name address').lean();
     
   if (!service) {
     throw new ApplicationError('Service not found', 404);
@@ -350,7 +350,7 @@ router.post('/:serviceId/bookings',
     const { bookingDate, numberOfPeople, specialRequests } = req.body;
     
     // Get the service
-    const service = await HotelService.findById(serviceId);
+    const service = await HotelService.findById(serviceId).lean();
     if (!service) {
       throw new ApplicationError('Service not found', 404);
     }
@@ -436,7 +436,7 @@ router.post('/bookings/:bookingId/cancel',
     const { bookingId } = req.params;
     const { reason } = req.body;
     
-    const booking = await ServiceBooking.findById(bookingId);
+    const booking = await ServiceBooking.findById(bookingId).lean();
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
     }

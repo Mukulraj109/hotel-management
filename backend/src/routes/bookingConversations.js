@@ -61,7 +61,7 @@ router.post('/', authenticate, ensurePropertyAccess, catchAsync(async (req, res)
   } = req.body;
 
   // Verify booking exists and user has access
-  const booking = await Booking.findById(bookingId).populate('hotelId userId');
+  const booking = await Booking.findById(bookingId).populate('hotelId userId').lean();
   if (!booking) {
     throw new ApplicationError('Booking not found', 404);
   }
@@ -96,7 +96,7 @@ router.post('/', authenticate, ensurePropertyAccess, catchAsync(async (req, res)
       hotelId: booking.hotelId._id,
       role: 'staff',
       isActive: true
-    }).select('_id name email').limit(1);
+    }).select('_id name email').limit(1).lean();
 
     if (staffMembers.length > 0) {
       participants.push({
@@ -263,7 +263,7 @@ router.get('/:id', authenticate, ensurePropertyAccess, catchAsync(async (req, re
     .populate('bookingId', 'bookingNumber checkIn checkOut rooms totalAmount currency')
     .populate('participants.userId', 'name email role')
     .populate('metadata.assignedTo.userId', 'name email')
-    .populate('metadata.assignedBy', 'name email');
+    .populate('metadata.assignedBy', 'name email').lean();
 
   if (!conversation) {
     throw new ApplicationError('Conversation not found', 404);
@@ -334,7 +334,7 @@ router.post('/:id/messages', authenticate, ensurePropertyAccess, catchAsync(asyn
   } = req.body;
 
   const conversation = await BookingConversation.findById(req.params.id)
-    .populate('participants.userId', 'name email role');
+    .populate('participants.userId', 'name email role').lean();
 
   if (!conversation) {
     throw new ApplicationError('Conversation not found', 404);
@@ -431,7 +431,7 @@ router.post('/:id/messages', authenticate, ensurePropertyAccess, catchAsync(asyn
 router.patch('/:id/read', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
   const { messageIds } = req.body;
 
-  const conversation = await BookingConversation.findById(req.params.id);
+  const conversation = await BookingConversation.findById(req.params.id).lean();
 
   if (!conversation) {
     throw new ApplicationError('Conversation not found', 404);
@@ -486,7 +486,7 @@ router.patch('/:id/read', authenticate, ensurePropertyAccess, catchAsync(async (
 router.patch('/:id/assign', authenticate, ensurePropertyAccess, authorize('staff', 'admin', 'manager'), catchAsync(async (req, res) => {
   const { staffUserId } = req.body;
 
-  const conversation = await BookingConversation.findById(req.params.id);
+  const conversation = await BookingConversation.findById(req.params.id).lean();
 
   if (!conversation) {
     throw new ApplicationError('Conversation not found', 404);
@@ -499,7 +499,7 @@ router.patch('/:id/assign', authenticate, ensurePropertyAccess, authorize('staff
     hotelId: conversation.hotelId,
     role: { $in: ['staff', 'admin', 'manager'] },
     isActive: true
-  });
+  }).lean();
 
   if (!staffUser) {
     throw new ApplicationError('Staff member not found or not authorized', 404);
@@ -568,7 +568,7 @@ router.patch('/:id/assign', authenticate, ensurePropertyAccess, authorize('staff
 router.patch('/:id/status', authenticate, ensurePropertyAccess, catchAsync(async (req, res) => {
   const { status, reason } = req.body;
 
-  const conversation = await BookingConversation.findById(req.params.id);
+  const conversation = await BookingConversation.findById(req.params.id).lean();
 
   if (!conversation) {
     throw new ApplicationError('Conversation not found', 404);

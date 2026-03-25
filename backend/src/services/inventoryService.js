@@ -228,95 +228,103 @@ class InventoryService {
    * Check availability atomically within transaction
    */
   static async checkAtomicAvailability({ hotelId, roomTypeId, checkIn, checkOut, roomsCount, session }) {
-    const startDate = new Date(checkIn);
-    const endDate = new Date(checkOut);
+    try {
+      const startDate = new Date(checkIn);
+      const endDate = new Date(checkOut);
     
-    // Check each date in the range
-    for (let date = new Date(startDate); date < endDate; date.setDate(date.getDate() + 1)) {
-      const availability = await RoomAvailability.findOne({
-        hotelId,
-        roomTypeId,
-        date: new Date(date)
-      }).session(session);
+      // Check each date in the range
+      for (let date = new Date(startDate); date < endDate; date.setDate(date.getDate() + 1)) {
+        const availability = await RoomAvailability.findOne({
+          hotelId,
+          roomTypeId,
+          date: new Date(date)
+        }).session(session);
       
-      if (!availability) {
-        logger.warn('No availability record found', { hotelId, roomTypeId, date });
-        return false;
-      }
+        if (!availability) {
+          logger.warn('No availability record found', { hotelId, roomTypeId, date });
+          return false;
+        }
       
-      // Check business rules
-      if (availability.stopSellFlag || 
-          availability.closedToArrival || 
-          availability.availableRooms < roomsCount) {
-        logger.warn('Availability check failed', { 
-          hotelId, 
-          roomTypeId, 
-          date, 
-          availableRooms: availability.availableRooms,
-          requestedRooms: roomsCount,
-          stopSellFlag: availability.stopSellFlag,
-          closedToArrival: availability.closedToArrival
-        });
-        return false;
+        // Check business rules
+        if (availability.stopSellFlag || 
+            availability.closedToArrival || 
+            availability.availableRooms < roomsCount) {
+          logger.warn('Availability check failed', { 
+            hotelId, 
+            roomTypeId, 
+            date, 
+            availableRooms: availability.availableRooms,
+            requestedRooms: roomsCount,
+            stopSellFlag: availability.stopSellFlag,
+            closedToArrival: availability.closedToArrival
+          });
+          return false;
+        }
       }
+    
+      return true;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    return true;
   }
   
   /**
    * Update inventory atomically for date range
    */
   static async updateInventoryAtomically({ hotelId, roomTypeId, checkIn, checkOut, roomsCount, operation, source, channelId, session }) {
-    const startDate = new Date(checkIn);
-    const endDate = new Date(checkOut);
-    const results = [];
+    try {
+      const startDate = new Date(checkIn);
+      const endDate = new Date(checkOut);
+      const results = [];
     
-    for (let date = new Date(startDate); date < endDate; date.setDate(date.getDate() + 1)) {
-      const updateFields = operation === 'book' 
-        ? { 
-            $inc: { 
-              availableRooms: -roomsCount, 
-              soldRooms: roomsCount 
-            },
-            $push: {
-              reservations: {
-                source,
-                channelId,
-                roomsReserved: roomsCount,
-                timestamp: new Date()
+      for (let date = new Date(startDate); date < endDate; date.setDate(date.getDate() + 1)) {
+        const updateFields = operation === 'book' 
+          ? { 
+              $inc: { 
+                availableRooms: -roomsCount, 
+                soldRooms: roomsCount 
+              },
+              $push: {
+                reservations: {
+                  source,
+                  channelId,
+                  roomsReserved: roomsCount,
+                  timestamp: new Date()
+                }
               }
             }
+          : { 
+              $inc: { 
+                availableRooms: roomsCount, 
+                soldRooms: -roomsCount 
+              }
+            };
+      
+        const result = await RoomAvailability.findOneAndUpdate(
+          {
+            hotelId,
+            roomTypeId,
+            date: new Date(date)
+          },
+          updateFields,
+          { 
+            session,
+            new: true,
+            runValidators: true
           }
-        : { 
-            $inc: { 
-              availableRooms: roomsCount, 
-              soldRooms: -roomsCount 
-            }
-          };
+        );
       
-      const result = await RoomAvailability.findOneAndUpdate(
-        {
-          hotelId,
-          roomTypeId,
-          date: new Date(date)
-        },
-        updateFields,
-        { 
-          session,
-          new: true,
-          runValidators: true
+        if (!result) {
+          throw new Error(`Failed to update availability for date: ${date}`);
         }
-      );
       
-      if (!result) {
-        throw new Error(`Failed to update availability for date: ${date}`);
+        results.push(result);
       }
-      
-      results.push(result);
-    }
     
-    return results;
+      return results;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   // Distributed locking delegated to shared utility (backend/src/utils/distributedLock.js)
@@ -327,53 +335,61 @@ class InventoryService {
    * Get availability with channel-specific overrides
    */
   static async getChannelAvailability(hotelId, roomTypeId, date, channelId) {
-    const availability = await RoomAvailability.findOne({
-      hotelId,
-      roomTypeId,
-      date: new Date(date)
-    }).lean();
+    try {
+      const availability = await RoomAvailability.findOne({
+        hotelId,
+        roomTypeId,
+        date: new Date(date)
+      }).lean();
     
-    if (!availability) {
-      return null;
+      if (!availability) {
+        return null;
+      }
+    
+      // Apply channel-specific overrides if exists
+      const channelOverride = availability.channelInventory?.find(
+        ci => ci.channel?.toString() === channelId
+      );
+    
+      if (channelOverride) {
+        return {
+          ...availability,
+          availableRooms: channelOverride.channelAvailableRooms || availability.availableRooms,
+          sellingRate: channelOverride.channelRate || availability.sellingRate,
+          closedToArrival: channelOverride.closedToArrival ?? availability.closedToArrival,
+          stopSellFlag: channelOverride.stopSell ?? availability.stopSellFlag
+        };
+      }
+    
+      return availability;
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-    
-    // Apply channel-specific overrides if exists
-    const channelOverride = availability.channelInventory?.find(
-      ci => ci.channel?.toString() === channelId
-    );
-    
-    if (channelOverride) {
-      return {
-        ...availability,
-        availableRooms: channelOverride.channelAvailableRooms || availability.availableRooms,
-        sellingRate: channelOverride.channelRate || availability.sellingRate,
-        closedToArrival: channelOverride.closedToArrival ?? availability.closedToArrival,
-        stopSellFlag: channelOverride.stopSell ?? availability.stopSellFlag
-      };
-    }
-    
-    return availability;
   }
   
   /**
    * Update channel-specific inventory settings
    */
   static async updateChannelInventory(hotelId, roomTypeId, date, channelId, updates) {
-    return await RoomAvailability.findOneAndUpdate(
-      {
-        hotelId,
-        roomTypeId,
-        date: new Date(date),
-        'channelInventory.channel': channelId
-      },
-      {
-        $set: Object.keys(updates).reduce((acc, key) => {
-          acc[`channelInventory.$.${key}`] = updates[key];
-          return acc;
-        }, {})
-      },
-      { new: true }
-    );
+    try {
+      return await RoomAvailability.findOneAndUpdate(
+        {
+          hotelId,
+          roomTypeId,
+          date: new Date(date),
+          'channelInventory.channel': channelId
+        },
+        {
+          $set: Object.keys(updates).reduce((acc, key) => {
+            acc[`channelInventory.$.${key}`] = updates[key];
+            return acc;
+          }, {})
+        },
+        { new: true }
+      );
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
   
   /**

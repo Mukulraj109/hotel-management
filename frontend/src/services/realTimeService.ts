@@ -58,8 +58,9 @@ class RealTimeService extends EventEmitter {
   private socket: Socket | null = null;
   private config: Required<RealTimeConfig>;
   private reconnectAttempts = 0;
-  private reconnectTimer: number | null = null;
-  private heartbeatTimer: number | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private connectionTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
   private isConnected = false;
   private isConnecting = false;
   private shouldReconnect = true;
@@ -225,7 +226,9 @@ class RealTimeService extends EventEmitter {
         this.socket.connect();
 
         // Connection timeout
-        setTimeout(() => {
+        if (this.connectionTimeoutTimer) clearTimeout(this.connectionTimeoutTimer);
+        this.connectionTimeoutTimer = setTimeout(() => {
+          this.connectionTimeoutTimer = null;
           if (this.isConnecting && !this.isConnected) {
             this.log('Socket connection timeout after 30 seconds');
             this.connectionPromise = null; // Clear connection promise on timeout
@@ -248,6 +251,11 @@ class RealTimeService extends EventEmitter {
     this.shouldReconnect = false;
     this.isConnecting = false;
     this.connectionPromise = null; // Clear connection promise on disconnect
+
+    if (this.connectionTimeoutTimer) {
+      clearTimeout(this.connectionTimeoutTimer);
+      this.connectionTimeoutTimer = null;
+    }
 
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);

@@ -36,6 +36,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
+import { withErrorBoundary } from '../ErrorBoundary';
 
 interface GuestProfile {
   id: string;
@@ -88,7 +89,7 @@ interface HotelService {
   price?: number;
 }
 
-export const ContactlessGuestApp: React.FC = () => {
+const ContactlessGuestApp: React.FC = () => {
   const [activeTab, setActiveTab] = useState('home');
   const [guestProfile, setGuestProfile] = useState<GuestProfile | null>(null);
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
@@ -869,7 +870,7 @@ export const ContactlessGuestApp: React.FC = () => {
           {tabs.map(tab => {
             const Icon = tab.icon;
             return (
-              <button
+              <button aria-label="Close"
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex flex-col items-center py-2 px-3 rounded-lg transition-colors ${
@@ -888,3 +889,5 @@ export const ContactlessGuestApp: React.FC = () => {
     </div>
   );
 };
+
+export default withErrorBoundary(ContactlessGuestApp, { level: 'component' });

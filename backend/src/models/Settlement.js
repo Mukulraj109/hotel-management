@@ -661,58 +661,66 @@ settlementSchema.virtual('ageInDays').get(function() {
 
 // Static method to find overdue settlements
 settlementSchema.statics.findOverdue = async function(hotelId, gracePeriod = 0) {
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - gracePeriod);
+  try {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - gracePeriod);
 
-  return await this.find({
-    hotelId,
-    status: { $in: ['pending', 'partial', 'overdue'] },
-    dueDate: { $lt: cutoffDate },
-    outstandingBalance: { $gt: 0 }
-  }).sort({ dueDate: 1 });
+    return await this.find({
+      hotelId,
+      status: { $in: ['pending', 'partial', 'overdue'] },
+      dueDate: { $lt: cutoffDate },
+      outstandingBalance: { $gt: 0 }
+    }).sort({ dueDate: 1 }).lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method for settlement analytics
 settlementSchema.statics.getAnalytics = async function(hotelId, dateRange = {}) {
-  const matchStage = { hotelId };
+  try {
+    const matchStage = { hotelId };
 
-  if (dateRange.start || dateRange.end) {
-    matchStage.createdAt = {};
-    if (dateRange.start) matchStage.createdAt.$gte = new Date(dateRange.start);
-    if (dateRange.end) matchStage.createdAt.$lte = new Date(dateRange.end);
-  }
-
-  const pipeline = [
-    { $match: matchStage },
-    {
-      $group: {
-        _id: '$status',
-        count: { $sum: 1 },
-        totalAmount: { $sum: '$finalAmount' },
-        avgAmount: { $avg: '$finalAmount' },
-        totalOutstanding: { $sum: '$outstandingBalance' }
-      }
-    },
-    {
-      $group: {
-        _id: null,
-        byStatus: {
-          $push: {
-            status: '$_id',
-            count: '$count',
-            totalAmount: '$totalAmount',
-            avgAmount: '$avgAmount',
-            totalOutstanding: '$totalOutstanding'
-          }
-        },
-        totalSettlements: { $sum: '$count' },
-        totalValue: { $sum: '$totalAmount' },
-        totalOutstanding: { $sum: '$totalOutstanding' }
-      }
+    if (dateRange.start || dateRange.end) {
+      matchStage.createdAt = {};
+      if (dateRange.start) matchStage.createdAt.$gte = new Date(dateRange.start);
+      if (dateRange.end) matchStage.createdAt.$lte = new Date(dateRange.end);
     }
-  ];
 
-  return await this.aggregate(pipeline);
+    const pipeline = [
+      { $match: matchStage },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$finalAmount' },
+          avgAmount: { $avg: '$finalAmount' },
+          totalOutstanding: { $sum: '$outstandingBalance' }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          byStatus: {
+            $push: {
+              status: '$_id',
+              count: '$count',
+              totalAmount: '$totalAmount',
+              avgAmount: '$avgAmount',
+              totalOutstanding: '$totalOutstanding'
+            }
+          },
+          totalSettlements: { $sum: '$count' },
+          totalValue: { $sum: '$totalAmount' },
+          totalOutstanding: { $sum: '$totalOutstanding' }
+        }
+      }
+    ];
+
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Instance method to add payment with validation
@@ -983,77 +991,85 @@ settlementSchema.methods.getValidationStatus = function() {
 
 // Static method to find settlements with calculation errors
 settlementSchema.statics.findWithCalculationErrors = async function(hotelId) {
-  return await this.find({
-    hotelId,
-    '_validationMetadata.validationResult.isValid': false
-  }).select('settlementNumber finalAmount totalPaid outstandingBalance _validationMetadata');
+  try {
+    return await this.find({
+      hotelId,
+      '_validationMetadata.validationResult.isValid': false
+    }).select('settlementNumber finalAmount totalPaid outstandingBalance _validationMetadata').lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get calculation validation statistics
 settlementSchema.statics.getValidationStatistics = async function(hotelId, dateRange = {}) {
-  const matchStage = { hotelId };
+  try {
+    const matchStage = { hotelId };
 
-  if (dateRange.start || dateRange.end) {
-    matchStage.createdAt = {};
-    if (dateRange.start) matchStage.createdAt.$gte = new Date(dateRange.start);
-    if (dateRange.end) matchStage.createdAt.$lte = new Date(dateRange.end);
-  }
-
-  const pipeline = [
-    { $match: matchStage },
-    {
-      $group: {
-        _id: null,
-        totalSettlements: { $sum: 1 },
-        validSettlements: {
-          $sum: {
-            $cond: [{ $eq: ['$_validationMetadata.validationResult.isValid', true] }, 1, 0]
-          }
-        },
-        settlementsWithErrors: {
-          $sum: {
-            $cond: [{ $eq: ['$_validationMetadata.validationResult.isValid', false] }, 1, 0]
-          }
-        },
-        settlementsWithCorrections: {
-          $sum: {
-            $cond: [{ $eq: ['$_validationMetadata.validationResult.hasCorrections', true] }, 1, 0]
-          }
-        },
-        avgErrorCount: { $avg: '$_validationMetadata.validationResult.errorCount' },
-        avgWarningCount: { $avg: '$_validationMetadata.validationResult.warningCount' }
-      }
-    },
-    {
-      $project: {
-        _id: 0,
-        totalSettlements: 1,
-        validSettlements: 1,
-        settlementsWithErrors: 1,
-        settlementsWithCorrections: 1,
-        validationRate: {
-          $cond: [
-            { $eq: ['$totalSettlements', 0] },
-            0,
-            { $divide: ['$validSettlements', '$totalSettlements'] }
-          ]
-        },
-        avgErrorCount: { $round: ['$avgErrorCount', 2] },
-        avgWarningCount: { $round: ['$avgWarningCount', 2] }
-      }
+    if (dateRange.start || dateRange.end) {
+      matchStage.createdAt = {};
+      if (dateRange.start) matchStage.createdAt.$gte = new Date(dateRange.start);
+      if (dateRange.end) matchStage.createdAt.$lte = new Date(dateRange.end);
     }
-  ];
 
-  const result = await this.aggregate(pipeline);
-  return result[0] || {
-    totalSettlements: 0,
-    validSettlements: 0,
-    settlementsWithErrors: 0,
-    settlementsWithCorrections: 0,
-    validationRate: 0,
-    avgErrorCount: 0,
-    avgWarningCount: 0
-  };
+    const pipeline = [
+      { $match: matchStage },
+      {
+        $group: {
+          _id: null,
+          totalSettlements: { $sum: 1 },
+          validSettlements: {
+            $sum: {
+              $cond: [{ $eq: ['$_validationMetadata.validationResult.isValid', true] }, 1, 0]
+            }
+          },
+          settlementsWithErrors: {
+            $sum: {
+              $cond: [{ $eq: ['$_validationMetadata.validationResult.isValid', false] }, 1, 0]
+            }
+          },
+          settlementsWithCorrections: {
+            $sum: {
+              $cond: [{ $eq: ['$_validationMetadata.validationResult.hasCorrections', true] }, 1, 0]
+            }
+          },
+          avgErrorCount: { $avg: '$_validationMetadata.validationResult.errorCount' },
+          avgWarningCount: { $avg: '$_validationMetadata.validationResult.warningCount' }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          totalSettlements: 1,
+          validSettlements: 1,
+          settlementsWithErrors: 1,
+          settlementsWithCorrections: 1,
+          validationRate: {
+            $cond: [
+              { $eq: ['$totalSettlements', 0] },
+              0,
+              { $divide: ['$validSettlements', '$totalSettlements'] }
+            ]
+          },
+          avgErrorCount: { $round: ['$avgErrorCount', 2] },
+          avgWarningCount: { $round: ['$avgWarningCount', 2] }
+        }
+      }
+    ];
+
+    const result = await this.aggregate(pipeline);
+    return result[0] || {
+      totalSettlements: 0,
+      validSettlements: 0,
+      settlementsWithErrors: 0,
+      settlementsWithCorrections: 0,
+      validationRate: 0,
+      avgErrorCount: 0,
+      avgWarningCount: 0
+    };
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 export default mongoose.model('Settlement', settlementSchema);

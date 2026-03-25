@@ -546,38 +546,42 @@ revenueReportSchema.methods.calculateGrowthPotential = function(regionData) {
 
 // Static methods
 revenueReportSchema.statics.generateReport = async function(hotelId, options = {}) {
-  const {
-    reportType = 'monthly',
-    startDate,
-    endDate,
-    baseCurrency = 'USD',
-    includeForecasting = false,
-    includeComparison = true
-  } = options;
+  try {
+    const {
+      reportType = 'monthly',
+      startDate,
+      endDate,
+      baseCurrency = 'USD',
+      includeForecasting = false,
+      includeComparison = true
+    } = options;
   
-  // This would contain the complex logic to aggregate booking data
-  // and generate comprehensive revenue reports
+    // This would contain the complex logic to aggregate booking data
+    // and generate comprehensive revenue reports
   
-  const report = new this({
-    hotelId,
-    reportType,
-    reportPeriod: { startDate, endDate },
-    currencySettings: { baseCurrency }
-  });
+    const report = new this({
+      hotelId,
+      reportType,
+      reportPeriod: { startDate, endDate },
+      currencySettings: { baseCurrency }
+    });
   
-  // Populate report data (simplified for example)
-  await report.populateRevenueData();
-  await report.populatePerformanceMetrics();
+    // Populate report data (simplified for example)
+    await report.populateRevenueData();
+    await report.populatePerformanceMetrics();
   
-  if (includeComparison) {
-    await report.populateComparativeData();
+    if (includeComparison) {
+      await report.populateComparativeData();
+    }
+  
+    if (includeForecasting) {
+      await report.generateForecast();
+    }
+  
+    return report;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  if (includeForecasting) {
-    await report.generateForecast();
-  }
-  
-  return report;
 };
 
 revenueReportSchema.statics.getRevenueByPeriod = function(hotelId, startDate, endDate, currency = 'USD') {
@@ -606,21 +610,40 @@ revenueReportSchema.statics.getRevenueByPeriod = function(hotelId, startDate, en
 
 // Instance method to populate data (would be implemented based on booking data)
 revenueReportSchema.methods.populateRevenueData = async function() {
-  // Implementation would query booking data and aggregate revenue
-  // This is a placeholder for the complex aggregation logic
+  try {
+    // Implementation would query booking data and aggregate revenue
+    // This is a placeholder for the complex aggregation logic
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 revenueReportSchema.methods.populatePerformanceMetrics = async function() {
-  // Implementation would calculate KPIs from booking and room data
+  try {
+    // Implementation would calculate KPIs from booking and room data
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 revenueReportSchema.methods.populateComparativeData = async function() {
-  // Implementation would fetch previous period data for comparison
+  try {
+    // Implementation would fetch previous period data for comparison
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 revenueReportSchema.methods.generateForecast = async function() {
-  // Implementation would use ML algorithms to predict future revenue
+  try {
+    // Implementation would use ML algorithms to predict future revenue
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
+
+// Data retention TTL: auto-delete revenue reports after 7 years (financial regulatory requirement)
+revenueReportSchema.index({ createdAt: 1 }, { expireAfterSeconds: 2555 * 24 * 60 * 60 });
 
 const RevenueReport = mongoose.model('RevenueReport', revenueReportSchema);
 

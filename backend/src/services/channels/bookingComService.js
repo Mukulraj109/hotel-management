@@ -30,7 +30,7 @@ class BookingComService {
       let channel = await Channel.findOne({
         category: 'booking.com',
         'credentials.hotelId': credentials.hotelId
-      });
+      }).lean();
 
       if (channel) {
         logger.debug('✅ Booking.com channel already exists');
@@ -162,15 +162,20 @@ class BookingComService {
    */
   async createRoomMappings(channelId, mappings) {
     try {
-      const channel = await Channel.findOne({ channelId });
+      const channel = await Channel.findOne({ channelId }).lean();
       if (!channel) {
         throw new Error('Channel not found');
       }
 
       // Process each mapping
+      // Batch: fetch all room types in a single query
+      const roomTypeIds = mappings.map(m => m.hotelRoomTypeId);
+      const roomTypes = await RoomType.find({ _id: { $in: roomTypeIds } }).lean();
+      const roomTypeMap = new Map(roomTypes.map(rt => [rt._id.toString(), rt]));
+
       const processedMappings = [];
       for (const mapping of mappings) {
-        const roomType = await RoomType.findById(mapping.hotelRoomTypeId);
+        const roomType = roomTypeMap.get(mapping.hotelRoomTypeId.toString());
         if (!roomType) {
           logger.warn(`Room type ${mapping.hotelRoomTypeId} not found`);
           continue;
@@ -236,7 +241,7 @@ class BookingComService {
    */
   async syncRatesAndAvailability(channelId, startDate, endDate) {
     try {
-      const channel = await Channel.findOne({ channelId }).populate('roomMappings.hotelRoomTypeId');
+      const channel = await Channel.findOne({ channelId }).populate('roomMappings.hotelRoomTypeId').lean();
       if (!channel) {
         throw new Error('Channel not found');
       }
@@ -251,7 +256,7 @@ class BookingComService {
           const availabilityRecords = await RoomAvailability.find({
             roomTypeId: roomMapping.hotelRoomTypeId,
             date: { $gte: startDate, $lte: endDate }
-          }).sort({ date: 1 });
+          }).sort({ date: 1 }).lean().limit(1000);
 
           if (availabilityRecords.length === 0) {
             logger.debug(`No availability data for room type ${roomMapping.hotelRoomTypeId}`);
@@ -419,7 +424,7 @@ class BookingComService {
   async handleIncomingReservation(reservationData) {
     try {
       // Find the channel mapping
-      const channel = await Channel.findOne({ category: 'booking.com' });
+      const channel = await Channel.findOne({ category: 'booking.com' }).lean();
       if (!channel) {
         throw new Error('Booking.com channel not found');
       }
@@ -534,7 +539,7 @@ class BookingComService {
    */
   async getChannelMetrics(channelId, startDate, endDate) {
     try {
-      const channel = await Channel.findOne({ channelId });
+      const channel = await Channel.findOne({ channelId }).lean();
       if (!channel) {
         throw new Error('Channel not found');
       }
@@ -543,7 +548,7 @@ class BookingComService {
         channel: channel._id,
         createdAt: { $gte: startDate, $lte: endDate },
         source: 'booking_com'
-      });
+      }).lean().limit(1000);
 
       const totalBookings = bookings.length;
       const totalRevenue = bookings.reduce((sum, booking) => sum + booking.totalAmount, 0);

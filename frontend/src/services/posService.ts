@@ -129,36 +129,52 @@ class POSService {
 
   // Dashboard
   async getDashboardStats(): Promise<POSStats> {
-    const response = await api.get(`${this.baseURL}/dashboard/stats`);
-    if (response.data.success) {
-      return response.data.data;
+    try {
+      const response = await api.get(`${this.baseURL}/dashboard/stats`);
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Failed to fetch dashboard stats');
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-    throw new Error('Failed to fetch dashboard stats');
   }
 
   // Outlets
   async getOutlets(): Promise<POSOutlet[]> {
-    const response = await api.get(`${this.baseURL}/outlets`);
-    if (response.data.success) {
-      return response.data.data;
+    try {
+      const response = await api.get(`${this.baseURL}/outlets`);
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Failed to fetch outlets');
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-    throw new Error('Failed to fetch outlets');
   }
 
   async createOutlet(outletData: Partial<POSOutlet>): Promise<POSOutlet> {
-    const response = await api.post(`${this.baseURL}/outlets`, outletData);
-    if (response.data.success) {
-      return response.data.data;
+    try {
+      const response = await api.post(`${this.baseURL}/outlets`, outletData);
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Failed to create outlet');
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-    throw new Error('Failed to create outlet');
   }
 
   async updateOutlet(id: string, outletData: Partial<POSOutlet>): Promise<POSOutlet> {
-    const response = await api.put(`${this.baseURL}/outlets/${id}`, outletData);
-    if (response.data.success) {
-      return response.data.data;
+    try {
+      const response = await api.put(`${this.baseURL}/outlets/${id}`, outletData);
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Failed to update outlet');
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-    throw new Error('Failed to update outlet');
   }
 
   // Orders
@@ -168,33 +184,45 @@ class POSService {
     date?: string;
     limit?: number;
   }): Promise<POSOrder[]> {
-    const searchParams = new URLSearchParams();
-    if (params?.outlet) searchParams.append('outlet', params.outlet);
-    if (params?.status) searchParams.append('status', params.status);
-    if (params?.date) searchParams.append('date', params.date);
-    if (params?.limit) searchParams.append('limit', params.limit.toString());
+    try {
+      const searchParams = new URLSearchParams();
+      if (params?.outlet) searchParams.append('outlet', params.outlet);
+      if (params?.status) searchParams.append('status', params.status);
+      if (params?.date) searchParams.append('date', params.date);
+      if (params?.limit) searchParams.append('limit', params.limit.toString());
     
-    const response = await api.get(`${this.baseURL}/orders?${searchParams}`);
-    if (response.data.success) {
-      return response.data.data;
+      const response = await api.get(`${this.baseURL}/orders?${searchParams}`);
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Failed to fetch orders');
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-    throw new Error('Failed to fetch orders');
   }
 
   async createOrder(orderData: Partial<POSOrder>): Promise<POSOrder> {
-    const response = await api.post(`${this.baseURL}/orders`, orderData);
-    if (response.data.success) {
-      return response.data.data;
+    try {
+      const response = await api.post(`${this.baseURL}/orders`, orderData);
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Failed to create order');
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-    throw new Error('Failed to create order');
   }
 
   async updateOrderStatus(id: string, status: string): Promise<POSOrder> {
-    const response = await api.put(`${this.baseURL}/orders/${id}/status`, { status });
-    if (response.data.success) {
-      return response.data.data;
+    try {
+      const response = await api.put(`${this.baseURL}/orders/${id}/status`, { status });
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Failed to update order status');
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-    throw new Error('Failed to update order status');
   }
 
   async processPayment(id: string, paymentData: {
@@ -202,36 +230,52 @@ class POSService {
     amount: number;
     paymentDetails?: Record<string, unknown>;
   }): Promise<POSOrder> {
-    const response = await api.put(`${this.baseURL}/orders/${id}/payment`, paymentData);
-    if (response.data.success) {
-      return response.data.data;
+    try {
+      const response = await api.put(`${this.baseURL}/orders/${id}/payment`, paymentData);
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Failed to process payment');
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-    throw new Error('Failed to process payment');
   }
 
   // Menus
   async getMenusByOutlet(outletId: string): Promise<unknown[]> {
-    const response = await api.get(`${this.baseURL}/menus/outlet/${outletId}`);
-    if (response.data.success) {
-      return response.data.data;
+    try {
+      const response = await api.get(`${this.baseURL}/menus/outlet/${outletId}`);
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Failed to fetch menus');
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-    throw new Error('Failed to fetch menus');
   }
 
   async createMenu(menuData: Record<string, unknown>): Promise<unknown> {
-    const response = await api.post(`${this.baseURL}/menus`, menuData);
-    if (response.data.success) {
-      return response.data.data;
+    try {
+      const response = await api.post(`${this.baseURL}/menus`, menuData);
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Failed to create menu');
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-    throw new Error('Failed to create menu');
   }
 
   async addMenuItem(menuId: string, itemData: Record<string, unknown>): Promise<unknown> {
-    const response = await api.post(`${this.baseURL}/menus/${menuId}/items`, itemData);
-    if (response.data.success) {
-      return response.data.data;
+    try {
+      const response = await api.post(`${this.baseURL}/menus/${menuId}/items`, itemData);
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Failed to add menu item');
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-    throw new Error('Failed to add menu item');
   }
 
   // Reports
@@ -240,16 +284,20 @@ class POSService {
     startDate?: string;
     endDate?: string;
   }): Promise<unknown[]> {
-    const searchParams = new URLSearchParams();
-    if (params?.outlet) searchParams.append('outlet', params.outlet);
-    if (params?.startDate) searchParams.append('startDate', params.startDate);
-    if (params?.endDate) searchParams.append('endDate', params.endDate);
+    try {
+      const searchParams = new URLSearchParams();
+      if (params?.outlet) searchParams.append('outlet', params.outlet);
+      if (params?.startDate) searchParams.append('startDate', params.startDate);
+      if (params?.endDate) searchParams.append('endDate', params.endDate);
     
-    const response = await api.get(`${this.baseURL}/reports/sales?${searchParams}`);
-    if (response.data.success) {
-      return response.data.data;
+      const response = await api.get(`${this.baseURL}/reports/sales?${searchParams}`);
+      if (response.data.success) {
+        return response.data.data;
+      }
+      throw new Error('Failed to fetch sales report');
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-    throw new Error('Failed to fetch sales report');
   }
 }
 

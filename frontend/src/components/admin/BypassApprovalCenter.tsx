@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef} from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -93,6 +93,15 @@ const BypassApprovalCenter: React.FC = () => {
   const [filterUrgency, setFilterUrgency] = useState<string>('all');
   const [refreshing, setRefreshing] = useState(false);
 
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timers on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     fetchData();
     
@@ -161,7 +170,8 @@ const BypassApprovalCenter: React.FC = () => {
       fetchData(); // Refresh data
       
       // Clear success message after 5 seconds
-      setTimeout(() => setSuccess(null), 5000);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => setSuccess(null), 5000);
       
     } catch (err: unknown) {
       setError('Failed to process approval: ' + err.message);
@@ -176,7 +186,8 @@ const BypassApprovalCenter: React.FC = () => {
       await bypassApprovalService.escalateApproval(workflowId, 'manual_escalation');
       setSuccess('✅ Approval escalated successfully');
       fetchData();
-      setTimeout(() => setSuccess(null), 5000);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => setSuccess(null), 5000);
     } catch (err: unknown) {
       setError('Failed to escalate approval: ' + err.message);
     } finally {

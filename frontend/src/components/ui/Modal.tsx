@@ -44,12 +44,15 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', className
   const modalContent = (
     <div className={cn("fixed inset-0 z-50 overflow-y-auto", className)}>
       <div className="flex min-h-full items-center justify-center p-4">
-        <div
+        <div aria-hidden="true"
           className="fixed inset-0 bg-black bg-opacity-60 transition-opacity backdrop-blur-sm"
           onClick={onClose ? onClose : undefined}
         />
         <div
           ref={modalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
           className={cn(
             'relative bg-white rounded-lg shadow-xl w-full animate-fade-in',
             sizeClasses[size]
@@ -59,7 +62,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md', className
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
               {onClose && (
-                <button
+                <button aria-label="Close"
                   onClick={onClose}
                   className="text-gray-400 hover:text-gray-600 transition-colors"
                 >

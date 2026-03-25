@@ -232,24 +232,36 @@ class BypassFinancialService {
    * Get cost trends analysis
    */
   async getCostTrends(months: number = 12): Promise<{ data: CostTrend[] }> {
-    const response = await api.get(`/admin-bypass-management/trends?months=${months}`);
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/trends?months=${months}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get top cost drivers
    */
   async getTopCostDrivers(limit: number = 10): Promise<{ data: CostDriver[] }> {
-    const response = await api.get(`/admin-bypass-management/cost-drivers?limit=${limit}`);
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/cost-drivers?limit=${limit}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get financial impact details for a specific bypass
    */
   async getFinancialImpact(impactId: string): Promise<{ data: FinancialImpact }> {
-    const response = await api.get(`/admin-bypass-management/impact/${impactId}`);
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/impact/${impactId}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -265,16 +277,20 @@ class BypassFinancialService {
     sortBy?: string;
     sortOrder?: string;
   } = {}): Promise<{ data: FinancialImpact[]; pagination: { page: number; limit: number; total: number; pages: number } }> {
-    const queryParams = new URLSearchParams();
+    try {
+      const queryParams = new URLSearchParams();
     
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined) {
-        queryParams.append(key, value.toString());
-      }
-    });
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          queryParams.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/admin-bypass-management/impacts?${queryParams.toString()}`);
-    return response.data;
+      const response = await api.get(`/admin-bypass-management/impacts?${queryParams.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -285,24 +301,32 @@ class BypassFinancialService {
     fiscalQuarter?: number;
     department?: string;
   } = {}): Promise<{ data: BudgetImpact[] }> {
-    const queryParams = new URLSearchParams();
+    try {
+      const queryParams = new URLSearchParams();
     
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined) {
-        queryParams.append(key, value.toString());
-      }
-    });
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          queryParams.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/admin-bypass-management/budget-impact?${queryParams.toString()}`);
-    return response.data;
+      const response = await api.get(`/admin-bypass-management/budget-impact?${queryParams.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get recovery tracking data
    */
   async getRecoveryData(timeRange: number = 90): Promise<{ data: RecoveryData }> {
-    const response = await api.get(`/admin-bypass-management/recovery?timeRange=${timeRange}`);
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/recovery?timeRange=${timeRange}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -312,42 +336,58 @@ class BypassFinancialService {
     category?: string;
     months?: number;
   } = {}): Promise<{ data: PredictiveAnalytics[] }> {
-    const queryParams = new URLSearchParams();
+    try {
+      const queryParams = new URLSearchParams();
     
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined) {
-        queryParams.append(key, value.toString());
-      }
-    });
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined) {
+          queryParams.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/admin-bypass-management/predictive?${queryParams.toString()}`);
-    return response.data;
+      const response = await api.get(`/admin-bypass-management/predictive?${queryParams.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Generate executive report
    */
   async getExecutiveReport(timeRange: number = 90, format: string = 'json'): Promise<{ data: ExecutiveReport }> {
-    const response = await api.get(`/admin-bypass-management/executive-report?timeRange=${timeRange}&format=${format}`);
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/executive-report?timeRange=${timeRange}&format=${format}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Export executive report as PDF
    */
   async exportExecutiveReport(timeRange: number = 90, format: string = 'pdf'): Promise<{ data: unknown }> {
-    const response = await api.get(`/admin-bypass-management/executive-report?timeRange=${timeRange}&format=${format}`, {
-      responseType: 'blob'
-    });
-    return response.data;
+    try {
+      const response = await api.get(`/admin-bypass-management/executive-report?timeRange=${timeRange}&format=${format}`, {
+        responseType: 'blob'
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Update financial impact record
    */
   async updateFinancialImpact(impactId: string, updateData: Partial<FinancialImpact>): Promise<{ data: FinancialImpact }> {
-    const response = await api.put(`/admin-bypass-management/impact/${impactId}`, updateData);
-    return response.data;
+    try {
+      const response = await api.put(`/admin-bypass-management/impact/${impactId}`, updateData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
@@ -361,31 +401,43 @@ class BypassFinancialService {
     costToImplement?: number;
     expectedSavings?: number;
   }): Promise<{ data: unknown }> {
-    const response = await api.post(`/admin-bypass-management/impact/${impactId}/recovery-action`, actionData);
-    return response.data;
+    try {
+      const response = await api.post(`/admin-bypass-management/impact/${impactId}/recovery-action`, actionData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Complete recovery action
    */
   async completeRecoveryAction(impactId: string, actionId: string, actualSavings: number): Promise<{ data: unknown }> {
-    const response = await api.put(`/admin-bypass-management/impact/${impactId}/recovery-action/${actionId}/complete`, {
-      actualSavings
-    });
-    return response.data;
+    try {
+      const response = await api.put(`/admin-bypass-management/impact/${impactId}/recovery-action/${actionId}/complete`, {
+        actualSavings
+      });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**
    * Get financial impact trends by category
    */
   async getCategoryTrends(category?: string, months: number = 6): Promise<{ data: unknown }> {
-    const params = new URLSearchParams({ months: months.toString() });
-    if (category) {
-      params.append('category', category);
-    }
+    try {
+      const params = new URLSearchParams({ months: months.toString() });
+      if (category) {
+        params.append('category', category);
+      }
 
-    const response = await api.get(`/admin-bypass-management/predictive?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/admin-bypass-management/predictive?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   /**

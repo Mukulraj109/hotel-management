@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/utils/toast';
+import { withErrorBoundary } from '../ErrorBoundary';
 import {
   Mic, MicOff, Volume2, VolumeX, Languages,
   MessageSquare, Settings, Play, Pause,
@@ -802,3 +803,5 @@ export const VoiceInterface: React.FC = () => {
     </Dialog>
   );
 };
+
+export default withErrorBoundary(VoiceInterface, { level: 'component' });

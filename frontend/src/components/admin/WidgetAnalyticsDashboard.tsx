@@ -259,7 +259,7 @@ const WidgetAnalyticsDashboard: React.FC = () => {
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {widgets.map((widget) => (
-              <div
+              <div role="button" tabIndex={0}
                 key={widget._id}
                 onClick={() => handleWidgetSelect(widget.widgetId)}
                 className={`p-4 border rounded-lg cursor-pointer transition-all ${
@@ -267,7 +267,7 @@ const WidgetAnalyticsDashboard: React.FC = () => {
                     ? 'border-blue-500 bg-blue-50'
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
-              >
+               onKeyDown={(e: React.KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); const clickHandler = () => handleWidgetSelect(widget.widgetId); if (typeof clickHandler === 'function') { clickHandler(e as any); } } }}>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-medium text-gray-900">{widget.name}</h3>
                   <Badge variant={widget.isActive ? 'default' : 'secondary'}>

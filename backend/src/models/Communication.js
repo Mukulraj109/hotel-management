@@ -585,67 +585,82 @@ communicationSchema.methods.cancel = function() {
 
 // Static method to get communication statistics
 communicationSchema.statics.getCommunicationStats = async function(hotelId, startDate, endDate) {
-  const matchQuery = { hotelId };
+  try {
+    const matchQuery = { hotelId };
   
-  if (startDate && endDate) {
-    matchQuery.createdAt = {
-      $gte: new Date(startDate),
-      $lte: new Date(endDate)
-    };
-  }
-
-  const pipeline = [
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: {
-          type: '$type',
-          status: '$status'
-        },
-        count: { $sum: 1 },
-        totalRecipients: { $sum: '$totalRecipients' },
-        avgOpenRate: { $avg: '$tracking.openRate' },
-        avgClickRate: { $avg: '$tracking.clickRate' }
-      }
-    },
-    {
-      $group: {
-        _id: '$_id.type',
-        stats: {
-          $push: {
-            status: '$_id.status',
-            count: '$count',
-            totalRecipients: '$totalRecipients',
-            avgOpenRate: '$avgOpenRate',
-            avgClickRate: '$avgClickRate'
-          }
-        },
-        totalMessages: { $sum: '$count' }
-      }
+    if (startDate && endDate) {
+      matchQuery.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
     }
-  ];
 
-  return await this.aggregate(pipeline);
+    const pipeline = [
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: {
+            type: '$type',
+            status: '$status'
+          },
+          count: { $sum: 1 },
+          totalRecipients: { $sum: '$totalRecipients' },
+          avgOpenRate: { $avg: '$tracking.openRate' },
+          avgClickRate: { $avg: '$tracking.clickRate' }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.type',
+          stats: {
+            $push: {
+              status: '$_id.status',
+              count: '$count',
+              totalRecipients: '$totalRecipients',
+              avgOpenRate: '$avgOpenRate',
+              avgClickRate: '$avgClickRate'
+            }
+          },
+          totalMessages: { $sum: '$count' }
+        }
+      }
+    ];
+
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get scheduled messages
 communicationSchema.statics.getScheduledMessages = async function(hotelId, fromDate) {
-  const query = {
-    hotelId,
-    status: 'scheduled',
-    scheduledAt: { $lte: fromDate || new Date() }
-  };
+  try {
+    const query = {
+      hotelId,
+      status: 'scheduled',
+      scheduledAt: { $lte: fromDate || new Date() }
+    };
 
-  return await this.find(query)
-    .populate('sentBy', 'name')
-    .sort('scheduledAt');
+    return await this.find(query)
+      .populate('sentBy', 'name')
+      .sort('scheduledAt').lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get messages by campaign
 communicationSchema.statics.getByCampaign = async function(campaignId) {
-  return await this.find({ campaignId })
-    .populate('sentBy', 'name')
-    .sort('-createdAt');
+  try {
+    return await this.find({ campaignId })
+      .populate('sentBy', 'name')
+      .sort('-createdAt').lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
+
+// Data retention TTL: auto-delete communication records after 2 years
+communicationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 730 * 24 * 60 * 60 });
 
 export default mongoose.model('Communication', communicationSchema);

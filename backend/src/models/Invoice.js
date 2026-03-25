@@ -723,171 +723,187 @@ invoiceSchema.methods.markSplitPaid = function(splitIndex, amount, method, trans
 
 // Static method to get revenue statistics
 invoiceSchema.statics.getRevenueStats = async function(hotelId, startDate, endDate) {
-  const matchQuery = {
-    hotelId: new mongoose.Types.ObjectId(hotelId),
-    status: { $in: ['paid', 'partially_paid'] }
-  };
-  
-  if (startDate && endDate) {
-    matchQuery.issueDate = {
-      $gte: new Date(startDate),
-      $lte: new Date(endDate)
+  try {
+    const matchQuery = {
+      hotelId: new mongoose.Types.ObjectId(hotelId),
+      status: { $in: ['paid', 'partially_paid'] }
     };
-  }
-
-  const pipeline = [
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: {
-          date: { $dateToString: { format: '%Y-%m-%d', date: '$issueDate' } },
-          type: '$type'
-        },
-        revenue: { $sum: '$totalAmount' },
-        count: { $sum: 1 }
-      }
-    },
-    {
-      $group: {
-        _id: '$_id.type',
-        dailyRevenue: {
-          $push: {
-            date: '$_id.date',
-            amount: '$revenue',
-            count: '$count'
-          }
-        },
-        totalRevenue: { $sum: '$revenue' },
-        totalInvoices: { $sum: '$count' }
-      }
+  
+    if (startDate && endDate) {
+      matchQuery.issueDate = {
+        $gte: new Date(startDate),
+        $lte: new Date(endDate)
+      };
     }
-  ];
 
-  return await this.aggregate(pipeline);
+    const pipeline = [
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: {
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$issueDate' } },
+            type: '$type'
+          },
+          revenue: { $sum: '$totalAmount' },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $group: {
+          _id: '$_id.type',
+          dailyRevenue: {
+            $push: {
+              date: '$_id.date',
+              amount: '$revenue',
+              count: '$count'
+            }
+          },
+          totalRevenue: { $sum: '$revenue' },
+          totalInvoices: { $sum: '$count' }
+        }
+      }
+    ];
+
+    return await this.aggregate(pipeline);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to get overdue invoices
 invoiceSchema.statics.getOverdueInvoices = async function(hotelId) {
-  return await this.find({
-    hotelId,
-    dueDate: { $lt: new Date() },
-    status: { $in: ['issued', 'partially_paid'] }
-  })
-  .populate('guestId', 'name email phone')
-  .populate('bookingId', 'bookingNumber')
-  .sort('dueDate');
+  try {
+    return await this.find({
+      hotelId,
+      dueDate: { $lt: new Date() },
+      status: { $in: ['issued', 'partially_paid'] }
+    })
+    .populate('guestId', 'name email phone')
+    .populate('bookingId', 'bookingNumber')
+    .sort('dueDate').lean().limit(1000);
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to generate supplementary invoice for extra person charges
 invoiceSchema.statics.generateSupplementaryInvoice = async function(bookingId, extraPersonCharges, createdBy) {
-  const Booking = mongoose.model('Booking');
-  const booking = await Booking.findById(bookingId).populate('userId hotelId');
+  try {
+    const Booking = mongoose.model('Booking');
+    const booking = await Booking.findById(bookingId).populate('userId hotelId').lean();
 
-  if (!booking) {
-    throw new Error('Booking not found');
-  }
+    if (!booking) {
+      throw new Error('Booking not found');
+    }
 
-  // Prepare invoice items from extra person charges
-  const items = extraPersonCharges.map(charge => {
-    // The totalCharge already includes 18% GST, so we need to extract the base amount
-    const totalWithTax = charge.totalCharge;
-    const baseAmount = totalWithTax / 1.18; // Remove 18% GST to get base amount
-    const taxAmount = totalWithTax - baseAmount; // Calculate actual tax amount
+    // Prepare invoice items from extra person charges
+    const items = extraPersonCharges.map(charge => {
+      // The totalCharge already includes 18% GST, so we need to extract the base amount
+      const totalWithTax = charge.totalCharge;
+      const baseAmount = totalWithTax / 1.18; // Remove 18% GST to get base amount
+      const taxAmount = totalWithTax - baseAmount; // Calculate actual tax amount
 
-    return {
-      description: charge.description || `Extra person charge - ${charge.personName || 'Additional Guest'}`,
-      category: 'accommodation',
-      quantity: 1,
-      unitPrice: Math.round(baseAmount * 100) / 100, // Round to 2 decimal places
-      totalPrice: Math.round(totalWithTax * 100) / 100,
-      taxRate: 18, // GST rate for accommodation
-      taxAmount: Math.round(taxAmount * 100) / 100,
-      serviceType: 'ExtraPersonCharge',
-      serviceId: charge.personId
+      return {
+        description: charge.description || `Extra person charge - ${charge.personName || 'Additional Guest'}`,
+        category: 'accommodation',
+        quantity: 1,
+        unitPrice: Math.round(baseAmount * 100) / 100, // Round to 2 decimal places
+        totalPrice: Math.round(totalWithTax * 100) / 100,
+        taxRate: 18, // GST rate for accommodation
+        taxAmount: Math.round(taxAmount * 100) / 100,
+        serviceType: 'ExtraPersonCharge',
+        serviceId: charge.personId
+      };
+    });
+
+    // Calculate totals
+    const subtotal = items.reduce((sum, item) => sum + item.unitPrice, 0); // Sum of base amounts (without tax)
+    const totalTax = items.reduce((sum, item) => sum + item.taxAmount, 0); // Sum of tax amounts
+    const totalAmount = items.reduce((sum, item) => sum + item.totalPrice, 0); // Sum of total amounts (with tax)
+
+    // Create supplementary invoice
+    const invoiceData = {
+      hotelId: booking.hotelId._id,
+      bookingId: bookingId,
+      guestId: booking.userId._id,
+      type: 'additional',
+      items: items,
+      subtotal: subtotal,
+      taxAmount: totalTax,
+      totalAmount: totalAmount,
+      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+      notes: 'Supplementary invoice for extra person charges',
+      createdBy: createdBy
     };
-  });
 
-  // Calculate totals
-  const subtotal = items.reduce((sum, item) => sum + item.unitPrice, 0); // Sum of base amounts (without tax)
-  const totalTax = items.reduce((sum, item) => sum + item.taxAmount, 0); // Sum of tax amounts
-  const totalAmount = items.reduce((sum, item) => sum + item.totalPrice, 0); // Sum of total amounts (with tax)
+    const invoice = new this(invoiceData);
+    await invoice.save();
 
-  // Create supplementary invoice
-  const invoiceData = {
-    hotelId: booking.hotelId._id,
-    bookingId: bookingId,
-    guestId: booking.userId._id,
-    type: 'additional',
-    items: items,
-    subtotal: subtotal,
-    taxAmount: totalTax,
-    totalAmount: totalAmount,
-    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
-    notes: 'Supplementary invoice for extra person charges',
-    createdBy: createdBy
-  };
-
-  const invoice = new this(invoiceData);
-  await invoice.save();
-
-  return invoice;
+    return invoice;
+  } catch (error) {
+    throw new Error(`${error.message}`);
+  }
 };
 
 // Static method to generate settlement adjustment invoice
 invoiceSchema.statics.generateSettlementInvoice = async function(settlementId, adjustments, createdBy) {
-  const Settlement = mongoose.model('Settlement');
-  const settlement = await Settlement.findById(settlementId)
-    .populate({
-      path: 'bookingId',
-      populate: { path: 'userId hotelId' }
-    });
+  try {
+    const Settlement = mongoose.model('Settlement');
+    const settlement = await Settlement.findById(settlementId)
+      .populate({
+        path: 'bookingId',
+        populate: { path: 'userId hotelId' }
+      }).lean();
 
-  if (!settlement) {
-    throw new Error('Settlement not found');
+    if (!settlement) {
+      throw new Error('Settlement not found');
+    }
+
+    const booking = settlement.bookingId;
+
+    // Prepare invoice items from settlement adjustments
+    const items = adjustments.map(adjustment => ({
+      description: adjustment.description,
+      category: 'other',
+      quantity: 1,
+      unitPrice: Math.abs(adjustment.amount),
+      totalPrice: Math.abs(adjustment.amount),
+      taxRate: adjustment.amount > 0 ? 18 : 0, // No tax on refunds
+      taxAmount: adjustment.amount > 0 ? (Math.abs(adjustment.amount) * 18) / 100 : 0,
+      serviceType: 'SettlementAdjustment',
+      serviceId: adjustment._id
+    }));
+
+    // Calculate totals
+    const subtotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
+    const totalTax = items.reduce((sum, item) => sum + item.taxAmount, 0);
+    const totalAmount = subtotal + totalTax;
+
+    // Determine invoice type based on net adjustment
+    const netAdjustment = adjustments.reduce((sum, adj) => sum + adj.amount, 0);
+    const invoiceType = netAdjustment >= 0 ? 'additional' : 'refund';
+
+    const invoiceData = {
+      hotelId: booking.hotelId._id,
+      bookingId: booking._id,
+      guestId: booking.userId._id,
+      type: invoiceType,
+      items: items,
+      subtotal: subtotal,
+      taxAmount: totalTax,
+      totalAmount: totalAmount,
+      dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 days for settlement invoices
+      notes: `Settlement ${invoiceType} for booking ${booking.bookingNumber}`,
+      createdBy: createdBy
+    };
+
+    const invoice = new this(invoiceData);
+    await invoice.save();
+
+    return invoice;
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-
-  const booking = settlement.bookingId;
-
-  // Prepare invoice items from settlement adjustments
-  const items = adjustments.map(adjustment => ({
-    description: adjustment.description,
-    category: 'other',
-    quantity: 1,
-    unitPrice: Math.abs(adjustment.amount),
-    totalPrice: Math.abs(adjustment.amount),
-    taxRate: adjustment.amount > 0 ? 18 : 0, // No tax on refunds
-    taxAmount: adjustment.amount > 0 ? (Math.abs(adjustment.amount) * 18) / 100 : 0,
-    serviceType: 'SettlementAdjustment',
-    serviceId: adjustment._id
-  }));
-
-  // Calculate totals
-  const subtotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
-  const totalTax = items.reduce((sum, item) => sum + item.taxAmount, 0);
-  const totalAmount = subtotal + totalTax;
-
-  // Determine invoice type based on net adjustment
-  const netAdjustment = adjustments.reduce((sum, adj) => sum + adj.amount, 0);
-  const invoiceType = netAdjustment >= 0 ? 'additional' : 'refund';
-
-  const invoiceData = {
-    hotelId: booking.hotelId._id,
-    bookingId: booking._id,
-    guestId: booking.userId._id,
-    type: invoiceType,
-    items: items,
-    subtotal: subtotal,
-    taxAmount: totalTax,
-    totalAmount: totalAmount,
-    dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 days for settlement invoices
-    notes: `Settlement ${invoiceType} for booking ${booking.bookingNumber}`,
-    createdBy: createdBy
-  };
-
-  const invoice = new this(invoiceData);
-  await invoice.save();
-
-  return invoice;
 };
 
 // Instance method to add extra person charges to existing invoice

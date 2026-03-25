@@ -31,19 +31,27 @@ class HousekeepingService {
   private baseURL = '/housekeeping';
 
   async getTasks(assignedToUserId?: string): Promise<ApiResponse<{ tasks: HousekeepingTask[] }>> {
-    const queryParams = new URLSearchParams();
-    if (assignedToUserId) {
-      queryParams.append('assignedToUserId', assignedToUserId);
-    }
+    try {
+      const queryParams = new URLSearchParams();
+      if (assignedToUserId) {
+        queryParams.append('assignedToUserId', assignedToUserId);
+      }
 
-    const endpoint = queryParams.toString() ? `?${queryParams.toString()}` : '';
-    const response = await api.get(`${this.baseURL}${endpoint}`);
-    return response.data;
+      const endpoint = queryParams.toString() ? `?${queryParams.toString()}` : '';
+      const response = await api.get(`${this.baseURL}${endpoint}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateTaskStatus(taskId: string, status: string): Promise<ApiResponse<{ task: HousekeepingTask }>> {
-    const response = await api.patch(`${this.baseURL}/${taskId}`, { status });
-    return response.data;
+    try {
+      const response = await api.patch(`${this.baseURL}/${taskId}`, { status });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async completeTask(taskId: string, completionData: {
@@ -51,8 +59,12 @@ class HousekeepingService {
     completedSteps: string[];
     completedAt: string;
   }): Promise<ApiResponse<{ task: HousekeepingTask }>> {
-    const response = await api.patch(`${this.baseURL}/${taskId}`, completionData);
-    return response.data;
+    try {
+      const response = await api.patch(`${this.baseURL}/${taskId}`, completionData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 }
 

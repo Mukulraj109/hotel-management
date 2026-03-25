@@ -201,6 +201,8 @@ class APIMetricsMiddleware {
             'usage.lastIP': data.ip
           }
         }
+      ,
+        { new: true }
       );
     } catch (error) {
       logger.error('Error updating API key usage:', error);

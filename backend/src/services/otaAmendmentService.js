@@ -110,155 +110,179 @@ class OTAAmendmentService {
    * Validate amendment request against business rules
    */
   async validateAmendmentRequest(booking, amendmentData) {
-    const validator = this.amendmentValidators.get(amendmentData.type);
-    if (validator) {
-      await validator(booking, amendmentData);
-    }
+    try {
+      const validator = this.amendmentValidators.get(amendmentData.type);
+      if (validator) {
+        await validator(booking, amendmentData);
+      }
 
-    // General validations
-    if (booking.status === 'cancelled') {
-      throw new Error('Cannot amend cancelled booking');
-    }
+      // General validations
+      if (booking.status === 'cancelled') {
+        throw new Error('Cannot amend cancelled booking');
+      }
 
-    if (booking.status === 'checked_out') {
-      throw new Error('Cannot amend completed booking');
-    }
+      if (booking.status === 'checked_out') {
+        throw new Error('Cannot amend completed booking');
+      }
 
-    // Check amendment window
-    const now = new Date();
-    const checkIn = new Date(booking.checkIn);
-    const hoursUntilCheckIn = (checkIn - now) / (1000 * 60 * 60);
+      // Check amendment window
+      const now = new Date();
+      const checkIn = new Date(booking.checkIn);
+      const hoursUntilCheckIn = (checkIn - now) / (1000 * 60 * 60);
     
-    if (hoursUntilCheckIn < 2 && amendmentData.type !== 'cancellation_request') {
-      throw new Error('Amendment window closed - too close to check-in time');
-    }
+      if (hoursUntilCheckIn < 2 && amendmentData.type !== 'cancellation_request') {
+        throw new Error('Amendment window closed - too close to check-in time');
+      }
 
-    return true;
+      return true;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Validate date change amendments
    */
   async validateDateChange(booking, amendmentData) {
-    const { requestedChanges } = amendmentData;
+    try {
+      const { requestedChanges } = amendmentData;
     
-    if (requestedChanges.checkIn) {
-      const newCheckIn = new Date(requestedChanges.checkIn);
-      const today = new Date();
+      if (requestedChanges.checkIn) {
+        const newCheckIn = new Date(requestedChanges.checkIn);
+        const today = new Date();
       
-      if (newCheckIn < today) {
-        throw new Error('Cannot change check-in to a past date');
+        if (newCheckIn < today) {
+          throw new Error('Cannot change check-in to a past date');
+        }
       }
-    }
 
-    if (requestedChanges.checkOut) {
-      const newCheckOut = new Date(requestedChanges.checkOut);
-      const checkIn = new Date(requestedChanges.checkIn || booking.checkIn);
+      if (requestedChanges.checkOut) {
+        const newCheckOut = new Date(requestedChanges.checkOut);
+        const checkIn = new Date(requestedChanges.checkIn || booking.checkIn);
       
-      if (newCheckOut <= checkIn) {
-        throw new Error('Check-out date must be after check-in date');
+        if (newCheckOut <= checkIn) {
+          throw new Error('Check-out date must be after check-in date');
+        }
       }
-    }
 
-    // Check room availability for new dates
-    if (requestedChanges.checkIn || requestedChanges.checkOut) {
-      const roomIds = booking.rooms.map(r => r.roomId);
-      const overlapping = await Booking.findOverlapping(
-        roomIds,
-        requestedChanges.checkIn || booking.checkIn,
-        requestedChanges.checkOut || booking.checkOut,
-        booking._id
-      );
+      // Check room availability for new dates
+      if (requestedChanges.checkIn || requestedChanges.checkOut) {
+        const roomIds = booking.rooms.map(r => r.roomId);
+        const overlapping = await Booking.findOverlapping(
+          roomIds,
+          requestedChanges.checkIn || booking.checkIn,
+          requestedChanges.checkOut || booking.checkOut,
+          booking._id
+        );
 
-      if (overlapping.length > 0) {
-        throw new Error('Room not available for requested dates');
+        if (overlapping.length > 0) {
+          throw new Error('Room not available for requested dates');
+        }
       }
-    }
 
-    return true;
+      return true;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Validate rate change amendments
    */
   async validateRateChange(booking, amendmentData) {
-    const { requestedChanges } = amendmentData;
+    try {
+      const { requestedChanges } = amendmentData;
     
-    if (requestedChanges.totalAmount) {
-      const currentAmount = booking.totalAmount;
-      const newAmount = requestedChanges.totalAmount;
-      const changePercentage = Math.abs((newAmount - currentAmount) / currentAmount) * 100;
+      if (requestedChanges.totalAmount) {
+        const currentAmount = booking.totalAmount;
+        const newAmount = requestedChanges.totalAmount;
+        const changePercentage = Math.abs((newAmount - currentAmount) / currentAmount) * 100;
 
-      // Flag significant rate changes for manual review
-      if (changePercentage > 20) {
-        amendmentData.requiresManualApproval = true;
-        amendmentData.flagReason = `Significant rate change: ${changePercentage.toFixed(1)}%`;
+        // Flag significant rate changes for manual review
+        if (changePercentage > 20) {
+          amendmentData.requiresManualApproval = true;
+          amendmentData.flagReason = `Significant rate change: ${changePercentage.toFixed(1)}%`;
+        }
       }
-    }
 
-    return true;
+      return true;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Validate room change amendments
    */
   async validateRoomChange(booking, amendmentData) {
-    const { requestedChanges } = amendmentData;
+    try {
+      const { requestedChanges } = amendmentData;
     
-    if (requestedChanges.rooms) {
-      // Check if requested rooms are available
-      const requestedRoomIds = requestedChanges.rooms.map(r => r.roomId);
-      const overlapping = await Booking.findOverlapping(
-        requestedRoomIds,
-        booking.checkIn,
-        booking.checkOut,
-        booking._id
-      );
+      if (requestedChanges.rooms) {
+        // Check if requested rooms are available
+        const requestedRoomIds = requestedChanges.rooms.map(r => r.roomId);
+        const overlapping = await Booking.findOverlapping(
+          requestedRoomIds,
+          booking.checkIn,
+          booking.checkOut,
+          booking._id
+        );
 
-      if (overlapping.length > 0) {
-        throw new Error('Requested rooms are not available');
+        if (overlapping.length > 0) {
+          throw new Error('Requested rooms are not available');
+        }
       }
-    }
 
-    return true;
+      return true;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Validate cancellation requests
    */
   async validateCancellation(booking, amendmentData) {
-    // Check cancellation policy
-    if (!booking.canCancel() && !amendmentData.bypassPolicy) {
-      throw new Error('Booking cannot be cancelled due to policy restrictions');
-    }
+    try {
+      // Check cancellation policy
+      if (!booking.canCancel() && !amendmentData.bypassPolicy) {
+        throw new Error('Booking cannot be cancelled due to policy restrictions');
+      }
 
-    return true;
+      return true;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Check for conflicts with existing amendments
    */
   async checkAmendmentConflicts(booking, newAmendment) {
-    const conflicts = [];
+    try {
+      const conflicts = [];
     
-    if (!booking.otaAmendments || booking.otaAmendments.length === 0) {
-      return conflicts;
-    }
+      if (!booking.otaAmendments || booking.otaAmendments.length === 0) {
+        return conflicts;
+      }
 
-    for (const existingAmendment of booking.otaAmendments) {
-      if (existingAmendment.amendmentStatus === 'pending') {
-        const conflict = this.detectConflict(existingAmendment, newAmendment);
-        if (conflict) {
-          conflicts.push({
-            amendmentId: existingAmendment.amendmentId,
-            conflictType: conflict.type,
-            description: conflict.description
-          });
+      for (const existingAmendment of booking.otaAmendments) {
+        if (existingAmendment.amendmentStatus === 'pending') {
+          const conflict = this.detectConflict(existingAmendment, newAmendment);
+          if (conflict) {
+            conflicts.push({
+              amendmentId: existingAmendment.amendmentId,
+              conflictType: conflict.type,
+              description: conflict.description
+            });
+          }
         }
       }
-    }
 
-    return conflicts;
+      return conflicts;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -296,88 +320,100 @@ class OTAAmendmentService {
    * Handle amendment conflicts
    */
   async handleAmendmentConflicts(booking, newAmendment, conflicts) {
-    logger.warn(`Amendment conflicts detected for booking ${booking._id}`, { conflicts });
+    try {
+      logger.warn(`Amendment conflicts detected for booking ${booking._id}`, { conflicts });
 
-    // Auto-resolve simple conflicts if possible
-    const resolutionStrategy = this.conflictResolutionStrategies.get(conflicts[0].conflictType);
+      // Auto-resolve simple conflicts if possible
+      const resolutionStrategy = this.conflictResolutionStrategies.get(conflicts[0].conflictType);
     
-    if (resolutionStrategy) {
-      const resolution = await resolutionStrategy(booking, newAmendment, conflicts);
-      if (resolution.resolved) {
-        return resolution;
+      if (resolutionStrategy) {
+        const resolution = await resolutionStrategy(booking, newAmendment, conflicts);
+        if (resolution.resolved) {
+          return resolution;
+        }
       }
+
+      // Queue for manual conflict resolution
+      await this.queueConflictResolution(booking, newAmendment, conflicts);
+
+      return {
+        success: false,
+        status: 'conflict_detected',
+        conflicts,
+        message: 'Amendment conflicts require manual resolution'
+      };
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    // Queue for manual conflict resolution
-    await this.queueConflictResolution(booking, newAmendment, conflicts);
-
-    return {
-      success: false,
-      status: 'conflict_detected',
-      conflicts,
-      message: 'Amendment conflicts require manual resolution'
-    };
   }
 
   /**
    * Evaluate if amendment can be auto-approved
    */
   async evaluateAutoApproval(booking, amendmentId) {
-    const amendment = booking.otaAmendments.find(a => a.amendmentId === amendmentId);
-    if (!amendment) {
-      return { canAutoApprove: false, reason: 'Amendment not found' };
-    }
+    try {
+      const amendment = booking.otaAmendments.find(a => a.amendmentId === amendmentId);
+      if (!amendment) {
+        return { canAutoApprove: false, reason: 'Amendment not found' };
+      }
 
-    // Check if manual approval is explicitly required
-    if (amendment.requiresManualApproval) {
-      return { canAutoApprove: false, reason: 'Manual approval required' };
-    }
+      // Check if manual approval is explicitly required
+      if (amendment.requiresManualApproval) {
+        return { canAutoApprove: false, reason: 'Manual approval required' };
+      }
 
-    // Check auto-approval rules
-    const rule = this.autoApprovalRules.get(amendment.amendmentType);
-    if (!rule || !rule.enabled) {
-      return { canAutoApprove: false, reason: 'No auto-approval rule defined' };
-    }
+      // Check auto-approval rules
+      const rule = this.autoApprovalRules.get(amendment.amendmentType);
+      if (!rule || !rule.enabled) {
+        return { canAutoApprove: false, reason: 'No auto-approval rule defined' };
+      }
 
-    // Calculate value impact
-    const valueImpact = await this.calculateAmendmentValueImpact(booking, amendment);
-    if (valueImpact > rule.maxValueChange) {
-      return { 
-        canAutoApprove: false, 
-        reason: `Value impact (${valueImpact}) exceeds threshold (${rule.maxValueChange})` 
-      };
-    }
+      // Calculate value impact
+      const valueImpact = await this.calculateAmendmentValueImpact(booking, amendment);
+      if (valueImpact > rule.maxValueChange) {
+        return { 
+          canAutoApprove: false, 
+          reason: `Value impact (${valueImpact}) exceeds threshold (${rule.maxValueChange})` 
+        };
+      }
 
-    // Check booking status
-    if (booking.status === 'checked_in') {
-      return { canAutoApprove: false, reason: 'Guest is checked in' };
-    }
+      // Check booking status
+      if (booking.status === 'checked_in') {
+        return { canAutoApprove: false, reason: 'Guest is checked in' };
+      }
 
-    // Check time constraints
-    const now = new Date();
-    const checkIn = new Date(booking.checkIn);
-    const hoursUntilCheckIn = (checkIn - now) / (1000 * 60 * 60);
+      // Check time constraints
+      const now = new Date();
+      const checkIn = new Date(booking.checkIn);
+      const hoursUntilCheckIn = (checkIn - now) / (1000 * 60 * 60);
     
-    if (hoursUntilCheckIn < 24 && amendment.amendmentType === 'dates_change') {
-      return { canAutoApprove: false, reason: 'Date changes require manual review within 24 hours' };
-    }
+      if (hoursUntilCheckIn < 24 && amendment.amendmentType === 'dates_change') {
+        return { canAutoApprove: false, reason: 'Date changes require manual review within 24 hours' };
+      }
 
-    return { canAutoApprove: true, reason: 'Amendment meets auto-approval criteria' };
+      return { canAutoApprove: true, reason: 'Amendment meets auto-approval criteria' };
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Calculate the financial impact of an amendment
    */
   async calculateAmendmentValueImpact(booking, amendment) {
-    const originalAmount = booking.totalAmount;
-    let newAmount = originalAmount;
+    try {
+      const originalAmount = booking.totalAmount;
+      let newAmount = originalAmount;
 
-    // Calculate new amount based on requested changes
-    if (amendment.requestedChanges.totalAmount) {
-      newAmount = amendment.requestedChanges.totalAmount;
+      // Calculate new amount based on requested changes
+      if (amendment.requestedChanges.totalAmount) {
+        newAmount = amendment.requestedChanges.totalAmount;
+      }
+
+      return Math.abs(newAmount - originalAmount);
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    return Math.abs(newAmount - originalAmount);
   }
 
   /**
@@ -450,38 +486,42 @@ class OTAAmendmentService {
    * Queue amendment for manual review
    */
   async queueForManualReview(booking, amendmentId, reason) {
-    const reviewItem = {
-      bookingId: booking._id,
-      amendmentId,
-      channel: booking.channel,
-      amendmentType: booking.otaAmendments.find(a => a.amendmentId === amendmentId)?.amendmentType,
-      priority: this.calculateReviewPriority(booking),
-      reason,
-      queuedAt: new Date()
-    };
+    try {
+      const reviewItem = {
+        bookingId: booking._id,
+        amendmentId,
+        channel: booking.channel,
+        amendmentType: booking.otaAmendments.find(a => a.amendmentId === amendmentId)?.amendmentType,
+        priority: this.calculateReviewPriority(booking),
+        reason,
+        queuedAt: new Date()
+      };
 
-    // Add to queue service for processing
-    await queueService.add('amendment-review', reviewItem, {
-      priority: reviewItem.priority,
-      delay: 0
-    });
-
-    // Send to staff dashboard via WebSocket — scoped to hotel tenant
-    const hotelId = booking.hotelId?.toString();
-    if (hotelId) {
-      websocketService.broadcastToHotel(hotelId, 'amendment-review-required', {
-        booking: {
-          id: booking._id,
-          bookingNumber: booking.bookingNumber,
-          guestName: booking.guestInfo.name,
-          checkIn: booking.checkIn,
-          checkOut: booking.checkOut
-        },
-        amendment: reviewItem
+      // Add to queue service for processing
+      await queueService.add('amendment-review', reviewItem, {
+        priority: reviewItem.priority,
+        delay: 0
       });
-    }
 
-    logger.info(`Amendment ${amendmentId} queued for manual review`, { reason });
+      // Send to staff dashboard via WebSocket — scoped to hotel tenant
+      const hotelId = booking.hotelId?.toString();
+      if (hotelId) {
+        websocketService.broadcastToHotel(hotelId, 'amendment-review-required', {
+          booking: {
+            id: booking._id,
+            bookingNumber: booking.bookingNumber,
+            guestName: booking.guestInfo.name,
+            checkIn: booking.checkIn,
+            checkOut: booking.checkOut
+          },
+          amendment: reviewItem
+        });
+      }
+
+      logger.info(`Amendment ${amendmentId} queued for manual review`, { reason });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
@@ -541,28 +581,32 @@ class OTAAmendmentService {
    * Send amendment notifications to relevant stakeholders
    */
   async sendAmendmentNotifications(booking, amendmentId, amendmentData) {
-    const notifications = [];
+    try {
+      const notifications = [];
 
-    // Notify front desk staff
-    notifications.push({
-      type: 'amendment_received',
-      recipients: ['front-desk', 'reservations'],
-      data: {
-        bookingId: booking._id,
-        bookingNumber: booking.bookingNumber,
-        amendmentId,
-        amendmentType: amendmentData.type,
-        guestName: booking.guestInfo.name,
-        channel: amendmentData.channel
-      }
-    });
+      // Notify front desk staff
+      notifications.push({
+        type: 'amendment_received',
+        recipients: ['front-desk', 'reservations'],
+        data: {
+          bookingId: booking._id,
+          bookingNumber: booking.bookingNumber,
+          amendmentId,
+          amendmentType: amendmentData.type,
+          guestName: booking.guestInfo.name,
+          channel: amendmentData.channel
+        }
+      });
 
-    // Send notifications — scoped to hotel tenant
-    const hotelId = booking.hotelId?.toString();
-    for (const notification of notifications) {
-      if (hotelId) {
-        websocketService.broadcastToHotel(hotelId, notification.type, notification.data);
+      // Send notifications — scoped to hotel tenant
+      const hotelId = booking.hotelId?.toString();
+      for (const notification of notifications) {
+        if (hotelId) {
+          websocketService.broadcastToHotel(hotelId, notification.type, notification.data);
+        }
       }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -570,14 +614,18 @@ class OTAAmendmentService {
    * Send amendment approval notifications
    */
   async sendAmendmentApprovalNotifications(booking, amendmentId) {
-    // Implementation for approval notifications — scoped to hotel tenant
-    const hotelId = booking.hotelId?.toString();
-    if (hotelId) {
-      websocketService.broadcastToHotel(hotelId, 'amendment_approved', {
-        bookingId: booking._id,
-        amendmentId,
-        bookingNumber: booking.bookingNumber
-      });
+    try {
+      // Implementation for approval notifications — scoped to hotel tenant
+      const hotelId = booking.hotelId?.toString();
+      if (hotelId) {
+        websocketService.broadcastToHotel(hotelId, 'amendment_approved', {
+          bookingId: booking._id,
+          amendmentId,
+          bookingNumber: booking.bookingNumber
+        });
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -585,14 +633,18 @@ class OTAAmendmentService {
    * Send amendment rejection notifications  
    */
   async sendAmendmentRejectionNotifications(booking, amendmentId) {
-    // Implementation for rejection notifications — scoped to hotel tenant
-    const hotelId = booking.hotelId?.toString();
-    if (hotelId) {
-      websocketService.broadcastToHotel(hotelId, 'amendment_rejected', {
-        bookingId: booking._id,
-        amendmentId,
-        bookingNumber: booking.bookingNumber
-      });
+    try {
+      // Implementation for rejection notifications — scoped to hotel tenant
+      const hotelId = booking.hotelId?.toString();
+      if (hotelId) {
+        websocketService.broadcastToHotel(hotelId, 'amendment_rejected', {
+          bookingId: booking._id,
+          amendmentId,
+          bookingNumber: booking.bookingNumber
+        });
+      }
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
   }
 
@@ -600,62 +652,74 @@ class OTAAmendmentService {
    * Queue conflict resolution
    */
   async queueConflictResolution(booking, newAmendment, conflicts) {
-    const conflictItem = {
-      bookingId: booking._id,
-      newAmendment,
-      conflicts,
-      priority: 10, // High priority for conflicts
-      queuedAt: new Date()
-    };
+    try {
+      const conflictItem = {
+        bookingId: booking._id,
+        newAmendment,
+        conflicts,
+        priority: 10, // High priority for conflicts
+        queuedAt: new Date()
+      };
 
-    await queueService.add('amendment-conflict-resolution', conflictItem, {
-      priority: 10,
-      delay: 0
-    });
+      await queueService.add('amendment-conflict-resolution', conflictItem, {
+        priority: 10,
+        delay: 0
+      });
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Get channel-specific service
    */
   async getChannelService(channel) {
-    // This would return channel-specific integration services
-    // Implementation depends on available channel services
-    return null;
+    try {
+      // This would return channel-specific integration services
+      // Implementation depends on available channel services
+      return null;
+    } catch (error) {
+      throw new Error(`${error.message}`);
+    }
   }
 
   /**
    * Get pending amendments for review dashboard
    */
   async getPendingAmendments(filters = {}) {
-    const query = {
-      'otaAmendments.amendmentStatus': 'pending'
-    };
+    try {
+      const query = {
+        'otaAmendments.amendmentStatus': 'pending'
+      };
 
-    if (filters.channel) {
-      query.channel = filters.channel;
+      if (filters.channel) {
+        query.channel = filters.channel;
+      }
+
+      if (filters.priority) {
+        // This would need to be calculated or stored
+      }
+
+      const bookings = await Booking.find(query)
+        .populate('rooms.roomId', 'number type')
+        .sort({ 'amendmentFlags.lastAmendmentDate': -1 })
+        .limit(filters.limit || 50).lean();
+
+      return bookings.map(booking => ({
+        booking: {
+          id: booking._id,
+          bookingNumber: booking.bookingNumber,
+          guestName: booking.guestInfo.name,
+          checkIn: booking.checkIn,
+          checkOut: booking.checkOut,
+          status: booking.status,
+          channel: booking.channel
+        },
+        pendingAmendments: booking.otaAmendments.filter(a => a.amendmentStatus === 'pending')
+      }));
+    } catch (error) {
+      throw new Error(`${error.message}`);
     }
-
-    if (filters.priority) {
-      // This would need to be calculated or stored
-    }
-
-    const bookings = await Booking.find(query)
-      .populate('rooms.roomId', 'number type')
-      .sort({ 'amendmentFlags.lastAmendmentDate': -1 })
-      .limit(filters.limit || 50);
-
-    return bookings.map(booking => ({
-      booking: {
-        id: booking._id,
-        bookingNumber: booking.bookingNumber,
-        guestName: booking.guestInfo.name,
-        checkIn: booking.checkIn,
-        checkOut: booking.checkOut,
-        status: booking.status,
-        channel: booking.channel
-      },
-      pendingAmendments: booking.otaAmendments.filter(a => a.amendmentStatus === 'pending')
-    }));
   }
 }
 

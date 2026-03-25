@@ -275,148 +275,228 @@ export interface ReasonAnalytics {
 
 class ReasonService {
   async getReasons(filters: ReasonFilters = {}) {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        params.append(key, value.toString());
-      }
-    });
+      Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, value.toString());
+        }
+      });
 
-    const response = await api.get(`/reasons?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/reasons?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getReasonById(id: string, options: { populate?: boolean; includeUsageLog?: boolean } = {}) {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    if (options.populate) params.append('populate', 'true');
-    if (options.includeUsageLog) params.append('includeUsageLog', 'true');
+      if (options.populate) params.append('populate', 'true');
+      if (options.includeUsageLog) params.append('includeUsageLog', 'true');
 
-    const response = await api.get(`/reasons/${id}?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/reasons/${id}?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async createReason(reasonData: CreateReasonData) {
-    const response = await api.post('/reasons', reasonData);
-    return response.data;
+    try {
+      const response = await api.post('/reasons', reasonData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateReason(id: string, reasonData: UpdateReasonData) {
-    const response = await api.put(`/reasons/${id}`, reasonData);
-    return response.data;
+    try {
+      const response = await api.put(`/reasons/${id}`, reasonData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async deleteReason(id: string) {
-    const response = await api.delete(`/reasons/${id}`);
-    return response.data;
+    try {
+      const response = await api.delete(`/reasons/${id}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getReasonsByCategory(category: string, options: { includeInactive?: boolean } = {}) {
-    const params = new URLSearchParams();
-    if (options.includeInactive) params.append('includeInactive', 'true');
+    try {
+      const params = new URLSearchParams();
+      if (options.includeInactive) params.append('includeInactive', 'true');
 
-    const response = await api.get(`/reasons/category/${category}?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/reasons/category/${category}?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getReasonsByRole(role: string, options: { category?: string; includeInactive?: boolean } = {}) {
-    const params = new URLSearchParams();
+    try {
+      const params = new URLSearchParams();
     
-    if (options.category) params.append('category', options.category);
-    if (options.includeInactive) params.append('includeInactive', 'true');
+      if (options.category) params.append('category', options.category);
+      if (options.includeInactive) params.append('includeInactive', 'true');
 
-    const response = await api.get(`/reasons/role/${role}?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/reasons/role/${role}?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getMostUsedReasons(limit = 10) {
-    const response = await api.get(`/reasons/most-used?limit=${limit}`);
-    return response.data;
+    try {
+      const response = await api.get(`/reasons/most-used?limit=${limit}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async logReasonUsage(reasonId: string, usageData: ReasonUsageData) {
-    const response = await api.post(`/reasons/${reasonId}/log-usage`, usageData);
-    return response.data;
+    try {
+      const response = await api.post(`/reasons/${reasonId}/log-usage`, usageData);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async searchReasons(query: string, options: { category?: string; userRole?: string; limit?: number } = {}) {
-    const params = new URLSearchParams({ q: query });
+    try {
+      const params = new URLSearchParams({ q: query });
     
-    if (options.category) params.append('category', options.category);
-    if (options.userRole) params.append('userRole', options.userRole);
-    if (options.limit) params.append('limit', options.limit.toString());
+      if (options.category) params.append('category', options.category);
+      if (options.userRole) params.append('userRole', options.userRole);
+      if (options.limit) params.append('limit', options.limit.toString());
 
-    const response = await api.get(`/reasons/search?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/reasons/search?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async bulkUpdateReasons(updates: BulkUpdateItem[]) {
-    const response = await api.put('/reasons/bulk-update', { updates });
-    return response.data;
+    try {
+      const response = await api.put('/reasons/bulk-update', { updates });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async bulkCreateReasons(reasons: CreateReasonData[]) {
-    const response = await api.post('/reasons/bulk-create', { reasons });
-    return response.data;
+    try {
+      const response = await api.post('/reasons/bulk-create', { reasons });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async exportReasons(format: 'json' | 'csv' = 'json') {
-    const response = await api.get(`/reasons/export?format=${format}`);
+    try {
+      const response = await api.get(`/reasons/export?format=${format}`);
     
-    if (format === 'csv') {
-      // Handle CSV download
-      const blob = new Blob([response.data], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'reasons.csv');
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-      return { success: true, message: 'Export started' };
+      if (format === 'csv') {
+        // Handle CSV download
+        const blob = new Blob([response.data], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', 'reasons.csv');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+        return { success: true, message: 'Export started' };
+      }
+    
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
     }
-    
-    return response.data;
   }
 
   async getReasonStats(): Promise<{ success: boolean; data: ReasonStats }> {
-    const response = await api.get('/reasons/stats');
-    return response.data;
+    try {
+      const response = await api.get('/reasons/stats');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getUsageAnalytics(period: '7d' | '30d' | '90d' | '1y' = '30d'): Promise<{ success: boolean; data: ReasonAnalytics }> {
-    const response = await api.get(`/reasons/analytics?period=${period}`);
-    return response.data;
+    try {
+      const response = await api.get(`/reasons/analytics?period=${period}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async validateReasonUsage(reasonId: string, context: string, amount = 0): Promise<{ success: boolean; data: ReasonValidation }> {
-    const params = new URLSearchParams({ context });
-    if (amount > 0) params.append('amount', amount.toString());
+    try {
+      const params = new URLSearchParams({ context });
+      if (amount > 0) params.append('amount', amount.toString());
 
-    const response = await api.get(`/reasons/${reasonId}/validate?${params.toString()}`);
-    return response.data;
+      const response = await api.get(`/reasons/${reasonId}/validate?${params.toString()}`);
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getReasonCategories() {
-    const response = await api.get('/reasons/categories');
-    return response.data;
+    try {
+      const response = await api.get('/reasons/categories');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async getUserRoles() {
-    const response = await api.get('/reasons/roles');
-    return response.data;
+    try {
+      const response = await api.get('/reasons/roles');
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async cloneReason(reasonId: string, newName: string, newCode: string) {
-    const response = await api.post(`/reasons/${reasonId}/clone`, { newName, newCode });
-    return response.data;
+    try {
+      const response = await api.post(`/reasons/${reasonId}/clone`, { newName, newCode });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   async updateReasonStatus(reasonId: string, isActive: boolean, reason?: string) {
-    const response = await api.patch(`/reasons/${reasonId}/status`, { isActive, reason });
-    return response.data;
+    try {
+      const response = await api.patch(`/reasons/${reasonId}/status`, { isActive, reason });
+      return response.data;
+    } catch (error: unknown) {
+      throw error instanceof Error ? error : new Error('Request failed');
+    }
   }
 
   // Helper methods for frontend

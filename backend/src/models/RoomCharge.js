@@ -510,121 +510,129 @@ roomChargeSchema.methods.calculateCharge = function(baseAmount, criteria = {}) {
 
 // Static method to get applicable charges
 roomChargeSchema.statics.getApplicableCharges = async function(hotelId, criteria = {}) {
-  const query = {
-    hotelId,
-    isActive: true,
-    validFrom: { $lte: new Date() },
-    $or: [
-      { validTo: { $exists: false } },
-      { validTo: { $gte: new Date() } }
-    ]
-  };
+  try {
+    const query = {
+      hotelId,
+      isActive: true,
+      validFrom: { $lte: new Date() },
+      $or: [
+        { validTo: { $exists: false } },
+        { validTo: { $gte: new Date() } }
+      ]
+    };
   
-  // Add category filter if specified
-  if (criteria.chargeCategory) {
-    query.chargeCategory = criteria.chargeCategory;
+    // Add category filter if specified
+    if (criteria.chargeCategory) {
+      query.chargeCategory = criteria.chargeCategory;
+    }
+  
+    // Add type filter if specified
+    if (criteria.chargeType) {
+      query.chargeType = criteria.chargeType;
+    }
+  
+    const charges = await this.find(query)
+      .populate('applicableRoomTypes', 'name code')
+      .populate('taxConfiguration.applicableTaxes', 'taxName taxType taxRate')
+      .populate('integrationSettings.revenueAccountId', 'accountCode accountName')
+      .sort({ priority: -1, chargeCategory: 1, chargeName: 1 }).lean().limit(1000);
+  
+    return charges.filter(charge => charge.isApplicable(criteria));
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  // Add type filter if specified
-  if (criteria.chargeType) {
-    query.chargeType = criteria.chargeType;
-  }
-  
-  const charges = await this.find(query)
-    .populate('applicableRoomTypes', 'name code')
-    .populate('taxConfiguration.applicableTaxes', 'taxName taxType taxRate')
-    .populate('integrationSettings.revenueAccountId', 'accountCode accountName')
-    .sort({ priority: -1, chargeCategory: 1, chargeName: 1 });
-  
-  return charges.filter(charge => charge.isApplicable(criteria));
 };
 
 // Static method to get charge summary
 roomChargeSchema.statics.getChargeSummary = async function(hotelId, filters = {}) {
-  const matchQuery = { hotelId };
+  try {
+    const matchQuery = { hotelId };
   
-  if (filters.startDate || filters.endDate) {
-    matchQuery.createdAt = {};
-    if (filters.startDate) matchQuery.createdAt.$gte = new Date(filters.startDate);
-    if (filters.endDate) matchQuery.createdAt.$lte = new Date(filters.endDate);
-  }
+    if (filters.startDate || filters.endDate) {
+      matchQuery.createdAt = {};
+      if (filters.startDate) matchQuery.createdAt.$gte = new Date(filters.startDate);
+      if (filters.endDate) matchQuery.createdAt.$lte = new Date(filters.endDate);
+    }
   
-  if (filters.chargeType) matchQuery.chargeType = filters.chargeType;
-  if (filters.chargeCategory) matchQuery.chargeCategory = filters.chargeCategory;
+    if (filters.chargeType) matchQuery.chargeType = filters.chargeType;
+    if (filters.chargeCategory) matchQuery.chargeCategory = filters.chargeCategory;
   
-  const summary = await this.aggregate([
-    { $match: matchQuery },
-    {
-      $group: {
-        _id: null,
-        totalCharges: { $sum: 1 },
-        activeCharges: {
-          $sum: { $cond: [{ $eq: ['$isActive', true] }, 1, 0] }
-        },
-        totalChargeAmount: { $sum: '$auditInfo.totalCharges' },
-        totalApplications: { $sum: '$auditInfo.applicationCount' },
-        chargesByType: {
-          $push: {
-            type: '$chargeType',
-            amount: '$auditInfo.totalCharges',
-            count: '$auditInfo.applicationCount'
-          }
-        },
-        chargesByCategory: {
-          $push: {
-            category: '$chargeCategory',
-            amount: '$auditInfo.totalCharges',
-            count: '$auditInfo.applicationCount'
+    const summary = await this.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: null,
+          totalCharges: { $sum: 1 },
+          activeCharges: {
+            $sum: { $cond: [{ $eq: ['$isActive', true] }, 1, 0] }
+          },
+          totalChargeAmount: { $sum: '$auditInfo.totalCharges' },
+          totalApplications: { $sum: '$auditInfo.applicationCount' },
+          chargesByType: {
+            $push: {
+              type: '$chargeType',
+              amount: '$auditInfo.totalCharges',
+              count: '$auditInfo.applicationCount'
+            }
+          },
+          chargesByCategory: {
+            $push: {
+              category: '$chargeCategory',
+              amount: '$auditInfo.totalCharges',
+              count: '$auditInfo.applicationCount'
+            }
           }
         }
       }
-    }
-  ]);
+    ]);
   
-  if (summary.length === 0) {
+    if (summary.length === 0) {
+      return {
+        totalCharges: 0,
+        activeCharges: 0,
+        totalChargeAmount: 0,
+        totalApplications: 0,
+        typeBreakdown: {},
+        categoryBreakdown: {}
+      };
+    }
+  
+    const result = summary[0];
+  
+    // Process type breakdown
+    const typeBreakdown = {};
+    result.chargesByType.forEach(item => {
+      if (!typeBreakdown[item.type]) {
+        typeBreakdown[item.type] = { amount: 0, count: 0 };
+      }
+      typeBreakdown[item.type].amount += item.amount || 0;
+      typeBreakdown[item.type].count += item.count || 0;
+    });
+  
+    // Process category breakdown
+    const categoryBreakdown = {};
+    result.chargesByCategory.forEach(item => {
+      if (!categoryBreakdown[item.category]) {
+        categoryBreakdown[item.category] = { amount: 0, count: 0 };
+      }
+      categoryBreakdown[item.category].amount += item.amount || 0;
+      categoryBreakdown[item.category].count += item.count || 0;
+    });
+  
     return {
-      totalCharges: 0,
-      activeCharges: 0,
-      totalChargeAmount: 0,
-      totalApplications: 0,
-      typeBreakdown: {},
-      categoryBreakdown: {}
+      totalCharges: result.totalCharges,
+      activeCharges: result.activeCharges,
+      totalChargeAmount: result.totalChargeAmount || 0,
+      totalApplications: result.totalApplications || 0,
+      averageChargeAmount: result.totalApplications > 0 
+        ? (result.totalChargeAmount || 0) / result.totalApplications 
+        : 0,
+      typeBreakdown,
+      categoryBreakdown
     };
+  } catch (error) {
+    throw new Error(`${error.message}`);
   }
-  
-  const result = summary[0];
-  
-  // Process type breakdown
-  const typeBreakdown = {};
-  result.chargesByType.forEach(item => {
-    if (!typeBreakdown[item.type]) {
-      typeBreakdown[item.type] = { amount: 0, count: 0 };
-    }
-    typeBreakdown[item.type].amount += item.amount || 0;
-    typeBreakdown[item.type].count += item.count || 0;
-  });
-  
-  // Process category breakdown
-  const categoryBreakdown = {};
-  result.chargesByCategory.forEach(item => {
-    if (!categoryBreakdown[item.category]) {
-      categoryBreakdown[item.category] = { amount: 0, count: 0 };
-    }
-    categoryBreakdown[item.category].amount += item.amount || 0;
-    categoryBreakdown[item.category].count += item.count || 0;
-  });
-  
-  return {
-    totalCharges: result.totalCharges,
-    activeCharges: result.activeCharges,
-    totalChargeAmount: result.totalChargeAmount || 0,
-    totalApplications: result.totalApplications || 0,
-    averageChargeAmount: result.totalApplications > 0 
-      ? (result.totalChargeAmount || 0) / result.totalApplications 
-      : 0,
-    typeBreakdown,
-    categoryBreakdown
-  };
 };
 
 // Pre-save middleware for validation

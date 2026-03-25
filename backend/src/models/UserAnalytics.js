@@ -640,7 +640,7 @@ userAnalyticsSchema.post('save', async function(doc) {
   try {
     // Only monitor staff performance for staff users
     const User = mongoose.model('User');
-    const user = await User.findById(doc.userId).select('role firstName lastName hotelId');
+    const user = await User.findById(doc.userId).select('role firstName lastName hotelId').lean();
 
     if (user && ['staff', 'housekeeping', 'maintenance'].includes(user.role)) {
       const efficiencyScore = doc.performanceMetrics?.efficiencyScore;
@@ -724,5 +724,8 @@ userAnalyticsSchema.methods.generatePerformanceRecommendations = function(doc) {
 
   return recommendations.length > 0 ? recommendations : ['Monitor progress and provide regular feedback'];
 };
+
+// Data retention TTL: auto-delete user analytics records after 365 days
+userAnalyticsSchema.index({ createdAt: 1 }, { expireAfterSeconds: 365 * 24 * 60 * 60 });
 
 export default mongoose.model('UserAnalytics', userAnalyticsSchema);

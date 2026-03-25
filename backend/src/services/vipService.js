@@ -14,7 +14,7 @@ class VIPService {
         guestId,
         hotelId,
         status: 'active'
-      }).populate('guestId', 'name email phone');
+      }).populate('guestId', 'name email phone').lean();
 
       return vipGuest;
     } catch (error) {
@@ -31,14 +31,14 @@ class VIPService {
       const existingVIP = await VIPGuest.findOne({
         guestId: vipData.guestId,
         hotelId
-      });
+      }).lean();
 
       if (existingVIP) {
         throw new ApplicationError('Guest is already in VIP program', 400);
       }
 
       // Validate guest exists
-      const guest = await User.findById(vipData.guestId);
+      const guest = await User.findById(vipData.guestId).lean();
       if (!guest || guest.role !== 'guest') {
         throw new ApplicationError('Guest not found', 404);
       }
@@ -166,7 +166,7 @@ class VIPService {
             { phone: { $regex: search, $options: 'i' } }
           ],
           role: 'guest'
-        }).distinct('_id');
+        }).distinct('_id').lean().limit(1000);
 
         query.guestId = { $in: guestIds };
       }
@@ -181,7 +181,7 @@ class VIPService {
         .populate('assignedConcierge', 'name email')
         .sort(sort)
         .skip(skip)
-        .limit(limit);
+        .limit(limit).lean();
 
       const total = await VIPGuest.countDocuments(query);
 
@@ -275,7 +275,7 @@ class VIPService {
         _id: conciergeId,
         role: { $in: ['admin', 'manager', 'staff'] },
         hotelId: assignedBy.hotelId
-      });
+      }).lean();
 
       if (!concierge) {
         throw new ApplicationError('Invalid concierge assignment', 400);
@@ -317,7 +317,7 @@ class VIPService {
         guestId,
         hotelId,
         status: 'active'
-      });
+      }).lean();
 
       if (!vipGuest) {
         return null;
@@ -376,7 +376,7 @@ class VIPService {
         .populate('createdBy', 'name email')
         .populate('updatedBy', 'name email')
         .populate('assignedConcierge', 'name email')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 }).lean().limit(1000);
 
       return history;
     } catch (error) {
@@ -412,7 +412,7 @@ class VIPService {
         .populate('guestId', 'name email phone')
         .populate('createdBy', 'name email')
         .populate('assignedConcierge', 'name email')
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 }).lean().limit(1000);
 
       if (format === 'csv') {
         const csvHeader = 'Guest Name,Guest Email,Guest Phone,VIP Level,Status,Total Stays,Total Nights,Total Spent,Average Rating,Assigned Concierge,Anniversary Date,Expiry Date,Created By,Created At\n';
