@@ -23,12 +23,12 @@ const ensureTenantContext = (req, res, next) => {
   req.tenantId = hotelId;
 
   // CRITICAL: Override any client-provided hotelId to prevent IDOR
+  const hotelIdStr = typeof hotelId === 'object' && hotelId.toString ? hotelId.toString() : String(hotelId);
   if (req.body && typeof req.body === 'object') {
-    req.body.hotelId = hotelId;
-    req.body.hotel = hotelId;
+    req.body.hotelId = hotelIdStr;
   }
   if (req.query) {
-    req.query.hotelId = hotelId;
+    req.query.hotelId = hotelIdStr;
   }
 
   next();

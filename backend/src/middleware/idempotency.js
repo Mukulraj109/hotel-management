@@ -42,6 +42,9 @@ const createMemoryState = (state, ttlSeconds) => ({
 });
 
 async function readState(storageKey) {
+  if (process.env.NODE_ENV === 'production' && !isRedisConnected()) {
+    throw new ApplicationError('Idempotency storage unavailable', 503);
+  }
   if (isRedisConnected()) {
     const redis = getRedisClient();
     const raw = await redis.get(storageKey);
@@ -66,6 +69,9 @@ async function tryAcquireProcessing(storageKey) {
     createdAt: new Date().toISOString()
   };
 
+  if (process.env.NODE_ENV === 'production' && !isRedisConnected()) {
+    throw new ApplicationError('Idempotency storage unavailable', 503);
+  }
   if (isRedisConnected()) {
     const redis = getRedisClient();
     const acquired = await redis.set(
@@ -96,6 +102,9 @@ async function storeCompleted(storageKey, responseBody, statusCode, ttlSeconds) 
     completedAt: new Date().toISOString()
   };
 
+  if (process.env.NODE_ENV === 'production' && !isRedisConnected()) {
+    throw new ApplicationError('Idempotency storage unavailable', 503);
+  }
   if (isRedisConnected()) {
     const redis = getRedisClient();
     await redis.set(storageKey, JSON.stringify(completedState), 'EX', ttlSeconds);
@@ -106,6 +115,9 @@ async function storeCompleted(storageKey, responseBody, statusCode, ttlSeconds) 
 }
 
 async function clearState(storageKey) {
+  if (process.env.NODE_ENV === 'production' && !isRedisConnected()) {
+    throw new ApplicationError('Idempotency storage unavailable', 503);
+  }
   if (isRedisConnected()) {
     const redis = getRedisClient();
     await redis.del(storageKey);
@@ -154,7 +166,9 @@ export const enforceIdempotency = (options = {}) => {
       }
 
       const originalJson = res.json.bind(res);
+      let responseHandled = false;
       res.json = (body) => {
+        responseHandled = true;
         const statusCode = res.statusCode || 200;
 
         // Keep successful responses for replay; clear failed ones to allow safe retry.
@@ -170,6 +184,18 @@ export const enforceIdempotency = (options = {}) => {
 
         return originalJson(body);
       };
+
+      // Ensure processing locks are released even when handlers throw before res.json.
+      res.on('finish', () => {
+        if (!responseHandled) {
+          void clearState(storageKey).catch((error) => {
+            logger.error('Failed clearing idempotency key on finish without response body', {
+              storageKey,
+              error: error.message
+            });
+          });
+        }
+      });
 
       return next();
     } catch (error) {

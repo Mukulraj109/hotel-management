@@ -30,7 +30,7 @@ class SSENotificationService {
   private reconnectAttempts = 0;
   private reconnectTimer: number | null = null;
   private heartbeatTimer: number | null = null;
-  private connectionState: ConnectionState = 'disconnected';
+  private currentConnectionState: ConnectionState = 'disconnected';
   private shouldReconnect = true;
   private lastHeartbeat = 0;
   private connectionPromise: Promise<void> | null = null;
@@ -58,19 +58,14 @@ class SSENotificationService {
   }
 
   private getSSEUrl(): string {
-    const token = this.getAuthToken();
     const baseUrl = API_CONFIG.BASE_URL.replace('/api/v1', ''); // Remove API prefix for SSE
-    return `${baseUrl}/api/v1/notifications/stream?token=${token}`;
-  }
-
-  private getAuthToken(): string | null {
-    return localStorage.getItem('token');
+    return `${baseUrl}/api/v1/notifications/stream`;
   }
 
   private setConnectionState(state: ConnectionState) {
-    if (this.connectionState === state) return;
+    if (this.currentConnectionState === state) return;
 
-    this.connectionState = state;
+    this.currentConnectionState = state;
     this.emit('connectionStateChange', state);
     this.log(`Connection state changed: ${state}`);
   }
@@ -82,15 +77,8 @@ class SSENotificationService {
     }
 
     // Already connected
-    if (this.connectionState === 'connected') {
+    if (this.currentConnectionState === 'connected') {
       return Promise.resolve();
-    }
-
-    // Check if we have auth token
-    const token = this.getAuthToken();
-    if (!token) {
-      this.error('No authentication token available');
-      return Promise.reject(new Error('No authentication token'));
     }
 
     this.connectionPromise = new Promise((resolve, reject) => {
@@ -259,24 +247,8 @@ class SSENotificationService {
 
   private startHeartbeatChecker(): void {
     this.heartbeatTimer = window.setInterval(() => {
-      if (this.connectionState === 'connected') {
-        const timeSinceHeartbeat = Date.now() - this.lastHeartbeat;
-
-        if (timeSinceHeartbeat > this.config.heartbeatTimeout) {
-          this.error('Heartbeat timeout - connection appears dead');
-          this.setConnectionState('error');
-
-          // Force reconnection
-          if (this.eventSource) {
-            this.eventSource.close();
-            this.eventSource = null;
-          }
-
-          if (this.shouldReconnect) {
-            this.scheduleReconnect();
-          }
-        }
-      }
+      // Server heartbeats are sent as SSE comments and not surfaced as messages
+      // by EventSource, so timeout-based client heartbeats are not reliable here.
     }, 15000); // Check every 15 seconds
   }
 
@@ -321,15 +293,15 @@ class SSENotificationService {
 
   // Public getters
   public get connectionState(): ConnectionState {
-    return this.connectionState;
+    return this.currentConnectionState;
   }
 
   public get isConnected(): boolean {
-    return this.connectionState === 'connected';
+    return this.currentConnectionState === 'connected';
   }
 
   public get isConnecting(): boolean {
-    return this.connectionState === 'connecting' || this.connectionState === 'reconnecting';
+    return this.currentConnectionState === 'connecting' || this.currentConnectionState === 'reconnecting';
   }
 
   // Subscribe to specific notification types
@@ -360,10 +332,10 @@ class SSENotificationService {
     uptime: number;
   } {
     return {
-      connectionState: this.connectionState,
+      connectionState: this.currentConnectionState,
       reconnectAttempts: this.reconnectAttempts,
       lastHeartbeat: this.lastHeartbeat,
-      isHealthy: this.connectionState === 'connected' && (Date.now() - this.lastHeartbeat) < this.config.heartbeatTimeout,
+      isHealthy: this.currentConnectionState === 'connected' && (Date.now() - this.lastHeartbeat) < this.config.heartbeatTimeout,
       uptime: this.lastHeartbeat > 0 ? Date.now() - this.lastHeartbeat : 0
     };
   }
@@ -371,7 +343,7 @@ class SSENotificationService {
 
 // Create singleton instance
 const sseNotificationService = new SSENotificationService({
-  debug: process.env.NODE_ENV === 'development',
+  debug: import.meta.env.MODE === 'development',
   reconnectInterval: 3000,
   maxReconnectAttempts: 10,
   heartbeatTimeout: 60000

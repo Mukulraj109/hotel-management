@@ -24,6 +24,9 @@ export const connectRedis = async () => {
     await redisClient.connect();
     
   } catch (error) {
+    if (process.env.NODE_ENV === 'production') {
+      throw error;
+    }
     logger.warn('Redis connection failed, continuing with degraded functionality:', error.message);
     logger.warn('Features requiring Redis (caching, distributed locking, refresh tokens) will be unavailable');
     redisClient = null;

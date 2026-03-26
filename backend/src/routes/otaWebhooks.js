@@ -11,6 +11,7 @@ import InventoryService from '../services/inventoryService.js';
 import logger from '../utils/logger.js';
 import { validateTransition } from '../utils/bookingStateMachine.js';
 import { validate } from '../middleware/validation.js';
+import rateLimit from 'express-rate-limit';
 
 const router = express.Router();
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
@@ -79,9 +80,15 @@ const verifyWebhookSignature = (req, res, next) => {
   }
 
   // Verify HMAC-SHA256 signature with optional timestamp for replay protection
+  const hasRawPayload = typeof req.rawBody === 'string' && req.rawBody.length > 0;
+  if (process.env.NODE_ENV === 'production' && !hasRawPayload) {
+    logger.error('Webhook raw payload missing for signature verification', { channel, ip: req.ip });
+    return res.status(500).json({ error: 'Webhook verification unavailable' });
+  }
+  const rawPayload = hasRawPayload ? req.rawBody : JSON.stringify(req.body);
   const payload = timestamp
-    ? `${timestamp}.${JSON.stringify(req.body)}`
-    : JSON.stringify(req.body);
+    ? `${timestamp}.${rawPayload}`
+    : rawPayload;
   const expectedSignature = crypto
     .createHmac('sha256', secret)
     .update(payload)
@@ -114,15 +121,15 @@ const verifyWebhookSignature = (req, res, next) => {
   next();
 };
 
-// Rate limiting per channel
-const channelRateLimit = (req, res, next) => {
-  const channel = req.body.channel;
-  const channelId = req.body.channelId;
-  
-  // TODO: Implement Redis-based rate limiting
-  // For now, we'll accept all requests
-  next();
-};
+// Rate limiting for public webhook endpoint.
+const channelRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: process.env.NODE_ENV === 'production' ? 120 : 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.ip}:${req.body?.channel || 'unknown'}`,
+  message: { error: 'Too many webhook requests' }
+});
 
 // Main webhook handler
 router.post('/ota', 

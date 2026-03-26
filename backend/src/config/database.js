@@ -36,7 +36,10 @@ const connectDB = async () => {
     code: error.code,
     name: error.name
   });
-  logger.warn('Server continuing without database - some features may be limited');
+  if (process.env.NODE_ENV === 'production') {
+    throw error;
+  }
+  logger.warn('Server continuing without database outside production');
   return null;
 }
 };

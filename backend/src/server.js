@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import mongoose from 'mongoose';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -13,6 +14,8 @@ import path from 'path';
 import connectDB from './config/database.js';
 import { validateEnvironment } from './utils/validateEnv.js';
 import { requestTracing } from './middleware/requestTracing.js';
+import { authenticate } from './middleware/auth.js';
+import { authorizePolicy } from './middleware/rbacPolicy.js';
 import {
     connectRedis,
     getRedisClient
@@ -216,26 +219,17 @@ import approvalRoutes from './routes/approvals.js';
 
 // ── Production Readiness: New routes ──
 import featureFlagRoutes from './routes/featureFlags.js';
-const nightAuditRoutes = (await import('./routes/nightAudit.js')).default;
-let cancellationRoutes;
-try { cancellationRoutes = (await import('./routes/cancellations.js')).default; } catch (err) {
-  logger.warn('Failed to load cancellation routes:', err.message);
-}
+import nightAuditRoutes from './routes/nightAudit.js';
+import cancellationRoutes from './routes/cancellations.js';
 
 // ── Production Readiness: New middleware ──
-let tenantIsolation, securityHeadersMiddleware;
-try {
-  tenantIsolation = (await import('./middleware/tenantIsolation.js'));
-  securityHeadersMiddleware = (await import('./middleware/securityHeaders.js'));
-} catch { /* optional - will be created */ }
+import * as tenantIsolation from './middleware/tenantIsolation.js';
+import * as securityHeadersMiddleware from './middleware/securityHeaders.js';
 
 // ── Enhanced Audit Logger ──
-let enhancedAuditLoggerMiddleware;
-try {
-  const { enhancedAuditLogger } = await import('./middleware/auditLogger.enhanced.js');
-  const AuditLog = (await import('./models/AuditLog.js')).default;
-  enhancedAuditLoggerMiddleware = enhancedAuditLogger(AuditLog);
-} catch { /* optional */ }
+import { enhancedAuditLogger } from './middleware/auditLogger.enhanced.js';
+import AuditLog from './models/AuditLog.js';
+const enhancedAuditLoggerMiddleware = enhancedAuditLogger(AuditLog);
 
 const app = express();
 
@@ -249,7 +243,10 @@ async function initializeApp() {
         await connectDB();
         logger.info('✅ MongoDB connection completed');
     } catch (error) {
-        logger.warn('❌ Database connection failed, continuing without database', {
+        if (process.env.NODE_ENV === 'production') {
+            throw error;
+        }
+        logger.warn('❌ Database connection failed, continuing outside production', {
             error: error.message
         });
     }
@@ -259,7 +256,10 @@ async function initializeApp() {
         await connectRedis();
         logger.info('✅ Redis connection completed');
     } catch (error) {
-        logger.warn('❌ Redis connection failed, continuing without Redis', {
+        if (process.env.NODE_ENV === 'production') {
+            throw error;
+        }
+        logger.warn('❌ Redis connection failed, continuing outside production', {
             error: error.message
         });
     }
@@ -275,7 +275,12 @@ async function initializeApp() {
         logger.info('✅ Queue service initialized');
 
         logger.info('🔄 Starting system health monitoring...');
-        await systemHealthMonitor.start();
+        await Promise.race([
+            systemHealthMonitor.start(),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('System health monitoring startup timed out')), 8000)
+            )
+        ]);
         logger.info('✅ System health monitoring started');
     } catch (error) {
         logger.warn('❌ Event middleware, queue service, or health monitoring initialization failed:', {
@@ -286,10 +291,13 @@ async function initializeApp() {
     logger.info('✅ App initialization completed successfully');
 }
 
-// Start initialization
-initializeApp().catch(error => {
+// Start initialization and fail closed in production.
+try {
+    await initializeApp();
+} catch (error) {
     logger.error('App initialization failed:', error);
-});
+    process.exit(1);
+}
 
 // Swagger configuration
 const swaggerOptions = {
@@ -382,7 +390,10 @@ app.use('/api/v1/webhooks', express.raw({
     type: 'application/json'
 }));
 app.use(express.json({
-    limit: '10mb'
+    limit: '10mb',
+    verify: (req, _res, buf) => {
+        req.rawBody = buf.toString('utf8');
+    }
 }));
 app.use(express.urlencoded({
     extended: true
@@ -492,15 +503,17 @@ app.get('/health/websocket', (req, res) => {
 });
 
 // API version capability endpoint.
-app.get('/api/versions', (req, res) => {
+const sendVersionInfo = (_req, res) => {
     res.status(200).json({
         status: 'success',
         data: getApiVersionInfo()
     });
-});
+};
+app.get('/api/versions', sendVersionInfo);
+app.get('/api/v1/versions', sendVersionInfo);
 
 // Detailed system health endpoints
-app.get('/health/detailed', async (req, res) => {
+app.get('/health/detailed', authenticate, authorizePolicy('health', 'staffAccess'), async (req, res) => {
     try {
         const healthData = await systemHealthMonitor.performHealthCheck();
         res.status(200).json({
@@ -520,7 +533,7 @@ app.get('/health/detailed', async (req, res) => {
 });
 
 // System alerts endpoint
-app.get('/health/alerts', async (req, res) => {
+app.get('/health/alerts', authenticate, authorizePolicy('health', 'staffAccess'), async (req, res) => {
     try {
         const alerts = systemHealthMonitor.getAlerts();
         res.status(200).json({
@@ -543,7 +556,7 @@ app.get('/health/alerts', async (req, res) => {
 });
 
 // System metrics endpoint
-app.get('/health/metrics', async (req, res) => {
+app.get('/health/metrics', authenticate, authorizePolicy('health', 'staffAccess'), async (req, res) => {
     try {
         const metrics = systemHealthMonitor.getMetrics();
         res.status(200).json({
@@ -563,7 +576,7 @@ app.get('/health/metrics', async (req, res) => {
 });
 
 // Queue health endpoint (for retry/DLQ observability and ops checks).
-app.get('/health/queue', async (req, res) => {
+app.get('/health/queue', authenticate, authorizePolicy('health', 'staffAccess'), async (req, res) => {
     try {
         const queueStats = await queueService.getQueueStats();
         res.status(200).json({
@@ -930,7 +943,7 @@ const server = app.listen(PORT, async () => {
 // Centralized graceful shutdown for API and background services.
 setupGracefulShutdown(server, {
     logger,
-    mongoose: (await import('mongoose')).default,
+    mongoose,
     redis: getRedisClient(),
     beforeExit: async () => {
         inventoryScheduler.stop();

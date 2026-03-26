@@ -34,11 +34,15 @@ class CircuitBreaker {
       }
     }
 
+    let timeoutId = null;
     try {
-      const result = await Promise.race([
-        fn(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error(`${this.name} timeout after ${this.timeout}ms`)), this.timeout)),
-      ]);
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(
+          () => reject(new Error(`${this.name} timeout after ${this.timeout}ms`)),
+          this.timeout
+        );
+      });
+      const result = await Promise.race([fn(), timeoutPromise]);
 
       this._onSuccess();
       return result;
@@ -46,6 +50,11 @@ class CircuitBreaker {
       this._onFailure();
       if (fallback) return fallback();
       throw error;
+    } finally {
+      // Promise.race does not cancel the losing branch; always clear timeout handle.
+      if (typeof timeoutId !== 'undefined' && timeoutId) {
+        clearTimeout(timeoutId);
+      }
     }
   }
 

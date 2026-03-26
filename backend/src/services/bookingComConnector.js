@@ -25,6 +25,9 @@ export class BookingComConnector {
     try {
       // For demo purposes, we'll simulate authentication
       if (!this.clientId || !this.clientSecret) {
+        if (process.env.NODE_ENV === 'production') {
+          throw new Error('Booking.com credentials are not configured');
+        }
         logger.warn('Booking.com credentials not configured, using fallback authentication');
         // Generate a more realistic token for demo/development environments
         const timestamp = Date.now();
@@ -44,6 +47,9 @@ export class BookingComConnector {
       return response.data.access_token;
     } catch (error) {
       logger.error('Booking.com authentication failed:', error.message);
+      if (process.env.NODE_ENV === 'production') {
+        throw error;
+      }
       // For demo purposes, return a fallback token instead of failing
       logger.warn('Authentication failed, using fallback token for demo environment');
       const timestamp = Date.now();
@@ -70,7 +76,7 @@ export class BookingComConnector {
       logger.info(`Starting Booking.com availability sync for hotel: ${hotelId}`);
       
       // Get hotel configuration
-      const hotel = await Hotel.findById(hotelId);
+      let hotel = await Hotel.findById(hotelId);
       if (!hotel) {
         throw new Error('Hotel not found');
       }
@@ -113,7 +119,7 @@ export class BookingComConnector {
       const accessToken = await this.authenticate();
 
       // Fetch availability data
-      const availability = await this.fetchAvailability(bookingComHotelId, accessToken);
+      const availability = await this.fetchAvailability(bookingComHotelId, accessToken, hotelId);
 
       // Update room availability in our system
       await this.updateRoomAvailability(hotelId, availability);
@@ -209,7 +215,7 @@ export class BookingComConnector {
     }
   }
 
-  async fetchAvailability(bookingComHotelId, accessToken) {
+  async fetchAvailability(bookingComHotelId, accessToken, hotelId) {
     const headers = {
       'Authorization': `Bearer ${accessToken}`,
       'Content-Type': 'application/json'
@@ -234,6 +240,9 @@ export class BookingComConnector {
       return response.data;
     } catch (error) {
       logger.warn('Booking.com API call failed, generating fallback data from hotel inventory:', error.message);
+      if (process.env.NODE_ENV === 'production') {
+        throw error;
+      }
 
       // Generate realistic fallback data based on actual hotel rooms
       try {
@@ -325,20 +334,24 @@ export class BookingComConnector {
     }
 
     try {
-      // Get the latest sync status for this hotel
-      const keys = await this.redis.keys(`sync:*`);
+      // Iterate keys incrementally to avoid blocking Redis in production.
       let latestSync = null;
-
-      for (const key of keys) {
-        const syncData = await this.redis.get(key);
-        if (syncData) {
-          const parsed = JSON.parse(syncData);
-          if (parsed.hotelId === hotelId && 
-              (!latestSync || new Date(parsed.startedAt) > new Date(latestSync.startedAt))) {
-            latestSync = parsed;
+      let cursor = '0';
+      do {
+        const scanResult = await this.redis.scan(cursor, { MATCH: 'sync:*', COUNT: 100 });
+        cursor = scanResult.cursor;
+        const keys = scanResult.keys || [];
+        for (const key of keys) {
+          const syncData = await this.redis.get(key);
+          if (syncData) {
+            const parsed = JSON.parse(syncData);
+            if (parsed.hotelId === hotelId &&
+                (!latestSync || new Date(parsed.startedAt) > new Date(latestSync.startedAt))) {
+              latestSync = parsed;
+            }
           }
         }
-      }
+      } while (cursor !== '0');
 
       if (!latestSync) {
         return {

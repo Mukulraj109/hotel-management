@@ -17,12 +17,24 @@ import billingService from '../modules/billing/service.js';
 import bookingAuditService from '../services/bookingAuditService.js';
 import invoiceLifecycleSyncService from '../services/invoiceLifecycleSyncService.js';
 import rateLimit from 'express-rate-limit';
+import { checkPropertyAccess } from '../middleware/propertyAccess.js';
 
 const router = express.Router();
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 const stripeBreaker = new CircuitBreaker({ name: 'stripe', failureThreshold: 5, resetTimeout: 30000, timeout: 30000 });
 const idempotentFinancialMutation = enforceIdempotency({ namespace: 'payments' });
 const mutationBaselineSchema = Joi.object({}).unknown(true).optional();
+
+const assertBookingPropertyAccess = async (booking, user) => {
+  if (!booking?.hotelId) {
+    throw new ApplicationError('Booking hotel context is missing', 400);
+  }
+
+  const hasAccess = await checkPropertyAccess(user._id, booking.hotelId, user);
+  if (!hasAccess) {
+    throw new ApplicationError('You do not have access to this property', 403);
+  }
+};
 
 function requireStripe() {
   if (!stripe) {
@@ -201,6 +213,7 @@ router.post('/extra-person-charges/intent',
     if (!booking) {
       throw new ApplicationError('Booking not found', 404);
     }
+    await assertBookingPropertyAccess(booking, req.user);
 
     // Check permissions - only admin/staff can create extra person charge payments
     if (!['admin', 'staff'].includes(req.user.role)) {
@@ -340,6 +353,9 @@ router.post('/settlement/intent',
     if (amount <= 0) {
       throw new ApplicationError('Settlement amount must be greater than 0', 400);
     }
+    if (settlement.outstandingBalance != null && amount > settlement.outstandingBalance) {
+      throw new ApplicationError('Settlement payment exceeds outstanding balance', 400);
+    }
 
     // CRITICAL FIX: Proper rounding for INR (smallest unit = paisa = 1/100 rupee)
     // Stripe expects amount in smallest currency unit (paisa for INR)
@@ -444,6 +460,7 @@ router.post('/refund',
     if (!payment) {
       throw new ApplicationError('Payment not found', 404);
     }
+    await assertBookingPropertyAccess(payment.bookingId, req.user);
 
     // Check permissions (admin/staff or booking owner)
     if (req.user.role === 'guest' && 
@@ -467,30 +484,36 @@ router.post('/refund',
       () => { throw new Error('Payment service temporarily unavailable. Please try again.'); }
     );
 
-    // Update payment record atomically
+    // Keep booking/payment state in sync with a single transaction.
     const paymentRecordStatus = refund.amount === payment.amount * 100 ? 'refunded' : 'partially_refunded';
     const bookingPaymentStatus = refund.amount === payment.amount * 100 ? 'refunded' : 'partially_paid';
-    await Payment.findByIdAndUpdate(
-      payment._id,
-      {
-        $push: {
-          refunds: {
-            stripeRefundId: refund.id,
-            amount: refund.amount / 100,
-            reason: refund.reason
-          }
-        },
-        $set: { status: paymentRecordStatus }
-      },
-      { new: true }
-    );
+    const session = await Payment.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await Payment.findByIdAndUpdate(
+          payment._id,
+          {
+            $push: {
+              refunds: {
+                stripeRefundId: refund.id,
+                amount: refund.amount / 100,
+                reason: refund.reason
+              }
+            },
+            $set: { status: paymentRecordStatus }
+          },
+          { new: true, session }
+        );
 
-    // Update booking status
-    await Booking.findByIdAndUpdate(payment.bookingId._id, {
-      paymentStatus: bookingPaymentStatus
-    },
-      { new: true }
-    );
+        await Booking.findByIdAndUpdate(
+          payment.bookingId._id,
+          { paymentStatus: bookingPaymentStatus },
+          { new: true, session }
+        );
+      });
+    } finally {
+      await session.endSession();
+    }
 
     try {
       await invoiceLifecycleSyncService.syncInvoiceAfterRefund({
@@ -553,6 +576,7 @@ router.post('/room-charge', authenticate, ensureTenantContext, authorizePolicy('
   if (!booking) {
     throw new ApplicationError('Booking not found', 404);
   }
+  await assertBookingPropertyAccess(booking, req.user);
 
   if (req.user.role === 'guest' && booking.userId.toString() !== req.user._id.toString()) {
     throw new ApplicationError('Access denied', 403);
@@ -569,8 +593,14 @@ router.post('/room-charge', authenticate, ensureTenantContext, authorizePolicy('
 
   // Atomic POS order update
   if (orderId) {
-    await POSOrder.findByIdAndUpdate(orderId, { $set: { payment: paymentData } },
-      { new: true });
+    const updatedOrder = await POSOrder.findOneAndUpdate(
+      { _id: orderId, hotelId: booking.hotelId },
+      { $set: { payment: paymentData } },
+      { new: true }
+    );
+    if (!updatedOrder) {
+      throw new ApplicationError('POS order not found for booking property', 404);
+    }
   }
 
   booking.addSettlementAdjustment({
@@ -625,8 +655,15 @@ router.post('/cash-on-delivery', authenticate, ensureTenantContext, authorizePol
 
   // Atomic POS order update
   if (orderId) {
-    await POSOrder.findByIdAndUpdate(orderId, { $set: { payment: paymentData } },
-      { new: true });
+    const order = await POSOrder.findById(orderId).lean();
+    if (!order) {
+      throw new ApplicationError('POS order not found', 404);
+    }
+    const hasOrderAccess = await checkPropertyAccess(req.user._id, order.hotelId, req.user);
+    if (!hasOrderAccess) {
+      throw new ApplicationError('You do not have permission for this POS order', 403);
+    }
+    await POSOrder.findByIdAndUpdate(orderId, { $set: { payment: paymentData } }, { new: true });
   }
 
   res.json({

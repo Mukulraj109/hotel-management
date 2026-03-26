@@ -304,6 +304,14 @@ class SystemHealthMonitor {
   async checkAlerts(healthData) {
     try {
       const alerts = [];
+      const managedAlertIds = new Set([
+        'high_cpu',
+        'high_memory',
+        'slow_database',
+        'database_disconnected',
+        'redis_disconnected',
+        'high_maintenance_load'
+      ]);
 
       // CPU usage alert
       if (healthData.system.cpu.usage > 85) {
@@ -399,6 +407,14 @@ class SystemHealthMonitor {
         this.alerts.set(alert.id, alert);
       });
 
+      // Clear resolved managed alerts so health can recover promptly.
+      const activeAlertIds = new Set(alerts.map((alert) => alert.id));
+      for (const id of managedAlertIds) {
+        if (!activeAlertIds.has(id)) {
+          this.alerts.delete(id);
+        }
+      }
+
       // Log critical alerts
       alerts.filter(a => a.severity === 'critical').forEach(alert => {
         logger.error(`CRITICAL ALERT: ${alert.title} - ${alert.message}`);
@@ -429,7 +445,10 @@ class SystemHealthMonitor {
 
   async getHealthSummary() {
     try {
-      const healthData = await this.performHealthCheck();
+      const healthData = await Promise.race([
+        this.performHealthCheck(),
+        new Promise((resolve) => setTimeout(() => resolve(null), 3000))
+      ]);
       const alerts = this.getAlerts();
       const criticalAlerts = alerts.filter(a => a.severity === 'critical');
       const warningAlerts = alerts.filter(a => a.severity === 'warning');

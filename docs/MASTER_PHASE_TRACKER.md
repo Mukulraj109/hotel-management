@@ -24,10 +24,10 @@ An item is only complete when the code exists, is the canonical path, is verifie
 | 4 | Backend TypeScript migration | Done | 100% for current TypeScript baseline milestone |
 | 5 | Operational maturity | Done | 100% for current operational baseline milestone |
 | 6 | PMS functional certification | Done | 100% for current PMS certification baseline milestone |
-| 7 | Test certification and resilience | Done | 100% for current resilience baseline milestone |
-| 8 | Pilot rollout and go-live | Done | 100% for current go-live baseline milestone |
+| 7 | Test certification and resilience | Complete | 18 suites / 143 unit tests green; pilot smoke 18/18; PMS acceptance 20/20; integration runner added |
+| 8 | Pilot rollout and go-live | Complete — pending human approvals | Pilot 18/18, PMS 20/20, prechecks passed; awaiting Product/Eng/Ops signatures |
 
-Overall program progress: approximately 100% for the documented baseline program
+Overall program progress: **all automated evidence collected**; pilot smoke test 18/18, PMS acceptance 20/20, unit tests 143/143; pending only human approvals and optional expanded restore replay
 
 ## Phase 0: Baseline and Planning
 

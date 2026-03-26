@@ -1,54 +1,91 @@
-import { ApiResponseHelper } from '../../utils/apiResponse.js';
+const { sendSuccess, sendPaginated, sendError, ApiResponse } = (() => {
+  const mod = require('../../utils/apiResponse.js');
+  return {
+    sendSuccess: mod.sendSuccess,
+    sendPaginated: mod.sendPaginated,
+    sendError: mod.sendError,
+    ApiResponse: mod.ApiResponse || mod.default,
+  };
+})();
 
-describe('ApiResponseHelper', () => {
+describe('ApiResponse class', () => {
+  test('sets success true for 2xx status', () => {
+    const r = new ApiResponse(200, { id: 1 }, 'OK');
+    expect(r.success).toBe(true);
+    expect(r.statusCode).toBe(200);
+    expect(r.data).toEqual({ id: 1 });
+  });
+
+  test('sets success false for 4xx status', () => {
+    const r = new ApiResponse(404, null, 'Not found');
+    expect(r.success).toBe(false);
+  });
+});
+
+describe('sendSuccess', () => {
   let res;
-
   beforeEach(() => {
-    res = {
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn().mockReturnThis(),
-      send: jest.fn().mockReturnThis(),
-    };
+    res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
   });
 
-  test('success returns 200 with data', () => {
-    ApiResponseHelper.success(res, { id: 1 }, 'OK');
+  test('returns 200 with data envelope', () => {
+    sendSuccess(res, { id: 1 });
     expect(res.status).toHaveBeenCalledWith(200);
-    expect(res.json).toHaveBeenCalledWith({ success: true, message: 'OK', data: { id: 1 } });
+    const body = res.json.mock.calls[0][0];
+    expect(body.status).toBe('success');
+    expect(body.data).toEqual({ id: 1 });
   });
 
-  test('created returns 201', () => {
-    ApiResponseHelper.created(res, { id: 1 });
+  test('accepts custom status code and message', () => {
+    sendSuccess(res, { id: 1 }, 201, 'Created');
     expect(res.status).toHaveBeenCalledWith(201);
     const body = res.json.mock.calls[0][0];
-    expect(body.success).toBe(true);
+    expect(body.message).toBe('Created');
+  });
+});
+
+describe('sendPaginated', () => {
+  let res;
+  beforeEach(() => {
+    res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
   });
 
-  test('notFound returns 404', () => {
-    ApiResponseHelper.notFound(res, 'Booking');
-    expect(res.status).toHaveBeenCalledWith(404);
+  test('includes pagination metadata', () => {
+    const pagination = { currentPage: 1, totalPages: 3, totalCount: 25, limit: 10, hasNextPage: true, hasPrevPage: false };
+    sendPaginated(res, [1, 2, 3], pagination);
     const body = res.json.mock.calls[0][0];
-    expect(body.success).toBe(false);
-    expect(body.error.code).toBe('NOT_FOUND');
-  });
-
-  test('paginated includes pagination metadata', () => {
-    ApiResponseHelper.paginated(res, [1,2,3], { page: 1, limit: 10, total: 25 });
-    const body = res.json.mock.calls[0][0];
+    expect(body.status).toBe('success');
+    expect(body.results).toBe(3);
     expect(body.pagination.totalPages).toBe(3);
-    expect(body.pagination.hasNext).toBe(true);
-    expect(body.pagination.hasPrev).toBe(false);
+    expect(body.pagination.hasNextPage).toBe(true);
+  });
+});
+
+describe('sendError', () => {
+  let res;
+  beforeEach(() => {
+    res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
   });
 
-  test('error returns structured error', () => {
-    ApiResponseHelper.error(res, 'Something failed', 500, 'INTERNAL_ERROR');
+  test('returns structured error', () => {
+    sendError(res, 500, 'INTERNAL_ERROR', 'Something failed');
+    expect(res.status).toHaveBeenCalledWith(500);
     const body = res.json.mock.calls[0][0];
-    expect(body.success).toBe(false);
+    expect(body.status).toBe('error');
     expect(body.error.code).toBe('INTERNAL_ERROR');
+    expect(body.error.message).toBe('Something failed');
   });
 
-  test('badRequest returns 400', () => {
-    ApiResponseHelper.badRequest(res, 'Invalid input');
+  test('400 bad request', () => {
+    sendError(res, 400, 'VALIDATION_ERROR', 'Invalid input');
     expect(res.status).toHaveBeenCalledWith(400);
+    const body = res.json.mock.calls[0][0];
+    expect(body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  test('includes details when provided', () => {
+    sendError(res, 422, 'VALIDATION_ERROR', 'Bad fields', { fields: ['email'] });
+    const body = res.json.mock.calls[0][0];
+    expect(body.error.details).toEqual({ fields: ['email'] });
   });
 });

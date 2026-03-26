@@ -1,75 +1,39 @@
 // Authentication utility functions
-import { api } from '../services/api';
 
 export const AUTH_CREDENTIALS = {
   ADMIN: {
-    email: 'admin@hotel.com',
-    password: 'admin123'
+    email: '',
+    password: ''
   },
   GUEST: {
-    email: 'john@example.com',
-    password: 'guest123'
+    email: '',
+    password: ''
   }
 };
 
 export const isAuthenticated = (): boolean => {
-  const token = localStorage.getItem('token');
-  return !!token;
+  return document.cookie.includes('csrfToken=');
 };
 
 export const getAuthToken = (): string | null => {
-  return localStorage.getItem('token');
+  return null;
 };
 
-export const setAuthToken = (token: string): void => {
-  localStorage.setItem('token', token);
-};
+export const setAuthToken = (_token: string): void => {};
 
 export const clearAuthToken = (): void => {
-  localStorage.removeItem('token');
+  // Auth token is httpOnly cookie; cleared by logout endpoint.
 };
 
 export const loginAsAdmin = async (): Promise<string> => {
-  try {
-    const { data } = await api.post('/auth/login', AUTH_CREDENTIALS.ADMIN);
-
-    if (data.status === 'success' && data.token) {
-      setAuthToken(data.token);
-      return data.token;
-    } else {
-      throw new Error('Login failed');
-    }
-  } catch (error) {
-    throw error;
-  }
+  throw new Error('loginAsAdmin is disabled for production safety');
 };
 
 export const loginAsGuest = async (): Promise<string> => {
-  try {
-    const { data } = await api.post('/auth/login', AUTH_CREDENTIALS.GUEST);
-
-    if (data.status === 'success' && data.token) {
-      setAuthToken(data.token);
-      return data.token;
-    } else {
-      throw new Error('Login failed');
-    }
-  } catch (error) {
-    throw error;
-  }
+  throw new Error('loginAsGuest is disabled for production safety');
 };
 
 // Auto-login for demo purposes
 export const ensureAuthenticated = async (): Promise<string> => {
-  const existingToken = getAuthToken();
-  if (existingToken) {
-    return existingToken;
-  }
-
-  // Try to auto-login as admin for demo
-  try {
-    return await loginAsAdmin();
-  } catch (error) {
-    throw new Error('Authentication required');
-  }
+  throw new Error('Authentication required');
 };

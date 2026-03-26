@@ -7,7 +7,18 @@ import logger from './logger.js';
 export function validateEnvironment() {
   const required = [
     'MONGO_URI',
-    'JWT_SECRET',
+    'JWT_SECRET'
+  ];
+
+  const requiredInProduction = [
+    'REDIS_URL',
+    'STRIPE_SECRET_KEY',
+    'ALLOWED_ORIGINS',
+    'HEALTH_CHECK_TOKEN',
+    'BOOKINGCOM_WEBHOOK_SECRET',
+    'EXPEDIA_WEBHOOK_SECRET',
+    'AIRBNB_WEBHOOK_SECRET',
+    'AGODA_WEBHOOK_SECRET'
   ];
 
   const recommended = [
@@ -17,7 +28,10 @@ export function validateEnvironment() {
     'ALLOWED_ORIGINS',
   ];
 
-  const missing = required.filter(v => !process.env[v]);
+  const effectiveRequired = process.env.NODE_ENV === 'production'
+    ? [...required, ...requiredInProduction]
+    : required;
+  const missing = effectiveRequired.filter(v => !process.env[v]);
   const missingRecommended = recommended.filter(v => !process.env[v]);
 
   if (missing.length > 0) {

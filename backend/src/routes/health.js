@@ -276,7 +276,7 @@ router.post('/checks/run',
 // Monitoring integration endpoints
 router.get('/prometheus', 
   authenticate,
-  authorize(['admin']),
+  authorizePolicy('health', 'adminAccess'),
   (req, res) => {
     // Basic Prometheus metrics format
     // In production, this would use a proper Prometheus client
@@ -304,8 +304,18 @@ router.get('/external/:token',
   (req, res, next) => {
     const { token } = req.params;
     const expectedToken = process.env.HEALTH_CHECK_TOKEN;
-    
-    if (expectedToken && token !== expectedToken) {
+
+    if (!expectedToken) {
+      return res.status(503).json({
+        success: false,
+        error: {
+          code: 'HEALTH_CHECK_TOKEN_NOT_CONFIGURED',
+          message: 'External health check is not configured'
+        }
+      });
+    }
+
+    if (token !== expectedToken) {
       return res.status(401).json({
         success: false,
         error: {

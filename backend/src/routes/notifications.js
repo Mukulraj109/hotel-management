@@ -693,7 +693,7 @@ router.get('/channels', catchAsync(async (req, res, next) => {
 }));
 
 // GET /api/v1/notifications/:id - Get specific notification
-router.get('/:id', catchAsync(async (req, res, next) => {
+router.get('/:id([0-9a-fA-F]{24})', catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user._id;
   
@@ -714,11 +714,11 @@ router.get('/:id', catchAsync(async (req, res, next) => {
 }));
 
 // PATCH /api/v1/notifications/:id/read - Mark notification as read
-router.patch('/:id/read', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
+router.patch('/:id([0-9a-fA-F]{24})/read', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user._id;
   
-  const notification = await Notification.findOne({ _id: id, userId }).lean();
+  const notification = await Notification.findOne({ _id: id, userId });
   
   if (!notification) {
     return next(new ApplicationError('Notification not found', 404));
@@ -760,7 +760,7 @@ router.post('/mark-all-read', validate(mutationBaselineSchema), catchAsync(async
 }));
 
 // DELETE /api/v1/notifications/:id - Delete notification
-router.delete('/:id', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
+router.delete('/:id([0-9a-fA-F]{24})', validate(mutationBaselineSchema), catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user._id;
   
@@ -881,6 +881,18 @@ router.post('/subscribe', validate(mutationBaselineSchema), catchAsync(async (re
 router.get('/stream', authenticate, (req, res) => {
   const userId = req.user._id.toString();
   const userRole = req.user.role;
+  const requestOrigin = req.headers.origin;
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (requestOrigin && !allowedOrigins.includes(requestOrigin)) {
+    return res.status(403).json({
+      status: 'error',
+      message: 'Origin not allowed for notification stream'
+    });
+  }
 
   logger.debug('[SSE] New connection', { userId, userRole });
 
@@ -889,7 +901,7 @@ router.get('/stream', authenticate, (req, res) => {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-store, must-revalidate',
     'Connection': 'keep-alive',
-    'Access-Control-Allow-Origin': req.headers.origin || '*',
+    'Access-Control-Allow-Origin': requestOrigin || allowedOrigins[0] || 'http://localhost:5173',
     'Access-Control-Allow-Credentials': 'true',
     'X-Accel-Buffering': 'no', // Disable Nginx buffering
     'X-Content-Type-Options': 'nosniff'
@@ -1007,7 +1019,7 @@ router.get('/stream', authenticate, (req, res) => {
       }
 
       // End response safely
-      if (!res.headersSent) {
+      if (!res.writableEnded) {
         res.end();
       }
     } catch (error) {
@@ -1267,7 +1279,7 @@ router.post('/templates/:id/preview', validate(mutationBaselineSchema), catchAsy
     _id: id,
     hotelId,
     'metadata.isActive': true
-  }).lean();
+  });
 
   if (!template) {
     throw new ApplicationError('Template not found', 404);

@@ -91,10 +91,6 @@ class RealTimeService extends EventEmitter {
     }
   }
 
-  private getAuthToken(): string | null {
-    return localStorage.getItem('token');
-  }
-
   public connect(): Promise<void> {
     // Return existing connection promise if one is in progress
     if (this.connectionPromise) {
@@ -125,14 +121,7 @@ class RealTimeService extends EventEmitter {
         return;
       }
 
-      const token = this.getAuthToken();
-      if (!token) {
-        this.log('No authentication token available for WebSocket connection');
-        reject(new Error('No authentication token available'));
-        return;
-      }
-
-      this.log('Starting WebSocket connection with token');
+      this.log('Starting WebSocket connection with cookie-based auth');
 
       this.isConnecting = true;
       this.shouldReconnect = true;
@@ -141,12 +130,6 @@ class RealTimeService extends EventEmitter {
         // Create Socket.IO connection
         this.socket = io(this.config.url, {
           path: '/ws/notifications',
-          auth: {
-            token
-          },
-          query: {
-            token // Also send in query for compatibility
-          },
           autoConnect: false,
           reconnection: false, // Disable automatic reconnection to prevent loops
           timeout: 30000, // Increase timeout

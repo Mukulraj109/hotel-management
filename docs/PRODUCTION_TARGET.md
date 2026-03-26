@@ -34,7 +34,9 @@ Exit criteria:
 - critical booking flows have integration and concurrency coverage
 
 Current status:
-- partial
+- **unit baseline complete** — bookingModuleService (8/8), bookingStateMachine (5/5), bookingOverlap (5/5) all pass
+- code-level hardening done for create/update/cancel/check-in/check-out/settlement/refund/no-show
+- integration-level coverage still needed (blocked by Jest ESM config)
 
 ### Gate B: Billing And Revenue Integrity
 Exit criteria:
@@ -45,7 +47,9 @@ Exit criteria:
 - end-to-end tests for issue/pay/refund/check-out settlement
 
 Current status:
-- partial
+- **unit baseline complete** — billingModuleService (7/7), invoiceLifecycleSyncService (5/5), nightAuditService (6/6) all pass
+- refund transaction safety hardened, payment route tenant scoping added
+- end-to-end integration tests still needed
 
 ### Gate C: Authentication, RBAC, And Tenant Isolation
 Exit criteria:
@@ -55,7 +59,9 @@ Exit criteria:
 - automated regression coverage for protected and tenant-scoped paths
 
 Current status:
-- strong baseline, not yet certified
+- **unit baseline complete** — rbacPolicy (5/5), piiEncryption (4/4), websocketService (4/4) all pass
+- code-level hardening done for admin routes, registration, payment routes, health endpoints
+- broader route-by-route certification deferred
 
 ### Gate D: Validation And API Contracts
 Exit criteria:
@@ -65,7 +71,8 @@ Exit criteria:
 - no silent payload shape drift on critical APIs
 
 Current status:
-- strong baseline
+- **unit baseline complete** — apiVersioningMiddleware (3/3), apiResponse (8/8), validateEnv (4/4) all pass
+- API versioning middleware active, response envelope standardized
 
 ### Gate E: Architecture And Maintainability
 Exit criteria:
@@ -75,7 +82,9 @@ Exit criteria:
 - deprecated duplicate services/models/routes are documented and scheduled for removal
 
 Current status:
-- partial
+- **baseline complete** — booking and billing module entrypoints created, route registration centralized
+- legacy route files still large; further extraction deferred
+- deprecation matrix documented in `docs/DEPRECATION_MATRIX.md`
 
 ### Gate F: Type Safety
 Exit criteria:
@@ -84,7 +93,9 @@ Exit criteria:
 - no new critical-domain JS added after migration starts
 
 Current status:
-- not started for backend
+- **baseline complete** — tsconfig.json added, shared contracts in `contracts.d.ts`, typecheck passes
+- JSDoc annotations on module seams
+- broader `.js` to `.ts` conversion deferred
 
 ### Gate G: Operational Readiness
 Exit criteria:
@@ -93,7 +104,10 @@ Exit criteria:
 - API process and worker responsibilities are clearly separated
 
 Current status:
-- partial
+- **baseline complete** — health endpoints hardened, queue worker separated, graceful shutdown implemented
+- backup/restore drill passed (service-level), drill and pilot prechecks automated
+- circuitBreaker (6/6), queueService (3/3) pass
+- expanded environment-level restore replay and alert inventory deferred
 
 ### Gate H: PMS Functional Completeness
 Exit criteria:
@@ -102,7 +116,9 @@ Exit criteria:
 - pilot signoff completed
 
 Current status:
-- partial / unclear
+- **unit baseline complete** — nightAuditService (6/6), bookingComConnector (3/3), otaWebhookSecurity (3/3) pass
+- PMS functional gaps documented, acceptance criteria defined for all 6 domains
+- pilot precheck passed; full pilot execution and product signoff still required
 
 ## Mandatory Production Workstreams
 1. Correctness and revenue safety

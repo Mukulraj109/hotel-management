@@ -435,7 +435,7 @@ class QueueService {
       }
 
       // Get full event from MongoDB
-      const event = await EventQueue.findOne({ eventId }).lean();
+      const event = await EventQueue.findOne({ eventId });
       if (!event) {
         logger.warn('Event not found in database', { eventId });
         return;
@@ -481,19 +481,20 @@ class QueueService {
       });
 
       try {
-        const event = await EventQueue.findOne({ eventId }).lean();
+        const event = await EventQueue.findOne({ eventId });
         if (event) {
           const retryConfig = EventRetryConfig[event.eventType] || EventRetryConfig.rate_update;
           const retryDelay = retryConfig.initialDelay * Math.pow(retryConfig.backoffMultiplier, event.processing.attempts);
           const actualRetryDelay = Math.min(retryDelay, retryConfig.maxDelay);
+          const willRetry = event.processing.attempts < event.processing.maxAttempts;
 
           await event.markAsFailed(error, actualRetryDelay);
 
           // Re-queue for retry if eligible
-          if (event.canRetry) {
+          if (willRetry) {
             logger.info('Event queued for retry', {
               eventId: event.eventId,
-              nextRetryAt: event.processing.nextRetryAt,
+              nextRetryAt: event.processing.nextRetryAt?.toISOString?.() || null,
               attempt: event.processing.attempts
             });
           }
@@ -565,7 +566,7 @@ class QueueService {
     const { payload } = event;
 
     // Import channel manager service (lazy load to avoid circular deps)
-    const { ChannelManagerService } = await import('./channelManagerService.js');
+    const { default: ChannelManagerService } = await import('./channelManager.js');
     const channelManager = new ChannelManagerService();
 
     for (const channel of payload.channels) {
@@ -627,7 +628,7 @@ class QueueService {
     const results = [];
     const { payload } = event;
 
-    const { ChannelManagerService } = await import('./channelManagerService.js');
+    const { default: ChannelManagerService } = await import('./channelManager.js');
     const channelManager = new ChannelManagerService();
 
     for (const channel of payload.channels) {
@@ -674,7 +675,7 @@ class QueueService {
     const results = [];
     const { payload } = event;
 
-    const { ChannelManagerService } = await import('./channelManagerService.js');
+    const { default: ChannelManagerService } = await import('./channelManager.js');
     const channelManager = new ChannelManagerService();
 
     for (const channel of payload.channels) {
@@ -828,7 +829,7 @@ class QueueService {
         throw new Error('Database not available');
       }
 
-      const event = await EventQueue.findOne({ eventId }).lean();
+      const event = await EventQueue.findOne({ eventId });
       if (!event) {
         throw new Error('Event not found');
       }

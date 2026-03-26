@@ -1,6 +1,5 @@
 import { api } from './api';
 import { Room, Booking, BookingFilters, CreateBookingRequest } from '../types/booking';
-import { ensureAuthenticated } from '../utils/auth';
 
 interface ApiResponse<T> {
   status: string;
@@ -67,9 +66,9 @@ class BookingService {
         }
       }
     
-      // Always use default hotel ID if no hotelId is set (for guest users)
+      // Enforce explicit property context to avoid cross-property leakage.
       if (!hotelId) {
-        hotelId = '68cd01414419c17b5f6b4c12'; // Default hotel ID
+        throw new Error('No property selected for booking');
       }
     
 

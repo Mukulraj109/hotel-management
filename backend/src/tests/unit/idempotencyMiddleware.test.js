@@ -18,6 +18,7 @@ const createReq = (idempotencyKey) => ({
 });
 
 const createRes = () => {
+  const handlers = {};
   const res = {
     statusCode: 200,
     setHeader: jest.fn(),
@@ -25,6 +26,13 @@ const createRes = () => {
       this.statusCode = code;
       return this;
     }),
+    on: jest.fn((event, cb) => {
+      handlers[event] = cb;
+      return res;
+    }),
+    _emit: (event) => {
+      if (handlers[event]) handlers[event]();
+    },
     json: jest.fn(function json(body) {
       this.body = body;
       return this;
@@ -90,5 +98,27 @@ describe('enforceIdempotency middleware', () => {
     expect(next2).toHaveBeenCalledTimes(1);
     const error = next2.mock.calls[0][0];
     expect(error.statusCode).toBe(409);
+  });
+
+  it('clears processing lock on finish without json body', async () => {
+    const middleware = enforceIdempotency({ namespace: 'test-finish-clear' });
+    const key = `finish-${Date.now()}`;
+
+    const req1 = createReq(key);
+    const res1 = createRes();
+    const next1 = jest.fn();
+    await middleware(req1, res1, next1);
+    expect(next1).toHaveBeenCalledWith();
+
+    // Simulate handler throwing and framework finishing response.
+    res1._emit('finish');
+
+    const req2 = createReq(key);
+    const res2 = createRes();
+    const next2 = jest.fn();
+    await middleware(req2, res2, next2);
+
+    // If lock is cleared on finish, second request can proceed.
+    expect(next2).toHaveBeenCalledWith();
   });
 });

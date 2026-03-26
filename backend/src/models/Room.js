@@ -495,7 +495,7 @@ roomSchema.statics.getRoomsWithRealTimeStatus = async function(hotelId, options 
 
     // Add computed status to each room with task-based overrides
     const roomsWithStatus = rooms.map(room => {
-      const roomObj = room.toObject();
+      const roomObj = typeof room.toObject === 'function' ? room.toObject() : { ...room };
       const roomId = room._id.toString();
       const occupancy = roomOccupancyMap.get(roomId);
 

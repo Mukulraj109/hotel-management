@@ -9,7 +9,7 @@ import logger from '../utils/logger.js';
 class WebSocketService {
   constructor() {
     this.io = null;
-    this.connections = new Map(); // userId -> socket
+    this.connections = new Map(); // userId -> Set<socketId>
     this.hotelConnections = new Map(); // hotelId -> Set of userIds
     this.server = null;
   }
@@ -19,20 +19,15 @@ class WebSocketService {
    */
   initialize(server) {
     this.server = server;
+    const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
     
     // Create Socket.IO server
     this.io = new Server(server, {
       cors: {
-        origin: [
-          "http://localhost:5173",
-          "http://localhost:5174",
-          "http://localhost:3000",
-          "http://localhost:3001",
-          "http://localhost:4000",
-          "http://127.0.0.1:5173",
-          "http://127.0.0.1:5174",
-          "http://127.0.0.1:3000"
-        ],
+        origin: allowedOrigins,
         credentials: true,
         methods: ["GET", "POST"]
       },
@@ -44,9 +39,14 @@ class WebSocketService {
     // Authentication middleware
     this.io.use((socket, next) => {
       try {
+        const cookieHeader = socket.handshake.headers.cookie || '';
+        const accessTokenCookie = cookieHeader
+          .split(';')
+          .map((part) => part.trim())
+          .find((part) => part.startsWith('accessToken='))
+          ?.split('=')[1];
         const token = socket.handshake.auth.token ||
-                     socket.handshake.query.token ||
-                     socket.handshake.headers.authorization?.replace('Bearer ', '');
+                     accessTokenCookie;
 
         logger.debug('WebSocket authentication attempt', {
           hasToken: !!token,
@@ -119,8 +119,11 @@ class WebSocketService {
     //   socketId: socket.id
     // });
 
-    // Store connection
-    this.connections.set(userId, socket);
+    // Store connection (multi-tab safe).
+    if (!this.connections.has(userId)) {
+      this.connections.set(userId, new Set());
+    }
+    this.connections.get(userId).add(socket.id);
     
     // Add to hotel connections if hotelId exists
     if (hotelId) {
@@ -175,16 +178,38 @@ class WebSocketService {
    */
   handleSubscription(socket, data) {
     const { subscription } = data;
-    
-    if (subscription) {
-      socket.join(subscription);
-      socket.emit('subscribed', { subscription });
-      
-      logger.debug('Socket subscribed to channel', { 
-        userId: socket.userId, 
-        subscription 
-      });
+    if (!subscription || typeof subscription !== 'string') return;
+
+    const allowedSystemPrefixes = [
+      'maintenance:*',
+      'guest-services:*',
+      'supply-requests:*',
+      'housekeeping:*',
+      'rooms:*',
+      'inventory:*'
+    ];
+    const userRoom = `user:${socket.userId}`;
+    const hotelRoom = socket.hotelId ? `hotel:${socket.hotelId}` : null;
+    const roleRoom = socket.userRole ? `role:${socket.userRole}` : null;
+
+    const isAllowed =
+      subscription === userRoom ||
+      (hotelRoom && subscription === hotelRoom) ||
+      (roleRoom && subscription === roleRoom) ||
+      allowedSystemPrefixes.includes(subscription);
+
+    if (!isAllowed) {
+      socket.emit('error', { message: 'Subscription not allowed' });
+      logger.warn('Socket subscription denied', { userId: socket.userId, subscription });
+      return;
     }
+
+    socket.join(subscription);
+    socket.emit('subscribed', { subscription });
+    logger.debug('Socket subscribed to channel', {
+      userId: socket.userId,
+      subscription
+    });
   }
 
   /**
@@ -218,8 +243,14 @@ class WebSocketService {
     //   socketId: socket.id
     // });
 
-    // Remove from connections
-    this.connections.delete(userId);
+    // Remove this socket from tracked user connections.
+    const userSockets = this.connections.get(userId);
+    if (userSockets) {
+      userSockets.delete(socket.id);
+      if (userSockets.size === 0) {
+        this.connections.delete(userId);
+      }
+    }
     
     // Remove from hotel connections
     if (hotelId && this.hotelConnections.has(hotelId)) {
@@ -351,8 +382,11 @@ class WebSocketService {
    * Get connection statistics
    */
   getStats() {
+    const totalConnections = Array.from(this.connections.values())
+      .reduce((sum, socketIds) => sum + socketIds.size, 0);
+
     return {
-      totalConnections: this.connections.size,
+      totalConnections,
       hotelConnections: Object.fromEntries(
         Array.from(this.hotelConnections.entries()).map(([hotelId, userIds]) => [
           hotelId, 

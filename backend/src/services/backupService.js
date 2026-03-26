@@ -3,7 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { spawn } from 'child_process';
 import cron from 'node-cron';
-import AWS from 'aws-sdk';
+import { S3Client, PutObjectCommand, ListObjectsV2Command, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import logger from '../utils/logger.js';
 import cacheService from './cacheService.js';
 
@@ -20,10 +20,17 @@ class BackupService {
     this.s3BucketName = process.env.AWS_S3_BACKUP_BUCKET;
     
     if (this.s3Enabled) {
-      this.s3 = new AWS.S3({
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-        region: process.env.AWS_REGION || 'us-east-1'
+      const region = process.env.AWS_REGION || 'us-east-1';
+      const hasExplicitCredentials = Boolean(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+
+      this.s3 = new S3Client({
+        region,
+        ...(hasExplicitCredentials ? {
+          credentials: {
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+          }
+        } : {})
       });
     }
 
@@ -486,15 +493,19 @@ class BackupService {
         }
       };
 
-      const result = await this.s3.upload(params).promise();
+      await this.s3.send(new PutObjectCommand(params));
       
       logger.info('Backup uploaded to S3', {
         bucket: this.s3BucketName,
-        key: result.Key,
+        key: params.Key,
         size: fileStats.size
       });
 
-      return result;
+      return {
+        bucket: this.s3BucketName,
+        key: params.Key,
+        size: fileStats.size
+      };
     } catch (error) {
       logger.error('S3 upload failed:', error);
       throw error;
@@ -805,7 +816,7 @@ class BackupService {
         Prefix: 'hotel-management-backups/'
       };
 
-      const data = await this.s3.listObjectsV2(params).promise();
+      const data = await this.s3.send(new ListObjectsV2Command(params));
       const backups = [];
 
       for (const object of data.Contents || []) {
@@ -871,10 +882,10 @@ class BackupService {
         
         for (const backup of s3Backups) {
           if (new Date(backup.timestamp) < cutoffDate) {
-            await this.s3.deleteObject({
+            await this.s3.send(new DeleteObjectCommand({
               Bucket: this.s3BucketName,
               Key: backup.key
-            }).promise();
+            }));
             deletedS3++;
             logger.debug(`Deleted old S3 backup: ${backup.name}`);
           }
