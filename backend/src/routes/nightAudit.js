@@ -77,7 +77,7 @@ router.get('/', catchAsync(async (req, res) => {
 // Lock an audit day
 router.post('/:id/lock', authorizePolicy('nightAudit', 'adminAccess'), validate(mutationBaselineSchema), catchAsync(async (req, res) => {
   const audit = await NightAudit.findOneAndUpdate(
-    { _id: req.params.id, status: 'completed' },
+    { _id: req.params.id, status: 'completed', hotelId: req.user.hotelId },
     {
       $set: {
         locked: true,
@@ -93,6 +93,9 @@ router.post('/:id/lock', authorizePolicy('nightAudit', 'adminAccess'), validate(
     const existing = await NightAudit.findById(req.params.id).lean();
     if (!existing) {
       throw new ApplicationError('Night audit not found', 404);
+    }
+    if (existing.hotelId?.toString() !== req.user.hotelId?.toString()) {
+      throw new ApplicationError('You do not have permission to lock this audit', 403);
     }
     throw new ApplicationError('Only completed audits can be locked', 400);
   }

@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import './config/mongooseIndexPatch.js';
 import mongoose from 'mongoose';
 import express from 'express';
 import cors from 'cors';
@@ -53,6 +54,7 @@ import { setupGracefulShutdown } from './utils/gracefulShutdown.js';
 
 const queueProcessorMode = process.env.QUEUE_PROCESSOR_MODE || 'api';
 const shouldRunQueueProcessorInApi = queueProcessorMode === 'api';
+const isTestRuntime = process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';
 
 // Route imports - TEMPORARILY COMMENTED FOR DEVELOPMENT
 import authRoutes from './routes/auth.js';
@@ -275,13 +277,28 @@ async function initializeApp() {
         logger.info('✅ Queue service initialized');
 
         logger.info('🔄 Starting system health monitoring...');
-        await Promise.race([
-            systemHealthMonitor.start(),
-            new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('System health monitoring startup timed out')), 8000)
-            )
-        ]);
-        logger.info('✅ System health monitoring started');
+        const healthMonitorStartupTimeoutMs =
+            parseInt(process.env.HEALTH_MONITOR_STARTUP_TIMEOUT_MS || '', 10) ||
+            (process.env.NODE_ENV === 'production' ? 15000 : 30000);
+
+        try {
+            await Promise.race([
+                systemHealthMonitor.start(),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error('System health monitoring startup timed out')), healthMonitorStartupTimeoutMs)
+                )
+            ]);
+            logger.info('✅ System health monitoring started');
+        } catch (healthMonitorError) {
+            // In development, keep startup resilient and avoid hard warnings for slow startup.
+            if (process.env.NODE_ENV === 'production') {
+                throw healthMonitorError;
+            }
+            logger.info('⏭️ System health monitoring startup deferred in development', {
+                error: healthMonitorError.message,
+                timeoutMs: healthMonitorStartupTimeoutMs
+            });
+        }
     } catch (error) {
         logger.warn('❌ Event middleware, queue service, or health monitoring initialization failed:', {
             error: error.message
@@ -292,11 +309,13 @@ async function initializeApp() {
 }
 
 // Start initialization and fail closed in production.
-try {
-    await initializeApp();
-} catch (error) {
-    logger.error('App initialization failed:', error);
-    process.exit(1);
+if (!isTestRuntime) {
+    try {
+        await initializeApp();
+    } catch (error) {
+        logger.error('App initialization failed:', error);
+        process.exit(1);
+    }
 }
 
 // Swagger configuration
@@ -798,11 +817,15 @@ app.use(piiErrorSanitizer);
 app.use(errorHandler);
 
 // Validate required environment variables before starting server
-validateEnvironment();
+if (!isTestRuntime) {
+    validateEnvironment();
+}
 
 const PORT = process.env.PORT || 4000;
 
-const server = app.listen(PORT, async () => {
+let server = null;
+if (!isTestRuntime) {
+server = app.listen(PORT, async () => {
     logger.info(`🚀 Server running on port ${PORT}`);
     logger.info(`📚 API Documentation available at http://localhost:${PORT}/docs`);
     logger.info('✅ Server startup completed successfully');
@@ -937,24 +960,27 @@ const server = app.listen(PORT, async () => {
     }
     // END OF POST-SERVER SERVICES INITIALIZATION
 });
+}
 
 // ── Production Readiness: Enhanced Graceful Shutdown ──
 // Ensures in-flight requests complete, DB/Redis connections close properly
 // Centralized graceful shutdown for API and background services.
-setupGracefulShutdown(server, {
-    logger,
-    mongoose,
-    redis: getRedisClient(),
-    beforeExit: async () => {
-        inventoryScheduler.stop();
-        reorderJob.stop();
-        stopScheduledUpdatesJob();
-        bookingWorkflowEngine.stop();
-        systemHealthMonitor.stop();
-        await queueService.stopProcessing();
-        logger.info('Background services stopped');
-    }
-});
+if (server) {
+    setupGracefulShutdown(server, {
+        logger,
+        mongoose,
+        redis: getRedisClient(),
+        beforeExit: async () => {
+            inventoryScheduler.stop();
+            reorderJob.stop();
+            stopScheduledUpdatesJob();
+            bookingWorkflowEngine.stop();
+            systemHealthMonitor.stop();
+            await queueService.stopProcessing();
+            logger.info('Background services stopped');
+        }
+    });
+}
 
 // Log unhandled rejections but don't crash
 process.on('unhandledRejection', (reason) => {

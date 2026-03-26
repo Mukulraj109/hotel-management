@@ -718,8 +718,27 @@ class QueueService {
    */
   async processRoomTypeUpdate(event) {
     try {
-      // TODO: Implement room type update processing
-      return [];
+      const { payload } = event;
+      const { default: ChannelManagerService } = await import('./channelManager.js');
+      const channelManager = new ChannelManagerService();
+
+      // Room type metadata changes should trigger a re-sync for near-term inventory/rates.
+      const startDate = new Date();
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + 30);
+
+      const result = await channelManager.syncToAllChannels(payload.roomTypeId, {
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0]
+      });
+
+      return [{
+        status: 'success',
+        syncType: 'room_type_update',
+        roomTypeId: payload.roomTypeId,
+        updateType: payload.updateType,
+        result
+      }];
     } catch (error) {
       throw new Error(`${error.message}`);
     }
@@ -730,8 +749,43 @@ class QueueService {
    */
   async processBookingModification(event) {
     try {
-      // TODO: Implement booking modification processing
-      return [];
+      const { payload } = event;
+      const { default: ChannelManagerService } = await import('./channelManager.js');
+      const channelManager = new ChannelManagerService();
+
+      const dateChanges = payload.inventoryImpact?.dateChanges || [];
+      const impactedRoomTypes = [...new Set(dateChanges.map((dc) => dc.roomTypeId).filter(Boolean))];
+
+      // Fallback: if no granular room types are provided, nothing deterministic to sync.
+      if (!impactedRoomTypes.length) {
+        return [{
+          status: 'skipped',
+          reason: 'No inventoryImpact.dateChanges roomTypeId found',
+          bookingId: payload.bookingId
+        }];
+      }
+
+      const dates = dateChanges.map((dc) => new Date(dc.date)).filter((d) => !Number.isNaN(d.getTime()));
+      const minDate = dates.length ? new Date(Math.min(...dates.map((d) => d.getTime()))) : new Date();
+      const maxDate = dates.length ? new Date(Math.max(...dates.map((d) => d.getTime()))) : new Date();
+
+      const syncResults = [];
+      for (const roomTypeId of impactedRoomTypes) {
+        const result = await channelManager.syncToAllChannels(roomTypeId, {
+          startDate: minDate.toISOString().split('T')[0],
+          endDate: maxDate.toISOString().split('T')[0]
+        });
+        syncResults.push({ roomTypeId, result });
+      }
+
+      return [{
+        status: 'success',
+        syncType: 'booking_modification',
+        bookingId: payload.bookingId,
+        modificationType: payload.modificationType,
+        impactedRoomTypes,
+        syncResults
+      }];
     } catch (error) {
       throw new Error(`${error.message}`);
     }
@@ -742,8 +796,30 @@ class QueueService {
    */
   async processCancellation(event) {
     try {
-      // TODO: Implement cancellation processing
-      return [];
+      const { payload } = event;
+      const { default: ChannelManagerService } = await import('./channelManager.js');
+      const channelManager = new ChannelManagerService();
+
+      const roomTypeId = payload.inventoryRelease?.roomTypeId;
+      const startDate = payload.inventoryRelease?.dateRange?.startDate;
+      const endDate = payload.inventoryRelease?.dateRange?.endDate;
+
+      if (!roomTypeId || !startDate || !endDate) {
+        return [{
+          status: 'skipped',
+          reason: 'Missing inventoryRelease.roomTypeId/dateRange in cancellation payload',
+          bookingId: payload.bookingId
+        }];
+      }
+
+      const result = await channelManager.syncToAllChannels(roomTypeId, { startDate, endDate });
+      return [{
+        status: 'success',
+        syncType: 'cancellation',
+        bookingId: payload.bookingId,
+        cancellationType: payload.cancellationType,
+        result
+      }];
     } catch (error) {
       throw new Error(`${error.message}`);
     }
@@ -754,8 +830,50 @@ class QueueService {
    */
   async processStopSellUpdate(event) {
     try {
-      // TODO: Implement stop sell update processing
-      return [];
+      const { payload } = event;
+      const roomTypes = payload.affectedRoomTypes || [];
+      const startDate = payload.dateRange?.startDate;
+      const endDate = payload.dateRange?.endDate;
+
+      if (!roomTypes.length || !startDate || !endDate) {
+        return [{
+          status: 'skipped',
+          reason: 'Missing affectedRoomTypes/dateRange in stop_sell_update payload',
+          ruleId: payload.ruleId
+        }];
+      }
+
+      const syncResults = [];
+      for (const roomTypeId of roomTypes) {
+        const restrictionEvent = {
+          eventId: `${event.eventId}:restriction:${roomTypeId}`,
+          payload: {
+            channels: payload.channelTargeting || ['all'],
+            roomTypeId,
+            dateRange: { startDate, endDate },
+            restrictions: [{
+              date: startDate,
+              stopSell: payload.restrictions?.stopSell ?? true,
+              closedToArrival: !!payload.restrictions?.closedToArrival,
+              closedToDeparture: !!payload.restrictions?.closedToDeparture,
+              minStay: payload.restrictions?.minLengthOfStay,
+              maxStay: payload.restrictions?.maxLengthOfStay
+            }]
+          }
+        };
+
+        const result = await this.processRestrictionUpdate(restrictionEvent);
+        syncResults.push({ roomTypeId, result });
+      }
+
+      return [{
+        status: 'success',
+        syncType: 'stop_sell_update',
+        ruleId: payload.ruleId,
+        action: payload.action,
+        roomTypes,
+        syncResults
+      }];
     } catch (error) {
       throw new Error(`${error.message}`);
     }

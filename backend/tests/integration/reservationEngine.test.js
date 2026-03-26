@@ -1,16 +1,20 @@
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import RoomAvailability from '../../src/models/RoomAvailability.js';
 import StopSellRule from '../../src/models/StopSellRule.js';
 import inventoryAlertService from '../../src/services/inventoryAlertService.js';
+import '../../src/models/RoomType.js';
 
-let mongoServer;
+let replset;
 
 describe('Reservation Engine Integration Tests', () => {
   beforeAll(async () => {
-    // Start in-memory MongoDB server
-    mongoServer = await MongoMemoryServer.create();
-    const mongoUri = mongoServer.getUri();
+    // Start in-memory MongoDB replica set for transaction tests
+    replset = await MongoMemoryReplSet.create({
+      replSet: { count: 1 },
+      binary: { version: '7.0.14' }
+    });
+    const mongoUri = replset.getUri();
     
     await mongoose.connect(mongoUri, {
       useNewUrlParser: true,
@@ -20,7 +24,7 @@ describe('Reservation Engine Integration Tests', () => {
 
   afterAll(async () => {
     await mongoose.disconnect();
-    await mongoServer.stop();
+    await replset.stop();
   });
 
   beforeEach(async () => {
@@ -167,7 +171,7 @@ describe('Reservation Engine Integration Tests', () => {
         priority: 1,
         dateRange: {
           startDate: new Date('2024-01-15'),
-          endDate: new Date('2024-01-15')
+          endDate: new Date('2024-01-16')
         },
         allRoomTypes: true,
         allChannels: true,
@@ -182,7 +186,7 @@ describe('Reservation Engine Integration Tests', () => {
         priority: 10,
         dateRange: {
           startDate: new Date('2024-01-15'),
-          endDate: new Date('2024-01-15')
+          endDate: new Date('2024-01-16')
         },
         allRoomTypes: true,
         allChannels: true,
@@ -221,9 +225,10 @@ describe('Reservation Engine Integration Tests', () => {
         roomTypeId,
         date: new Date('2024-01-15'),
         totalRooms: 5,
-        availableRooms: -1, // Overbooked
+        availableRooms: 0, // Sold-out with soldRooms > totalRooms
         soldRooms: 6,        // More than total
-        blockedRooms: 0
+        blockedRooms: 0,
+        overbookedRooms: 1
       });
       await inventory.save();
 
@@ -396,7 +401,7 @@ describe('Reservation Engine Integration Tests', () => {
       expect(metrics).toBeDefined();
       expect(metrics.totalDays).toBe(3);
       expect(metrics.averageOccupancy).toBe(1); // (0+1+2)/3
-      expect(metrics.revenuePerRoom).toBe(40); // (0+120+240)/3
+      expect(metrics.revenuePerRoom).toBe(120); // (0+120+240)/3
       expect(metrics.conversionRate).toBe(0); // No reservations yet
     });
   });

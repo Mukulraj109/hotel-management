@@ -424,8 +424,56 @@ class TravelAgentService {
   // Phase 2 Methods: Core Travel Agent Pages
   async createSingleBooking(data: Partial<TravelAgentBooking>): Promise<TravelAgentBooking> {
     try {
-      const response = await api.post('/travel-agents/bookings/single', data);
-      return response.data.booking;
+      // Backend exposes multi-booking as the canonical travel-agent booking API.
+      // Adapt single-booking payload into a one-room multi-booking request.
+      const checkIn = data.bookingDetails?.checkIn ? new Date(data.bookingDetails.checkIn) : new Date();
+      const checkOut = data.bookingDetails?.checkOut ? new Date(data.bookingDetails.checkOut) : new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const nights = data.bookingDetails?.nights || 1;
+      const roomTypes = data.bookingDetails?.roomTypes || [];
+
+      const transformedData = {
+        groupDetails: {
+          groupName: `Single Booking - ${new Date().toISOString().split('T')[0]}`,
+          primaryContact: {
+            name: data.guestDetails?.primaryGuest?.name || 'Guest',
+            email: data.guestDetails?.primaryGuest?.email || 'guest@example.com',
+            phone: data.guestDetails?.primaryGuest?.phone || '+0000000000'
+          },
+          totalGuests: data.guestDetails?.totalGuests || 1,
+          checkIn,
+          checkOut,
+          nights
+        },
+        bookings: roomTypes.map((room) => ({
+          roomTypeId: room.roomTypeId,
+          quantity: room.quantity || 1,
+          ratePerNight: room.ratePerNight || 0,
+          specialRate: room.specialRate,
+          guestDetails: {
+            primaryGuest: data.guestDetails?.primaryGuest || {
+              name: 'Guest',
+              email: 'guest@example.com',
+              phone: '+0000000000'
+            },
+            adults: Math.max(1, data.guestDetails?.totalGuests || 1),
+            children: 0
+          }
+        })),
+        paymentDetails: {
+          method: data.paymentDetails?.method || 'credit_card',
+          status: data.paymentDetails?.status || 'pending'
+        },
+        specialConditions: data.specialConditions || {}
+      };
+
+      const response = await api.post('/travel-agents/multi-booking', transformedData);
+      return (
+        response.data?.data?.multiBooking ||
+        response.data?.multiBooking ||
+        response.data?.booking ||
+        response.data?.data ||
+        response.data
+      ) as TravelAgentBooking;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }
@@ -446,8 +494,12 @@ class TravelAgentService {
 
   async updateAgentProfile(data: Partial<TravelAgent>): Promise<TravelAgent> {
     try {
-      const response = await api.put('/travel-agents/me', data);
-      return response.data.travelAgent;
+      // Backend provides PUT /travel-agents/:id (no /me update route).
+      const profileResponse = await api.get('/travel-agents/me');
+      const travelAgentId = profileResponse.data?.data?.travelAgent?._id || profileResponse.data?.travelAgent?._id;
+      if (!travelAgentId) throw new Error('Unable to determine travel agent profile id');
+      const response = await api.put(`/travel-agents/${travelAgentId}`, data);
+      return response.data?.travelAgent || response.data?.data?.travelAgent;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
     }

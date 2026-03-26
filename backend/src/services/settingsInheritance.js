@@ -589,7 +589,7 @@ export class SettingsInheritanceService {
       let inheritanceRecord = await SettingsInheritance.findOne({
         propertyId,
         settingType
-      }).lean();
+      });
 
       if (!inheritanceRecord) {
         inheritanceRecord = await SettingsInheritance.create({
@@ -628,7 +628,7 @@ export class SettingsInheritanceService {
       const inheritanceRecord = await SettingsInheritance.findOne({
         propertyId,
         settingType
-      }).lean();
+      });
 
       if (!inheritanceRecord) {
         throw new ApplicationError('Inheritance record not found', 404);

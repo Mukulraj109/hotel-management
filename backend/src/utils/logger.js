@@ -287,15 +287,4 @@ class EnhancedLogger {
 
 const enhancedLogger = new EnhancedLogger(logger);
 
-// Graceful shutdown handling
-process.on('SIGTERM', () => {
-  enhancedLogger.info('Received SIGTERM, shutting down gracefully');
-  logger.end();
-});
-
-process.on('SIGINT', () => {
-  enhancedLogger.info('Received SIGINT, shutting down gracefully');
-  logger.end();
-});
-
 export default enhancedLogger;

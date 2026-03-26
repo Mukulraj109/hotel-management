@@ -532,7 +532,13 @@ router.get('/:id', authenticate, ensureTenantContext, ensurePropertyAccess, catc
     throw new ApplicationError('You do not have permission to view this booking', 403);
   }
 
-  if ((req.user.role === 'staff' || req.user.role === 'frontdesk') && booking.hotelId.toString() !== req.user.hotelId.toString()) {
+  // Enforce strict tenant isolation for all non-guest roles.
+  const bookingHotelId =
+    typeof booking.hotelId === 'object' && booking.hotelId?._id
+      ? booking.hotelId._id.toString()
+      : booking.hotelId?.toString?.() || '';
+  const userHotelId = req.user?.hotelId?.toString?.() || '';
+  if (req.user.role !== 'guest' && bookingHotelId !== userHotelId) {
     throw new ApplicationError('You do not have permission to view this booking', 403);
   }
 
@@ -1514,122 +1520,146 @@ router.patch('/:id/check-in',
   authorizePolicy('bookings', 'checkIn'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
-    const booking = await Booking.findById(req.params.id);
-    bookingService.assertCanCheckInBooking(booking, req.user);
-    const bookingBeforeCheckIn = bookingAuditService.buildSnapshot(booking);
+    const session = await mongoose.startSession();
+    let booking;
+    let updatedBooking;
+    let bookingBeforeCheckIn;
+    const paymentDetails = req.body.paymentDetails;
 
-    // Log current booking status for debugging
-    logger.debug('Check-in attempt', { bookingId: booking._id, bookingNumber: booking.bookingNumber, currentStatus: booking.status });
-    bookingService.assertBookingCanBeCheckedIn(booking);
+    try {
+      await session.withTransaction(async () => {
+        booking = await Booking.findById(req.params.id).session(session);
+        bookingService.assertCanCheckInBooking(booking, req.user);
+        bookingBeforeCheckIn = bookingAuditService.buildSnapshot(booking);
 
-    const { paymentDetails } = req.body;
+        // Log current booking status for debugging
+        logger.debug('Check-in attempt', { bookingId: booking._id, bookingNumber: booking.bookingNumber, currentStatus: booking.status });
+        bookingService.assertBookingCanBeCheckedIn(booking);
 
-    // Auto-confirm pending bookings before checking in
-    if (booking.status === 'pending') {
-      // Validate pending -> confirmed transition
-      const confirmTransition = validateTransition(booking.status, 'confirmed');
-      if (!confirmTransition.valid) {
-        throw new ApplicationError(confirmTransition.error, 400);
-      }
-      booking.status = 'confirmed';
-      booking.lastStatusChange = {
-        from: 'pending',
-        to: 'confirmed',
-        timestamp: new Date(),
-        reason: 'Auto-confirmed during check-in'
-      };
-      await booking.save();
-    }
+        // Auto-confirm pending bookings before checking in
+        if (booking.status === 'pending') {
+          // Validate pending -> confirmed transition
+          const confirmTransition = validateTransition(booking.status, 'confirmed');
+          if (!confirmTransition.valid) {
+            throw new ApplicationError(confirmTransition.error, 400);
+          }
+          booking.status = 'confirmed';
+          booking.lastStatusChange = {
+            from: 'pending',
+            to: 'confirmed',
+            timestamp: new Date(),
+            reason: 'Auto-confirmed during check-in'
+          };
+          await booking.save({ session });
+        }
 
-    // Validate confirmed -> checked_in transition
-    const checkInTransition = validateTransition(booking.status, 'checked_in');
-    if (!checkInTransition.valid) {
-      throw new ApplicationError(checkInTransition.error, 400);
-    }
+        // Validate confirmed -> checked_in transition
+        const checkInTransition = validateTransition(booking.status, 'checked_in');
+        if (!checkInTransition.valid) {
+          throw new ApplicationError(checkInTransition.error, 400);
+        }
 
-    // Update booking with check-in information
-    const updateData = {
-      status: 'checked_in',
-      checkInTime: new Date(), // Auto-update check-in time
-      lastStatusChange: {
-        from: 'confirmed', // Always confirmed at this point
-        to: 'checked_in',
-        timestamp: new Date(),
-        reason: 'Guest checked in'
-      }
-    };
+        // Update booking with check-in information
+        const updateData = {
+          status: 'checked_in',
+          checkInTime: new Date(), // Auto-update check-in time
+          lastStatusChange: {
+            from: 'confirmed', // Always confirmed at this point
+            to: 'checked_in',
+            timestamp: new Date(),
+            reason: 'Guest checked in'
+          }
+        };
 
-    // Add payment details if provided
-    if (paymentDetails && paymentDetails.paymentMethods) {
-      updateData.paymentDetails = {
-        ...paymentDetails,
-        collectedAt: new Date(),
-        collectedBy: req.user._id
-      };
-    }
+        // Add payment details if provided
+        if (paymentDetails && paymentDetails.paymentMethods) {
+          updateData.paymentDetails = {
+            ...paymentDetails,
+            collectedAt: new Date(),
+            collectedBy: req.user._id
+          };
+        }
 
-    const updatedBooking = await Booking.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true, runValidators: true }
-    ).populate([
-      { path: 'rooms.roomId', select: 'roomNumber type baseRate currentRate' },
-      { path: 'userId', select: 'name email phone' },
-      { path: 'hotelId', select: 'name address contact' }
-    ]);
+        updatedBooking = await Booking.findByIdAndUpdate(
+          req.params.id,
+          updateData,
+          { new: true, runValidators: true, session }
+        ).populate([
+          { path: 'rooms.roomId', select: 'roomNumber type baseRate currentRate' },
+          { path: 'userId', select: 'name email phone' },
+          { path: 'hotelId', select: 'name address contact' }
+        ]);
 
-    // Add to status history
-    updatedBooking.statusHistory.push({
-      status: 'checked_in',
-      timestamp: new Date(),
-      changedBy: {
-        source: 'admin',
-        userId: req.user._id.toString(),
-        userName: req.user.name
-      },
-      reason: 'Guest checked in',
-      automaticTransition: false,
-      validatedTransition: true
-    });
-
-    // Process payment collection if provided
-    if (paymentDetails && paymentDetails.paymentMethods && Array.isArray(paymentDetails.paymentMethods)) {
-      // Calculate total payment amount
-      const totalPaymentAmount = paymentDetails.paymentMethods.reduce((sum, pm) => sum + (pm.amount || 0), 0);
-
-      // Initialize paymentHistory if it doesn't exist
-      if (!updatedBooking.paymentHistory) {
-        updatedBooking.paymentHistory = [];
-      }
-
-      // Add each payment to payment history
-      paymentDetails.paymentMethods.forEach((pm) => {
-        updatedBooking.paymentHistory.push({
-          amount: pm.amount || 0,
-          method: pm.method || 'cash',
-          reference: pm.reference || '',
-          notes: pm.notes || 'Payment collected at check-in',
-          collectedBy: req.user._id,
-          collectedAt: new Date(),
-          status: 'completed'
+        // Add to status history
+        updatedBooking.statusHistory.push({
+          status: 'checked_in',
+          timestamp: new Date(),
+          changedBy: {
+            source: 'admin',
+            userId: req.user._id.toString(),
+            userName: req.user.name
+          },
+          reason: 'Guest checked in',
+          automaticTransition: false,
+          validatedTransition: true
         });
+
+        // Process payment collection if provided
+        if (paymentDetails && paymentDetails.paymentMethods && Array.isArray(paymentDetails.paymentMethods)) {
+          // Calculate total payment amount
+          const totalPaymentAmount = paymentDetails.paymentMethods.reduce((sum, pm) => sum + (pm.amount || 0), 0);
+
+          // Initialize paymentHistory if it doesn't exist
+          if (!updatedBooking.paymentHistory) {
+            updatedBooking.paymentHistory = [];
+          }
+
+          // Add each payment to payment history
+          paymentDetails.paymentMethods.forEach((pm) => {
+            updatedBooking.paymentHistory.push({
+              amount: pm.amount || 0,
+              method: pm.method || 'cash',
+              reference: pm.reference || '',
+              notes: pm.notes || 'Payment collected at check-in',
+              collectedBy: req.user._id,
+              collectedAt: new Date(),
+              status: 'completed'
+            });
+          });
+
+          logger.info('Check-in payment processed', { bookingNumber: updatedBooking.bookingNumber, paymentAmount: totalPaymentAmount });
+        }
+
+        // Capture ID verification if provided
+        if (req.body.idVerification) {
+          updatedBooking.idVerification = {
+            ...req.body.idVerification,
+            verified: true,
+            verifiedBy: req.user._id,
+            verifiedAt: new Date()
+          };
+        }
+
+        // Save booking changes in transaction.
+        await updatedBooking.save({ session });
+
+        // Batch: update all room statuses to 'occupied' with a single updateMany
+        if (updatedBooking.rooms && updatedBooking.rooms.length > 0) {
+          const roomIdsToUpdate = updatedBooking.rooms
+            .filter(r => r.roomId)
+            .map(r => r.roomId._id || r.roomId);
+          if (roomIdsToUpdate.length > 0) {
+            await Room.updateMany(
+              { _id: { $in: roomIdsToUpdate } },
+              { $set: { status: 'occupied', currentBookingId: updatedBooking._id } },
+              { session }
+            );
+          }
+        }
       });
-
-      logger.info('Check-in payment processed', { bookingNumber: updatedBooking.bookingNumber, paymentAmount: totalPaymentAmount });
+    } finally {
+      await session.endSession();
     }
-
-    // Capture ID verification if provided
-    if (req.body.idVerification) {
-      updatedBooking.idVerification = {
-        ...req.body.idVerification,
-        verified: true,
-        verifiedBy: req.user._id,
-        verifiedAt: new Date()
-      };
-    }
-
-    // Save the booking - this will trigger pre-save hooks to calculate paymentDetails.totalPaid
-    await updatedBooking.save();
 
     if (updatedBooking.paymentStatus) {
       try {
@@ -1642,19 +1672,6 @@ router.patch('/:id/check-in',
         invoiceLifecycleSyncService.logSyncFailure(
           { bookingId: updatedBooking._id, flow: 'booking-check-in' },
           invoiceSyncError
-        );
-      }
-    }
-
-    // Batch: update all room statuses to 'occupied' with a single updateMany
-    if (updatedBooking.rooms && updatedBooking.rooms.length > 0) {
-      const roomIdsToUpdate = updatedBooking.rooms
-        .filter(r => r.roomId)
-        .map(r => r.roomId._id || r.roomId);
-      if (roomIdsToUpdate.length > 0) {
-        await Room.updateMany(
-          { _id: { $in: roomIdsToUpdate } },
-          { $set: { status: 'occupied', currentBookingId: updatedBooking._id } }
         );
       }
     }
@@ -1731,113 +1748,107 @@ router.patch('/:id/check-out',
   authorizePolicy('bookings', 'checkOut'),
   ensurePropertyAccess,
   catchAsync(async (req, res) => {
-    const booking = await Booking.findById(req.params.id).lean();
-    bookingService.assertBookingCanBeCheckedOut(booking);
-    const bookingBeforeCheckout = bookingAuditService.buildSnapshot(booking);
+    const session = await mongoose.startSession();
+    let updatedBooking;
+    let bookingBeforeCheckout;
+    let booking;
+    let bypassBalanceCheck = false;
+    let bypassReason;
+    let outstandingBalance = 0;
 
-    // ensurePropertyAccess middleware already verified access
-    // No need for additional hotelId check - supports multi-property
+    try {
+      await session.withTransaction(async () => {
+        booking = await Booking.findById(req.params.id).session(session);
+        bookingService.assertBookingCanBeCheckedOut(booking);
+        bookingBeforeCheckout = bookingAuditService.buildSnapshot(booking);
 
-    // CRITICAL: Validate payment balance BEFORE allowing checkout
-    // Guests cannot checkout with outstanding balance unless explicitly bypassed
-    const { bypassBalanceCheck, bypassReason } = req.body;
-    const { outstandingBalance } = bookingService.getCheckoutBalanceInfo(booking);
+        // ensurePropertyAccess middleware already verified access
+        // No need for additional hotelId check - supports multi-property
 
-    logger.debug('Checkout payment validation', { bookingNumber: booking.bookingNumber, outstandingBalance, bypassBalanceCheck });
+        // CRITICAL: Validate payment balance BEFORE allowing checkout
+        // Guests cannot checkout with outstanding balance unless explicitly bypassed
+        ({ bypassBalanceCheck, bypassReason } = req.body);
+        ({ outstandingBalance } = bookingService.getCheckoutBalanceInfo(booking));
 
-    if (outstandingBalance > 0 && !bypassBalanceCheck) {
-      throw new ApplicationError(
-        `Cannot check out guest with outstanding balance of ₹${outstandingBalance.toLocaleString()}. Please collect payment first or use bypass checkout.`,
-        400,
-        'OUTSTANDING_BALANCE'
-      );
-    }
+        logger.debug('Checkout payment validation', { bookingNumber: booking.bookingNumber, outstandingBalance, bypassBalanceCheck });
 
-    // Log bypass action for audit trail
-    if (bypassBalanceCheck && outstandingBalance > 0) {
-      logger.warn('Bypass checkout with outstanding balance', {
-        bookingNumber: booking.bookingNumber,
-        outstandingBalance,
-        bypassReason: bypassReason || 'No reason provided',
-        bypassedBy: req.user._id
-      });
-
-      // Add to booking notes for audit
-      if (!booking.notes) {
-        booking.notes = [];
-      }
-      booking.notes.push({
-        text: `BYPASS CHECKOUT - Outstanding balance: ₹${outstandingBalance}. Reason: ${bypassReason || 'Not specified'}`,
-        createdBy: req.user._id,
-        createdAt: new Date(),
-        type: 'bypass_checkout'
-      });
-    }
-
-    // Update booking with check-out information
-    const updateData = {
-      status: 'checked_out',
-      checkOutTime: new Date(), // Auto-update check-out time
-      lastStatusChange: {
-        from: booking.status,
-        to: 'checked_out',
-        timestamp: new Date(),
-        reason: 'Guest checked out'
-      }
-    };
-
-    if (bypassBalanceCheck && outstandingBalance > 0) {
-      updateData.$push = {
-        notes: {
-          text: `BYPASS CHECKOUT - Outstanding balance: Rs ${outstandingBalance}. Reason: ${bypassReason || 'Not specified'}`,
-          createdBy: req.user._id,
-          createdAt: new Date(),
-          type: 'bypass_checkout'
+        if (outstandingBalance > 0 && !bypassBalanceCheck) {
+          throw new ApplicationError(
+            `Cannot check out guest with outstanding balance of ₹${outstandingBalance.toLocaleString()}. Please collect payment first or use bypass checkout.`,
+            400,
+            'OUTSTANDING_BALANCE'
+          );
         }
-      };
-    }
 
-    const updatedBooking = await Booking.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true, runValidators: true }
-    ).populate([
-      { path: 'rooms.roomId', select: 'roomNumber type baseRate currentRate' },
-      { path: 'userId', select: 'name email phone' },
-      { path: 'hotelId', select: 'name address contact' }
-    ]);
+        // Update booking with check-out information
+        const updateData = {
+          status: 'checked_out',
+          checkOutTime: new Date(), // Auto-update check-out time
+          lastStatusChange: {
+            from: booking.status,
+            to: 'checked_out',
+            timestamp: new Date(),
+            reason: 'Guest checked out'
+          }
+        };
 
-    // Add to status history
-    updatedBooking.statusHistory.push({
-      status: 'checked_out',
-      timestamp: new Date(),
-      changedBy: {
-        source: 'admin',
-        userId: req.user._id.toString(),
-        userName: req.user.name
-      },
-      reason: 'Guest checked out',
-      automaticTransition: false,
-      validatedTransition: true
-    });
+        if (bypassBalanceCheck && outstandingBalance > 0) {
+          updateData.$push = {
+            notes: {
+              text: `BYPASS CHECKOUT - Outstanding balance: Rs ${outstandingBalance}. Reason: ${bypassReason || 'Not specified'}`,
+              createdBy: req.user._id,
+              createdAt: new Date(),
+              type: 'bypass_checkout'
+            }
+          };
+        }
 
-    await updatedBooking.save();
+        updatedBooking = await Booking.findByIdAndUpdate(
+          req.params.id,
+          updateData,
+          { new: true, runValidators: true, session }
+        ).populate([
+          { path: 'rooms.roomId', select: 'roomNumber type baseRate currentRate' },
+          { path: 'userId', select: 'name email phone' },
+          { path: 'hotelId', select: 'name address contact' }
+        ]);
 
-    // Batch: update all room statuses to 'dirty' with a single updateMany
-    if (updatedBooking.rooms && updatedBooking.rooms.length > 0) {
-      const roomIdsForDirty = updatedBooking.rooms
-        .filter(r => r.roomId)
-        .map(r => r.roomId._id || r.roomId);
-      if (roomIdsForDirty.length > 0) {
-        await Room.updateMany(
-          { _id: { $in: roomIdsForDirty } },
-          { $set: { status: 'dirty', lastCheckout: new Date() } }
-        );
-      }
-      logger.debug('Room status updated to dirty at checkout', {
-        bookingNumber: updatedBooking.bookingNumber,
-        roomCount: updatedBooking.rooms.length
+        // Add to status history
+        updatedBooking.statusHistory.push({
+          status: 'checked_out',
+          timestamp: new Date(),
+          changedBy: {
+            source: 'admin',
+            userId: req.user._id.toString(),
+            userName: req.user.name
+          },
+          reason: 'Guest checked out',
+          automaticTransition: false,
+          validatedTransition: true
+        });
+
+        await updatedBooking.save({ session });
+
+        // Batch: update all room statuses to 'dirty' with a single updateMany
+        if (updatedBooking.rooms && updatedBooking.rooms.length > 0) {
+          const roomIdsForDirty = updatedBooking.rooms
+            .filter(r => r.roomId)
+            .map(r => r.roomId._id || r.roomId);
+          if (roomIdsForDirty.length > 0) {
+            await Room.updateMany(
+              { _id: { $in: roomIdsForDirty } },
+              { $set: { status: 'dirty', lastCheckout: new Date() } },
+              { session }
+            );
+          }
+          logger.debug('Room status updated to dirty at checkout', {
+            bookingNumber: updatedBooking.bookingNumber,
+            roomCount: updatedBooking.rooms.length
+          });
+        }
       });
+    } finally {
+      await session.endSession();
     }
 
     // Auto-generate final invoice at checkout

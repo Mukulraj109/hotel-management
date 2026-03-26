@@ -241,6 +241,15 @@ export class ScheduledUpdatesService {
         }))
       };
     } catch (error) {
+      if (error?.name === 'MongoExpiredSessionError' || error?.message?.includes('session that has ended')) {
+        logger.warn('[Scheduled Updates] Skipping run due to ended MongoDB session during shutdown/restart');
+        return {
+          total: 0,
+          succeeded: 0,
+          failed: 0,
+          results: []
+        };
+      }
       throw new Error(`${error.message}`);
     }
   }

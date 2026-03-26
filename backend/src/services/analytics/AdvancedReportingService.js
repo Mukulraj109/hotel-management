@@ -13,14 +13,9 @@ import { performance } from 'perf_hooks';
 class AdvancedReportingService {
   constructor() {
     this.logger = logger;
-    
-    // Initialize Redis for caching
-    this.cache = createClient({
-      url: process.env.REDIS_URL || 'redis://localhost:6379'
-    });
-    
-    // Initialize report generation queue
-    this.reportQueue = new Queue('report generation', process.env.REDIS_URL || 'redis://localhost:6379');
+    this.cache = null;
+    this.reportQueue = null;
+    this.isInitialized = false;
     
     // Cache TTL settings (in seconds)
     this.cacheTTL = {
@@ -33,7 +28,43 @@ class AdvancedReportingService {
     
     // Initialize report templates
     this.initializeReportTemplates();
-    this.setupQueueProcessors();
+  }
+
+  /**
+   * Lazily initialize Redis cache and background queue.
+   * Avoid creating extra Redis clients during app boot.
+   */
+  async initialize() {
+    if (this.isInitialized) {
+      return;
+    }
+
+    // Cache client for report data
+    this.cache = createClient({
+      url: process.env.REDIS_URL || 'redis://localhost:6379'
+    });
+
+    this.cache.on('error', (error) => {
+      this.logger.warn('Advanced reporting cache Redis error', {
+        error: error?.message || 'Unknown Redis error'
+      });
+    });
+
+    await this.cache.connect();
+
+    // Queue is optional in development to limit Redis client usage
+    const enableQueue = process.env.ENABLE_REPORT_QUEUE === 'true';
+    if (enableQueue) {
+      this.reportQueue = new Queue('report generation', process.env.REDIS_URL || 'redis://localhost:6379');
+      this.setupQueueProcessors();
+    } else {
+      this.logger.info('Advanced reporting queue disabled', {
+        enableQueue,
+        nodeEnv: process.env.NODE_ENV || 'development'
+      });
+    }
+
+    this.isInitialized = true;
   }
   
   /**
@@ -116,6 +147,8 @@ class AdvancedReportingService {
    * Setup queue processors for background report generation
    */
   setupQueueProcessors() {
+    if (!this.reportQueue) return;
+
     this.reportQueue.process('generate-report', async (job) => {
       const { reportType, parameters, userId } = job.data;
       
@@ -123,7 +156,7 @@ class AdvancedReportingService {
         const report = await this.executeReport(reportType, parameters);
         
         // Store result for user retrieval
-        await this.cache.setex(
+        await this.cache.setEx(
           `report:result:${job.id}`,
           3600, // 1 hour
           JSON.stringify({
@@ -157,6 +190,10 @@ class AdvancedReportingService {
     const startTime = performance.now();
     
     try {
+      if (!this.isInitialized) {
+        await this.initialize();
+      }
+
       // Generate cache key
       const cacheKey = this.generateCacheKey(reportType, parameters);
       
@@ -175,6 +212,10 @@ class AdvancedReportingService {
       
       // Check if report should be generated in background
       if (options.async) {
+        if (!this.reportQueue) {
+          throw new Error('Report queue is disabled. Set ENABLE_REPORT_QUEUE=true to use async reports.');
+        }
+
         const job = await this.reportQueue.add('generate-report', {
           reportType,
           parameters,
@@ -194,7 +235,7 @@ class AdvancedReportingService {
       // Cache result
       const template = this.reportTemplates[reportType];
       if (template) {
-        await this.cache.setex(cacheKey, template.cache_ttl, JSON.stringify(report));
+        await this.cache.setEx(cacheKey, template.cache_ttl, JSON.stringify(report));
       }
       
       report.cached = false;
@@ -778,6 +819,14 @@ class AdvancedReportingService {
    */
   async getReportStatus(jobId) {
     try {
+      if (!this.isInitialized) {
+        await this.initialize();
+      }
+
+      if (!this.reportQueue) {
+        return { status: 'disabled', message: 'Report queue is disabled' };
+      }
+
       const job = await this.reportQueue.getJob(jobId);
       if (!job) return null;
     

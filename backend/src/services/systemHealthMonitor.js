@@ -381,6 +381,10 @@ class SystemHealthMonitor {
 
       // Check for high maintenance load
       try {
+        if (mongoose.connection.readyState !== 1) {
+          return;
+        }
+
         const urgentMaintenance = await MaintenanceTask.countDocuments({
           priority: 'urgent',
           status: { $in: ['pending', 'in_progress'] }

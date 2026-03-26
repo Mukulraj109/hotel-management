@@ -235,7 +235,7 @@ stopSellRuleSchema.statics.evaluateRulesForContext = async function(context) {
     const rules = await this.find({
       hotelId,
       isActive: true
-    }).sort({ priority: -1, createdAt: 1 }).lean().limit(1000);
+    }).sort({ priority: -1, createdAt: 1 }).limit(1000);
   
     const results = [];
   

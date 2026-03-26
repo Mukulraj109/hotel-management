@@ -32,8 +32,7 @@ class ETLService {
         await this.executeFullETL();
     
       } catch (error) {
-        console.error('Operation failed:', error.message);
-        throw error;
+        this.logger.error('Full ETL cron execution failed', { error: error.message });
       }
     });
     
@@ -43,8 +42,7 @@ class ETLService {
         await this.executeIncrementalETL();
     
       } catch (error) {
-        console.error('Operation failed:', error.message);
-        throw error;
+        this.logger.error('Incremental ETL cron execution failed', { error: error.message });
       }
     });
     
@@ -54,8 +52,7 @@ class ETLService {
         await this.executeMonthlyAggregation();
     
       } catch (error) {
-        console.error('Operation failed:', error.message);
-        throw error;
+        this.logger.error('Monthly ETL aggregation cron execution failed', { error: error.message });
       }
     });
     

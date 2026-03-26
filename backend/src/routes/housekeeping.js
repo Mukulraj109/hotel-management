@@ -193,8 +193,8 @@ router.patch('/:id', authenticate, ensureTenantContext, authorizePolicy('houseke
     updateData.completedAt = new Date();
   }
 
-  const task = await Housekeeping.findByIdAndUpdate(
-    id,
+  const task = await Housekeeping.findOneAndUpdate(
+    { _id: id, hotelId: req.user.hotelId },
     updateData,
     { new: true, runValidators: true }
   ).populate('roomId assignedToUserId assignedTo');
@@ -248,8 +248,8 @@ router.get('/stats', authenticate, ensureTenantContext, authorizePolicy('houseke
 }));
 
 // Inspect a completed housekeeping task (QA workflow)
-router.post('/:id/inspect', authenticate, authorizePolicy('housekeeping', 'inspectAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
-  const task = await Housekeeping.findById(req.params.id);
+router.post('/:id/inspect', authenticate, ensureTenantContext, authorizePolicy('housekeeping', 'inspectAccess'), ensurePropertyAccess, validate(mutationBaselineSchema), catchAsync(async (req, res) => {
+  const task = await Housekeeping.findOne({ _id: req.params.id, hotelId: req.user.hotelId });
 
   if (!task) {
     throw new ApplicationError('Housekeeping task not found', 404);

@@ -2,6 +2,7 @@ import { createClient } from 'redis';
 import logger from '../utils/logger.js';
 
 let redisClient;
+let lastRedisErrorLogAt = 0;
 
 export const connectRedis = async () => {
   try {
@@ -10,7 +11,15 @@ export const connectRedis = async () => {
     });
 
     redisClient.on('error', (err) => {
-      logger.error('Redis Client Error:', err);
+      const now = Date.now();
+      // Throttle repetitive connection/auth error logs during reconnect storms.
+      if (now - lastRedisErrorLogAt > 10000) {
+        lastRedisErrorLogAt = now;
+        logger.error('Redis Client Error', {
+          error: err?.message || 'Unknown Redis error',
+          code: err?.code || null
+        });
+      }
     });
 
     redisClient.on('connect', () => {

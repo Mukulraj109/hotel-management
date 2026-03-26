@@ -1,5 +1,6 @@
-const request = require('supertest');
-const bcrypt = require('bcryptjs');
+import request from 'supertest';
+import bcrypt from 'bcryptjs';
+import app from '../../server.js';
 
 // Integration test: imports full server.js (168 routes + import.meta usage).
 // Cannot run under Babel CJS transform — requires Node ESM mode.

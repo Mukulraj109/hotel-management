@@ -5,8 +5,11 @@ import User from '../models/User.js';
 import { AppError } from '../utils/appError.js';
 import { catchAsync } from '../utils/catchAsync.js';
 import cron from 'node-cron';
+import mongoose from 'mongoose';
 
 const scheduledJobs = new Map();
+let schedulerShuttingDown = false;
+let reinitializeTimeout = null;
 
 const createCampaign = catchAsync(async (req, res, next) => {
   const {
@@ -493,6 +496,12 @@ const getScheduledCampaigns = catchAsync(async (req, res, next) => {
 
 const reinitializeScheduledCampaigns = async () => {
   try {
+    if (schedulerShuttingDown) return;
+    if (mongoose.connection.readyState !== 1) {
+      console.warn('Skipping scheduled campaign reinitialization: database not connected');
+      return;
+    }
+
     const scheduledCampaigns = await EmailCampaign.find({
       status: 'scheduled',
       scheduledAt: { $gte: new Date() }
@@ -506,11 +515,19 @@ const reinitializeScheduledCampaigns = async () => {
 
     console.log(`📅 Reinitialized ${scheduledCampaigns.length} scheduled campaigns`);
   } catch (error) {
+    if (schedulerShuttingDown || error?.name === 'MongoExpiredSessionError') {
+      return;
+    }
     console.error('Failed to reinitialize scheduled campaigns:', error);
   }
 };
 
 process.on('SIGTERM', () => {
+  schedulerShuttingDown = true;
+  if (reinitializeTimeout) {
+    clearTimeout(reinitializeTimeout);
+    reinitializeTimeout = null;
+  }
   console.log('🔄 Gracefully shutting down email scheduler...');
   scheduledJobs.forEach((job, campaignId) => {
     job.destroy();
@@ -519,7 +536,9 @@ process.on('SIGTERM', () => {
   scheduledJobs.clear();
 });
 
-setTimeout(reinitializeScheduledCampaigns, 5000);
+if (process.env.NODE_ENV === 'production') {
+  reinitializeTimeout = setTimeout(reinitializeScheduledCampaigns, 5000);
+}
 
 export {
   createCampaign,

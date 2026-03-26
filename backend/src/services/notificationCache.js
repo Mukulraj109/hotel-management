@@ -1,57 +1,8 @@
-import Redis from 'ioredis';
 import NotificationTemplate from '../models/NotificationTemplate.js';
 import NotificationPreference from '../models/NotificationPreference.js';
 import User from '../models/User.js';
 import logger from '../utils/logger.js';
-
-// Enhanced Redis configuration for development and production
-const getRedisOptions = () => {
-  const isProduction = process.env.NODE_ENV === 'production';
-
-  return {
-    retryDelayOnFailover: isProduction ? 200 : 100,
-    enableOfflineQueue: true,
-    maxRetriesPerRequest: isProduction ? 3 : 1,
-    lazyConnect: true,
-    connectTimeout: isProduction ? 10000 : 5000,
-    retryConnect: isProduction,
-    // Production-specific settings
-    ...(isProduction && {
-      keepAlive: 30000,
-      family: 4, // Use IPv4
-      keyPrefix: `pentouz:${process.env.APP_ENV || 'prod'}:`,
-      enableAutoPipelining: true,
-      // TLS support for cloud Redis services
-      ...(process.env.REDIS_TLS === 'true' && {
-        tls: {
-          rejectUnauthorized: process.env.REDIS_TLS_REJECT_UNAUTHORIZED !== 'false'
-        }
-      })
-    })
-  };
-};
-
-// Initialize Redis client - IORedis takes URL as first parameter, options as second
-const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-const redis = new Redis(redisUrl, getRedisOptions());
-
-// Handle Redis connection errors gracefully
-redis.on('error', (error) => {
-  // Suppress flood of connection errors but log once
-  if (!redis.errorLogged) {
-    logger.warn('⚠️  Redis connection failed - using fallback cache. Error:', error.message);
-    redis.errorLogged = true;
-  }
-});
-
-redis.on('connect', () => {
-  logger.debug('✅ Redis cache connected successfully');
-  redis.errorLogged = false;
-});
-
-redis.on('ready', () => {
-  logger.debug('✅ Redis cache ready');
-});
+import { getRedisClient } from '../config/redis.js';
 
 // Cache key patterns
 const CACHE_KEYS = {
@@ -76,13 +27,28 @@ const CACHE_TTL = {
 
 class NotificationCache {
   constructor() {
-    this.redis = redis;
+    this.redis = null;
     this.connected = false;
     this.initialize();
   }
 
   async initialize() {
     try {
+      // Use shared Redis client only; keep fallback mode by default.
+      const enableRedisCache = process.env.ENABLE_NOTIFICATION_CACHE_REDIS === 'true';
+      if (!enableRedisCache) {
+        this.connected = false;
+        logger.info('Notification cache Redis disabled; using fallback mode');
+        return;
+      }
+
+      this.redis = getRedisClient();
+      if (!this.redis || !this.redis.isReady) {
+        this.connected = false;
+        logger.warn('Notification cache Redis unavailable; using fallback mode');
+        return;
+      }
+
       await this.redis.ping();
       this.connected = true;
       logger.debug('✅ Redis cache connected successfully');
@@ -109,7 +75,7 @@ class NotificationCache {
     if (!this.connected) return false;
 
     try {
-      await this.redis.setex(key, ttl, JSON.stringify(value));
+      await this.redis.setEx(key, ttl, JSON.stringify(value));
       return true;
     } catch (error) {
       logger.error('Cache set error:', error);
@@ -305,7 +271,7 @@ class NotificationCache {
       const cacheKey = CACHE_KEYS.NOTIFICATION_COUNT(userId);
       const current = await this.redis.get(cacheKey);
       const count = current ? parseInt(current) + 1 : 1;
-      await this.redis.setex(cacheKey, CACHE_TTL.SHORT, count);
+      await this.redis.setEx(cacheKey, CACHE_TTL.SHORT, String(count));
     } catch (error) {
       logger.error('Error incrementing notification count:', error);
     }
@@ -455,7 +421,7 @@ class NotificationCache {
     if (!this.connected || keys.length === 0) return [];
 
     try {
-      const values = await this.redis.mget(...keys);
+      const values = await this.redis.mGet(keys);
       return values.map(value => value ? JSON.parse(value) : null);
     } catch (error) {
       logger.error('Cache mget error:', error);
@@ -484,7 +450,7 @@ class NotificationCache {
         memory: {
           used: memory.used_memory_human,
           peak: memory.used_memory_peak_human,
-          keys: await this.redis.dbsize()
+          keys: await this.redis.dbSize()
         }
       };
     } catch (error) {
@@ -533,7 +499,7 @@ class NotificationCache {
   async disconnect() {
     try {
       if (this.redis) {
-        await this.redis.disconnect();
+        // Shared client is managed centrally; do not close it here.
         logger.debug('Redis cache disconnected');
       }
     } catch (error) {

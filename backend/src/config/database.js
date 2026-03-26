@@ -1,6 +1,99 @@
 import mongoose from "mongoose";
 import logger from "../utils/logger.js";
 
+// Guard against duplicate index declarations (e.g. path `index: true` + `schema.index()`).
+if (!globalThis.__mongooseIndexPatchApplied) {
+globalThis.__mongooseIndexPatchApplied = true;
+const originalSchemaIndex = mongoose.Schema.prototype.index;
+const originalSchemaIndexes = mongoose.Schema.prototype.indexes;
+mongoose.Schema.prototype.index = function patchedIndex(fields, options = {}) {
+  try {
+    const normalizeFields = (obj = {}) =>
+      JSON.stringify(
+        Object.keys(obj)
+          .sort()
+          .reduce((acc, key) => {
+            acc[key] = obj[key];
+            return acc;
+          }, {})
+      );
+
+    const normalizeOptions = (obj = {}) => {
+      const copy = { ...obj };
+      delete copy.background;
+      return JSON.stringify(
+        Object.keys(copy)
+          .sort()
+          .reduce((acc, key) => {
+            acc[key] = copy[key];
+            return acc;
+          }, {})
+      );
+    };
+
+    const targetFields = normalizeFields(fields);
+    const existingIndexes = this.indexes();
+    const hasSameFields = existingIndexes.filter(([idxFields]) => normalizeFields(idxFields) === targetFields);
+    // Exact duplicate: ignore silently.
+    if (
+      hasSameFields.some(([_, idxOptions]) => normalizeOptions(idxOptions || {}) === normalizeOptions(options || {}))
+    ) {
+      return this;
+    }
+
+    // Prefer explicit schema indexes over simple path-level `index: true`.
+    for (const fieldName of Object.keys(fields || {})) {
+      const path = this.path(fieldName);
+      if (path?.options?.index === true) {
+        delete path.options.index;
+      }
+    }
+  } catch (_err) {
+    // Fall back to default behavior if patch logic fails.
+  }
+
+  return originalSchemaIndex.call(this, fields, options);
+};
+
+mongoose.Schema.prototype.indexes = function patchedIndexes(...args) {
+  const indexes = originalSchemaIndexes.call(this, ...args);
+
+  const normalizeFields = (obj = {}) =>
+    JSON.stringify(
+      Object.keys(obj)
+        .sort()
+        .reduce((acc, key) => {
+          acc[key] = obj[key];
+          return acc;
+        }, {})
+    );
+
+  const normalizeOptions = (obj = {}) => {
+    const copy = { ...obj };
+    delete copy.background;
+    return JSON.stringify(
+      Object.keys(copy)
+        .sort()
+        .reduce((acc, key) => {
+          acc[key] = copy[key];
+          return acc;
+        }, {})
+    );
+  };
+
+  const deduped = [];
+  const seen = new Set();
+  for (const [fields, options] of indexes) {
+    const key = `${normalizeFields(fields)}|${normalizeOptions(options || {})}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push([fields, options]);
+  }
+
+  return deduped;
+};
+}
+
 const connectDB = async () => {
   try {
     const conn = await mongoose.connect(process.env.MONGO_URI, {

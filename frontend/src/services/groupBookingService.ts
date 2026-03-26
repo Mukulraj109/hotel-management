@@ -160,7 +160,7 @@ class GroupBookingService {
 
   async confirmGroupBooking(id: string): Promise<ApiResponse<{ message: string; groupBooking: GroupBooking }>> {
     try {
-      const response = await api.post(`/corporate/group-bookings/${id}/confirm`);
+      const response = await api.patch(`/corporate/group-bookings/${id}/confirm`);
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
@@ -169,7 +169,7 @@ class GroupBookingService {
 
   async cancelGroupBooking(id: string, reason?: string, roomIndices?: number[]): Promise<ApiResponse<{ message: string; groupBooking: GroupBooking }>> {
     try {
-      const response = await api.post(`/corporate/group-bookings/${id}/cancel`, { reason, roomIndices });
+      const response = await api.patch(`/corporate/group-bookings/${id}/cancel`, { reason, roomIndices });
       return response.data;
     } catch (error: unknown) {
       throw error instanceof Error ? error : new Error('Request failed');
